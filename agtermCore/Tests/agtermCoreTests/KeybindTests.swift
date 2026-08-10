@@ -390,6 +390,11 @@ struct KeybindTests {
         #expect(Chord(mods: [.control, .option], key: "down").glyphString == "⌃⌥↓")
     }
 
+    @Test func keybindGlyphStringRendersASingleChordLikeItsOwnGlyphString() {
+        let keybind: Keybind = [Chord(mods: [.command], key: "n")]
+        #expect(keybind.glyphString == Chord(mods: [.command], key: "n").glyphString)
+    }
+
     @Test func arrowChordsRoundTripThroughDisplayString() {
         for key in bindableArrowKeys {
             let chord = Chord(mods: [.command, .shift], key: key)
