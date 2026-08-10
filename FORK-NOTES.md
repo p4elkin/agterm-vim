@@ -65,6 +65,12 @@ Escape keypress to the focused pane, so vim, shell vi-mode and Claude Code's vim
 normal mode from the same press — `i` means insert at both layers, Esc means normal at both. Esc that only
 abandons a half-typed sequence keeps the mode and sends nothing, and neither does `agtermctl mode off`.
 
+**A third way out fires by itself.** `new_session`, `new_window`, `new_workspace` and `duplicate_session`
+each hand over a brand-new pane, so they take the mode off with them and the new shell is typed into
+straight away. Vim's `o` is the same bargain: it opens the line and enters insert. The toggles that also
+show a pane — `toggle_split`, `toggle_scratch`, `quick_terminal` — deliberately stay in the mode, so the
+second press that closes them again still works.
+
 `map` and `nmap` are independent namespaces — the same chord may appear in both. Bare `s` and the
 sequence `space>s` do not conflict, because they differ on their first chord.
 

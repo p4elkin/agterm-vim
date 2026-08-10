@@ -4,7 +4,8 @@ import Foundation
 ///
 /// While the mode is on nothing reaches the terminal, so a chord matching no bind is SWALLOWED — the one
 /// behavioral difference from the global monitor, whose unmatched chords pass through. Entering is the app's
-/// job (the `normal_mode` built-in); leaving is Esc or the bare `normalModeExitKey`. Deadline-free: the
+/// job (the `normal_mode` built-in); leaving is Esc, the bare `normalModeExitKey`, or firing an action whose
+/// `leavesNormalMode` holds. Deadline-free: the
 /// app-side leader timeout calls `reset()`.
 public struct NormalModeState: Sendable {
     /// What the caller does with the key it just fed in.
@@ -60,6 +61,9 @@ public struct NormalModeState: Sendable {
 
         switch matcher.advance(chord) {
         case .fired(.builtin(let action)):
+            // an action that hands over a fresh pane takes the mode off with it, so the new shell is typed
+            // into directly. `.fired` still reports the action either way; only `isActive` differs.
+            if action.leavesNormalMode { exit() }
             return .fired(action)
         case .fired(.command(let id)):
             return .firedCommand(id)

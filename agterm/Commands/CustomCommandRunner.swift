@@ -162,6 +162,17 @@ final class CustomCommandRunner {
                 abandonLeader()
                 return false
             }
+            // `toggle_fullscreen` is dispatched below, PAST this branch, because it is the one built-in with
+            // no menu item (see there). Every other Command chord passing through here reaches
+            // `performKeyEquivalent` and its menu item; this one would reach nothing, so the mode has to
+            // dispatch it itself or ⌘⌃F silently dies for as long as the mode is on. Command-carrying only:
+            // a fullscreen chord rebound to a bare key stays the mode's to swallow, like any other `map`
+            // bind, and an armed normal-mode leader still outranks it.
+            if event.modifierFlags.contains(.command), !normalMode.isArmed, let chord = chord(from: event),
+               chord == settings.keymap.equivalent(for: .toggleFullscreen) {
+                keyWindow.toggleFullScreen(nil)
+                return true
+            }
             return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns

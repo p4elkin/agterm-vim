@@ -35,6 +35,21 @@ struct NormalModeStateTests {
         #expect(mode.isActive)
     }
 
+    @Test func aPaneCreatingActionFiresAndLeavesTheMode() {
+        let n = Chord(mods: [], key: "n")
+        var mode = state([NormalModeBind(keybind: [n], target: .builtin(.newSession))])
+        #expect(mode.advance(n) == .fired(.newSession))
+        #expect(!mode.isActive)
+    }
+
+    @Test func aPaneCreatingActionLeavesTheModeFromASequenceToo() {
+        var mode = state([NormalModeBind(keybind: [space, Chord(mods: [], key: "n")], target: .builtin(.newSession))])
+        #expect(mode.advance(space) == .armed)
+        #expect(mode.advance(Chord(mods: [], key: "n")) == .fired(.newSession))
+        #expect(!mode.isActive)
+        #expect(!mode.isArmed)
+    }
+
     @Test func sequenceFires() {
         var mode = state([NormalModeBind(keybind: [space, s], target: .builtin(.toggleSidebar))])
         #expect(mode.advance(space) == .armed)

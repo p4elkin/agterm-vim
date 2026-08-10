@@ -131,11 +131,24 @@ paths:
   `nmap` naming it. A name matching nothing is dropped with `unknown command '<name>'` on the `nmap` line,
   BEFORE the prefix pass, so it blocks no later bind. The chord rules are the target's business either
   way: reserved monitor chords and a leading exit key stay rejected.
+- **An action whose `BuiltinAction.leavesNormalMode` holds takes the mode off as it fires**, so the pane it
+  just created is typed into with no `i`. The set is the four that hand over a brand-new pane:
+  `new_session`, `new_window`, `new_workspace`, `duplicate_session`, pinned by `BuiltinActionTests`.
+  The exit happens inside `NormalModeState.advance`, so `NormalModeController.publish` clears the pill with
+  no app-side branch, and `.fired` still carries the action either way — only `isActive` differs.
+  ⚠️ The toggles that also show a pane (`toggle_split`, `toggle_scratch`, `quick_terminal`) are excluded on
+  purpose: leaving the mode there would cost the second press that closes them.
 - **The mode honors OS key repeats; the global matcher still ignores them.** Holding `k` to skim back
   through sessions is what a bare-key bind is for, so the repeat guard sits AFTER the normal-mode branch,
   where it keeps a held custom-command chord to one spawned process. A command target inside the mode is
   the one exception: `.firedCommand` skips the spawn on a repeat and still CONSUMES the key, so holding a
   key bound to a command runs one process while a built-in bind beside it keeps firing per repeat.
+- ⚠️ **`toggle_fullscreen` is dispatched a second time inside the normal-mode branch.** It is the one keyed
+  built-in with no menu item, so the Command chord the mode passes through reaches `performKeyEquivalent`
+  and finds nothing, and ⌘⌃F dies for as long as the mode is on. The in-branch copy fires only for a chord
+  carrying Command and only with no normal-mode leader armed; a fullscreen chord rebound to a bare key stays
+  the mode's to swallow, like any other `map` bind. Pinned by
+  `FullScreenChordTests.testShippedChordStillTogglesWhileNormalModeIsOn`, which fails with the branch removed.
 - **A Command chord and a reserved monitor chord always pass through while the mode is on.** The monitor
   runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
   ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose

@@ -228,3 +228,4 @@ spans intact, and format long catalogs as lists.
 - `app-icon.md`: adaptive Icon Composer build.
 - `ci.md`: jobs, filters, coverage, badge.
 - `release.md`: local signing, notarization, release, Homebrew, changelog.
+- `fork-rebase.md`: rebasing this fork onto upstream, the gate set, the files that keep colliding.

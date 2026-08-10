@@ -66,4 +66,18 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
             return nil
         }
     }
+
+    /// Whether firing this from normal mode also leaves the mode, so the thing it just created is ready to
+    /// type into. Only the actions that hand over a brand-new pane qualify: the user asked for a place to
+    /// type, and a mode still swallowing bare keys would eat the first words into a shell that just started.
+    /// Vim's `o` is the same bargain — it opens the line AND enters insert.
+    ///
+    /// Deliberately excludes the toggles that also show a pane (`toggle_split`, `toggle_scratch`,
+    /// `quick_terminal`): leaving the mode there would cost the second press that closes them again.
+    public var leavesNormalMode: Bool {
+        switch self {
+        case .newSession, .newWindow, .newWorkspace, .duplicateSession: return true
+        default: return false
+        }
+    }
 }

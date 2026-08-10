@@ -17,7 +17,8 @@ bare-key binds become legal. Everything else is `nmap`, live only while the mode
 - `space` then `y` — a custom command, to show that an `nmap` target can be one
 
 Press `i` to leave the mode and get the keyboard back, or Esc to leave it and put the program in the pane
-into its own normal mode.
+into its own normal mode. `space` then `n` leaves by itself, because a new session is a pane you asked
+for in order to type into it.
 
 ## Requirements
 
@@ -93,6 +94,11 @@ Two ways out, and they are not the same. `i` leaves the mode and typing goes bac
 immediately. Esc leaves the mode and also sends an Escape to the pane, so vim, zsh vi-mode at a prompt and
 Claude Code's vim mode all end up in their own normal mode — the mode carries down instead of stopping at
 agterm. No extra `nmap` line makes that happen; it is what Esc does.
+
+A third way out needs no key at all. `space` then `n` creates a session and leaves the mode with it, so the
+new shell takes your typing right away — vim's `o` opens a line and enters insert the same way. `new_window`,
+`new_workspace` and `duplicate_session` behave the same wherever you bind them. `space` then `s`, `s` and `t`
+do not: they toggle, and leaving the mode would cost the press that closes them again.
 
 ## How it works
 

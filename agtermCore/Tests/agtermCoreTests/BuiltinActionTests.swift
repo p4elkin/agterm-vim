@@ -186,4 +186,15 @@ struct BuiltinActionTests {
     @Test func normalModeHasNoDefaultChordSoItIsUnreachableUntilBound() {
         #expect(BuiltinAction.normalMode.defaultChord == nil)
     }
+
+    @Test func onlyPaneCreatingActionsLeaveNormalMode() {
+        let leaving = Set(BuiltinAction.allCases.filter(\.leavesNormalMode))
+        #expect(leaving == [.newSession, .newWindow, .newWorkspace, .duplicateSession])
+    }
+
+    @Test func theTogglesThatAlsoShowAPaneStayInNormalMode() {
+        #expect(!BuiltinAction.toggleSplit.leavesNormalMode)
+        #expect(!BuiltinAction.toggleScratch.leavesNormalMode)
+        #expect(!BuiltinAction.quickTerminal.leavesNormalMode)
+    }
 }
