@@ -43,7 +43,7 @@ public struct ControlKeymapCommand: Codable, Sendable, Equatable {
     }
 }
 
-/// One `nmap` line: a normal-mode bind and the built-in it runs.
+/// One `nmap` line: a normal-mode bind and what it runs, a built-in or a custom command.
 ///
 /// Its own section rather than a flag on `ControlKeymapAction` because normal mode is a separate namespace —
 /// the same action can carry a global chord AND a bare normal-mode key, and one row cannot say both.
@@ -51,12 +51,16 @@ public struct ControlKeymapNormalBind: Codable, Sendable, Equatable {
     /// The bind in kitty syntax, chords joined by `>` (`s`, `space>s`) — spelled exactly like
     /// `ControlKeymapAction.chord`, so the two sections compare directly.
     public var bind: String
-    /// The action's `keymap.conf` name, e.g. `toggle_split`.
-    public var action: String
+    /// The action's `keymap.conf` name, e.g. `toggle_split`. Exactly one of `action` and `command` is set;
+    /// the other is omitted, so a built-in bind's JSON is what it was before command targets existed.
+    public var action: String?
+    /// The custom command's name, as its `command` line quotes it.
+    public var command: String?
 
-    public init(bind: String, action: String) {
+    public init(bind: String, action: String? = nil, command: String? = nil) {
         self.bind = bind
         self.action = action
+        self.command = command
     }
 }
 
@@ -153,9 +157,16 @@ public extension ControlKeymap {
         let commands = keymap.commands.map {
             ControlKeymapCommand(name: $0.name, shortcut: $0.shortcut.isEmpty ? nil : $0.shortcut)
         }
-        let normalMode = keymap.normalModeBinds.map {
-            ControlKeymapNormalBind(bind: $0.keybind.map(\.displayString).joined(separator: ">"),
-                                    action: $0.action.rawValue)
+        let normalMode = keymap.normalModeBinds.map { bind -> ControlKeymapNormalBind in
+            let spelling = bind.keybind.map(\.displayString).joined(separator: ">")
+            switch bind.target {
+            case .builtin(let action):
+                return ControlKeymapNormalBind(bind: spelling, action: action.rawValue)
+            case .command(let id):
+                // an unresolvable id can only be a bug; report the raw id rather than leave the row empty.
+                let name = keymap.commands.first { $0.id == id }?.name ?? id.uuidString
+                return ControlKeymapNormalBind(bind: spelling, command: name)
+            }
         }
         return ControlKeymap(path: path, actions: actions, commands: commands,
                              diagnostics: diagnostics.map { ControlKeymapDiagnostic(line: $0.line, message: $0.message) },

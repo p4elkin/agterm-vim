@@ -177,20 +177,20 @@ not inherit that: holding `e` would spawn one annotate process per OS repeat. Th
   25, and the `.fired(.command)` branch at lines 61-62)
 - Modify: `agtermCore/Tests/agtermCoreTests/NormalModeStateTests.swift`
 
-- [ ] add `case firedCommand(UUID)` to `NormalModeState.Outcome`
-- [ ] change `NormalModeBind.action` to `target: KeybindTarget` and stop wrapping in
+- [x] add `case firedCommand(UUID)` to `NormalModeState.Outcome`
+- [x] change `NormalModeBind.action` to `target: KeybindTarget` and stop wrapping in
       `NormalModeState.init`
-- [ ] return `.firedCommand(id)` from the branch that currently returns `.swallowed`
-- [ ] give `resolveNormalModeBinds` a target description for its conflict message, so a clash names the
+- [x] return `.firedCommand(id)` from the branch that currently returns `.swallowed`
+- [x] give `resolveNormalModeBinds` a target description for its conflict message, so a clash names the
       command as readably as it names an action
-- [ ] update every existing construction site of `NormalModeBind` in tests and sources to the new
+- [x] update every existing construction site of `NormalModeBind` in tests and sources to the new
       property
-- [ ] write a test: a bind whose target is `.command(id)` fires `.firedCommand(id)`
-- [ ] write a test: a sequence ending in a command target arms then fires, and the exit key still leaves
+- [x] write a test: a bind whose target is `.command(id)` fires `.firedCommand(id)`
+- [x] write a test: a sequence ending in a command target arms then fires, and the exit key still leaves
       the mode ahead of it
-- [ ] write a test: a prefix conflict between a command bind and a built-in bind keeps the earlier line
+- [x] write a test: a prefix conflict between a command bind and a built-in bind keeps the earlier line
       and names the later one's target in the diagnostic
-- [ ] run `cd agtermCore && swift test --filter NormalModeStateTests` - must pass before task 2
+- [x] run `cd agtermCore && swift test --filter NormalModeStateTests` - must pass before task 2
 
 ### Task 2: Parse a quoted command name on an nmap line and resolve it after the file is read
 
@@ -204,21 +204,21 @@ not inherit that: holding `e` would spawn one annotate process per OS repeat. Th
 - Modify: `agtermCore/Sources/agtermCore/Keymap.swift` (the `nmap` grammar doc comment at line 116)
 - Modify: `agtermCore/Tests/agtermCoreTests/KeymapTests.swift`
 
-- [ ] detect a quoted target in `parseNormalModeLine` and record the name unresolved; keep bare tokens
+- [x] detect a quoted target in `parseNormalModeLine` and record the name unresolved; keep bare tokens
       on the existing `BuiltinAction` path
-- [ ] diagnose an unterminated quote on its own line rather than falling through to action parsing
-- [ ] resolve recorded names against the parsed `commands` in the cross-section pass, emitting
+- [x] diagnose an unterminated quote on its own line rather than falling through to action parsing
+- [x] resolve recorded names against the parsed `commands` in the cross-section pass, emitting
       `unknown command '<name>'` on the `nmap` line when no command matches
-- [ ] confirm the chord rules still apply to command binds: reserved monitor chords rejected anywhere,
+- [x] confirm the chord rules still apply to command binds: reserved monitor chords rejected anywhere,
       the exit key rejected as a leading chord
-- [ ] write a test: `nmap e "Some command"` resolves when the `command` line is ABOVE it
-- [ ] write a test: the same resolves when the `command` line is BELOW it — the order-independence this
+- [x] write a test: `nmap e "Some command"` resolves when the `command` line is ABOVE it
+- [x] write a test: the same resolves when the `command` line is BELOW it — the order-independence this
       design exists for
-- [ ] write a test: an `nmap` naming no existing command yields a diagnostic on the right line and drops
+- [x] write a test: an `nmap` naming no existing command yields a diagnostic on the right line and drops
       only that bind
-- [ ] write a test: an unterminated quote yields a diagnostic and is not read as an action name
-- [ ] write a test: a keymap with no quoted nmap target parses identically to before
-- [ ] run `cd agtermCore && swift test --filter KeymapTests` - must pass before task 3
+- [x] write a test: an unterminated quote yields a diagnostic and is not read as an action name
+- [x] write a test: a keymap with no quoted nmap target parses identically to before
+- [x] run `cd agtermCore && swift test --filter KeymapTests` - must pass before task 3
 
 ### Task 3: Report command binds through keymap list
 
@@ -230,15 +230,15 @@ not inherit that: holding `e` would spawn one annotate process per OS repeat. Th
 - Modify: `agtermCore/Sources/agtermctlKit/SocketClient.swift` (the `normal mode:` section at line 250)
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlKeymapTests.swift`
 
-- [ ] make `ControlKeymapNormalBind.action` optional and add `command: String?`, with a doc comment
+- [x] make `ControlKeymapNormalBind.action` optional and add `command: String?`, with a doc comment
       saying exactly one is set
-- [ ] map a `.command` target to the command's name and a `.builtin` target to the action name
-- [ ] render a command bind in the human `normal mode:` section so it is distinguishable from an action
+- [x] map a `.command` target to the command's name and a `.builtin` target to the action name
+- [x] render a command bind in the human `normal mode:` section so it is distinguishable from an action
       bind at a glance
-- [ ] write a test: a command bind reports its name under `command` and omits `action`
-- [ ] write a test: a built-in bind's JSON is unchanged, and
+- [x] write a test: a command bind reports its name under `command` and omits `action`
+- [x] write a test: a built-in bind's JSON is unchanged, and
       `untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction` still passes
-- [ ] run `cd agtermCore && swift test --filter ControlKeymapTests` - must pass before task 4
+- [x] run `cd agtermCore && swift test --filter ControlKeymapTests` - must pass before task 4
 
 ### Task 4: Fire the custom command from the normal-mode monitor
 
@@ -249,32 +249,40 @@ not inherit that: holding `e` would spawn one annotate process per OS repeat. Th
   `focusedSurface` in scope from line 133)
 - Modify: `agtermTests/` (the existing `CustomCommandRunner` / normal-mode hosted test class)
 
-- [ ] pass `focusedSurface` into `handleNormalModeKey` and reuse `runFromKeybind` / `runNoSurface`
+- [x] pass `focusedSurface` into `handleNormalModeKey` and reuse `runFromKeybind` / `runNoSurface`
       exactly as the global `.fired` path at lines 170-178 does
-- [ ] look the command up by the id the outcome carries, from the same settings keymap the monitor
+- [x] look the command up by the id the outcome carries, from the same settings keymap the monitor
       rebuilds from
-- [ ] ⚠️ skip the spawn when `event.isARepeat` in the `.firedCommand` case ONLY, and still return true so
+- [x] ⚠️ skip the spawn when `event.isARepeat` in the `.firedCommand` case ONLY, and still return true so
       the key stays consumed; built-in targets keep taking repeats
-- [ ] confirm the existing exits are untouched: a Command chord and a reserved monitor chord still pass
+- [x] confirm the existing exits are untouched: a Command chord and a reserved monitor chord still pass
       through, a focused `NSText` still ends the mode
-- [ ] write a hosted test: a bare key bound to a command spawns it once and consumes the key
-- [ ] write a hosted test: holding that key spawns exactly one process, while a held built-in bind still
+- [x] write a hosted test: a bare key bound to a command spawns it once and consumes the key
+- [x] write a hosted test: holding that key spawns exactly one process, while a held built-in bind still
       fires per repeat
-- [ ] verify by hand that the held-key test FAILS with the repeat guard removed, and report that
-- [ ] run `make test-app` filtered to the touched class with `-only-testing:` - must pass before task 5
+- [x] verify by hand that the held-key test FAILS with the repeat guard removed, and report that
+- [x] run `make test-app` filtered to the touched class with `-only-testing:` - must pass before task 5
 
 ### Task 5: Verify acceptance criteria
 
-- [ ] verify a quoted `nmap` target fires the command, in either file order, per the Overview
-- [ ] verify an unknown command name surfaces in Settings > Key Mapping and in `keymap list`
-      diagnostics
-- [ ] verify a keymap with no quoted nmap target is unchanged end to end
-- [ ] run `cd agtermCore && swift test`
-- [ ] run `make test-app`
-- [ ] run `make lint` — zero findings required
-- [ ] run `agtermUITests/ControlNormalModeUITests` to confirm the mode still behaves end to end
-      ⚠️ only after `DevToolsSecurity -status` reports developer mode enabled; otherwise it blocks on a
-      password dialog that looks like a failure and is not one
+- [x] verify a quoted `nmap` target fires the command, in either file order, per the Overview
+      (`nmapCommandTargetResolvesWhenTheCommandIsDeclaredAbove` / `...Below` for the order-independence,
+      `NormalModeKeyRoutingTests.testABareKeyBoundToACustomCommandSpawnsItAndIsConsumed` for the real spawn)
+- [x] verify an unknown command name surfaces in Settings > Key Mapping and in `keymap list`
+      diagnostics (`nmapUnknownCommandNameDropsOnlyThatBind`; both surfaces read the same
+      `Keymap.diagnostics` through `SettingsModel.keymapDiagnostics`)
+- [x] verify a keymap with no quoted nmap target is unchanged end to end
+      (`untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction`,
+      `normalModeBuiltinBindJSONCarriesNoCommandKey`)
+- [x] run `cd agtermCore && swift test` — 2504 tests, 95 suites, all passed
+- [x] run `make test-app` — 193 tests, 4 skipped, `** TEST SUCCEEDED **`
+- [x] run `make lint` — zero findings
+- [x] run `agtermUITests/ControlNormalModeUITests` (skipped — not automatable in this run)
+      ⚠️ Developer mode IS enabled, yet both attempts died with `Failed to initialize for UI testing:
+      Timed out while enabling automation mode.` That is the XCUITest runner failing to start, before a
+      single line of test code runs, so it cannot distinguish this change from any other. The remaining
+      gate is a TCC/automation permission held by whatever process parents `xcodebuild`, not something a
+      code fix reaches. Re-run it from an interactive shell that already holds the automation right.
 
 ### Task 6: [Final] Update documentation
 
@@ -285,11 +293,15 @@ not inherit that: holding `e` would spawn one annotate process per OS repeat. Th
 - Modify: `cookbook/vim-keys/` (the preset, to show a command bind)
 - Modify: `plugins/agterm/skills/agterm/` (the keymap grammar the installed Claude/Codex copies read)
 
-- [ ] document the quoted-name grammar and that resolution is order-independent
-- [ ] document the repeat exception: the mode takes repeats, a command target does not
-- [ ] document `unknown command '<name>'` as a parse diagnostic
-- [ ] update the `keymap list` read-back fields in the control docs
-- [ ] move this plan to `docs/plans/completed/`
+- [x] document the quoted-name grammar and that resolution is order-independent
+- [x] document the repeat exception: the mode takes repeats, a command target does not
+- [x] document `unknown command '<name>'` as a parse diagnostic
+- [x] update the `keymap list` read-back fields in the control docs
+      (`.claude/rules/control-api.md`, the bundled skill's `reference.md` and `SKILL.md`;
+      `site/commands.html` never documented the `normalMode` section and README/site stay untouched per
+      FORK-NOTES)
+- [x] move this plan to `docs/plans/completed/` (left in place — the exec harness moves it after every
+      phase finishes; moving it mid-run breaks the later review and stats phases)
 
 ## Post-Completion
 

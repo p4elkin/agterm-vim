@@ -97,9 +97,18 @@ paths:
   it from the monitor's observer.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
   a bind that navigates sessions lands the responder on the pane it opened.
+- An `nmap` target is a bare token for a built-in action or a QUOTED name for a custom command
+  (`nmap e "Annotate last response"`), reusing the quoting that already marks a name on a `command` line.
+  A quoted name has no id until every `command` line is read, so `parseNormalModeLine` records it
+  unresolved and `resolveNormalModeBinds` resolves it; the `command` may therefore sit above or below the
+  `nmap` naming it. A name matching nothing is dropped with `unknown command '<name>'` on the `nmap` line,
+  BEFORE the prefix pass, so it blocks no later bind. The chord rules are the target's business either
+  way: reserved monitor chords and a leading exit key stay rejected.
 - **The mode honors OS key repeats; the global matcher still ignores them.** Holding `k` to skim back
   through sessions is what a bare-key bind is for, so the repeat guard sits AFTER the normal-mode branch,
-  where it keeps a held custom-command chord to one spawned process.
+  where it keeps a held custom-command chord to one spawned process. A command target inside the mode is
+  the one exception: `.firedCommand` skips the spawn on a repeat and still CONSUMES the key, so holding a
+  key bound to a command runs one process while a built-in bind beside it keeps firing per repeat.
 - **A Command chord and a reserved monitor chord always pass through while the mode is on.** The monitor
   runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
   ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose

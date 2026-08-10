@@ -47,19 +47,19 @@ public struct Keymap: Equatable, Sendable {
     }
 }
 
-/// One `nmap` line: a keybind firing a built-in while normal mode is on. Kept as a struct rather than a
-/// tuple so `Keymap` keeps its synthesized `Equatable`.
+/// One `nmap` line: a keybind firing a built-in action or a custom command while normal mode is on. Kept as
+/// a struct rather than a tuple so `Keymap` keeps its synthesized `Equatable`.
 ///
 /// Normal mode is its OWN namespace: nothing reaches the terminal or the global monitor while it is on, so a
 /// bind here may freely repeat a global `map` chord or a custom command's, and carries no modifier
 /// requirement — bare keys are the point.
 public struct NormalModeBind: Equatable, Sendable {
     public let keybind: Keybind
-    public let action: BuiltinAction
+    public let target: KeybindTarget
 
-    public init(keybind: Keybind, action: BuiltinAction) {
+    public init(keybind: Keybind, target: KeybindTarget) {
         self.keybind = keybind
-        self.action = action
+        self.target = target
     }
 }
 
@@ -192,7 +192,10 @@ public func parseKeymap(_ text: String) -> (keymap: Keymap, diagnostics: [Keymap
     if !dashboardMapped, oldConfigUsesNewDashboardChord { compatibilityUnbound.insert(.dashboard) }
     let builtinOverrides = resolveBuiltinOverrides(resolved.overrides, unbound: compatibilityUnbound,
                                                    alternatives: resolved.alternatives, diagnostics: &diagnostics)
-    let normalModeBinds = resolveNormalModeBinds(normalBinds, diagnostics: &diagnostics)
+    // `commandLines` carries every command's final name and id already; only `shortcut` is still unsettled,
+    // and an `nmap` target names neither.
+    let normalModeBinds = resolveNormalModeBinds(normalBinds, commands: commandLines.map(\.command),
+                                                 diagnostics: &diagnostics)
 
     // likewise final: a custom line parsed before a later keyless-built-in `map` must still be validated
     // against the override that `map` installs.
@@ -282,9 +285,19 @@ private struct ParsedOverride {
 }
 
 /// A single valid `nmap` line, retained in file order so a prefix conflict can drop the later one.
-private struct ParsedNormalBind {
-    let bind: NormalModeBind
+/// Internal rather than private, unlike its `map` siblings, so `NormalModeStateTests` can drive resolution
+/// without going through a whole keymap file.
+struct ParsedNormalBind {
+    let keybind: Keybind
+    let target: PendingNormalTarget
     let line: Int
+}
+
+/// An `nmap` target before the cross-section pass. A built-in name resolves on its own line; a quoted command
+/// name cannot, because the `command` line declaring it may sit further down the file.
+enum PendingNormalTarget: Equatable {
+    case builtin(BuiltinAction)
+    case commandName(String)
 }
 
 /// Fold the file-order `map` lines to one per action and split them by dispatch path. A `map` line declares
@@ -688,21 +701,22 @@ private func splitMapAlternatives(_ parsed: Alternatives, line: Int,
     return (menuChord, alternatives)
 }
 
-/// Parse an `nmap` line's remainder, `<chord-or-sequence> <action>`: on success appends a `ParsedNormalBind`
-/// in file order, on any failure a diagnostic.
+/// Parse an `nmap` line's remainder, `<chord-or-sequence> <action|"<command name>">`: on success appends a
+/// `ParsedNormalBind` in file order, on any failure a diagnostic.
 ///
 /// Deliberately NO modifier rule, the one grammar difference from `map`: normal mode intercepts every key
 /// before the terminal sees it, so a bare `j` swallows nothing the user still wants. Reserved monitor chords
 /// stay rejected at any position — those monitors run whatever the mode is — and `normalModeExitKey` is
-/// rejected as a leading chord because it is how the user gets back out.
+/// rejected as a leading chord because it is how the user gets back out. Those chord rules are applied before
+/// the target is read, so they hold for a command target exactly as they do for a built-in one.
 ///
 /// One bind per line, through `parseKeybind` rather than `alternativeKeybinds`: `|` alternatives exist so a
 /// binding can offer a menu chord AND a monitor one, and normal mode has only the second path.
 private func parseNormalModeLine(_ rest: String, line: Int, binds: inout [ParsedNormalBind],
                                  diagnostics: inout [KeymapDiagnostic]) {
     let chordText = String(rest.prefix(while: { !$0.isWhitespace }))
-    let actionName = String(rest.dropFirst(chordText.count)).trimmingCharacters(in: .whitespaces)
-    guard !chordText.isEmpty, !actionName.isEmpty else {
+    let targetText = String(rest.dropFirst(chordText.count)).trimmingCharacters(in: .whitespaces)
+    guard !chordText.isEmpty, !targetText.isEmpty else {
         diagnostics.append(KeymapDiagnostic(line: line, message: "nmap requires a key and an action"))
         return
     }
@@ -723,37 +737,90 @@ private func parseNormalModeLine(_ rest: String, line: Int, binds: inout [Parsed
             message: "'\(normalModeExitKey)' leaves normal mode and can't be bound; nmap skipped"))
         return
     }
-    guard let action = BuiltinAction(rawValue: actionName) else {
-        diagnostics.append(KeymapDiagnostic(line: line, message: "unknown action '\(actionName)'"))
-        return
-    }
+    guard let target = parseNormalModeTarget(targetText, line: line, diagnostics: &diagnostics) else { return }
 
-    binds.append(ParsedNormalBind(bind: NormalModeBind(keybind: keybind, action: action), line: line))
+    binds.append(ParsedNormalBind(keybind: keybind, target: target, line: line))
 }
 
-/// Drop any `nmap` bind in a prefix relation with an earlier one — the wait-or-fire ambiguity, a duplicate
-/// being the equal-length case — keeping the earlier line as two colliding built-in sequences do. One pass in
-/// file order suffices: a drop frees nothing, so it can't make a surviving bind newly legal.
+/// The target half of an `nmap` line. A leading `"` marks a custom-command name, the same way a `command`
+/// line spells its own name; anything else is a built-in action name. An unterminated quote is its own
+/// diagnostic rather than a fallthrough, since `"Some command` can never be a legal action name either.
+private func parseNormalModeTarget(_ text: String, line: Int,
+                                   diagnostics: inout [KeymapDiagnostic]) -> PendingNormalTarget? {
+    guard text.first == "\"" else {
+        guard let action = BuiltinAction(rawValue: text) else {
+            diagnostics.append(KeymapDiagnostic(line: line, message: "unknown action '\(text)'"))
+            return nil
+        }
+        return .builtin(action)
+    }
+    guard let closeQuote = text.dropFirst().firstIndex(of: "\"") else {
+        diagnostics.append(KeymapDiagnostic(line: line,
+                                            message: "unterminated command name; nmap skipped"))
+        return nil
+    }
+    let trailing = text[text.index(after: closeQuote)...].trimmingCharacters(in: .whitespaces)
+    guard trailing.isEmpty else {
+        diagnostics.append(KeymapDiagnostic(
+            line: line, message: "unexpected text '\(trailing)' after command name; nmap skipped"))
+        return nil
+    }
+    return .commandName(String(text[text.index(after: text.startIndex)..<closeQuote]))
+}
+
+/// How a normal-mode target names itself in a diagnostic. A built-in keeps the quoted action name it always
+/// had; a command reads `command "<name>"` so the two can't be confused. An unresolvable id can only come
+/// from a bug, so it falls back to the raw id rather than hiding.
+private func normalModeTargetName(_ target: KeybindTarget, commands: [CustomCommand]) -> String {
+    switch target {
+    case .builtin(let action):
+        return "'\(action.rawValue)'"
+    case .command(let id):
+        guard let name = commands.first(where: { $0.id == id })?.name else { return "command \(id.uuidString)" }
+        return "command \"\(name)\""
+    }
+}
+
+/// Resolve every `nmap` line's target against the finished `commands`, then drop any bind in a prefix
+/// relation with an earlier one — the wait-or-fire ambiguity, a duplicate being the equal-length case —
+/// keeping the earlier line as two colliding built-in sequences do. One pass in file order suffices: a drop
+/// frees nothing, so it can't make a surviving bind newly legal.
+///
+/// Resolution runs here rather than per line so an `nmap` may name a command declared anywhere in the file.
+/// A name matching nothing is dropped with a diagnostic on its own line and blocks no later bind.
 ///
 /// Checked against `nmap` binds ONLY. Normal mode is its own namespace, so a bind repeating a global `map`
 /// chord or a custom command's shortcut is intentional, not a conflict.
-private func resolveNormalModeBinds(_ parsed: [ParsedNormalBind],
-                                    diagnostics: inout [KeymapDiagnostic]) -> [NormalModeBind] {
-    // `keybindConflicts` computes the same relation for the global namespace, but pairs each bind with a
-    // `KeybindTarget` an `nmap` line has no equivalent of, so the equal-or-prefix test is spelled out here.
+func resolveNormalModeBinds(_ parsed: [ParsedNormalBind], commands: [CustomCommand],
+                            diagnostics: inout [KeymapDiagnostic]) -> [NormalModeBind] {
+    // `keybindConflicts` computes the same relation for the global namespace, but reports it as pairs over a
+    // finished set; here each bind is tested against the ones already kept, so the test is spelled out.
     func conflicts(_ lhs: Keybind, _ rhs: Keybind) -> Bool {
         lhs == rhs || isStrictKeybindPrefix(lhs, of: rhs) || isStrictKeybindPrefix(rhs, of: lhs)
     }
 
     var kept: [NormalModeBind] = []
     for entry in parsed {
-        if let clash = kept.first(where: { conflicts($0.keybind, entry.bind.keybind) }) {
+        let target: KeybindTarget
+        switch entry.target {
+        case .builtin(let action):
+            target = .builtin(action)
+        case .commandName(let name):
+            guard let command = commands.first(where: { $0.name == name }) else {
+                diagnostics.append(KeymapDiagnostic(line: entry.line,
+                                                    message: "unknown command '\(name)'; nmap skipped"))
+                continue
+            }
+            target = .command(command.id)
+        }
+        if let clash = kept.first(where: { conflicts($0.keybind, entry.keybind) }) {
+            let name = normalModeTargetName(clash.target, commands: commands)
             diagnostics.append(KeymapDiagnostic(
                 line: entry.line,
-                message: "normal-mode keybind conflicts with '\(clash.action.rawValue)'; nmap skipped"))
+                message: "normal-mode keybind conflicts with \(name); nmap skipped"))
             continue
         }
-        kept.append(entry.bind)
+        kept.append(NormalModeBind(keybind: entry.keybind, target: target))
     }
     return kept
 }

@@ -42,7 +42,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             windowID = UUID()
             WindowRegistry.shared.register(windowID, window: window)
             NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "s")],
-                                                                      action: .toggleSplit)])
+                                                                      target: .builtin(.toggleSplit))])
             NormalModeController.shared.enter()
         }
     }
@@ -210,25 +210,94 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(NormalModeController.shared.isActive, "the same call enters with a key window")
     }
 
+    /// Build a runner over a keymap file this test owns. `start()` is what parses it into the matcher and the
+    /// mode's binds; it also leaves the mode OFF, so a case that needs it on re-enters after starting.
+    private func seededRunner(keymap: String) throws -> CustomCommandRunner {
+        let configDir = stateDir.appendingPathComponent("config", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        try keymap.write(to: configDir.appendingPathComponent("keymap.conf"), atomically: true, encoding: .utf8)
+        let store = SettingsStore(directory: stateDir)
+        var seededSettings = store.load()
+        seededSettings.configDirectory = configDir.path
+        try store.save(seededSettings)
+        return CustomCommandRunner(library: library,
+                                   settings: SettingsModel(library: library, settingsStore: store),
+                                   performBuiltin: { [weak self] in self?.fired.append($0) },
+                                   socketProvider: { "" })
+    }
+
+    private func markerLineCount(_ url: URL) -> Int {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return 0 }
+        return text.split(separator: "\n").count
+    }
+
+    /// A fired command is a detached process, so the only honest assertion is its side effect on disk.
+    private func waitForMarkerLines(_ url: URL, count: Int, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if markerLineCount(url) >= count { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return markerLineCount(url) >= count
+    }
+
+    private func markerCommandKeymap(marker: URL, extraLines: String = "") -> String {
+        """
+        command "Marker" echo x >> "\(marker.path)"
+        nmap e "Marker"
+        \(extraLines)
+        """
+    }
+
+    func testABareKeyBoundToACustomCommandSpawnsItAndIsConsumed() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let marker = stateDir.appendingPathComponent("fired.txt")
+        let seeded = try seededRunner(keymap: markerCommandKeymap(marker: marker))
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("e", keyCode: 14), in: window),
+                      "a command bind consumes its key like any other bind")
+        XCTAssertTrue(waitForMarkerLines(marker, count: 1), "the bound command must actually run")
+        XCTAssertTrue(NormalModeController.shared.isActive, "firing a command leaves the mode on")
+    }
+
+    /// ⚠️ The mode takes OS key repeats on purpose, so holding `k` skims sessions — but a command target
+    /// spawns a process, and inheriting repeats there would stack one per repeat. The guard sits inside the
+    /// command case alone and still consumes the key; a built-in bind keeps repeating.
+    func testHoldingACommandBindSpawnsOnceWhileAHeldBuiltinStillRepeats() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let marker = stateDir.appendingPathComponent("fired.txt")
+        let seeded = try seededRunner(keymap: markerCommandKeymap(marker: marker,
+                                                                 extraLines: "nmap s toggle_split"))
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("e", keyCode: 14), in: window))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("e", keyCode: 14, isARepeat: true), in: window),
+                      "a repeat on a command bind is still consumed, just not run")
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("e", keyCode: 14, isARepeat: true), in: window))
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1, isARepeat: true), in: window))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1, isARepeat: true), in: window))
+        XCTAssertEqual(fired, [.toggleSplit, .toggleSplit, .toggleSplit],
+                       "a built-in target still fires on every OS repeat")
+
+        XCTAssertTrue(waitForMarkerLines(marker, count: 1), "the first press must run the command")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertEqual(markerLineCount(marker), 1, "the two OS repeats must not spawn a second process")
+    }
+
     /// The global matcher must keep IGNORING repeats — a held custom-command chord spawns one process, not
     /// one per OS repeat — which is why the guard moved below the normal-mode branch instead of away. A
     /// built-in leader stands in for a custom command so the test fires an action instead of a process.
     func testTheGlobalMatcherStillIgnoresKeyRepeats() throws {
         try skipUnlessLayoutIsASCIICapable()
-        let configDir = stateDir.appendingPathComponent("config", isDirectory: true)
-        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-        try "map ctrl+a>s toggle_split\n".write(to: configDir.appendingPathComponent("keymap.conf"),
-                                                atomically: true, encoding: .utf8)
-        let store = SettingsStore(directory: stateDir)
-        var seededSettings = store.load()
-        seededSettings.configDirectory = configDir.path
-        try store.save(seededSettings)
-        let seeded = CustomCommandRunner(library: library,
-                                         settings: SettingsModel(library: library, settingsStore: store),
-                                         performBuiltin: { [weak self] in self?.fired.append($0) },
-                                         socketProvider: { "" })
-        // `start()` is what builds the matcher from the keymap; it also rebuilds normal mode off the same
-        // (nmap-free) file, leaving the mode off, which is the state this path needs.
+        // the mode rebuilds off this same (nmap-free) file and stays off, which is the state this path needs.
+        let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\n")
         seeded.start()
         defer { seeded.stop() }
 

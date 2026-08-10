@@ -251,7 +251,12 @@ struct SocketClient {
             // right after the actions, because it is the same question asked of the other namespace: an
             // `nmap` bind is invisible in `actions`, and a mode that reports nothing cannot be diagnosed.
             lines.append(contentsOf: ["", "normal mode:"])
-            lines.append(contentsOf: normalMode.map { "    \($0.bind)  \($0.action)" })
+            // a command target prints `command "<name>"`, the same spelling the keymap grammar and the
+            // parse diagnostics use, so a bare name is always a built-in action.
+            lines.append(contentsOf: normalMode.map { bind in
+                let target = bind.command.map { "command \"\($0)\"" } ?? bind.action ?? "-"
+                return "    \(bind.bind)  \(target)"
+            })
         }
         if !keymap.commands.isEmpty {
             lines.append(contentsOf: ["", "commands:"])

@@ -14,12 +14,15 @@ bare-key binds become legal. Everything else is `nmap`, live only while the mode
 - `s` — toggle the scratch terminal; `t` — quick terminal
 - `space` then `s` — toggle split; `n` — new session; `d` — dashboard
 - `space` then `p` then `a` — command palette; `space` then `p` then `s` — session palette
+- `space` then `y` — a custom command, to show that an `nmap` target can be one
 
 Press `i` or Esc to leave the mode and get the keyboard back.
 
 ## Requirements
 
-- agterm 0.22.0 or later, where `nmap` and normal mode ship.
+- agterm 0.22.0 or later, where `nmap` and normal mode ship. The quoted `space>y` target needs the build
+  where an `nmap` line gained custom-command targets; drop that line and the `command` above it on an
+  older one.
 
 ## Setup
 
@@ -48,6 +51,10 @@ nmap space>n new_session
 nmap space>d dashboard
 nmap space>p>a command_palette
 nmap space>p>s session_palette
+
+# a quoted target names a custom command instead of a built-in action
+command "Copy pwd" printf %s "$AGT_SESSION_PWD" | pbcopy
+nmap space>y "Copy pwd"
 ```
 
 Drop the lines you have no use for; each stands alone. Pick a different chord than `ctrl+space` if it
@@ -88,7 +95,14 @@ else.
 
 `space>d` is the same story from the other side: the dashboard wants the arrows and Return, so the mode
 steps aside for it, exactly as it does for the dashboard, terminal zoom or a picker opened any other way.
-Holding a bound key repeats it, so `k` held down walks back through sessions.
+Holding a bound key repeats it, so `k` held down walks back through sessions. A key bound to a custom
+command is the exception: the repeats are swallowed and the command runs once, so a held key cannot pile
+up processes.
+
+A quoted `nmap` target is the name of a `command` line, which is why `space>y` above works whether that
+`command` sits before or after it — names are resolved once the whole file has been read. A target
+naming no command shows up as `unknown command '<name>'` on that line in Settings ▸ Key Mapping and in
+`agtermctl keymap list`, and only that one bind is dropped.
 
 ## Limits
 

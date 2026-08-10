@@ -304,6 +304,22 @@ struct SocketClientTests {
         """)
     }
 
+    // a bare name is a built-in; a command target must not read as one.
+    @Test func formatsANormalModeCommandBindWithItsQuotedName() {
+        let parsed = parseKeymap("""
+        command "Annotate" cmd+shift+e echo hi
+        nmap e "Annotate"
+        nmap s toggle_split
+        """)
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        let out = SocketClient.formatKeymap(payload)
+
+        #expect(out.contains("    e  command \"Annotate\""))
+        #expect(out.contains("    s  toggle_split"))
+    }
+
     @Test func formatsKeymapWithoutOptionalSectionsWhenEmpty() {
         let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
                                             diagnostics: [], path: "/tmp/keymap.conf")

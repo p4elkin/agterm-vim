@@ -150,7 +150,7 @@ final class CustomCommandRunner {
                 abandonLeader()
                 return false
             }
-            return handleNormalModeKey(event, in: keyWindow)
+            return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
         // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding
@@ -216,7 +216,8 @@ final class CustomCommandRunner {
     /// and pane-shortcut monitors, which run whatever the mode is, and nothing orders the four `.keyDown`
     /// monitors, so consuming one here would let registration order decide whether ⌃Tab works. Both are
     /// therefore unreachable as `nmap` binds, which is why the parser rejects them.
-    private func handleNormalModeKey(_ event: NSEvent, in keyWindow: NSWindow) -> Bool {
+    private func handleNormalModeKey(_ event: NSEvent, in keyWindow: NSWindow,
+                                     focusedSurface: GhosttySurfaceView?) -> Bool {
         guard !event.modifierFlags.contains(.command) else { return false }
         let outcome: NormalModeState.Outcome
         if event.keyCode == Self.escapeKeyCode {
@@ -238,6 +239,18 @@ final class CustomCommandRunner {
             return true
         case .armed:
             startLeaderTimer()
+            return true
+        case .firedCommand(let id):
+            cancelLeaderTimer()
+            // the mode honors OS key repeats so a held bare key can skim sessions; a command target must NOT
+            // inherit that, or holding the key spawns one process per repeat. The key stays consumed either way.
+            guard !event.isARepeat else { return true }
+            guard let command = settings.keymap.commands.first(where: { $0.id == id }) else { return true }
+            if let focusedSurface {
+                runFromKeybind(command, focusedSurface: focusedSurface)
+            } else {
+                runNoSurface(command)
+            }
             return true
         case .exited, .swallowed:
             cancelLeaderTimer()

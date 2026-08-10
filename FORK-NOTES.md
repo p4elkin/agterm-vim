@@ -43,9 +43,18 @@ nmap s toggle_scratch
 nmap t quick_terminal
 nmap space>s toggle_split
 nmap space>p>a command_palette
+
+nmap e "Annotate last response"  # a quoted target is a custom command, not a built-in
 ```
 
 A pill in the titlebar shows the mode is on and the armed prefix while a sequence is half-typed.
+
+A quoted `nmap` target names a `command` line by its name. Resolution runs after the whole file is
+read, so the `command` may sit above or below the `nmap` that names it, and a name matching nothing is
+a parse diagnostic (`unknown command '<name>'`) on the `nmap` line rather than a key that does nothing.
+
+The mode passes OS key repeats through, so holding `k` skims sessions. A command target does not
+inherit that: holding `e` spawns one process and the key stays swallowed.
 
 **A bare Esc never enters the mode, deliberately.** Esc has to keep reaching vim, less, fzf and
 shell vi-mode, so entry is an explicit chord. Arming a leader requires consuming the key, and a
@@ -72,7 +81,8 @@ Consequences worth knowing:
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.
 - `window.list` reports `normalMode` on the window holding it, true-only.
-- `agtermctl keymap list` gained a `normal mode` section listing `nmap` binds.
+- `agtermctl keymap list` gained a `normal mode` section listing `nmap` binds. Each row carries `bind`
+  plus exactly one of `action` and `command`, and prints a command target as `command "<name>"`.
 
 ## Also here
 
@@ -84,8 +94,10 @@ Consequences worth knowing:
 - README and `site/` upstream docs are not updated. They churn hard upstream, and touching them makes
   every rebase a conflict.
 - `agtermUITests/ControlNormalModeUITests` was written before XCUITest could run here. What blocked it
-  was an unanswered "XCTest is trying to Enable UI Automation" password prompt, fixed for good with
-  `sudo DevToolsSecurity -enable`. Both tests in the class now pass.
+  was an unanswered "XCTest is trying to Enable UI Automation" password prompt. Both tests now pass.
+  ⚠️ `sudo DevToolsSecurity -enable` does NOT fix it — that was tried and the prompt still appeared.
+  The rule that actually holds is in `.claude/rules/ui-tests.md`: run a UI test from the driver session,
+  never from a delegated subagent.
   On its first run `testModeOnShowsIndicatorAndReadsBackOnTheWindow` failed on the pill lookup. The mode
   and the pill were both fine; the query was the problem. `descendants(matching: .any)` builds the whole
   accessibility tree, terminal grid included, and on a freshly launched window that first snapshot can

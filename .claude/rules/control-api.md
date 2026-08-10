@@ -483,6 +483,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   rather than arming a pill no keystroke can reach. Read back as true-only `normalMode` on the `window.list` node; `.agtermNormalModeChanged` refreshes
   the window cache synchronously, since a keystroke enters the mode with no command at all.
   `keymap.list` reports the `nmap` binds in its own `normalMode` section, omitted when the keymap has none.
+  A bind carries `bind` plus exactly one of `action` and `command`, the second being a quoted `nmap` target
+  naming a custom command; the human section prints that one as `command "<name>"` so a bare name always
+  reads as a built-in action.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
   no-op in flagged mode. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `workspace.focus on` replaces/enables; off removes and disables on empty; toggle clears sole applied

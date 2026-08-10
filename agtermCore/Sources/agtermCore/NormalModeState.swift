@@ -10,6 +10,9 @@ public struct NormalModeState: Sendable {
     /// What the caller does with the key it just fed in.
     public enum Outcome: Equatable, Sendable {
         case fired(BuiltinAction)
+        /// A custom command by id, the `nmap "<name>"` form. Separate from `fired` because the caller spawns
+        /// a process for it and must skip OS key repeats the mode otherwise honors.
+        case firedCommand(UUID)
         case armed
         /// Consumed with nothing to do: an unmatched chord, or Esc abandoning an armed leader.
         case swallowed
@@ -22,7 +25,7 @@ public struct NormalModeState: Sendable {
     public private(set) var isActive = false
 
     public init(binds: [NormalModeBind]) {
-        matcher = KeybindMatcher(binds.map { ($0.keybind, KeybindTarget.builtin($0.action)) })
+        matcher = KeybindMatcher(binds.map { ($0.keybind, $0.target) })
     }
 
     /// Whether a sequence is half-typed. Gates the app-side leader timeout.
@@ -58,8 +61,8 @@ public struct NormalModeState: Sendable {
         switch matcher.advance(chord) {
         case .fired(.builtin(let action)):
             return .fired(action)
-        case .fired(.command):
-            return .swallowed
+        case .fired(.command(let id)):
+            return .firedCommand(id)
         case .armed:
             return .armed
         case .unmatched:
