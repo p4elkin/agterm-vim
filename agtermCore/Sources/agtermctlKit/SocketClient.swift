@@ -247,6 +247,12 @@ struct SocketClient {
             let binds = ((action.chord.map { [$0] } ?? []) + (action.alternates ?? [])).joined(separator: "|")
             lines.append("  \(mark) \(name)  \(binds.isEmpty ? "-" : binds)")
         }
+        if let normalMode = keymap.normalMode {
+            // right after the actions, because it is the same question asked of the other namespace: an
+            // `nmap` bind is invisible in `actions`, and a mode that reports nothing cannot be diagnosed.
+            lines.append(contentsOf: ["", "normal mode:"])
+            lines.append(contentsOf: normalMode.map { "    \($0.bind)  \($0.action)" })
+        }
         if !keymap.commands.isEmpty {
             lines.append(contentsOf: ["", "commands:"])
             lines.append(contentsOf: keymap.commands.map { "    \($0.name)  \($0.shortcut ?? "(palette only)")" })
@@ -276,6 +282,7 @@ struct SocketClient {
     static func formatWindows(_ windows: [ControlWindowNode]) -> String {
         windows.map { window in
             let tags = (window.open ? " [open]" : "") + (window.active ? " [active]" : "")
+                + (window.normalMode == true ? " [normal mode]" : "")
             return "\(window.id)  \(window.name)\(tags)"
         }.joined(separator: "\n")
     }

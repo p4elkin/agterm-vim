@@ -652,4 +652,9 @@ extension Notification.Name {
     /// and the action palette re-reads the custom commands. The data-driven menu shortcuts re-render on their
     /// own from the `@Observable` keymap.
     static let agtermKeymapChanged = Notification.Name("agterm.keymapChanged")
+
+    /// Posted by `NormalModeController` whenever normal mode turns on or off, so the control server can
+    /// refresh its cached `window.list` — the mode is entered by a keystroke as often as by a command, and a
+    /// polling `window.list` is fast-path-served, so nothing else would ever refresh the `normalMode` flag.
+    static let agtermNormalModeChanged = Notification.Name("agterm.normalModeChanged")
 }

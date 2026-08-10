@@ -42,12 +42,21 @@ final class AppActions {
 
     /// The modal gate for a specific window — for session-addressed entry points whose target may have
     /// changed while an external menu was tracking.
-    func uiActionsEnabled(for windowID: WindowInfo.ID?) -> Bool {
+    func uiActionsEnabled(for windowID: WindowInfo.ID?) -> Bool { Self.uiActionsEnabled(for: windowID) }
+
+    /// The same gate as a type method: it reads only the three window-scoped registries, no `AppActions`
+    /// state, so the app-wide key monitor can re-ask it per keystroke without a reference back to the hub.
+    static func uiActionsEnabled(for windowID: WindowInfo.ID?) -> Bool {
         guard let windowID else { return false }
         return TerminalZoomRegistry.shared.controller(for: windowID)?.target == nil
             && DashboardControllerRegistry.shared.controller(for: windowID)?.isOpen != true
             && PickRegistry.shared.controller(for: windowID)?.pending == nil
     }
+
+    /// The key window normal mode's entry gate checks for. A stored closure rather than a direct
+    /// `NSApp.keyWindow` read for the same reason `CustomCommandRunner.handleKeyDown(_:in:)` takes its
+    /// window as a parameter: hosted tests cannot create (or clear) a real key window.
+    var keyWindowProvider: @MainActor () -> NSWindow? = { NSApp.keyWindow }
 
     /// Set while a rename starts, so the palette / quick-terminal close focus-restore skips the rename field.
     var renamePending = false

@@ -87,7 +87,33 @@ paths:
   a leader's last chord through after swallowing its prefix would type a stray character into the terminal.
 - Fire with a focused `GhosttySurfaceView`, or in an agterm terminal window whose focus is not an `NSText`
   field editor, including a zero-session window. Pass through text fields and auxiliary windows;
-  `WindowRegistry.contains(keyWindow)` gates no-surface dispatch.
+  `WindowRegistry.contains(keyWindow)` gates no-surface dispatch. `handleKeyDown(_:in:)` takes the key
+  window rather than reading `NSApp.keyWindow`, so hosted tests can drive the decision.
+- Normal mode (`nmap`) is a FILTER inside that same monitor and owns no first responder. While it is on the
+  monitor consumes every key it sees, an unmatched one included, so nothing reaches the terminal.
+  Four exits, none of them first-responder observation: a focused `NSText` (palette field, inline rename,
+  Settings, search bar) ends the mode and passes its key through, the modal gate failing ends it the same
+  way, a click in a pane ends it from `GhosttySurfaceView.mouseDown`, and the key window resigning key ends
+  it from the monitor's observer.
+  The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
+  a bind that navigates sessions lands the responder on the pane it opened.
+- **The mode honors OS key repeats; the global matcher still ignores them.** Holding `k` to skim back
+  through sessions is what a bare-key bind is for, so the repeat guard sits AFTER the normal-mode branch,
+  where it keeps a held custom-command chord to one spawned process.
+- **A Command chord and a reserved monitor chord always pass through while the mode is on.** The monitor
+  runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
+  ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose
+  registration order among the four `.keyDown` monitors is not controlled. Read the second set from
+  `isReservedMonitorChord`, never a fresh list. The cost is that neither is reachable as an `nmap` bind,
+  which is what the parser already says. Deciding the mode's fate from what CAUSED a focus change
+  instead produced three consecutive bugs (515f5f6, 7880799, and a palette that could not type), so do not
+  reintroduce a view that takes first responder for the mode.
+- **The mode may only be ON while `AppActions.uiActionsEnabled` holds and a key window exists**, and both
+  halves are re-checked, not just gated at entry. `enterNormalMode` refuses with no key window
+  (`keyWindowProvider`, a closure so hosted tests can drive it) because the monitor reads `NSApp.keyWindow`
+  and does nothing without one, and the monitor re-reads the modal gate per keystroke through the type
+  method `AppActions.uiActionsEnabled(for:)` — an `nmap dashboard` bind, or a control command, opens a
+  modal with the mode still on, and that surface needs the arrows and Return the mode would swallow.
 - Palette `run(_:)` no-ops without an active session. A no-surface chord uses the active session when
   available; otherwise `spawnSessionless` supplies empty session fields plus frontmost window/socket so
   launchers still work. If `referencesSessionScopedContext` finds any session/workspace/selection token

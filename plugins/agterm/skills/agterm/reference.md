@@ -706,7 +706,10 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   the cache is refreshed when a window moves/resizes/zooms/enters or exits full screen/minimizes or
   restores, so a hand-drag or GUI toggle is reflected without needing another command. (`autoFollowMs`
   still reflects the last cache refresh, since a settings change is rare; and unlike `tree`, `window.list`
-  does NOT carry `idleMs` — the live idle metric would freeze in the cache.)
+  does NOT carry `idleMs` — the live idle metric would freeze in the cache.) A window holding NORMAL MODE
+  also carries `normalMode: true` — the read side of `mode`, true-only and omitted everywhere else, since the
+  mode is one app-wide state that leaves when its window stops being frontmost. It is cache-refreshed on
+  every mode change, so a keystroke that entered the mode shows up too.
 - `window select <id>` — raise it if open, else open it.
 - `window close <id>` — close the on-screen window (the bundle is kept; reopen with select).
 - `window rename <id> <name>`.

@@ -22,6 +22,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     case quickTerminal = "quick_terminal", sessionPalette = "session_palette", commandPalette = "command_palette"
     case customCommandPalette = "custom_command_palette", showAttention = "show_attention"
     case dashboard = "dashboard"
+    case normalMode = "normal_mode"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
     /// `map`s one. Every action that ships with a key returns it here, including the six arrow-bound ones —
@@ -61,7 +62,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .nextAttentionSession: return Chord(mods: [.control, .option], key: "down")
         case .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
              .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-             .toggleWorkspaceFilter:
+             .toggleWorkspaceFilter, .normalMode:
             return nil
         }
     }

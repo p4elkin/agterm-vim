@@ -380,6 +380,20 @@ final class WindowLibraryTests {
         })
     }
 
+    // true-only, on the one window holding the mode: an untouched install must report exactly what it
+    // reported before the `mode` command existed.
+    @Test func controlWindowNodesFlagTheNormalModeWindowOnly() {
+        let library = WindowLibrary(directory: directory)
+        let first = library.windows[0]
+        let second = library.newWindow(name: "work")
+
+        let nodes = library.controlWindowNodes(normalModeWindow: second.id)
+        #expect(nodes[0].id == first.id.uuidString)
+        #expect(nodes[0].normalMode == nil)
+        #expect(nodes[1].normalMode == true)
+        #expect(library.controlWindowNodes().allSatisfy { $0.normalMode == nil })
+    }
+
     @Test func controlWindowNodesUseActiveWindowFallback() {
         let library = WindowLibrary(directory: directory)
         let first = library.windows[0]

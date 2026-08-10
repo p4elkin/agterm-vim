@@ -542,6 +542,42 @@ struct Sidebar: ParsableCommand {
     }
 }
 
+// MARK: - mode
+
+/// `agtermctl mode [on|off|toggle]` — normal mode, where the keys `nmap` binds run built-in actions and
+/// everything else is swallowed instead of reaching the shell. Named after the mode itself, not the keymap
+/// verb: the state is app-wide, and `sidebar mode` is a view mode that shares nothing with it.
+struct NormalMode: RequestCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mode",
+        abstract: "Normal mode (on|off|toggle).",
+        discussion: """
+        Turns the frontmost window's normal mode on or off — the same state the `normal_mode` built-in \
+        enters and Esc leaves. While it is on the titlebar shows a pill, `window list` tags the window \
+        `[normal mode]`, and the keys bound with `nmap` in keymap.conf run their actions; every other key \
+        is swallowed, so nothing reaches the terminal. Menu chords such as Command-Q still work.
+
+        Turning it on fails while terminal zoom, the dashboard or a picker owns the keyboard, and while \
+        agterm is not frontmost: the mode is a filter in agterm's key monitor, so with no key window the \
+        pill would advertise a mode no keystroke can reach. Opening any of those three while the mode is \
+        already on leaves it, so the surface gets the arrows and Return it needs.
+        """
+    )
+    @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
+    // the mode is a single app-wide state held by the frontmost window, so this carries no `--window`.
+    @OptionGroup var options: BasicOptions
+
+    func validate() throws {
+        guard ["on", "off", "toggle"].contains(mode) else {
+            throw ValidationError("mode must be on, off, or toggle")
+        }
+    }
+
+    func makeRequest() throws -> ControlRequest {
+        ControlRequest(cmd: .normalMode, args: ControlArgs(mode: mode))
+    }
+}
+
 // MARK: - notify
 
 struct Notify: RequestCommand {

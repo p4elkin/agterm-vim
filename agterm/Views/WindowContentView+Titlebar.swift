@@ -107,6 +107,9 @@ extension WindowContentView {
                 // the title text falls through to the drag/zoom layer behind it, so double-click zooms and
                 // drag moves the window; the rest of the row is non-hittable spacers plus the buttons.
                 .allowsHitTesting(false)
+            if NormalModeController.shared.isActive {
+                normalModePill.padding(.leading, 8)
+            }
             Spacer(minLength: 12)
             titlebarTrailingActions
         }
@@ -152,6 +155,24 @@ extension WindowContentView {
             if showQuick { quickTerminalButton.labelStyle(.iconOnly) }
         }
         .padding(.trailing, 14)
+    }
+
+    /// Normal-mode indicator: inverted (chrome-filled, terminal-colored text) so it reads as a mode change
+    /// rather than another chrome button, since an unnoticed mode silently eats keystrokes. Shows the armed
+    /// leader prefix while a sequence is half-typed; absent entirely while the mode is off.
+    private var normalModePill: some View {
+        let armed = NormalModeController.shared.armedGlyphs
+        return HStack(spacing: 4) {
+            Text("NORMAL").font(.caption2.weight(.bold))
+            if !armed.isEmpty {
+                Text(armed).font(.caption2.monospaced())
+            }
+        }
+        .foregroundStyle(terminalColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(chromeText, in: Capsule())
+        .accessibilityIdentifier("normal-mode-pill")
     }
 
     /// The 1px themed separator between two title-bar button groups.

@@ -48,6 +48,57 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func normalModeParsesModesAndKeepsExactResponse() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextNormalModeResponse = ControlResponse(ok: true)
+
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "on")))
+
+        #expect(response == ControlResponse(ok: true))
+        #expect(actions.calls == [.normalMode(.on)])
+    }
+
+    @Test func normalModeDefaultsToToggle() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .normalMode))
+
+        #expect(actions.calls == [.normalMode(.toggle)])
+    }
+
+    @Test func normalModeOffReachesActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "off")))
+
+        #expect(actions.calls == [.normalMode(.off)])
+    }
+
+    // an unknown token must never reach the host: entering the mode takes the keyboard away from the
+    // terminal, so a typo that silently toggled it would be worse than an error.
+    @Test func normalModeRejectsUnknownModeWithoutCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "normal")))
+
+        #expect(response == ControlResponse(ok: false, error: "invalid mode: normal"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func normalModePassesTheHostErrorThrough() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextNormalModeResponse = ControlResponse(ok: false, error: "no open window")
+
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "on")))
+
+        #expect(response == ControlResponse(ok: false, error: "no open window"))
+    }
+
     @Test func sidebarViewModeParsesModesAndKeepsExactResponse() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

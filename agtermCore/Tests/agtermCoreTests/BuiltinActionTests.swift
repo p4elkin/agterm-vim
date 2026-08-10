@@ -30,7 +30,8 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.toggleFullscreen.rawValue == "toggle_fullscreen")
         #expect(BuiltinAction.dashboard.rawValue == "dashboard")
         #expect(BuiltinAction.duplicateSession.rawValue == "duplicate_session")
-        #expect(BuiltinAction.allCases.count == 43)
+        #expect(BuiltinAction.normalMode.rawValue == "normal_mode")
+        #expect(BuiltinAction.allCases.count == 44)
     }
 
     @Test func rejectsUnknownName() {
@@ -117,6 +118,7 @@ struct BuiltinActionTests {
             .customCommandPalette: Chord(mods: [.control, .shift], key: "o"),
             .showAttention: Chord(mods: [.control, .shift], key: "i"),
             .dashboard: Chord(mods: [.command, .shift], key: "g"),
+            .normalMode: nil,
         ]
         #expect(expected.count == BuiltinAction.allCases.count)
         for action in BuiltinAction.allCases {
@@ -173,11 +175,15 @@ struct BuiltinActionTests {
         let keyless: Set<BuiltinAction> = [
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-            .toggleWorkspaceFilter,
+            .toggleWorkspaceFilter, .normalMode,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")
         }
         #expect(BuiltinAction.allCases.filter { $0.defaultChord == nil } == BuiltinAction.allCases.filter { keyless.contains($0) })
+    }
+
+    @Test func normalModeHasNoDefaultChordSoItIsUnreachableUntilBound() {
+        #expect(BuiltinAction.normalMode.defaultChord == nil)
     }
 }

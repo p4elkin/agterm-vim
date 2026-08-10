@@ -52,6 +52,9 @@ public enum Command: String, Codable, Sendable {
     case sidebarMode = "sidebar.mode"
     case sidebarExpand = "sidebar.expand"
     case sidebarCollapse = "sidebar.collapse"
+    /// Normal mode on/off/toggle. Spelled `mode` rather than `normal.mode` because the app has exactly one
+    /// modal keyboard state; `sidebar.mode` is a VIEW mode and shares nothing with it.
+    case normalMode = "mode"
     case notify
     case fontInc = "font.inc"
     case fontDec = "font.dec"
@@ -123,7 +126,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var select: Bool?
     /// Mode for `session.split` (`on|off|toggle`), `quick`/`surface.zoom` (`show|hide|toggle`),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
-    /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize` (`on|off|toggle`),
+    /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), and `session.restore` (`set|none|clear` — pin
     /// `command`, pin nothing, or drop the pin).
     public var mode: String?
@@ -798,10 +801,17 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
     /// notifications so ⌘M or a Dock click shows too. A minimized window still reports its `geometry` (where
     /// it comes back to).
     public let minimized: Bool?
+    /// `true` on the ONE window holding normal mode, omitted everywhere else — the read side of `mode`.
+    ///
+    /// Reported true-only rather than per-window false/true because the mode is a single app-wide state that
+    /// leaves on window resign-key: at most one window can hold it, and an untouched install then reports
+    /// exactly what it reported before this command existed.
+    public let normalMode: Bool?
 
     public init(id: String, name: String, open: Bool, active: Bool, autoFollowMs: Int? = nil,
                 sidebarVisible: Bool? = nil, geometry: ControlWindowFrame? = nil,
-                fullscreen: Bool? = nil, zoomed: Bool? = nil, minimized: Bool? = nil) {
+                fullscreen: Bool? = nil, zoomed: Bool? = nil, minimized: Bool? = nil,
+                normalMode: Bool? = nil) {
         self.id = id
         self.name = name
         self.open = open
@@ -812,6 +822,7 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
         self.fullscreen = fullscreen
         self.zoomed = zoomed
         self.minimized = minimized
+        self.normalMode = normalMode
     }
 }
 

@@ -131,6 +131,11 @@ final class ControlServer {
         NotificationCenter.default.addObserver(forName: .agtermSidebarVisibilityChanged, object: nil, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshWindowCache() }
         }
+        // same reason for normal mode, which a keystroke enters and leaves with no command at all — and the
+        // synchronous nil queue is what makes `mode on; window list` report the mode it just set.
+        NotificationCenter.default.addObserver(forName: .agtermNormalModeChanged, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshWindowCache() }
+        }
         // window.list carries LIVE NSWindow geometry + fullscreen/zoom read at cache-build time, which a user
         // drag/resize/zoom/fullscreen changes with NO control command — and a polling window.list is
         // fast-path-served, so it never refreshes its own cache. the fullscreen notifications fire AFTER the
@@ -420,7 +425,7 @@ final class ControlServer {
                 .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFocus, .sessionResize, .surfaceZoom,
                 .sessionStatus, .sessionFlag, .sessionSeen, .sessionRestore, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload, .themeSet, .themeList,
-                .sidebar, .sidebarMode, .sidebarExpand, .sidebarCollapse, .sessionType, .sessionCopy,
+                .sidebar, .sidebarMode, .sidebarExpand, .sidebarCollapse, .normalMode, .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
                 .sessionOverlayResult, .sessionBackground, .sessionText, .quick, .quickType, .quickText,

@@ -26,6 +26,9 @@ final class CustomCommandRunner {
     private var keyMonitor: Any?
     private var leaderTimer: Timer?
     private var keymapObserver: NSObjectProtocol?
+    private var resignKeyObserver: NSObjectProtocol?
+
+    private let normalMode = NormalModeController.shared
 
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
@@ -52,14 +55,27 @@ final class CustomCommandRunner {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.rebuild() }
         }
+        // normal mode swallows keys and shows only in the key window's titlebar, so it must not survive that
+        // window losing key — armed and invisible in the background is exactly how a user gets stuck.
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.normalMode.isActive else { return }
+                self.normalMode.exit()
+                self.cancelLeaderTimer()
+            }
+        }
     }
 
-    /// Remove the monitor, the keymap observer, and any pending leader timer.
+    /// Remove the monitor, both observers, and any pending leader timer.
     func stop() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         if let keymapObserver { NotificationCenter.default.removeObserver(keymapObserver) }
         keymapObserver = nil
+        if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
+        resignKeyObserver = nil
         cancelLeaderTimer()
     }
 
@@ -69,7 +85,15 @@ final class CustomCommandRunner {
     /// the matcher.
     private func rebuild() {
         let keymap = settings.keymap
-        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: keymap.builtinSequences)
+        var sequences = keymap.builtinSequences
+        // `normal_mode` owns no menu item, so a single-chord `map ctrl+space normal_mode` lands in
+        // `builtinOverrides` with nothing to dispatch it. Hand that chord to the monitor too, ahead of the
+        // alternatives the same line left, which the parser already checked it cannot collide with.
+        if let chord = keymap.equivalent(for: .normalMode) {
+            sequences[.normalMode, default: []].insert([chord], at: 0)
+        }
+        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences)
+        normalMode.rebuild(binds: keymap.normalModeBinds)
         cancelLeaderTimer()
     }
 
@@ -77,46 +101,61 @@ final class CustomCommandRunner {
     /// through `namedKey(forKeyCode:)`.
     private static let escapeKeyCode: UInt16 = 53
 
-    /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Esc while
+    /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Normal
+    /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while
     /// armed resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
     /// timer, and `toggle_fullscreen`'s chord toggles full screen without reaching the matcher at all — all
     /// consumed; `.unmatched` passes through.
-    ///
-    /// Acts when the key window's first responder is a terminal surface (context from that surface), or when
-    /// the key window is an agterm terminal window whose focus is NOT on a text field — including one emptied
-    /// to zero sessions. Passes through for a focused text field (Settings editor, inline rename, palette
-    /// search) so a bound chord never eats those keystrokes, and for an auxiliary window focused off a text
-    /// field. A key repeat is ignored, so a held-down shortcut spawns one process, not one per OS repeat.
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard let keyWindow = NSApp.keyWindow else { return false }
         return handleKeyDown(event, in: keyWindow)
     }
 
-    /// Everything after the key-window lookup, split out so a test can supply the window: a hosted test's
-    /// own window never becomes `NSApp.keyWindow` (the app is not active), so `handleKeyDown(_:)` returns at
-    /// that guard and none of this runs. Internal for that reason alone, like
-    /// `ControlServer.collectKeyEquivalents`.
+    /// The decision half, taking the key window instead of reading `NSApp.keyWindow`, so hosted tests can
+    /// drive it against a window they own: a hosted test's own window never becomes `NSApp.keyWindow` (the
+    /// app is not active), so `handleKeyDown(_:)` returns at that guard and none of this runs. Internal for
+    /// that reason alone, like `ControlServer.collectKeyEquivalents`.
+    ///
+    /// Acts when the key window's first responder is a terminal surface (context from that surface), or when
+    /// the key window is an agterm terminal window whose focus is NOT on a text field — including one emptied
+    /// to zero sessions. Passes through for a focused text field (Settings editor, inline rename, palette
+    /// search) so a bound chord never eats those keystrokes, and for an auxiliary window focused off a text
+    /// field.
     func handleKeyDown(_ event: NSEvent, in keyWindow: NSWindow) -> Bool {
-        guard !event.isARepeat else { return false }
         let responder = keyWindow.firstResponder
         // a focused text field is the window's NSText field editor and must keep its keystrokes: drop the
-        // half-typed leader, pass through.
+        // half-typed leader, LEAVE normal mode, pass through. the mode binds bare keys, so one left on over a
+        // field would eat the typing — and a field is focused only because the user asked to type into it,
+        // including through a mode bind that opened a palette.
         if responder is NSText {
-            if commandEngine.isArmed {
-                commandEngine.reset()
-                cancelLeaderTimer()
-            }
+            if normalMode.isActive { normalMode.exit() }
+            abandonLeader()
             return false
         }
         let focusedSurface = responder as? GhosttySurfaceView
         // with no focused surface, fire ONLY from an agterm terminal window (empty qualifies), never Settings.
         guard focusedSurface != nil || WindowRegistry.shared.contains(keyWindow) else {
-            if commandEngine.isArmed {
-                commandEngine.reset()
-                cancelLeaderTimer()
-            }
+            abandonLeader()
             return false
         }
+        // normal mode takes the key ahead of the global matcher: its binds are bare keys that would otherwise
+        // fall through to whatever the global map holds.
+        if normalMode.isActive {
+            // terminal zoom, the dashboard grid or a pending picker owns the keyboard for the same reason a
+            // focused text field does, and needs the arrows and Return the mode would swallow. Entry is
+            // gated on this predicate already; this is the re-check for a modal opened WHILE the mode was
+            // on — an `nmap dashboard` bind, or a control command.
+            guard AppActions.uiActionsEnabled(for: library.activeWindowID) else {
+                normalMode.exit()
+                abandonLeader()
+                return false
+            }
+            return handleNormalModeKey(event, in: keyWindow)
+        }
+        // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
+        // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding
+        // `k` to skim back through sessions is what a bare-key bind is for.
+        guard !event.isARepeat else { return false }
         // esc abandons a half-typed leader (the call the timeout makes) and is not bindable, so it comes
         // before the chord.
         if event.keyCode == Self.escapeKeyCode {
@@ -167,6 +206,47 @@ final class CustomCommandRunner {
         }
     }
 
+    /// Feed one key event to normal mode and report whether the monitor consumed it. This monitor is the only
+    /// thing between the mode and the terminal — nothing holds first responder for it — so every outcome but
+    /// `.inactive` is CONSUMED, an unmatched key included.
+    ///
+    /// Two exceptions are handed straight back. A Command chord: the monitor runs ahead of
+    /// `performKeyEquivalent`, so consuming one would swallow ⌘Q and leave no way out of the mode. And a
+    /// reserved monitor chord (`isReservedMonitorChord` — ctrl+tab, ctrl+1/2): those live in the switcher
+    /// and pane-shortcut monitors, which run whatever the mode is, and nothing orders the four `.keyDown`
+    /// monitors, so consuming one here would let registration order decide whether ⌃Tab works. Both are
+    /// therefore unreachable as `nmap` binds, which is why the parser rejects them.
+    private func handleNormalModeKey(_ event: NSEvent, in keyWindow: NSWindow) -> Bool {
+        guard !event.modifierFlags.contains(.command) else { return false }
+        let outcome: NormalModeState.Outcome
+        if event.keyCode == Self.escapeKeyCode {
+            // esc has no `Chord` spelling, so it arrives through its own entry point.
+            outcome = normalMode.escape()
+        } else if let chord = chord(from: event) {
+            guard !isReservedMonitorChord(chord) else { return false }
+            outcome = normalMode.advance(chord)
+        } else {
+            // a bare modifier can't advance anything; while armed, keep waiting.
+            return false
+        }
+        switch outcome {
+        case .fired(let action):
+            cancelLeaderTimer()
+            // the same seam a `.firedBuiltin` chord takes, so an `nmap` bind does exactly what the palette row
+            // behind its action does, gate included.
+            actions.perform(action, in: keyWindow)
+            return true
+        case .armed:
+            startLeaderTimer()
+            return true
+        case .exited, .swallowed:
+            cancelLeaderTimer()
+            return true
+        case .inactive:
+            return false
+        }
+    }
+
     /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base
     /// key is the named special key, else what `chordKey` resolves — the unmodified character on a layout that
     /// can type ASCII, the physical position on one that cannot.
@@ -197,7 +277,9 @@ final class CustomCommandRunner {
         leaderTimer = Timer.scheduledTimer(withTimeInterval: Self.leaderTimeout, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // one timer for both armed leaders — only one can be armed, and resetting the other is a no-op.
                 self.commandEngine.reset()
+                self.normalMode.reset()
                 self.leaderTimer = nil
             }
         }
@@ -206,6 +288,15 @@ final class CustomCommandRunner {
     private func cancelLeaderTimer() {
         leaderTimer?.invalidate()
         leaderTimer = nil
+    }
+
+    /// Drop a half-typed leader and its timer when focus leaves the terminal. Only one matcher can be armed,
+    /// so resetting the other is a no-op.
+    private func abandonLeader() {
+        guard commandEngine.isArmed || normalMode.isArmed else { return }
+        commandEngine.reset()
+        normalMode.reset()
+        cancelLeaderTimer()
     }
 
     /// Run a command fired from the PALETTE: context from the active session (the palette has no first

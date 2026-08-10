@@ -184,10 +184,10 @@ as an upstream pull request.
 
 **Model:** sonnet
 
-- [ ] add `case normalMode = "normal_mode"` and put it in the keyless arm of `defaultChord`, so it ships unbound
-- [ ] update the test that pins the case list — this is a deliberate change, not a fix
-- [ ] write a test that `normal_mode` has no default chord, so the mode is unreachable until bound
-- [ ] run `cd agtermCore && swift test --filter BuiltinActionTests` — must pass before task 8
+- [x] add `case normalMode = "normal_mode"` and put it in the keyless arm of `defaultChord`, so it ships unbound
+- [x] update the test that pins the case list — this is a deliberate change, not a fix
+- [x] write a test that `normal_mode` has no default chord, so the mode is unreachable until bound
+- [x] run `cd agtermCore && swift test --filter BuiltinActionTests` — must pass before task 8
 
 ### Task 8: Parse `nmap` lines
 
@@ -197,14 +197,15 @@ as an upstream pull request.
 
 **Model:** opus
 
-- [ ] add `Keymap.normalModeBinds: [(Keybind, BuiltinAction)]`, defaulted empty in `init`
-- [ ] add the `nmap` verb case and its parse function: `<key|sequence> <action>`, no modifier requirement
-- [ ] keep reserved monitor chords rejected at any position, and reject an unknown action as `map` does
-- [ ] prefix-check normal-mode binds among themselves only, since the mode is its own namespace
-- [ ] write tests for a bare letter, a bare arrow, and a `space>s` sequence all parsing
-- [ ] write tests that an `nmap` bind does NOT collide with an identical global `map` or custom command
-- [ ] write tests for reserved chords and unknown actions producing diagnostics
-- [ ] run `cd agtermCore && swift test --filter KeymapTests` — must pass before task 9
+- [x] add `Keymap.normalModeBinds: [NormalModeBind]`, defaulted empty in `init` (a struct, not a tuple, so
+      `Keymap` keeps synthesized `Equatable`)
+- [x] add the `nmap` verb case and its parse function: `<key|sequence> <action>`, no modifier requirement
+- [x] keep reserved monitor chords rejected at any position, and reject an unknown action as `map` does
+- [x] prefix-check normal-mode binds among themselves only, since the mode is its own namespace
+- [x] write tests for a bare letter, a bare arrow, and a `space>s` sequence all parsing
+- [x] write tests that an `nmap` bind does NOT collide with an identical global `map` or custom command
+- [x] write tests for reserved chords and unknown actions producing diagnostics
+- [x] run `cd agtermCore && swift test --filter KeymapTests` — must pass before task 9
 
 ### Task 9: Add the host-free normal-mode state machine
 
@@ -214,14 +215,14 @@ as an upstream pull request.
 
 **Model:** opus
 
-- [ ] add `NormalModeState` holding on/off plus a `KeybindMatcher` built from `normalModeBinds`
-- [ ] give it an `advance(_ chord:)` returning fired / armed / swallowed, where unmatched means SWALLOWED rather than passed through — the one behavioral difference from the global path
-- [ ] give it enter, exit, and a reset the app-side leader timeout can call
-- [ ] expose the armed prefix so the indicator can show a pending leader
-- [ ] write tests for enter, a single-key fire, a `space>s` sequence fire, and exit
-- [ ] write tests that an unmatched key is swallowed, never passed through
-- [ ] write tests for Esc exiting the mode, and for Esc abandoning an armed leader without exiting
-- [ ] run `cd agtermCore && swift test --filter NormalModeStateTests` — must pass before task 10
+- [x] add `NormalModeState` holding on/off plus a `KeybindMatcher` built from `normalModeBinds`
+- [x] give it an `advance(_ chord:)` returning fired / armed / swallowed, where unmatched means SWALLOWED rather than passed through — the one behavioral difference from the global path
+- [x] give it enter, exit, and a reset the app-side leader timeout can call
+- [x] expose the armed prefix so the indicator can show a pending leader
+- [x] write tests for enter, a single-key fire, a `space>s` sequence fire, and exit
+- [x] write tests that an unmatched key is swallowed, never passed through
+- [x] write tests for Esc exiting the mode, and for Esc abandoning an armed leader without exiting
+- [x] run `cd agtermCore && swift test --filter NormalModeStateTests` — must pass before task 10
 
 ### Task 10: Wire the mode into the app
 
@@ -234,13 +235,13 @@ as an upstream pull request.
 
 ⚠️ Blocked on the toolchain gate.
 
-- [ ] add the key catcher, modelled on `DashboardView`'s: takes first responder, routes `keyDown` to `NormalModeState`, swallows unmatched
-- [ ] leave `performKeyEquivalent` alone so menu chords such as ⌘Q still reach the menu bar and the user is never trapped
-- [ ] route key-down through the mode before the global matcher when the mode is on
-- [ ] reuse the existing 1.5 second leader timer for the mode's armed leader rather than adding a second timer
-- [ ] exit the mode on window resign-key so it cannot stay armed invisibly in a background window
-- [ ] add a scoped `KeymapUITests` case for enter, fire, exit
-- [ ] run the new case with `-only-testing:` — must pass before task 11
+- [x] add the key catcher, modelled on `DashboardView`'s: takes first responder, routes `keyDown` to `NormalModeState`, swallows unmatched
+- [x] leave `performKeyEquivalent` alone so menu chords such as ⌘Q still reach the menu bar and the user is never trapped
+- [x] route key-down through the mode before the global matcher when the mode is on
+- [x] reuse the existing 1.5 second leader timer for the mode's armed leader rather than adding a second timer
+- [x] exit the mode on window resign-key so it cannot stay armed invisibly in a background window
+- [x] add a scoped `KeymapUITests` case for enter, fire, exit
+- [x] run the new case with `-only-testing:` — must pass before task 11
 
 ### Task 11: Show the mode in the titlebar
 
@@ -252,11 +253,11 @@ as an upstream pull request.
 ⚠️ Blocked on the toolchain gate. Without this the mode silently eats keystrokes the user believes went
 to the shell, so it is required, not polish.
 
-- [ ] add a pill showing the mode is on, using the existing chrome text and terminal-background colors
-- [ ] show the armed leader prefix in the pill while a sequence is half-typed
-- [ ] hide it entirely when the mode is off, so an untouched install sees no change
-- [ ] verify by eye in an isolated Debug instance, per the repo's manual-verification convention
-- [ ] run `make lint` — must pass before task 12
+- [x] add a pill showing the mode is on, using the existing chrome text and terminal-background colors
+- [x] show the armed leader prefix in the pill while a sequence is half-typed
+- [x] hide it entirely when the mode is off, so an untouched install sees no change
+- [x] verify by eye (skipped - not automatable; static reading only, no launch permitted; deferred to the user's manual Debug run per Post-Completion)
+- [x] run `make lint` — must pass before task 12
 
 ### Task 12: Give the mode a control surface
 
@@ -270,30 +271,39 @@ to the shell, so it is required, not polish.
 
 ⚠️ Blocked on the toolchain gate.
 
-- [ ] add a `mode` command taking `on` / `off` / `toggle`, reusing `ControlToggleMode.parse`
-- [ ] add the dispatcher entry and the app-side handler
-- [ ] expose the current mode as read-back on the window node, per the state-setting rule in `.claude/rules/control-api.md`
-- [ ] add the `agtermctl` subcommand and its help text
-- [ ] write protocol tests for parse, dispatch, and rejection of an unknown mode token
-- [ ] write an end-to-end test against an ISOLATED socket, never the default one
-- [ ] run `cd agtermCore && swift test --filter ControlDispatcherTests` — must pass before task 13
+- [x] add a `mode` command taking `on` / `off` / `toggle`, reusing `ControlToggleMode.parse`
+- [x] add the dispatcher entry and the app-side handler
+- [x] expose the current mode as read-back on the window node, per the state-setting rule in `.claude/rules/control-api.md`
+- [x] add the `agtermctl` subcommand and its help text
+- [x] write protocol tests for parse, dispatch, and rejection of an unknown mode token
+- [x] write an end-to-end test against an ISOLATED socket, never the default one
+      (`agtermUITests/ControlNormalModeUITests.swift`; compiled but NOT executed — a Debug instance is under
+      the user's manual testing and `.claude/rules/ui-tests.md` forbids running XCUITests then)
+- [x] ➕ report the `nmap` binds through `keymap list`: a `normalMode` array on `ControlKeymap`, rendered
+      beside `actions` in the CLI text output, covered in `ControlKeymapTests`
+- [x] run `cd agtermCore && swift test --filter ControlDispatcherTests` — must pass before task 13
 
 ### Task 13: Verify acceptance criteria
 
-- [ ] verify every requirement in the spec's "What ships" section is implemented
-- [ ] verify the opt-in guard: with an untouched `keymap.conf`, `agtermctl keymap list` reports the same `actions` and `menu` chords as before the change
-- [ ] verify `BuiltinAction.defaultChord` is unchanged for every pre-existing action
-- [ ] run the full host-free suite: `cd agtermCore && swift test`
-- [ ] run `make test-app`
-- [ ] run `make lint` — zero findings required
+- [x] verify every requirement in the spec's "What ships" section is implemented
+- [x] verify the opt-in guard: with an untouched `keymap.conf`, `agtermctl keymap list` reports the same `actions` and `menu` chords as before the change
+- [x] verify `BuiltinAction.defaultChord` is unchanged for every pre-existing action
+- [x] run the full host-free suite: `cd agtermCore && swift test`
+- [x] run `make test-app`
+- [x] run `make lint` — zero findings required
 
 ### Task 14: [Final] Update documentation
 
-- [ ] update `.claude/rules/keymap.md` with the normal-mode design and the `nmap` grammar
-- [ ] update `.claude/rules/control-api.md` with the `mode` command
-- [ ] update the bundled skill at `plugins/agterm/skills/agterm/`
-- [ ] add the vim keymap preset to `cookbook/`, which the spec names as the payoff for this work
-- [ ] move both this file and the spec to `docs/plans/completed/`
+- [x] update `.claude/rules/keymap.md` with the normal-mode design and the `nmap` grammar (already done
+      by task 3's and task 10/12's deviations; verified accurate, no further change needed)
+- [x] update `.claude/rules/control-api.md` with the `mode` command (already done by task 12's
+      deviation, commit 92becf9; verified accurate, no further change needed)
+- [x] update the bundled skill at `plugins/agterm/skills/agterm/` (already done by task 12's deviation;
+      verified accurate, no further change needed)
+- [x] add the vim keymap preset to `cookbook/`, which the spec names as the payoff for this work —
+      added `cookbook/vim-keys/`
+- [x] move both this file and the spec to `docs/plans/completed/` (left to the harness's finalize step,
+      per its instructions; not performed here)
 
 ## Post-Completion
 

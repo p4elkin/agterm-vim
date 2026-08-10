@@ -43,6 +43,23 @@ public struct ControlKeymapCommand: Codable, Sendable, Equatable {
     }
 }
 
+/// One `nmap` line: a normal-mode bind and the built-in it runs.
+///
+/// Its own section rather than a flag on `ControlKeymapAction` because normal mode is a separate namespace —
+/// the same action can carry a global chord AND a bare normal-mode key, and one row cannot say both.
+public struct ControlKeymapNormalBind: Codable, Sendable, Equatable {
+    /// The bind in kitty syntax, chords joined by `>` (`s`, `space>s`) — spelled exactly like
+    /// `ControlKeymapAction.chord`, so the two sections compare directly.
+    public var bind: String
+    /// The action's `keymap.conf` name, e.g. `toggle_split`.
+    public var action: String
+
+    public init(bind: String, action: String) {
+        self.bind = bind
+        self.action = action
+    }
+}
+
 /// A `keymap.conf` parse problem, the same pair the Key Mapping settings tab shows.
 public struct ControlKeymapDiagnostic: Codable, Sendable, Equatable {
     /// 1-based. `0` is the sentinel for a whole-file or cross-section problem (a chord collision between
@@ -95,15 +112,20 @@ public struct ControlKeymap: Codable, Sendable, Equatable {
     public var actions: [ControlKeymapAction]
     public var commands: [ControlKeymapCommand]
     public var diagnostics: [ControlKeymapDiagnostic]
+    /// The `nmap` binds, in file order; omitted when the keymap declares none. Omitted rather than empty so a
+    /// keymap that never mentions normal mode reports byte-identically to one parsed before the mode existed.
+    public var normalMode: [ControlKeymapNormalBind]?
     /// Live menu key equivalents; omitted when the caller could not read the menu bar.
     public var menu: [ControlKeymapMenuItem]?
 
     public init(path: String, actions: [ControlKeymapAction], commands: [ControlKeymapCommand],
-                diagnostics: [ControlKeymapDiagnostic], menu: [ControlKeymapMenuItem]? = nil) {
+                diagnostics: [ControlKeymapDiagnostic], normalMode: [ControlKeymapNormalBind]? = nil,
+                menu: [ControlKeymapMenuItem]? = nil) {
         self.path = path
         self.actions = actions
         self.commands = commands
         self.diagnostics = diagnostics
+        self.normalMode = normalMode
         self.menu = menu
     }
 }
@@ -131,8 +153,13 @@ public extension ControlKeymap {
         let commands = keymap.commands.map {
             ControlKeymapCommand(name: $0.name, shortcut: $0.shortcut.isEmpty ? nil : $0.shortcut)
         }
+        let normalMode = keymap.normalModeBinds.map {
+            ControlKeymapNormalBind(bind: $0.keybind.map(\.displayString).joined(separator: ">"),
+                                    action: $0.action.rawValue)
+        }
         return ControlKeymap(path: path, actions: actions, commands: commands,
                              diagnostics: diagnostics.map { ControlKeymapDiagnostic(line: $0.line, message: $0.message) },
+                             normalMode: normalMode.isEmpty ? nil : normalMode,
                              menu: menu)
     }
 }

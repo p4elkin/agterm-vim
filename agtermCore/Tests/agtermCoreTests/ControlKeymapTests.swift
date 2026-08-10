@@ -120,6 +120,34 @@ import Testing
                 "an empty shortcut reads as palette-only, not as a chord")
     }
 
+    // an `nmap` bind appears in no other section, so a mode reporting nothing here cannot be diagnosed at all.
+    @Test func carriesNormalModeBindsInFileOrder() throws {
+        let parsed = parseKeymap("nmap s toggle_split\nnmap space>n new_session\n")
+        try #require(parsed.diagnostics.isEmpty, "both nmap lines are clean")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        #expect(payload.normalMode == [ControlKeymapNormalBind(bind: "s", action: "toggle_split"),
+                                       ControlKeymapNormalBind(bind: "space>n", action: "new_session")])
+    }
+
+    // the same action can hold a global chord AND a bare normal-mode key; the two sections must not merge.
+    @Test func normalModeBindDoesNotChangeTheActionRow() throws {
+        let parsed = parseKeymap("nmap s toggle_split\n")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+        let split = try #require(payload.actions.first { $0.action == "toggle_split" })
+
+        #expect(split.chord == BuiltinAction.toggleSplit.defaultChord?.displayString)
+        #expect(split.overridden == nil, "an nmap bind is its own namespace, not an override of the chord")
+    }
+
+    @Test func normalModeIsOmittedWhenTheKeymapDeclaresNone() {
+        let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
+                                            diagnostics: [], path: "/tmp/keymap.conf")
+        #expect(payload.normalMode == nil, "an empty section is omitted, so an untouched keymap reports as before")
+    }
+
     @Test func carriesParseDiagnostics() {
         let parsed = parseKeymap("map cmd+shift+d not_an_action\n")
         let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
@@ -233,6 +261,19 @@ import Testing
     @Test func keymapListRawStringMapsToCommand() throws {
         let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(#"{"cmd":"keymap.list"}"#.utf8))
         #expect(decoded.cmd == .keymapList)
+    }
+
+    @Test func normalModeSurvivesTheWire() throws {
+        let binds = [NormalModeBind(keybind: [Chord(mods: [], key: "s")], action: .toggleSplit)]
+        let keymap = Keymap(builtinOverrides: [:], normalModeBinds: binds, commands: [])
+        let payload = ControlKeymap.project(keymap: keymap, diagnostics: [], path: "/tmp/keymap.conf")
+
+        let encoded = try JSONEncoder().encode(ControlResponse(ok: true, result: ControlResult(keymap: payload)))
+        let decoded = try JSONDecoder().decode(ControlResponse.self, from: encoded)
+
+        #expect(decoded.result?.keymap == payload)
+        #expect(decoded.result?.keymap?.normalMode?.first?.bind == "s")
+        #expect(decoded.result?.keymap?.normalMode?.first?.action == "toggle_split")
     }
 
     @Test func resultOmitsKeymapWhenNil() throws {

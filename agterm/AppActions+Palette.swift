@@ -148,8 +148,22 @@ extension AppActions {
         case .sessionPalette: return toggleSessionPalette
         case .commandPalette: return toggleActionPalette
         case .customCommandPalette: return toggleCustomCommandPalette
+        case .normalMode: return { self.enterNormalMode() }
         default: return nil
         }
+    }
+
+    /// Turn normal mode on — the ONLY way in, bound with `map <chord> normal_mode`. Gated like every other
+    /// action so it cannot arm behind terminal zoom, the dashboard, or a control picker, each of which
+    /// already owns the keyboard. Leaving is Esc or the bare exit key, both inside `NormalModeState`.
+    ///
+    /// It also needs a KEY WINDOW. The mode's whole key path is the monitor, which reads `NSApp.keyWindow`
+    /// and does nothing without one, so arming with none would show the pill and report
+    /// `window.list normalMode: true` over a mode no keystroke can reach. A keymap chord always has one
+    /// (the monitor delivered it); `mode on` from a script while another app is frontmost does not.
+    func enterNormalMode() {
+        guard uiActionsEnabled, keyWindowProvider() != nil else { return }
+        NormalModeController.shared.enter()
     }
 
     /// The app's commands as palette items, sharing the same logic as the menu/buttons. Includes a

@@ -65,6 +65,36 @@ extension ControlServer {
         }
     }
 
+    // MARK: - Normal mode
+
+    /// Turn normal mode on / off / toggle — the control half of the `normal_mode` built-in and of Esc. The
+    /// mode is one app-wide state held by the frontmost window, so there is no `--window` selector.
+    ///
+    /// Entering goes through `AppActions.enterNormalMode()` rather than the controller directly, so it
+    /// inherits the same gate the keymap path has — the modal one, plus a key window for the monitor to act
+    /// in. A gate that swallowed the entry is reported as an error, since a caller believing the mode is on
+    /// would send bare keys straight to the shell.
+    func setNormalMode(_ mode: ControlToggleMode) -> ControlResponse {
+        let controller = NormalModeController.shared
+        let want = mode.desiredValue(current: controller.isActive)
+        guard want != controller.isActive else { return ControlResponse(ok: true) }
+        guard want else {
+            controller.exit()
+            return ControlResponse(ok: true)
+        }
+        guard library.activeStore != nil else {
+            return ControlResponse(ok: false, error: "no open window")
+        }
+        actions.enterNormalMode()
+        guard controller.isActive else {
+            return ControlResponse(
+                ok: false,
+                error: "cannot enter normal mode: zoom, the dashboard or a picker owns the keyboard, "
+                    + "or agterm is not frontmost")
+        }
+        return ControlResponse(ok: true)
+    }
+
     // MARK: - Keymap
 
     /// Re-read and re-parse `keymap.conf`, returning the parse-diagnostic count. The SAME `reloadKeymap()` path
