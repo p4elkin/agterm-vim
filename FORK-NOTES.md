@@ -75,6 +75,9 @@ Consequences worth knowing:
 - Command chords always pass through, so ⌘Q can never be swallowed and you cannot be trapped.
 - A focused text field passes keys through and ends the mode.
 - The mode ends on a click in a pane, on a modal taking the keyboard, and on the window resigning key.
+- A program overlay (an editor, vifm, `session.overlay.open`) SUSPENDS the mode instead of ending it:
+  every key passes through to the overlay, and the mode is still on when the overlay closes. A HUD is
+  passive and suspends nothing.
 
 ## Control API
 
@@ -93,16 +96,7 @@ Consequences worth knowing:
 
 - README and `site/` upstream docs are not updated. They churn hard upstream, and touching them makes
   every rebase a conflict.
-- `agtermUITests/ControlNormalModeUITests` was written before XCUITest could run here. What blocked it
-  was an unanswered "XCTest is trying to Enable UI Automation" password prompt. Both tests now pass.
-  ⚠️ `sudo DevToolsSecurity -enable` does NOT fix it — that was tried and the prompt still appeared.
-  The rule that actually holds is in `.claude/rules/ui-tests.md`: run a UI test from the driver session,
-  never from a delegated subagent.
-  On its first run `testModeOnShowsIndicatorAndReadsBackOnTheWindow` failed on the pill lookup. The mode
-  and the pill were both fine; the query was the problem. `descendants(matching: .any)` builds the whole
-  accessibility tree, terminal grid included, and on a freshly launched window that first snapshot can
-  outlast a 10s timeout — so asking for the pill as the very first thing after `mode on` fails without
-  ever reaching it. Asserting the `window.list` read-back first gives the app one round trip to go idle.
-  The assertion order is therefore load-bearing and the test says so.
 - The two features should be two pull requests if this ever goes upstream. Leader sequences alone are
   a small, self-contained diff; the mode roughly doubles it.
+
+Running the UI tests has a constraint of its own; `.claude/rules/ui-tests.md` owns it.

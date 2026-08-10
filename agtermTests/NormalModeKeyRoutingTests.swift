@@ -192,6 +192,72 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(fired.isEmpty, "the bind must not fire behind the dashboard either")
     }
 
+    /// Add a session to the frontmost store and select it, so the monitor's overlay question has something
+    /// to ask. The library's own window supplies the store; the test's `window` only carries first responder.
+    private func selectedSession() throws -> (store: AppStore, session: Session) {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSTemporaryDirectory()))
+        store.selectSession(session.id)
+        return (store, session)
+    }
+
+    /// ⚠️ A program overlay (vifm, an editor, `session.overlay.open`) owns the keyboard, and the mode would
+    /// otherwise eat every key before the overlay's pty saw one. The mode SUSPENDS instead of exiting, so the
+    /// editor a bind opened hands the user back to the mode on quit.
+    func testAProgramOverlaySuspendsTheModeAndReleasesItsKeysWithoutEndingIt() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+
+        XCTAssertFalse(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                       "the overlay's program must receive the key")
+        XCTAssertTrue(fired.isEmpty, "the bind must not fire behind the overlay")
+        XCTAssertTrue(NormalModeController.shared.isActive, "suspending is not exiting")
+
+        store.closeOverlay(session.id)
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "the very next key after the overlay closes is the mode's again")
+        XCTAssertEqual(fired, [.toggleSplit])
+    }
+
+    /// A HUD is a passive message panel that takes no keystrokes, so it must leave the mode driving — the
+    /// suspension asks `programOverlayActive`, never the raw slot.
+    func testAHudDoesNotSuspendTheMode() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(store.openHud(session.id, command: "true", spec: HudSpec(message: "working"),
+                                    file: (NSTemporaryDirectory() as NSString).appendingPathComponent("hud-body"),
+                                    size: HudPanelSize(widthPercent: 40, heightPercent: 20)))
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "a HUD covers nothing, so the mode still owns the key")
+        XCTAssertEqual(fired, [.toggleSplit])
+        XCTAssertTrue(NormalModeController.shared.isActive)
+    }
+
+    /// The suspension drops a half-typed sequence like every other way out of the terminal does: the chord
+    /// that would have completed it went to the overlay, so re-arming from the first chord is the only
+    /// honest state to come back to.
+    func testAnOverlayAbandonsAHalfTypedLeader() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "g"),
+                                                                            Chord(mods: [], key: "g")],
+                                                                  target: .builtin(.toggleSplit))])
+        NormalModeController.shared.enter()
+        let (store, session) = try selectedSession()
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("g", keyCode: 5), in: window), "the first chord arms")
+        XCTAssertTrue(NormalModeController.shared.isArmed)
+
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertFalse(runner.handleKeyDown(try keyDown("g", keyCode: 5), in: window))
+
+        XCTAssertFalse(NormalModeController.shared.isArmed, "the leader must not survive the overlay")
+        XCTAssertTrue(NormalModeController.shared.isActive)
+        XCTAssertTrue(fired.isEmpty, "the sequence must not complete across the overlay")
+    }
+
     /// The mode is a filter inside a monitor that reads `NSApp.keyWindow`; with none it sees nothing. So
     /// arming it there would show the pill and report `window.list normalMode: true` over a mode no
     /// keystroke can reach — `mode on` from a script while another app is frontmost is the real case.

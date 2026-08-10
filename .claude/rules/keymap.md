@@ -95,6 +95,12 @@ paths:
   Settings, search bar) ends the mode and passes its key through, the modal gate failing ends it the same
   way, a click in a pane ends it from `GhosttySurfaceView.mouseDown`, and the key window resigning key ends
   it from the monitor's observer.
+  A program overlay is a SUSPEND, not a fifth exit: while
+  `Session.programOverlayOwnsKeyboard` holds on the active session (the session-wide overlay or the
+  FOCUSED pane's own, never a HUD), the monitor abandons any half-typed leader and passes the key to the
+  overlay with the mode left ON, so quitting an editor opened from a bind lands back in the mode.
+  Ask that predicate, never a raw `overlayActive`, and never widen `uiActionsEnabled` instead — that gate
+  also disables the menu bar and the palette.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
   a bind that navigates sessions lands the responder on the pane it opened.
 - An `nmap` target is a bare token for a built-in action or a QUOTED name for a custom command

@@ -472,6 +472,14 @@ public final class Session: Identifiable {
         return paneOverlay(pane) == nil ? nil : pane
     }
 
+    /// Whether a caller's PROGRAM is taking this session's keystrokes: the session-wide overlay, or the
+    /// FOCUSED pane's own. An overlay on the sibling pane takes none, and a HUD is passive
+    /// (`programOverlayActive`), so neither counts. Normal mode SUSPENDS on it — the keys belong to the
+    /// program until it exits, and the mode is still on for the first keystroke after that.
+    public var programOverlayOwnsKeyboard: Bool {
+        programOverlayActive || focusedOverlayPane != nil
+    }
+
     /// Whether the detail pane LAYS THIS PANE OUT at all — the precondition for realizing a surface in it,
     /// since surfaces defer creation until they get a nonzero backing size. Not `deckHostsSurface`, which
     /// also yields a placeholder while zoom or the dashboard owns the slot.

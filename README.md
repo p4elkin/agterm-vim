@@ -1,5 +1,15 @@
 # agterm - a simply good terminal with a full control API
 
+> **This is a fork.** It is [umputun/agterm](https://github.com/umputun/agterm) with vim-style keyboard
+> navigation added: leader sequences for built-in actions, and a modal normal mode where bare keys run
+> actions or your own shell commands. Everything upstream does, it still does — with an untouched
+> `keymap.conf` the key path is byte-for-byte what upstream ships.
+>
+> **[What this fork adds, and how it works →](FORK-NOTES.md)**
+>
+> The rest of this README is upstream's and describes agterm itself. The badges below report upstream's
+> CI, not this fork's.
+
 [![Build Status](https://github.com/umputun/agterm/workflows/build/badge.svg)](https://github.com/umputun/agterm/actions) [![Coverage Status](https://coveralls.io/repos/github/umputun/agterm/badge.svg?branch=master)](https://coveralls.io/github/umputun/agterm?branch=master)
 
 **[agterm.com](https://agterm.com)** · [Documentation](https://agterm.com/docs) · [Command reference](https://agterm.com/commands) · [Cookbook](cookbook/)

@@ -150,6 +150,13 @@ final class CustomCommandRunner {
                 abandonLeader()
                 return false
             }
+            // a caller's program in an overlay owns the keyboard until it exits, and the mode's bare keys
+            // would eat every keystroke it needs. This SUSPENDS rather than exits: the mode is still on when
+            // the overlay closes, so opening an editor from it and quitting lands back in it.
+            if library.activeStore?.activeSession?.programOverlayOwnsKeyboard == true {
+                abandonLeader()
+                return false
+            }
             return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns

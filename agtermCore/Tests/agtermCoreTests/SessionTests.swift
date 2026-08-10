@@ -434,6 +434,24 @@ struct SessionTests {
         #expect(session.programOverlayActive == false)
     }
 
+    @Test func programOverlayOwnsKeyboardCountsTheFocusedPanesOverlayButNeverAHud() {
+        let session = Session(initialCwd: "/repo")
+        #expect(session.programOverlayOwnsKeyboard == false)
+
+        session.overlayActive = true
+        #expect(session.programOverlayOwnsKeyboard == true)
+        session.hudSpec = HudSpec(message: "working")
+        #expect(session.programOverlayOwnsKeyboard == false)
+        session.hudSpec = nil
+        session.overlayActive = false
+
+        session.isSplit = true
+        session.setPaneOverlay(PaneOverlay(command: "vifm"), pane: .right)
+        #expect(session.programOverlayOwnsKeyboard == false, "an overlay on the unfocused pane takes no keys")
+        session.splitFocused = true
+        #expect(session.programOverlayOwnsKeyboard == true)
+    }
+
     @Test func programOverlayActiveSpansBothCoverageVariantsButNeverAHud() {
         let session = Session(initialCwd: "/repo")
         #expect(session.programOverlayActive == false)
