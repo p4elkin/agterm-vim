@@ -99,7 +99,12 @@ final class CustomCommandRunner {
 
     /// The Esc virtual keycode the matcher treats specially (the leader abort); Return is bindable and goes
     /// through `namedKey(forKeyCode:)`.
-    private static let escapeKeyCode: UInt16 = 53
+    private static let escapeKeyCode = InterruptKeystroke.escapeKeyCode
+
+    /// Hands normal mode's Esc down to the pane as a real Escape keypress. A stored closure for the same
+    /// reason as `AppActions.keyWindowProvider`: a hosted test's pane has no libghostty surface, so the send
+    /// itself leaves no trace to assert on.
+    var escapeSender: @MainActor (GhosttySurfaceView) -> Void = { $0.sendEscapeKey() }
 
     /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Normal
     /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while
@@ -230,6 +235,13 @@ final class CustomCommandRunner {
         if event.keyCode == Self.escapeKeyCode {
             // esc has no `Chord` spelling, so it arrives through its own entry point.
             outcome = normalMode.escape()
+            // ⚠️ Esc LEAVING the mode carries down into the pane, so vim, shell vi-mode and Claude Code's vim
+            // mode land in normal mode too — `i` means insert at both layers, Esc means normal at both. Only
+            // on `.exited`: Esc that merely abandons a half-typed leader stays in the mode, and an Escape
+            // delivered there would reach the shell from behind a mode that is still swallowing keys.
+            // `advance`'s `.exited` (the `i` exit key) sends nothing, which is why this reads escape()'s own
+            // result instead of the switch below.
+            if outcome == .exited, let focusedSurface { escapeSender(focusedSurface) }
         } else if let chord = chord(from: event) {
             guard !isReservedMonitorChord(chord) else { return false }
             outcome = normalMode.advance(chord)

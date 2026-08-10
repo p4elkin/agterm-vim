@@ -31,7 +31,7 @@ A new keyless built-in action `normal_mode`, and a new verb `nmap` for binds tha
 while the mode is on. Bare keys are legal there, because nothing reaches the terminal.
 
 ```
-map ctrl+space normal_mode      # enter; i or Esc leaves
+map ctrl+space normal_mode      # enter; i leaves into insert, Esc leaves into the pane's own normal mode
 
 nmap j next_session
 nmap k previous_session
@@ -59,6 +59,11 @@ inherit that: holding `e` spawns one process and the key stays swallowed.
 **A bare Esc never enters the mode, deliberately.** Esc has to keep reaching vim, less, fzf and
 shell vi-mode, so entry is an explicit chord. Arming a leader requires consuming the key, and a
 consumed Esc could not be un-sent to the pty.
+
+**The two ways out differ.** `i` leaves into insert, and sends nothing. Esc leaves and also sends an
+Escape keypress to the focused pane, so vim, shell vi-mode and Claude Code's vim mode land in their own
+normal mode from the same press — `i` means insert at both layers, Esc means normal at both. Esc that only
+abandons a half-typed sequence keeps the mode and sends nothing, and neither does `agtermctl mode off`.
 
 `map` and `nmap` are independent namespaces — the same chord may appear in both. Bare `s` and the
 sequence `space>s` do not conflict, because they differ on their first chord.

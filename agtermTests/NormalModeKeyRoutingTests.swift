@@ -21,6 +21,9 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     private var windowID: WindowInfo.ID!
     private var fired: [BuiltinAction] = []
     private var actions: AppActions!
+    /// Every pane the mode handed an Escape to, in order. The send itself needs a realized libghostty surface
+    /// no hosted test can build, so `escapeSender` is what these read.
+    private var escapeTargets: [GhosttySurfaceView] = []
 
     override func setUp() async throws {
         try await super.setUp()
@@ -29,11 +32,13 @@ final class NormalModeKeyRoutingTests: XCTestCase {
                 .appendingPathComponent("agterm-normal-mode-tests-\(UUID().uuidString)", isDirectory: true)
             library = WindowLibrary(directory: stateDir)
             fired = []
+            escapeTargets = []
             runner = CustomCommandRunner(library: library,
                                          settings: SettingsModel(library: library,
                                                                  settingsStore: SettingsStore(directory: stateDir)),
                                          performBuiltin: { [weak self] in self?.fired.append($0) },
                                          socketProvider: { "" })
+            runner.escapeSender = { [weak self] pane in self?.escapeTargets.append(pane) }
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
                               styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
@@ -54,6 +59,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             WindowRegistry.shared.unregister(windowID)
             windowID = nil
             actions = nil
+            escapeTargets = []
             window.orderOut(nil)
             window = nil
             runner = nil
@@ -143,6 +149,63 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(runner.handleKeyDown(try keyDown("i", keyCode: 34), in: window),
                       "the exit key itself must not reach the terminal")
         XCTAssertFalse(NormalModeController.shared.isActive)
+        XCTAssertTrue(escapeTargets.isEmpty, "`i` means insert at both layers, so it hands nothing down")
+    }
+
+    /// A pane focused in the test's window. A zero frame parks `viewDidMoveToWindow` in
+    /// `pendingSurfaceCreation`, so no libghostty surface and no shell is spawned.
+    private func focusedPane() throws -> GhosttySurfaceView {
+        let pane = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        window.contentView?.addSubview(pane)
+        XCTAssertTrue(window.makeFirstResponder(pane))
+        return pane
+    }
+
+    private func escapeKey() throws -> NSEvent {
+        try keyDown("\u{1b}", keyCode: InterruptKeystroke.escapeKeyCode)
+    }
+
+    /// Esc leaving the mode is a handoff, not just an exit: the pane's program (vim, shell vi-mode, Claude
+    /// Code's vim mode) enters ITS normal mode from the same press.
+    func testEscapeLeavesTheModeAndHandsAnEscapeDownToThePane() throws {
+        let pane = try focusedPane()
+        defer { pane.removeFromSuperview() }
+
+        XCTAssertTrue(runner.handleKeyDown(try escapeKey(), in: window),
+                      "the raw key event stays consumed; the handoff is a synthesized keypress")
+
+        XCTAssertFalse(NormalModeController.shared.isActive)
+        XCTAssertEqual(escapeTargets.count, 1, "exactly one Escape")
+        XCTAssertTrue(escapeTargets.first === pane, "it goes to the pane the keystroke came from")
+    }
+
+    /// ⚠️ Esc on an armed leader abandons the sequence and STAYS in the mode, so it must send nothing: an
+    /// Escape delivered here reaches the shell from behind a mode that is still swallowing every key.
+    func testEscapeAbandoningAHalfTypedLeaderSendsNothingAndStaysInTheMode() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "g"),
+                                                                            Chord(mods: [], key: "g")],
+                                                                  target: .builtin(.toggleSplit))])
+        NormalModeController.shared.enter()
+        let pane = try focusedPane()
+        defer { pane.removeFromSuperview() }
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("g", keyCode: 5), in: window), "the first chord arms")
+        XCTAssertTrue(NormalModeController.shared.isArmed)
+        XCTAssertTrue(runner.handleKeyDown(try escapeKey(), in: window))
+
+        XCTAssertFalse(NormalModeController.shared.isArmed, "esc drops the half-typed sequence")
+        XCTAssertTrue(NormalModeController.shared.isActive, "abandoning a leader is not leaving the mode")
+        XCTAssertTrue(escapeTargets.isEmpty, "no keystroke may leak into the pane while the mode is still on")
+    }
+
+    /// With focus on the window rather than a pane there is nothing to hand the Escape to, so Esc is the plain
+    /// exit it always was.
+    func testEscapeWithNoFocusedPaneJustLeavesTheMode() throws {
+        XCTAssertTrue(runner.handleKeyDown(try escapeKey(), in: window))
+
+        XCTAssertFalse(NormalModeController.shared.isActive)
+        XCTAssertTrue(escapeTargets.isEmpty)
     }
 
     /// Holding a bare key is the mode's headline move — `k` held down walks back through sessions — so the

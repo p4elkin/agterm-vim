@@ -104,11 +104,28 @@ extension GhosttySurfaceView {
         return pid > 0 ? pid_t(pid) : nil
     }
 
-    /// Synthesizes a Return keypress (press + release) via the keyboard's own key path, so the shell treats it
-    /// as Enter. Keycode 36 is the macOS virtual keycode for Return.
+    /// Synthesizes a Return keypress via the keyboard's own key path, so the shell treats it as Enter.
+    /// Keycode 36 is the macOS virtual keycode for Return.
     private func sendReturn(to surface: ghostty_surface_t) {
+        sendKeyPress(keyCode: 36, to: surface)
+    }
+
+    /// Synthesizes an Escape keypress, the handoff normal mode makes when Esc leaves it: whatever runs in the
+    /// pane (vim, shell vi-mode, Claude Code's vim mode) enters ITS normal mode from the same keystroke. A
+    /// keypress, not `inject(text:)`, because an in-app key press is what the user made. `false` when the
+    /// libghostty surface isn't realized, so a caller can tell "nothing to send to" from a delivered key.
+    @discardableResult
+    func sendEscapeKey() -> Bool {
+        guard let surface else { return false }
+        sendKeyPress(keyCode: UInt32(InterruptKeystroke.escapeKeyCode), to: surface)
+        return true
+    }
+
+    /// Press + release of one virtual keycode with no modifiers and no text, so the program on the other end
+    /// sees a real keypress rather than injected bytes.
+    private func sendKeyPress(keyCode: UInt32, to surface: ghostty_surface_t) {
         var ke = ghostty_input_key_s()
-        ke.keycode = 36
+        ke.keycode = keyCode
         ke.mods = GHOSTTY_MODS_NONE
         ke.consumed_mods = GHOSTTY_MODS_NONE
         ke.composing = false

@@ -103,6 +103,27 @@ paths:
   also disables the menu bar and the palette.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
   a bind that navigates sessions lands the responder on the pane it opened.
+- **Esc leaving the mode also hands an Escape keypress to the focused pane**, so the program there — vim,
+  shell vi-mode, Claude Code's vim mode — enters ITS normal mode from the same press.
+  `i` means insert at both layers and Esc means normal at both.
+  It is `GhosttySurfaceView.sendEscapeKey`, a keycode press through the surface's own key path, not
+  `inject(text:)`; `sendKeyPress` is shared with `sendReturn` and the keycode is
+  `InterruptKeystroke.escapeKeyCode`.
+  ⚠️ Only `NormalModeState.escape()` returning `.exited` sends. Esc abandoning a half-typed leader stays in
+  the mode, and an Escape delivered there would reach the shell from behind a mode still swallowing keys.
+  `advance`'s `.exited` (the bare exit key) must send NOTHING, so the send reads `escape()`'s own result on
+  its own branch rather than the outcome switch below it.
+  With no focused surface Esc is the plain exit it always was, and `mode off` over control sends nothing:
+  a script turning the mode off is not a user pressing Esc.
+  `CustomCommandRunner.escapeSender` is the seam `NormalModeKeyRoutingTests` reads, for the reason
+  `AppActions.keyWindowProvider` exists — a zero-frame test pane has no libghostty surface, so the send
+  leaves no trace there. It pins the three no-pty rules: Esc exits and sends, an armed leader sends nothing,
+  `i` sends nothing.
+  ⚠️ That seam proves WIRING, never DELIVERY: a keycode libghostty encoded to no bytes would pass it.
+  `NormalModeEscapeHandoffTests` is the delivery proof and the only hosted test that realizes a surface — a
+  real frame plus `command: "cat -v"`, whose canonical-mode tty echoes the byte, then `readScreenText` looks
+  for `^[`. Keycode 53 was verified this way to reach the pty; removing the send leaves the screen at the
+  login banner. `destroySurface()` in `tearDown` is what ends the spawned process.
 - An `nmap` target is a bare token for a built-in action or a QUOTED name for a custom command
   (`nmap e "Annotate last response"`), reusing the quoting that already marks a name on a `command` line.
   A quoted name has no id until every `command` line is read, so `parseNormalModeLine` records it
