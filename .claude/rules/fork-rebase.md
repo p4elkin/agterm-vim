@@ -38,3 +38,21 @@ A subagent can do the mechanical replay, but its report is not evidence: the 202
 merged control flow correctly, then recorded the full screen dispatch sitting behind the normal-mode filter
 as matching the fork's intent. Verify the result yourself — `git merge-base --is-ancestor origin/master HEAD`,
 the fork commit count, and the gates, including `make test-app`.
+
+### The daily job, and the paused rebase you may find
+
+A scheduled job rebases a dedicated clone at `~/dev/oss/agterm-vim` and pushes when every gate is green.
+It lives in `~/.local/bin/agterm-vim-rebase/`, outside any repo, and n8n triggers it over ssh.
+
+⚠️ **A rebase left in progress in that clone is deliberate, not wreckage.** A conflict in one of the
+hands-off files above does NOT roll back: the job leaves the rebase exactly where it stopped, records the
+pre-rebase tag in `~/.local/state/agterm-vim-rebase/paused-tag`, and exits **2**. Resolve the conflict, then
+run `daily-rebase.sh --resume`, which continues from there and keeps the gates and the push in one place.
+Exit **1** is the different case: stopped AND restored to the tag, nothing left to look at.
+An earlier version rolled back on every stop, which meant whoever was told about the conflict arrived to
+find it no longer existed.
+
+⚠️ **Never resolve an agterm session by name.** The agent integration rewrites a session's name to whatever
+the agent inside it is doing and prefixes a live status glyph, so a pane created as `agterm-vim-rebase`
+reads as `⠂ agterm-vim` in `tree --json` seconds later. Record the id at creation and match on that.
+Matching on name silently created a fresh pane per call.
