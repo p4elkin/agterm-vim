@@ -194,15 +194,15 @@ reaches the global copy further down and needs no second one.
 **Files:**
 - Modify: `agtermTests/NormalModeKeyRoutingTests.swift` (add cases beside the three existing overlay tests, after `testAnOverlayAbandonsAHalfTypedLeader`)
 
-- [ ] write a test that walking onto a session whose overlay is already open keeps the mode: open the
+- [x] write a test that walking onto a session whose overlay is already open keeps the mode: open the
       overlay on a second session, select it, then assert the next key is consumed and fires its bind
-- [ ] write a test that entering the mode while an overlay already owns the keyboard keeps the mode,
+- [x] write a test that entering the mode while an overlay already owns the keyboard keeps the mode,
       so `exit()` then `enter()` over a live overlay leaves the keys the mode's
-- [ ] write a test that `ctrl+space` while yielded reaches the global matcher and re-enters the mode,
+- [x] write a test that `ctrl+space` while yielded reaches the global matcher and re-enters the mode,
       and that the key after it is the mode's again
-- [ ] write a test that a Command chord carrying the `toggle_fullscreen` equivalent still toggles full
+- [x] write a test that a Command chord carrying the `toggle_fullscreen` equivalent still toggles full
       screen while yielded, which is dead today
-- [ ] run `scripts/test-app.sh -only-testing:agtermTests/NormalModeKeyRoutingTests` - must pass before
+- [x] run `scripts/test-app.sh -only-testing:agtermTests/NormalModeKeyRoutingTests` - must pass before
       task 4
 
 ### Task 4: Verify acceptance criteria

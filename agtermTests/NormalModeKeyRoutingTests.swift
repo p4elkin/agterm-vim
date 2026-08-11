@@ -25,6 +25,20 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// no hosted test can build, so `escapeSender` is what these read.
     private var escapeTargets: [GhosttySurfaceView] = []
 
+    /// Records `toggleFullScreen` instead of performing it: the real call opens a Space and animates, which
+    /// a unit test must not do to the machine running it.
+    private final class RecordingWindow: NSWindow {
+        var toggleCount = 0
+        override func toggleFullScreen(_ sender: Any?) { toggleCount += 1 }
+    }
+
+    /// Stands in for `AppActions.perform`: the runner only dispatches the action, and `normal_mode` entering
+    /// the mode is what resets the handover so the keyboard comes back.
+    private func record(_ action: BuiltinAction) {
+        fired.append(action)
+        if action == .normalMode { NormalModeController.shared.enter() }
+    }
+
     override func setUp() async throws {
         try await super.setUp()
         await MainActor.run {
@@ -36,7 +50,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             runner = CustomCommandRunner(library: library,
                                          settings: SettingsModel(library: library,
                                                                  settingsStore: SettingsStore(directory: stateDir)),
-                                         performBuiltin: { [weak self] in self?.fired.append($0) },
+                                         performBuiltin: { [weak self] in self?.record($0) },
                                          socketProvider: { "" })
             runner.escapeSender = { [weak self] pane in self?.escapeTargets.append(pane) }
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
@@ -324,6 +338,90 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(fired.isEmpty, "the sequence must not complete across the overlay")
     }
 
+    /// ⚠️ The case the yield exists to keep working: `j`/`k` onto a session whose overlay is ALREADY running
+    /// is an arrival, not an appearance. Yielding there trapped the user — bare keys, Esc and the enter chord
+    /// all went to the program, so she could neither navigate off nor leave the mode.
+    func testWalkingOntoASessionWhoseOverlayIsAlreadyOpenKeepsTheKeyboard() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let (store, _) = try selectedSession()
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window), "remembers the target")
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let second = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSTemporaryDirectory()))
+        XCTAssertTrue(store.openOverlay(second.id, command: "vifm"))
+        store.selectSession(second.id)
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "the overlay was there before she arrived, so the key is still the mode's")
+        XCTAssertEqual(fired, [.toggleSplit])
+        XCTAssertTrue(NormalModeController.shared.isActive)
+    }
+
+    /// Entering forgets the remembered target, so the first key after entry is an arrival. That is the rule
+    /// "when the mode turns on, the keyboard is the mode's" — entering over a running overlay takes the keys,
+    /// and `i` gives them back.
+    func testEnteringOverALiveOverlayTakesTheKeyboard() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertFalse(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window), "the overlay appeared")
+        XCTAssertTrue(fired.isEmpty)
+
+        NormalModeController.shared.exit()
+        NormalModeController.shared.enter()
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "re-entering over the same overlay owns the keyboard again")
+        XCTAssertEqual(fired, [.toggleSplit])
+    }
+
+    /// The yielded key FALLS THROUGH to the global matcher rather than being dropped, so yielded means what
+    /// the mode being off means. `map ctrl+space normal_mode` is the way back in, and entering resets the
+    /// handover, so the key after it is the mode's again.
+    func testTheEnterChordWhileYieldedReachesTheGlobalMatcherAndTakesTheKeyboardBack() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let seeded = try seededRunner(keymap: "map ctrl+space normal_mode\nnmap s toggle_split\n")
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertFalse(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window), "the overlay appeared")
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown(" ", keyCode: 49, flags: .control), in: window),
+                      "the enter chord reaches the global matcher and is consumed there")
+        XCTAssertEqual(fired, [.normalMode])
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window))
+        XCTAssertEqual(fired, [.normalMode, .toggleSplit], "the key after the chord is the mode's again")
+    }
+
+    /// ⚠️ `toggle_fullscreen` is the one built-in with no menu item, so a Command chord that merely passes
+    /// through reaches nothing. Dropping the yielded key is what killed ⌘⌃F for as long as an overlay held
+    /// the keyboard; falling through reaches the global copy of the dispatch.
+    func testTheFullScreenChordStillTogglesWhileYielded() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let recording = RecordingWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                        styleMask: [.titled], backing: .buffered, defer: false)
+        recording.isReleasedWhenClosed = false
+        let recordingID = UUID()
+        WindowRegistry.shared.register(recordingID, window: recording)
+        defer {
+            WindowRegistry.shared.unregister(recordingID)
+            recording.orderOut(nil)
+        }
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: recording))
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("f", keyCode: 3, flags: [.control, .command]),
+                                           in: recording))
+
+        XCTAssertEqual(recording.toggleCount, 1, "⌘⌃F must survive the yield")
+        XCTAssertTrue(NormalModeController.shared.isActive, "full screen is not a way out of the mode")
+    }
+
     /// The mode is a filter inside a monitor that reads `NSApp.keyWindow`; with none it sees nothing. So
     /// arming it there would show the pill and report `window.list normalMode: true` over a mode no
     /// keystroke can reach — `mode on` from a script while another app is frontmost is the real case.
@@ -354,7 +452,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         try store.save(seededSettings)
         return CustomCommandRunner(library: library,
                                    settings: SettingsModel(library: library, settingsStore: store),
-                                   performBuiltin: { [weak self] in self?.fired.append($0) },
+                                   performBuiltin: { [weak self] in self?.record($0) },
                                    socketProvider: { "" })
     }
 
