@@ -58,6 +58,16 @@ struct NormalModeOverlayHandoverTests {
         #expect(staying == false)
     }
 
+    @Test func arrivingOnAnotherOverlaidSessionClearsALiveYield() {
+        var handover = NormalModeOverlayHandover()
+        handover.step(session: session, pane: .left, ownsKeyboard: false)
+        handover.step(session: session, pane: .left, ownsKeyboard: true)
+        #expect(handover.isYielded)
+        let arrival = handover.step(session: other, pane: .left, ownsKeyboard: true)
+        #expect(arrival == false)
+        #expect(!handover.isYielded)
+    }
+
     @Test func anOverlayAppearingAfterAnArrivalStillYields() {
         var handover = NormalModeOverlayHandover()
         handover.step(session: session, pane: .left, ownsKeyboard: false)

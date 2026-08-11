@@ -42,7 +42,7 @@ public enum ConfigPaths {
         # reload`) to apply. Blank lines and lines starting with `#` are ignored. A line that is
         # rejected or skipped is reported in Settings ▸ Key Mapping and by `agtermctl keymap list`.
         #
-        # Two verbs:
+        # Three verbs:
         #
         #   map <chord> <action>
         #       Rebind a built-in action. Chords use kitty syntax: mods joined by `+`, e.g.
@@ -55,6 +55,17 @@ public enum ConfigPaths {
         #
         #           map cmd+shift+l     toggle_split
         #           map cmd+t|ctrl+a>t  toggle_scratch
+        #           map ctrl+space      normal_mode
+        #
+        #   nmap <key-or-sequence> <action-or-"command name">
+        #       Bind a BARE key inside normal mode (see the `normal_mode` action above). While the mode is
+        #       on these keys run their target and every other key is swallowed instead of reaching the
+        #       shell; `i` leaves the mode, and so does Esc. Sequences work here too (`g>g`), and the
+        #       target is either a built-in action or a custom command named in quotes, as `command`
+        #       spells it. Command chords, ctrl+tab and ctrl+1/2 are rejected: they belong to the menu bar
+        #       and to the switcher. Example:
+        #
+        #           nmap s  toggle_split
         #
         #   command "<name>" [chord] <shell...>
         #       Define a custom command, shown in the action palette marked `custom`. The quoted

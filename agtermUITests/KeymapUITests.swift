@@ -145,11 +145,21 @@ final class KeymapUITests: XCTestCase {
             app.typeKey("s", modifierFlags: [])
         }), "⌃␣ should enter normal mode, where the bare key `s` fires new_session")
 
+        // `new_session` hands over a new pane, so it took the mode off as it fired. Without re-entering here
+        // Esc would have nothing to leave, and the negative below would hold with the whole Esc path deleted.
         let afterFire = sessionRowCount()
+        app.typeKey(.space, modifierFlags: .control)
         app.typeKey(.escape, modifierFlags: [])
         for _ in 0..<3 { app.typeKey("s", modifierFlags: []) }
         XCTAssertFalse(poll({ self.sessionRowCount() > afterFire }, timeout: 3),
                        "after Esc leaves the mode a bare `s` must go to the terminal, not fire the action")
+
+        // positive control: the entry chord still works here, so the negative above is Esc having left the
+        // mode rather than ⌃␣ having failed to enter it.
+        XCTAssertTrue(pressUntil({ self.sessionRowCount() > afterFire }, press: {
+            app.typeKey(.space, modifierFlags: .control)
+            app.typeKey("s", modifierFlags: [])
+        }), "⌃␣ then `s` should still enter the mode and fire the bind")
     }
 
     func testCustomCommandSingleChordFires() throws {

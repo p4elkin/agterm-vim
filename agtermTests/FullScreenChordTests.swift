@@ -44,11 +44,17 @@ final class FullScreenChordTests: XCTestCase {
             // `WindowRegistry.shared` is process-global, so the id is retained for tearDown to unregister.
             windowID = UUID()
             WindowRegistry.shared.register(windowID, window: window)
+            // `NormalModeController.shared` is a process-global four suites mutate, and a mode leaked in from
+            // one of them would swallow the bare-key case below. Assert the starting state rather than trust
+            // another suite's tearDown.
+            NormalModeController.shared.exit()
+            NormalModeController.shared.rebuild(binds: [])
         }
     }
 
     override func tearDown() async throws {
         await MainActor.run {
+            NormalModeController.shared.exit()
             WindowRegistry.shared.unregister(windowID)
             windowID = nil
             window.orderOut(nil)
@@ -92,9 +98,9 @@ final class FullScreenChordTests: XCTestCase {
         XCTAssertEqual(window.toggleCount, 1)
     }
 
-    // Normal mode returns before the dispatch below it, and a Command chord it passes through reaches
-    // `performKeyEquivalent`, where this one built-in has no menu item waiting. So the mode dispatches it
-    // itself; without that, ⌘⌃F does nothing for as long as the mode is on.
+    // Normal mode returns before the dispatch below it for the keys it owns, and a Command chord it merely
+    // passed through would reach `performKeyEquivalent`, where this one built-in has no menu item waiting. So
+    // the mode hands Command chords to the matcher instead; without that, ⌘⌃F does nothing while it is on.
     func testShippedChordStillTogglesWhileNormalModeIsOn() throws {
         NormalModeController.shared.enter()
         defer { NormalModeController.shared.exit() }

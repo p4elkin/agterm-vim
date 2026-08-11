@@ -107,7 +107,10 @@ extension WindowContentView {
                 // the title text falls through to the drag/zoom layer behind it, so double-click zooms and
                 // drag moves the window; the rest of the row is non-hittable spacers plus the buttons.
                 .allowsHitTesting(false)
-            if NormalModeController.shared.isActive {
+            // one app-wide mode, one titlebar per window: without the frontmost test every open window
+            // advertises a mode whose keys are not in it. The mode ends on resign-key, so it can only ever
+            // belong to the frontmost one — which is also what `window list` reports it on.
+            if NormalModeController.shared.isActive, library.activeWindowID == windowID {
                 normalModePill.padding(.leading, 8)
             }
             Spacer(minLength: 12)

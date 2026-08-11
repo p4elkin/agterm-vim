@@ -87,24 +87,26 @@ struct ConfigPathsTests {
         let examples = ConfigPaths.starterKeymapConf().split(separator: "\n").compactMap { line -> String? in
             let text = line.drop { $0 == "#" || $0.isWhitespace }
             let verb = text.prefix { !$0.isWhitespace }
-            // `<` skips the two verb-syntax lines, which state a grammar rather than an example.
-            guard verb == "map" || verb == "command", !text.contains("<") else { return nil }
+            // `<` skips the three verb-syntax lines, which state a grammar rather than an example.
+            guard verb == "map" || verb == "nmap" || verb == "command", !text.contains("<") else { return nil }
             return String(text)
         }
-        // an example silently dropped from the guard must fail here: three `map` lines and three `command`.
-        #expect(examples.count == 6)
+        // an example silently dropped from the guard must fail here: four `map` lines, one `nmap` and
+        // three `command`.
+        #expect(examples.count == 8)
         var bound = 0
         for example in examples {
             let (keymap, diagnostics) = parseKeymap(example)
             #expect(diagnostics.isEmpty, "starter example '\(example)' is skipped: \(diagnostics.map(\.message))")
             // an unparseable command chord is absorbed as shell text without a diagnostic, so count the
             // shortcuts that survived rather than the commands that parsed.
-            bound += keymap.builtinOverrides.count + keymap.commands.filter { !$0.shortcut.isEmpty }.count
+            bound += keymap.builtinOverrides.count + keymap.normalModeBinds.count
+                + keymap.commands.filter { !$0.shortcut.isEmpty }.count
                 + keymap.builtinSequences.values.reduce(0) { $0 + $1.count }
         }
-        // all three `map` examples and the two chorded `command` ones; `Deploy` is palette-only by design.
+        // every `map` and `nmap` example plus the two chorded `command` ones; `Deploy` is palette-only.
         // the alternatives example counts twice, its menu chord and its monitor-bound half.
-        #expect(bound == 6)
+        #expect(bound == 8)
     }
 
     @Test func ghosttyConfigPathIsGhosttyConfInDir() {

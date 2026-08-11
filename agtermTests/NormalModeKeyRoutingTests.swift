@@ -282,7 +282,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// ⚠️ A program overlay (vifm, an editor, `session.overlay.open`) owns the keyboard, and the mode would
     /// otherwise eat every key before the overlay's pty saw one. The mode YIELDS instead of exiting, so the
     /// editor a bind opened hands the user back to the mode on quit.
-    func testAProgramOverlaySuspendsTheModeAndReleasesItsKeysWithoutEndingIt() throws {
+    func testAProgramOverlayYieldsTheModeAndReleasesItsKeysWithoutEndingIt() throws {
         try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
         // the mode yields only to an overlay that APPEARED on the target the previous key saw, so this
@@ -293,7 +293,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertFalse(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
                        "the overlay's program must receive the key")
         XCTAssertTrue(fired.isEmpty, "the bind must not fire behind the overlay")
-        XCTAssertTrue(NormalModeController.shared.isActive, "suspending is not exiting")
+        XCTAssertTrue(NormalModeController.shared.isActive, "yielding is not exiting")
 
         store.closeOverlay(session.id)
         XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
@@ -302,10 +302,13 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     }
 
     /// A HUD is a passive message panel that takes no keystrokes, so it must leave the mode driving — the
-    /// suspension asks `programOverlayActive`, never the raw slot.
-    func testAHudDoesNotSuspendTheMode() throws {
+    /// yield asks `programOverlayOwnsKeyboard`, never the raw slot.
+    func testAHudDoesNotYieldTheMode() throws {
         try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
+        // the HUD has to be an APPEARANCE on the remembered target, or the key would read as an arrival and
+        // this would pass however `programOverlayOwnsKeyboard` answers.
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
         XCTAssertTrue(store.openHud(session.id, command: "true", spec: HudSpec(message: "working"),
                                     file: (NSTemporaryDirectory() as NSString).appendingPathComponent("hud-body"),
                                     size: HudPanelSize(widthPercent: 40, heightPercent: 20)))
@@ -316,9 +319,10 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(NormalModeController.shared.isActive)
     }
 
-    /// The suspension drops a half-typed sequence like every other way out of the terminal does: the chord
-    /// that would have completed it went to the overlay, so re-arming from the first chord is the only
-    /// honest state to come back to.
+    /// The yield drops the MODE's half-typed sequence like every other way out of the terminal does: the
+    /// chord that would have completed it went to the overlay, so re-arming from the first chord is the only
+    /// honest state to come back to. The GLOBAL matcher's own prefix survives instead — see
+    /// `testAGlobalLeaderSequenceStillCompletesWhileYielded`.
     func testAnOverlayAbandonsAHalfTypedLeader() throws {
         try skipUnlessLayoutIsASCIICapable()
         NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "g"),
@@ -414,12 +418,63 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         let (store, session) = try selectedSession()
         XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: recording))
         XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        // ⌘⌃F toggles from the non-yielded path too, so the yield has to be established in this same test or
+        // the case cannot tell the two dispatches apart.
+        XCTAssertFalse(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: recording),
+                       "the overlay appeared under her, so the bare key went to the program")
+        XCTAssertTrue(fired.isEmpty)
 
         XCTAssertTrue(runner.handleKeyDown(try keyDown("f", keyCode: 3, flags: [.control, .command]),
                                            in: recording))
 
         XCTAssertEqual(recording.toggleCount, 1, "⌘⌃F must survive the yield")
         XCTAssertTrue(NormalModeController.shared.isActive, "full screen is not a way out of the mode")
+    }
+
+    /// ⚠️ Yielded means what the mode being OFF means, so a global leader sequence must survive the yield.
+    /// Dropping the mode's leader with `abandonLeader()` reset the GLOBAL engine too, so the second chord
+    /// arrived with the prefix already wiped and no `map ctrl+a>s` could ever fire under an overlay.
+    func testAGlobalLeaderSequenceStillCompletesWhileYielded() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\n")
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("a", keyCode: 0, flags: .control), in: window),
+                      "the first chord reaches the global matcher and arms it")
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "the second chord completes the sequence instead of being dropped")
+
+        XCTAssertEqual(fired, [.toggleSplit])
+        XCTAssertTrue(NormalModeController.shared.isActive)
+    }
+
+    /// ⚠️ A Command chord passes through the mode so ⌘Q reaches the menu bar — but a custom command bound to
+    /// one has no menu item waiting, exactly like `toggle_fullscreen`, so it reached nothing at all while the
+    /// mode was on. The mode hands Command chords to the global matcher instead.
+    func testACommandChordBoundToACustomCommandStillFiresWhileTheModeOwnsTheKeys() throws {
+        try skipUnlessLayoutIsASCIICapable()
+        let marker = stateDir.appendingPathComponent("fired.txt")
+        let seeded = try seededRunner(keymap: """
+        command "Marker" cmd+ctrl+m echo x >> "\(marker.path)"
+        nmap s toggle_split
+        """)
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("m", keyCode: 46, flags: [.command, .control]),
+                                           in: window),
+                      "the matcher owns the chord, so it consumes it rather than passing it to the menu bar")
+        XCTAssertTrue(waitForMarkerLines(marker, count: 1), "the bound command must actually run")
+        XCTAssertTrue(NormalModeController.shared.isActive, "firing it is not a way out of the mode")
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                      "the bare keys are still the mode's")
+        XCTAssertEqual(fired, [.toggleSplit])
     }
 
     /// The mode is a filter inside a monitor that reads `NSApp.keyWindow`; with none it sees nothing. So

@@ -105,11 +105,15 @@ paths:
   so `j`/`k` carry past it instead of trapping her there.
   Entering the mode forgets the target, which is what makes the first key after `ctrl+space` the mode's
   even over a live overlay; `i` hands the keyboard over.
-  A yielded key abandons any half-typed leader and FALLS THROUGH to the global matcher rather than being
-  dropped, so yielded means exactly what the mode being off means: `map` binds fire, ⌘⌃F reaches its
-  dispatch, and `ctrl+space` takes the keyboard back.
+  A yielded key FALLS THROUGH to the global matcher rather than being dropped, so yielded means exactly
+  what the mode being off means: `map` binds fire, ⌘⌃F reaches its dispatch, and `ctrl+space` takes the
+  keyboard back.
+  ⚠️ It abandons the MODE's half-typed leader only, never `abandonLeader()`, which resets both matchers:
+  the global prefix is armed BY a yielded key, so wiping it there would kill every `map ctrl+a>g` sequence
+  under an overlay while eating its first chord
+  (`NormalModeKeyRoutingTests.testAGlobalLeaderSequenceStillCompletesWhileYielded`).
   `NormalModeController.stepOverlayHandover` advances that memory, so call it exactly once per key event,
-  after the `uiActionsEnabled` re-check and before the in-branch `toggle_fullscreen` dispatch.
+  after the `uiActionsEnabled` re-check and before the branch decides who owns the key.
   Ask that predicate, never a raw `overlayActive`, and never widen `uiActionsEnabled` instead — that gate
   also disables the menu bar and the palette.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
@@ -148,19 +152,25 @@ paths:
   The exit happens inside `NormalModeState.advance`, so `NormalModeController.publish` clears the pill with
   no app-side branch, and `.fired` still carries the action either way — only `isActive` differs.
   ⚠️ The toggles that also show a pane (`toggle_split`, `toggle_scratch`, `quick_terminal`) are excluded on
-  purpose: leaving the mode there would cost the second press that closes them.
+  purpose: leaving the mode there would cost the second press that closes them. The cost is that the pane
+  they open is not typed into until `i` — the scratch in particular, which is a surface in the same window
+  and so is not the overlay yield either (`quick_terminal` takes key away, which ends the mode by itself).
 - **The mode honors OS key repeats; the global matcher still ignores them.** Holding `k` to skim back
   through sessions is what a bare-key bind is for, so the repeat guard sits AFTER the normal-mode branch,
   where it keeps a held custom-command chord to one spawned process. A command target inside the mode is
   the one exception: `.firedCommand` skips the spawn on a repeat and still CONSUMES the key, so holding a
   key bound to a command runs one process while a built-in bind beside it keeps firing per repeat.
-- ⚠️ **`toggle_fullscreen` is dispatched a second time inside the normal-mode branch.** It is the one keyed
-  built-in with no menu item, so the Command chord the mode passes through reaches `performKeyEquivalent`
-  and finds nothing, and ⌘⌃F dies for as long as the mode is on. The in-branch copy fires only for a chord
-  carrying Command and only with no normal-mode leader armed; a fullscreen chord rebound to a bare key stays
-  the mode's to swallow, like any other `map` bind. Pinned by
-  `FullScreenChordTests.testShippedChordStillTogglesWhileNormalModeIsOn`, which fails with the branch removed.
-- **A Command chord and a reserved monitor chord always pass through while the mode is on.** The monitor
+- ⚠️ **A Command chord the mode does not own goes to the GLOBAL MATCHER, not through the mode.** Passing it
+  through was enough while every Command chord had a menu item behind it, but `toggle_fullscreen` has none
+  (agterm ships no full screen item) and neither does a custom command or a sequence-bound built-in, so all
+  of them reached nothing and died for as long as the mode was on. The fall-through covers the whole class;
+  do not restore a per-action copy inside the branch. It applies only with no normal-mode leader armed — an
+  armed leader outranks a Command chord as it outranks the matcher — and a fullscreen chord rebound to a
+  BARE key stays the mode's to swallow, like any other `map` bind. Pinned by
+  `FullScreenChordTests.testShippedChordStillTogglesWhileNormalModeIsOn` and
+  `NormalModeKeyRoutingTests.testACommandChordBoundToACustomCommandStillFiresWhileTheModeOwnsTheKeys`.
+  A Command chord matching nothing still passes through, so ⌘Q reaches the menu bar.
+- **A Command chord and a reserved monitor chord are never consumed BY THE MODE while it is on.** The monitor
   runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
   ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose
   registration order among the four `.keyDown` monitors is not controlled. Read the second set from
@@ -210,10 +220,13 @@ paths:
   disjoint without relying on dispatch order. Standard menu items such as ⌘Q/⌘C/⌘, remain AppKit's
   responsibility.
 - `BuiltinAction.defaultChord` is the sole built-in default. Every menu item resolves
-  override-or-default, including the six arrow actions. Two keyed actions are delivered by a monitor
+  override-or-default, including the six arrow actions. Three keyed actions are delivered by a monitor
   rather than a menu equivalent: `undo_close` through `UndoCloseShortcut`, so native text undo still
-  works, and `toggle_fullscreen` through `CustomCommandRunner`, because agterm ships no full screen menu
-  item for it to ride — see [[windows]]. Both are absent from `keymap list`'s `menu` by design.
+  works, `toggle_fullscreen` through `CustomCommandRunner`, because agterm ships no full screen menu
+  item for it to ride — see [[windows]] — and `normal_mode`, which owns no menu item either, so
+  `CustomCommandRunner.rebuild` feeds `keymap.binding(for: .normalMode)` into `builtinSequences` and even a
+  SINGLE-chord `map ctrl+space normal_mode` is dispatched by the sequence engine. All are absent from
+  `keymap list`'s `menu` by design.
 - Write shifted symbols as `shift+<base>`: `shift+/` for `?`, `shift+=` for `+`, `shift+5` for `%`, and
   `shift+.` for `>`. `CustomCommandRunner` uses `characters(byApplyingModifiers: [])` to recover that
   base; keep `KeymapUITests.testCustomCommandShiftedSymbolFires`.

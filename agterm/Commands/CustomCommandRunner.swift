@@ -162,25 +162,27 @@ final class CustomCommandRunner {
             // The yield is not an exit either — the mode is still on when the overlay closes, so opening an
             // editor from a bind and quitting lands back in it.
             let active = library.activeStore?.activeSession
-            if normalMode.stepOverlayHandover(session: active?.id,
-                                              pane: active?.focusedPane ?? .left,
-                                              ownsKeyboard: active?.programOverlayOwnsKeyboard == true) {
-                abandonLeader()
-                // fall through to the global matcher below rather than dropping the key: yielded means what
-                // the mode being OFF means, so `map` binds still fire, ⌘⌃F reaches its dispatch, and
-                // ctrl+space takes the keyboard back.
-            } else {
-                // `toggle_fullscreen` is dispatched below, PAST this branch, because it is the one built-in
-                // with no menu item (see there). Every other Command chord passing through here reaches
-                // `performKeyEquivalent` and its menu item; this one would reach nothing, so the mode has to
-                // dispatch it itself or ⌘⌃F silently dies for as long as the mode is on. Command-carrying
-                // only: a fullscreen chord rebound to a bare key stays the mode's to swallow, like any other
-                // `map` bind, and an armed normal-mode leader still outranks it.
-                if event.modifierFlags.contains(.command), !normalMode.isArmed, let chord = chord(from: event),
-                   chord == settings.keymap.equivalent(for: .toggleFullscreen) {
-                    keyWindow.toggleFullScreen(nil)
-                    return true
-                }
+            let yielded = normalMode.stepOverlayHandover(session: active?.id,
+                                                         pane: active?.focusedPane ?? .left,
+                                                         ownsKeyboard: active?.programOverlayOwnsKeyboard == true)
+            if yielded, normalMode.isArmed {
+                // drop the MODE's half-typed leader only: the chord that would have completed it went to the
+                // program. `abandonLeader()` would also reset `commandEngine`, wiping a global leader armed by
+                // the previous yielded key, so no `map ctrl+a>g` sequence could ever complete while yielded.
+                normalMode.reset()
+                cancelLeaderTimer()
+            }
+            // Two kinds of key are not the mode's and fall through to the global matcher below rather than
+            // being dropped. A YIELDED key, because yielded means what the mode being OFF means: `map` binds
+            // still fire, ⌘⌃F reaches its dispatch, and ctrl+space takes the keyboard back. And a COMMAND
+            // chord, which `handleNormalModeKey` hands straight back anyway (⌘Q must reach the menu bar) —
+            // but the built-ins and custom commands bound to one have no menu item behind the monitor, so
+            // `performKeyEquivalent` finds nothing and they die for as long as the mode is on. That is why
+            // `toggle_fullscreen` needed an in-branch copy here; falling through covers it and every custom
+            // command with it. A fullscreen chord rebound to a BARE key stays the mode's to swallow, like any
+            // other `map` bind, and an armed normal-mode leader outranks a Command chord as it does the
+            // global matcher.
+            guard yielded || (event.modifierFlags.contains(.command) && !normalMode.isArmed) else {
                 return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
             }
         }
@@ -242,7 +244,8 @@ final class CustomCommandRunner {
     /// thing between the mode and the terminal — nothing holds first responder for it — so every outcome but
     /// `.inactive` is CONSUMED, an unmatched key included.
     ///
-    /// Two exceptions are handed straight back. A Command chord: the monitor runs ahead of
+    /// Two exceptions are handed straight back. A Command chord, which reaches here only with a normal-mode
+    /// leader armed (the caller routes every other one to the global matcher): the monitor runs ahead of
     /// `performKeyEquivalent`, so consuming one would swallow ⌘Q and leave no way out of the mode. And a
     /// reserved monitor chord (`isReservedMonitorChord` — ctrl+tab, ctrl+1/2): those live in the switcher
     /// and pane-shortcut monitors, which run whatever the mode is, and nothing orders the four `.keyDown`

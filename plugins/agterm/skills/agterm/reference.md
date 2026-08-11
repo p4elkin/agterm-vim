@@ -934,6 +934,27 @@ selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mod
 window errors, and `no open window` when none is open. The GUI half (frontmost only) is View ▸ Collapse
 Workspaces and the ⌃⇧P palette "Collapse Workspaces".
 
+## mode
+
+`agtermctl mode [on|off|toggle]` — normal mode, where the keys bound with `nmap` in `keymap.conf` run
+built-in actions or custom commands and every other key is swallowed instead of reaching the shell.
+Defaults to `toggle`. The same state the `normal_mode` built-in enters and Esc leaves.
+
+It is ONE app-wide state held by the frontmost window, so there is no `--window` selector. Read it back as
+true-only `normalMode` on that window's `window list` node (omitted, never `false`, when the mode is off);
+`window list` human output tags the row `[normal mode]`, and the titlebar shows a `NORMAL` pill. The binds
+themselves are visible only in `keymap list`'s `normalMode` section.
+
+Turning it on goes through the same gate the keymap chord has, and a gate that swallows the entry is an
+ERROR rather than a silent no-op — a caller that believes the mode is on would send bare keys straight to
+the shell. It fails while terminal zoom, the dashboard or a picker owns the keyboard, and while agterm is
+not frontmost: the mode is a filter in agterm's key monitor, so with no key window the pill would advertise
+a mode no keystroke can reach. Opening any of those three while the mode is already on LEAVES the mode, so
+the surface gets the arrows and Return it needs.
+
+`mode off` is not a user pressing Esc: it hands no Escape keypress down to the pane, so a program running
+in vi-mode there stays where it was. Leaving is idempotent and never errors.
+
 ## notify
 
 `agtermctl notify <body> [--title T] [--target] [--window W]` — post a macOS desktop notification
@@ -1164,6 +1185,11 @@ here is app-global and touches only the captured commands, not those overrides.
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar),
+`invalid mode: <value>` (normal mode over the raw socket; the `agtermctl` CLI rejects the same value
+locally with `mode must be on, off, or toggle`) /
+`cannot enter normal mode: zoom, the dashboard or a picker owns the keyboard, or agterm is not frontmost`
+(the one you will actually hit — `mode on` while another app is frontmost) /
+`no open window` (mode on with nothing open),
 `invalid focus mode: <value> (on|off|toggle|add)` (workspace focus over the raw socket; the `agtermctl`
 CLI rejects the same value locally with `mode must be one of: on, off, toggle, add`),
 `invalid workspace filter mode: <value>` (workspace filter over the raw socket; the CLI rejects it
