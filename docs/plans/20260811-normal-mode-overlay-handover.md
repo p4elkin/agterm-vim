@@ -207,14 +207,14 @@ reaches the global copy further down and needs no second one.
 
 ### Task 4: Verify acceptance criteria
 
-- [ ] re-read `CustomCommandRunner.handleKeyDown` top to bottom and confirm, per dispatch below the
+- [x] re-read `CustomCommandRunner.handleKeyDown` top to bottom and confirm, per dispatch below the
       normal-mode branch, that it runs in both the yielded and the non-yielded case
-- [ ] confirm an untouched `keymap.conf` still reaches no new code, and that
+- [x] confirm an untouched `keymap.conf` still reaches no new code, and that
       `ControlKeymapTests.untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction` passes
-- [ ] run `cd agtermCore && swift test`
-- [ ] run `make lint` - zero findings required
-- [ ] run `make release`
-- [ ] run `scripts/test-app.sh -skip-testing:agtermTests/SystemWakeObserverTests` (that suite crashes
+- [x] run `cd agtermCore && swift test`
+- [x] run `make lint` - zero findings required
+- [x] run `make release`
+- [x] run `scripts/test-app.sh -skip-testing:agtermTests/SystemWakeObserverTests` (that suite crashes
       the hosted host on this machine and is upstream's, not the fork's)
 
 ### Task 5: [Final] Update documentation
