@@ -412,6 +412,7 @@ final class PersistenceTests {
                     #""foregroundCommand": "vim""#, #""commandWait": "no""#, #""customName": 7"#,
                     #""restoreCommand": []"#, #""splitCwd": 3"#, #""splitForegroundCommand": "vim""#,
                     #""initialCommand": ["vim"]"#, #""splitRestoreCommand": 0"#,
+                    #""keepShellOpen": "yes""#,
                     #""backgroundWatermark": "none""#] {
             let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
                 #"[ { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } ] } ]"#

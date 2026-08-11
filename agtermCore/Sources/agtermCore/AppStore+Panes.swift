@@ -130,6 +130,7 @@ extension AppStore {
         // or a restart resurrects the exited command and a snapshot persists commandWait with no initialCommand.
         session.initialCommand = nil
         session.commandWait = false
+        session.keepShellOpen = false
         // migrate the split's metadata up, then clear the split fields so nothing describes a gone pane. cwd
         // prefers the split's live PWD, then `initialSplitCwd` (a restored split whose shell hasn't emitted
         // OSC yet), falling back to the exited primary's only when the split has none. title is replaced

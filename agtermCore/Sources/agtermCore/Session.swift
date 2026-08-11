@@ -182,6 +182,13 @@ public final class Session: Identifiable {
     /// only with `initialCommand`. Persisted, so a restored session that re-runs its command holds again.
     @ObservationIgnored public var commandWait: Bool = false
 
+    /// Whether a `--command` session runs its command INSIDE a shell that outlives it, so the row lands at a
+    /// prompt instead of losing its only process; set via `session.new --keep-shell-open`. Only the zmx
+    /// wrapper (`ZmxWrap`) builds that shell, so the flag is meaningless without `initialCommand` and cannot
+    /// combine with `commandWait`, which instead holds a finished surface at a press-any-key prompt and then
+    /// closes it. Persisted, so a restored row keeps the behaviour.
+    @ObservationIgnored public var keepShellOpen: Bool = false
+
     /// True when the session was rebuilt by `AppStore.restore(from:)` rather than freshly created; gates the
     /// `initialCommand` re-run on `restoreRunningCommand` (a fresh session always runs it, a restored one gets
     /// a plain shell when off). Never persisted.

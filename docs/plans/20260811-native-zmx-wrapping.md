@@ -261,14 +261,14 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (the `snapshot()` and restore mapping)
 - Modify: `agtermCore/Tests/agtermCoreTests/PersistenceTests.swift` (the existing round-trip cases)
 
-- [ ] add `Session.keepShellOpen: Bool = false`, `@ObservationIgnored`, matching the neighbouring command fields
-- [ ] add `SessionSnapshot.keepShellOpen: Bool?` threaded through the memberwise init, `CodingKeys`, and the
+- [x] add `Session.keepShellOpen: Bool = false`, `@ObservationIgnored`, matching the neighbouring command fields
+- [x] add `SessionSnapshot.keepShellOpen: Bool?` threaded through the memberwise init, `CodingKeys`, and the
       custom decoder with `decodeIfPresent`; no `Snapshot.currentVersion` bump
-- [ ] map it in `snapshot()` emitting only when true, and in restore treating missing as false
-- [ ] write tests for a round trip with the flag set and unset
-- [ ] write a forward-compatibility test: a legacy snapshot without the field decodes to false, and a tree
+- [x] map it in `snapshot()` emitting only when true, and in restore treating missing as false
+- [x] write tests for a round trip with the flag set and unset
+- [x] write a forward-compatibility test: a legacy snapshot without the field decodes to false, and a tree
       with the flag unset serialises byte for byte as it did before
-- [ ] run `cd agtermCore && swift test --filter PersistenceTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter PersistenceTests` — must pass before the next task
 
 ### Task 6: keepShellOpen through the control protocol and the CLI
 

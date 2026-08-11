@@ -108,6 +108,44 @@ struct SnapshotRoundTripTests {
         #expect(snap.commandWait == nil)
     }
 
+    @Test func keepShellOpenRoundTripsThroughSnapshot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
+        session.keepShellOpen = true
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].keepShellOpen == true)
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].keepShellOpen == true)
+    }
+
+    @Test func keepShellOpenFalseIsOmittedFromTheJSONAndRestoresFalse() throws {
+        // a tree with no keep-shell-open row must serialize exactly as it did before the field existed.
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
+        #expect(session.keepShellOpen == false)
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].keepShellOpen == nil)
+        let json = try String(decoding: JSONEncoder().encode(snap), as: UTF8.self)
+        #expect(!json.contains("keepShellOpen"), "an unset flag must write no key; got \(json)")
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].keepShellOpen == false)
+    }
+
+    @Test func legacySnapshotWithoutKeepShellOpenDecodesNil() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","initialCommand":"claude","commandWait":true}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.keepShellOpen == nil)
+        #expect(snap.commandWait == true)
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        store.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws.id, name: "work", sessions: [snap])]))
+        #expect(store.workspaces[0].sessions[0].keepShellOpen == false)
+    }
+
     @Test func sidebarWidthAndVisibilityRoundTripThroughSnapshot() {
         let store = makeStore()
         _ = store.addWorkspace(name: "work")
