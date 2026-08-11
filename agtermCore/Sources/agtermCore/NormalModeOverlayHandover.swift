@@ -4,8 +4,7 @@ import Foundation
 ///
 /// The question is an event, not a state: the mode yields only to an overlay that APPEARED on the keyboard
 /// target it saw at the previous key. Walking onto a session or pane whose overlay is already running is an
-/// arrival and keeps the keys, so `j`/`k` carry past it. `step` advances the memory, so it must be called
-/// exactly once per key event.
+/// arrival and keeps the keys, so `j`/`k` carry past it.
 public struct NormalModeOverlayHandover: Sendable {
     private struct Target: Equatable {
         let session: UUID?
@@ -26,6 +25,8 @@ public struct NormalModeOverlayHandover: Sendable {
         isYielded = false
     }
 
+    /// Advance the memory by one key event and report whether the mode has yielded. Call it exactly once per
+    /// key: the comparison is against what the PREVIOUS key saw.
     @discardableResult
     public mutating func step(session: UUID?, pane: OverlayPane, ownsKeyboard: Bool) -> Bool {
         let target = Target(session: session, pane: pane)

@@ -18,7 +18,7 @@ paths:
 - `parseKeymap` never throws. `map <chord> <action>` takes one whitespace-delimited chord token.
   `command "<name>" [chord] <shell...>` treats the token after the quoted name as a shortcut only when
   `parseKeybinds` accepts it with a modifier; a bare key is diagnosed and the command stays palette-only.
-  Empty shell text is invalid. Both verbs split on spaces/tabs. Blank lines and comments are skipped;
+  Empty shell text is invalid. Every verb splits on spaces/tabs. Blank lines and comments are skipped;
   inline `#` starts a comment only after whitespace and outside double quotes. Each bad line yields
   `KeymapDiagnostic{line,message}` without stopping later lines. `{AGT_X}` text remains verbatim.
 - `|` is the top separator tier: it splits a chord token into alternatives, `>` splits a sequence into
@@ -115,8 +115,9 @@ paths:
   the global prefix is armed BY a yielded key, so wiping it there would kill every `map ctrl+a>g` sequence
   under an overlay while eating its first chord
   (`NormalModeKeyRoutingTests.testAGlobalLeaderSequenceStillCompletesWhileYielded`).
-  `NormalModeController.stepOverlayHandover` advances that memory, so call it exactly once per key event,
-  after the `uiActionsEnabled` re-check and before the branch decides who owns the key.
+  `NormalModeController.stepOverlayHandover` advances that memory, after the `uiActionsEnabled` re-check
+  and before the branch decides who owns the key; `NormalModeOverlayHandover.step` owns the rest of its
+  contract.
   Ask that predicate, never a raw `overlayActive`, and never widen `uiActionsEnabled` instead — that gate
   also disables the menu bar and the palette.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so

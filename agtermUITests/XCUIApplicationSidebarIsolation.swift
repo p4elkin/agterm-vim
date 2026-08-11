@@ -33,12 +33,15 @@ extension XCUIApplication {
     /// Refuse to run on a non-ASCII input source, where `typeKey("s")` cannot carry the physical key the
     /// app resolves a chord by (issue #306 policy, see [[keymap]]) and every letter-driven assertion dies
     /// six silent retries later. NAMED keys keep working, so the mode still enters on ⌃␣ while `nmap s`
-    /// never fires — a signature that reads as a broken keymap and cost a full session once. Only a
-    /// positive reading fails: an input source the runner cannot read must not break CI.
+    /// never fires, which reads as a broken keymap. A copy of `KeyboardLayout.isASCIICapable` because a
+    /// UI-test bundle cannot import the app target: it must read the same source, the same way, including
+    /// the unreadable-means-true fallback, or it predicts a branch the app does not take.
     private func assertLetterChordsCanBeTyped(file: StaticString, line: UInt) {
-        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
-              let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable) else { return }
-        let asciiCapable = Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue() == kCFBooleanTrue
+        var asciiCapable = true
+        if let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+           let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable) {
+            asciiCapable = CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue())
+        }
         XCTAssertTrue(asciiCapable, "the machine's keyboard input source is not ASCII-capable, so XCUITest "
             + "cannot type letter chords; switch to a Latin layout before running the UI suite",
             file: file, line: line)

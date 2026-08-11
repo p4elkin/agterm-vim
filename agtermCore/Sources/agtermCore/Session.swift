@@ -474,9 +474,8 @@ public final class Session: Identifiable {
 
     /// Whether a caller's PROGRAM is taking this session's keystrokes: the session-wide overlay, or the
     /// FOCUSED pane's own. An overlay on the sibling pane takes none, and a HUD is passive
-    /// (`programOverlayActive`), so neither counts. This is a STATE, and normal mode's yield is an event:
-    /// `NormalModeOverlayHandover` yields only when this turned true on a target the user did not move to,
-    /// so walking onto a session that already reads true keeps the keys. Never read it as "the mode yields".
+    /// (`programOverlayActive`), so neither counts. A STATE, never "the mode yields": that is an event
+    /// derived from this one, owned by `NormalModeOverlayHandover`.
     public var programOverlayOwnsKeyboard: Bool {
         programOverlayActive || focusedOverlayPane != nil
     }

@@ -51,7 +51,7 @@ final class NormalModeController {
     }
 
     /// Advance the overlay handover by one key event and report whether the mode has yielded the keyboard to
-    /// the program. Call exactly once per key: `step` advances the memory it compares against.
+    /// the program.
     func stepOverlayHandover(session: UUID?, pane: OverlayPane, ownsKeyboard: Bool) -> Bool {
         overlayHandover.step(session: session, pane: pane, ownsKeyboard: ownsKeyboard)
     }

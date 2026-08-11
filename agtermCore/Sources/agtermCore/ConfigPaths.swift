@@ -21,9 +21,9 @@ public enum ConfigPaths {
         configDirectory.appendingPathComponent("keymap.conf")
     }
 
-    /// The commented starter `keymap.conf`: the two-verb syntax, every `BuiltinAction` raw name with
-    /// its shipped default chord (or "no default"), and the `{AGT_X}` token list. Every line is a
-    /// comment so a fresh file rebinds nothing.
+    /// The commented starter `keymap.conf`: the three-verb syntax (`map`, `command`, `nmap`), every
+    /// `BuiltinAction` raw name with its shipped default chord (or "no default"), and the `{AGT_X}` token
+    /// list. Every line is a comment so a fresh file rebinds nothing.
     public static func starterKeymapConf() -> String {
         // pad the action name column to the longest raw name (+ a 2-space gutter) so a future action
         // longer than any current one can never silently truncate.
