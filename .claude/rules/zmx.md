@@ -58,6 +58,18 @@ reaping (the launcher does not kill orphaned sessions), and the zmx close/rename
 (row closes and renames send no zmx commands). This eliminates the cross-instance danger of an
 isolated test run killing the deployed app's detached daemons.
 
+### Socket path budget
+
+A unix socket path caps near 104 bytes, so `ZmxSocketBudget.probe` refuses to wrap when the socket
+directory plus the key would exceed 101 bytes, and the pane falls back to a plain shell.
+⚠️ The live setup sits EXACTLY on that budget: a 56-byte `$TMPDIR/zmx-<uid>` plus a separator plus a
+44-byte key. There is no headroom.
+One more byte anywhere — a longer `TMPDIR`, a longer role name, a larger safety margin — silently
+unwraps every pane, with no error anywhere.
+`ZmxSocketBudgetTests.realSetupIsUnderBudget` pins that pair so the change fails a test instead.
+The budget takes `ZmxSessionKey.maxByteCount` (44, the longest role name) rather than the 42 a real
+left or right key needs, so a role added later stays covered.
+
 ### Lifecycle traps
 
 A closed WINDOW keeps its session ids persisted under `~/Library/Application Support/agterm/windows/`
