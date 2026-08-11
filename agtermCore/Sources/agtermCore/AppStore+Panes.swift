@@ -78,6 +78,7 @@ extension AppStore {
     /// resets `splitFocused`, else it points the collapsed view at the gone pane.
     public func closeSplit(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
+        endZmxSessions(session, close: .split) // before `hasSplit` clears: that flag is what says the right pane exists
         session.isSplit = false
         session.hasSplit = false
         session.splitFocused = false

@@ -335,17 +335,17 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (`closeSession` at :443)
 - Modify: `agtermCore/Sources/agtermCore/AppStore+Naming.swift` (`renameSession` at :7)
 
-- [ ] add the pure predicate in `ZmxLifecycle`: which keys a close should end, given the session, whether its
+- [x] add the pure predicate in `ZmxLifecycle`: which keys a close should end, given the session, whether its
       split is closing too, and whether this is a row close or a window close
-- [ ] ⚠️ a closed window must NOT end anything. A closed window keeps its session ids under
+- [x] ⚠️ a closed window must NOT end anything. A closed window keeps its session ids under
       `~/Library/Application Support/agterm/windows/` and reopens with them. This is the mistake recorded in
       `agterm-zmx-sync`'s own header, where the first version would have killed every agent in a window on `cmd+W`
-- [ ] closing a row, or closing just its split, ends that pane's session through `ZmxClient`
-- [ ] renaming a row sets the `agterm_name` label on its session, which is what keeps a rename harmless given
+- [x] closing a row, or closing just its split, ends that pane's session through `ZmxClient`
+- [x] renaming a row sets the `agterm_name` label on its session, which is what keeps a rename harmless given
       zmx has no rename command
-- [ ] write tests for the predicate: row close ends one key, split close ends only the split's key, window
+- [x] write tests for the predicate: row close ends one key, split close ends only the split's key, window
       close ends nothing, an unwrapped session ends nothing
-- [ ] run `cd agtermCore && swift test --filter ZmxLifecycleTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxLifecycleTests` — must pass before the next task
 
 ### Task 10: reap orphaned daemons at launch
 

@@ -86,6 +86,9 @@ public final class WindowLibrary {
     @ObservationIgnored private let recentClosedStore: RecentClosedStore
     /// One bounded run-identified ring shared by every window store for this library/app lifetime.
     @ObservationIgnored private let controlEventRing: ControlEventRing
+    /// Handed to every store this library makes; the app target supplies it. ⚠️ `closeWindow` must never use
+    /// it — a closed window's rows keep their sessions (`ZmxLifecycle.Close.window`).
+    @ObservationIgnored private let zmx: ZmxSessionSink?
     @ObservationIgnored private var treeEventDebouncers: [UUID: Debouncer]
     @ObservationIgnored private var isBootstrapping = true
 
@@ -114,7 +117,9 @@ public final class WindowLibrary {
 
     /// Creates the library rooted at `directory`, running migration/recovery per the recovery contract.
     public init(directory: URL = PersistenceStore.defaultDirectory,
-                controlEventRing: ControlEventRing? = nil) {
+                controlEventRing: ControlEventRing? = nil,
+                zmx: ZmxSessionSink? = nil) {
+        self.zmx = zmx
         self.directory = directory
         self.recentClosedStore = RecentClosedStore(directory: directory)
         self.controlEventRing = controlEventRing ?? ControlEventRing()
@@ -682,7 +687,8 @@ public final class WindowLibrary {
                     session: draft.session,
                     payload: draft.payload
                 ))
-            }
+            },
+            zmx: zmx
         )
     }
 

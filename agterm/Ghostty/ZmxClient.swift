@@ -137,6 +137,23 @@ struct ZmxWrapping: Sendable {
         }
     }
 
+    /// The close/rename effects, as the host-free sink `AppStore` calls. Both are handed to a background
+    /// queue: they run from a row close and a rename, and a `zmx` that hits its timeout would otherwise hold
+    /// the main actor for two seconds. Under an isolated state directory nothing was wrapped, so nothing may
+    /// be ended or relabelled either — that instance must never reach the deployed app's daemons.
+    @MainActor var sessionSink: ZmxSessionSink {
+        let client = env["AGTERM_STATE_DIR"] == nil ? client : .noop
+        return ZmxSessionSink(
+            end: { key in
+                logger.info("ending zmx session \(key, privacy: .public)")
+                DispatchQueue.global(qos: .utility).async { client.kill(key) }
+            },
+            label: { key, name in
+                DispatchQueue.global(qos: .utility).async { client.setLabel(key, name) }
+            }
+        )
+    }
+
     private var shell: String {
         env["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackShell
     }

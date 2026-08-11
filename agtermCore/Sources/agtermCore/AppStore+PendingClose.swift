@@ -412,6 +412,10 @@ extension AppStore {
     }
 
     private func hardFinalizePendingSession(_ session: Session) {
+        // the grace expired, so this is the real row close — the GUI's ⌘W reaches `closeSession` only with
+        // undo turned off. A window close finalizes pending closes too, but those rows were already closed by
+        // hand; the sessions the window KEEPS never come through here.
+        endZmxSessions(session, close: .row)
         session.surface?.teardown()
         session.splitSurface?.teardown()
         session.overlaySurface?.teardown()

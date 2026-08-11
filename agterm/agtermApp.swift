@@ -206,9 +206,10 @@ struct agtermApp: App {
     /// Bootstrap migrates/recovers (legacy `workspaces.json` → one window, else seed): always valid, non-empty.
     @MainActor
     private static func restoredLibrary() -> WindowLibrary {
-        ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"]
-            .map { WindowLibrary(directory: URL(fileURLWithPath: $0, isDirectory: true)) }
-            ?? WindowLibrary()
+        let zmx = ZmxWrapping.live.sessionSink
+        return ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"]
+            .map { WindowLibrary(directory: URL(fileURLWithPath: $0, isDirectory: true), zmx: zmx) }
+            ?? WindowLibrary(zmx: zmx)
     }
 
     /// Opens the windows open at quit beyond the one SwiftUI auto-opened at launch (which claimed the launch

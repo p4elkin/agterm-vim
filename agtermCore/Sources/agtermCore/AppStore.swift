@@ -108,6 +108,9 @@ public final class AppStore {
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
     @ObservationIgnored var recentClosedDidChange: (() -> Void)?
     @ObservationIgnored let controlEventSink: ((ControlEventDraft) -> Void)?
+    /// The zmx effects a close or a rename performs; nil leaves every one undone, which is what a test and an
+    /// instance that wrapped nothing both want. What it is asked to do is decided by `ZmxLifecycle`.
+    @ObservationIgnored let zmx: ZmxSessionSink?
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp writes once after the
     /// burst settles instead of hitting disk per event.
     @ObservationIgnored private let saveDebouncer = Debouncer()
@@ -150,13 +153,15 @@ public final class AppStore {
                 persistence: PersistenceStore = PersistenceStore(),
                 recentClosedStore: RecentClosedStore? = nil,
                 recentClosedDidChange: (() -> Void)? = nil,
-                controlEventSink: ((ControlEventDraft) -> Void)? = nil) {
+                controlEventSink: ((ControlEventDraft) -> Void)? = nil,
+                zmx: ZmxSessionSink? = nil) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
         self.recentClosedStore = recentClosedStore
         self.recentClosedDidChange = recentClosedDidChange
         self.controlEventSink = controlEventSink
+        self.zmx = zmx
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -455,6 +460,7 @@ public final class AppStore {
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
+        endZmxSessions(removed, close: .row)
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
         removed.surface?.teardown()
@@ -493,6 +499,7 @@ public final class AppStore {
         for session in workspace.sessions { emitSessionClosed(session, workspace: workspace.id) }
         if workspace.sessions.isEmpty { scheduleTreeChanged() }
         for session in workspace.sessions {
+            endZmxSessions(session, close: .row)
             session.surface?.teardown()
             session.splitSurface?.teardown()
             session.overlaySurface?.teardown()

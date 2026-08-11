@@ -4,9 +4,9 @@ import Foundation
 /// A store backed by a throwaway temp directory so mutation-time saves never
 /// touch the real Application Support path. PersistenceStore creates the
 /// directory lazily on first write.
-@MainActor func makeStore() -> AppStore {
+@MainActor func makeStore(zmx: ZmxSessionSink? = nil) -> AppStore {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
-    return AppStore(persistence: PersistenceStore(directory: dir))
+    return AppStore(persistence: PersistenceStore(directory: dir), zmx: zmx)
 }
 
 /// The same throwaway store, plus the Open Recent store it records closes into and the persistence it
