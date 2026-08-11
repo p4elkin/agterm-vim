@@ -106,6 +106,23 @@ struct ZmxReaperTests {
         #expect(ZmxReaper.claimedKeys(from: snapshots).contains("\(second.uuidString)-left"))
     }
 
+    /// ⚠️ The most destructive input the reaper accepts, pinned as a DECISION rather than left implicit: a
+    /// `windows/` directory that exists and holds nothing is a real, empty claim — unlike a missing one — so
+    /// every owned zero-client daemon on the machine becomes reapable. That is right for a wiped state
+    /// directory and wrong for nothing else, which is why it must fail a test if it ever changes.
+    @Test func anEmptyWindowsDirectoryIsAnEmptyClaimAndNotAnUnknownOne() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let windows = directory.appendingPathComponent("windows", isDirectory: true)
+        try FileManager.default.createDirectory(at: windows, withIntermediateDirectories: true)
+        let snapshots = try #require(ZmxReaper.persistedSnapshots(directory: directory))
+        #expect(snapshots.isEmpty)
+        let live = UUID()
+        let listing = [ZmxListParser.Entry(name: "\(live.uuidString)-left", clients: 0, leaderPID: 1)]
+        #expect(ZmxReaper.orphans(in: listing, claimed: ZmxReaper.claimedKeys(from: snapshots))
+                == ["\(live.uuidString)-left"])
+    }
+
     @Test func persistedSnapshotsAreUnknownWithoutAWindowsDirectory() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

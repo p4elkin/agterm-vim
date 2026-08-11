@@ -201,8 +201,13 @@ struct ZmxWrapping: Sendable {
             // the listing is taken BEFORE the claimed set, never after: a row created while this runs is
             // absent from the listing and so cannot be reaped, while the other order would see its daemon
             // without seeing the snapshot that claims it.
-            guard let listing = client.list(),
-                  let snapshots = ZmxReaper.persistedSnapshots(directory: directory) else { return }
+            guard let listing = client.list() else { return }
+            guard let snapshots = ZmxReaper.persistedSnapshots(directory: directory) else {
+                // one unreadable window file turns the whole reap off, which is the safe answer but an
+                // invisible one: without this the daemons pile up with nothing to explain why.
+                logger.notice("skipping the zmx reap: the persisted window claim could not be read")
+                return
+            }
             for key in ZmxReaper.orphans(in: listing, claimed: ZmxReaper.claimedKeys(from: snapshots)) {
                 logger.info("reaping orphaned zmx session \(key, privacy: .public)")
                 client.kill(key)

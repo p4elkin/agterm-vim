@@ -191,8 +191,7 @@ final class ZmxWrappingTests: XCTestCase {
 
         let isolated = ZmxWrapping(env: ["SHELL": "/bin/zsh", "AGTERM_STATE_DIR": directory.path], client: client)
         isolated.reapOrphanedSessions(directory: directory)
-        killed.waitForNothingMore()
-        XCTAssertEqual(killed.keys, ["\(orphan.uuidString)-left"])
+        killed.waitForNothingBeyond(["\(orphan.uuidString)-left"])
     }
 
     @MainActor
@@ -205,8 +204,7 @@ final class ZmxWrappingTests: XCTestCase {
         let isolated = ZmxWrapping(env: ["AGTERM_STATE_DIR": "/tmp/agterm-test"], client: client).sessionSink
         isolated.end(leftKey)
         isolated.label(leftKey, "work")
-        killed.waitForNothingMore()
-        XCTAssertTrue(killed.keys.isEmpty)
+        killed.waitForNothingBeyond([])
 
         ZmxWrapping(env: [:], client: client).sessionSink.end(leftKey)
         killed.waitForOneCall()
@@ -230,10 +228,12 @@ final class ZmxWrappingTests: XCTestCase {
         }
 
         /// A bypassed call gets the same window to land in before it counts as never having happened.
-        func waitForNothingMore(file: StaticString = #filePath, line: UInt = #line) {
-            let settled = keys
+        /// `expected` is spelled out rather than snapshotted first: a late call from the PREVIOUS step would
+        /// otherwise land in the baseline and be absorbed instead of failing.
+        func waitForNothingBeyond(_ expected: [String], file: StaticString = #filePath,
+                                  line: UInt = #line) {
             usleep(300_000)
-            XCTAssertEqual(keys, settled, "an isolated instance called zmx", file: file, line: line)
+            XCTAssertEqual(keys, expected, "an isolated instance called zmx", file: file, line: line)
         }
     }
 

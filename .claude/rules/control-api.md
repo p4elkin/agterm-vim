@@ -190,6 +190,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `initialCommand` persists and reruns only when restored-command support is enabled; fresh sessions always
   run it. Captured foreground takes precedence. Promoting a split survivor clears the exited pane's initial
   command.
+- `--keep-shell-open` (fork only, see [[zmx]]) runs `--command` inside a shell that outlives it, so the row
+  lands at a prompt instead of losing its only process. It requires `--command`
+  (`--keep-shell-open requires --command`) and refuses `--wait`
+  (`--keep-shell-open cannot be combined with --wait`), which holds a finished surface at a press-any-key
+  prompt and then closes it. Only the zmx wrapper builds that shell, so an unwrapped pane ignores it.
+  Read back as `keepShellOpen`, emitted only for a session that has an `initialCommand`, matching
+  `commandWait`. Persisted, so a restored row keeps the behavior.
 - `--no-select` neither changes selection/recency/focus nor reveals a newly created workspace into an
   applied focus set. Foreground creates add their new workspace to the set instead of disabling filtering.
   Do not overload the opposite-polarity `ControlArgs.select`.

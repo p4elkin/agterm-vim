@@ -47,6 +47,21 @@ struct ZmxListParserTests {
         #expect(entries.first?.clients == nil)
     }
 
+    /// A count below zero is nonsense, and the reaper turns on "exactly zero", so it must read as unknown
+    /// rather than as a zero it would kill.
+    @Test func aNegativeClientCountIsUnknown() {
+        #expect(ZmxListParser.parse("  name=A1B2-left\tpid=900\tclients=-1").first?.clients == nil)
+    }
+
+    /// A `\r\n` listing must not leave the carriage return on the last field, which would make every name
+    /// unrecognisable and every count unparseable.
+    @Test func carriageReturnsAreNotPartOfAField() {
+        let entries = ZmxListParser.parse("  name=A1B2-left\tclients=0\r\n  name=A1B2-right\tclients=2\r\n")
+
+        #expect(entries.map(\.name) == ["A1B2-left", "A1B2-right"])
+        #expect(entries.map(\.clients) == [0, 2])
+    }
+
     @Test func aLineWithNoLeaderPIDStillParses() {
         let entries = ZmxListParser.parse("  name=A1B2-left\tclients=0\tcreated=1785829235")
 
