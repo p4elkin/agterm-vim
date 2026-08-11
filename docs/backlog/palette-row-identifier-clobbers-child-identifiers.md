@@ -20,26 +20,47 @@ The row identifier landed in `6b6323e` (native control picker, #316, 2026-07-29)
 then stopped. Nothing caught it: the UI suite does not run in CI (`.github/workflows/ci.yml` runs
 `swift test` only), and the two tests that read these identifiers were not run again until 2026-08-11.
 
-Two known failures:
+Three confirmed failures, all run on 2026-08-11:
 
 - `agtermUITests/KeymapUITests.swift:39` — `testCustomCommandShowsBadgeInPaletteAndRuns` waits for
   `palette-badge` in the action palette and times out. Its sibling
   `testCustomCommandsPaletteShowsCustomOnlyWithoutBadge` still passes because it asserts the badge is
   ABSENT and finds the row by label, not by identifier.
-- `agtermUITests/SessionSubtitleUITests.swift:94` — `currentPaletteSubtitle()` reads
-  `app.staticTexts["palette-subtitle"].value` and should be returning `""` for the same reason. Unverified:
-  the class has not been run since the row identifier landed. Run it first — it is the cheapest confirmation
-  of the diagnosis, and it decides whether the fix has one victim or two.
+- `agtermUITests/SessionSubtitleUITests.swift:45` and `:64` — both assertions consume
+  `currentPaletteSubtitle()`, whose `waitForExistence` on `palette-subtitle` at `:94` fails, so the helper
+  returns its literal `""`. Both messages end in `got ` with nothing after. The 29.5-second runtime of the
+  first is the 10-second poll running twice. Earlier assertions in both tests pass with
+  `continueAfterFailure = false`, so the session is alive and the OSC title has arrived one line before the
+  failing read — this is the identifier, not timing and not a dead shell.
 
-The fix has to keep `palette-item-<id>` addressable, because `ControlPickUITests` and
-`XCUIApplicationSidebarIsolation.paletteRow(_:)` click rows through it. Candidates, none verified:
+`XCUIApplicationSidebarIsolation.swift:50-53` corroborates independently, written by someone watching real
+runs after the row identifier landed: a row WITH a subtitle "answers to it twice". A row matching twice and a
+row without a subtitle matching once means the subtitle text is answering to `palette-item-<id>`.
 
-- move the row identifier onto the title text, leaving the container without one, as the recent-sessions
-  popover does. Row clicks still work — `ControlPickUITests.clickPaletteRow` already picks the first
-  hittable match rather than the container.
-- make the row a real container with `.accessibilityElement(children: .contain)` before the identifier, so
-  children keep their own identity. This changes the row's accessibility shape, so the pick tests need
-  re-running.
+The fix has to keep `palette-item-<id>` addressable, because `ControlPickUITests` (21 sites) and
+`XCUIApplicationSidebarIsolation.paletteRow(_:)` click rows through it.
 
-Either way the change touches the element every palette test addresses, so it needs the pick and control
-suites re-run, not just the two tests above.
+Preferred: make the row a real container, one line above the identifier at `Palette.swift:391`.
+
+```swift
+.accessibilityElement(children: .contain)
+.accessibilityIdentifier("palette-item-\(item.id)")
+```
+
+Both `paletteRow(_:)` and `ControlPickUITests.clickPaletteRow` query `descendants(matching: .any)`, so a
+container of any element type still resolves.
+
+REJECTED: moving the identifier onto the title text. `ControlPickUITests.swift:506-508` records that the
+title child is not hittable because the row owns the tap target, so after that move `clickPaletteRow` would
+have only a non-hittable leaf and would fail with `Not hittable: StaticText`.
+
+⚠️ The risk is the row's accessibility shape. If hittability moves from the container to the title leaf,
+`clickPaletteRow`'s hittable-match filter finds nothing. The contained answer is a coordinate click, which
+ignores hittability:
+`matches.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()`.
+
+Re-run to prove the fix: `SessionSubtitleUITests` (both), `KeymapUITests/testCustomCommandShowsBadgeInPaletteAndRuns`
+and `/testCustomCommandsPaletteShowsCustomOnlyWithoutBadge`, then the whole of `ControlPickUITests` and
+`PaletteUITests` — that is where an accessibility-shape regression lands. Two comments go stale with the fix
+and should be corrected in the same commit: the "answers to it twice" note above, and
+`ControlPickUITests.swift:506-508`.
