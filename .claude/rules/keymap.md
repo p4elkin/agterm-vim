@@ -95,6 +95,9 @@ paths:
   Settings, search bar) ends the mode and passes its key through, the modal gate failing ends it the same
   way, a click in a pane ends it from `GhosttySurfaceView.mouseDown`, and the key window resigning key ends
   it from the monitor's observer.
+  ⚠️ That last one calls `abandonLeader()`, never a bare `cancelLeaderTimer()`: a yielded key arms the
+  GLOBAL matcher while the mode is on, and killing the shared timeout without the matcher strands that
+  prefix for good (`NormalModeKeyRoutingTests.testTheKeyWindowResigningKeyDropsAStrandedGlobalLeader`).
   A program overlay is a YIELD, not a fifth exit, and the question is an EVENT rather than a state:
   host-free `NormalModeOverlayHandover` remembers the keyboard target (active session id plus
   `focusedPane`) it saw at the previous key, and the mode yields only when
@@ -173,6 +176,12 @@ paths:
   `FullScreenChordTests.testShippedChordStillTogglesWhileNormalModeIsOn` and
   `NormalModeKeyRoutingTests.testACommandChordBoundToACustomCommandStillFiresWhileTheModeOwnsTheKeys`.
   A Command chord matching nothing still passes through, so ⌘Q reaches the menu bar.
+  ⚠️ One that only ARMS a sequence (`map cmd+r>t …`) passes through too, and the matcher is reset instead of
+  left armed: the next chord is bare, so the mode swallows it and the sequence could never complete. Eating
+  the first chord for it lost the key AND left a prefix armed in front of the `toggle_fullscreen` dispatch,
+  which is guarded on `isArmed` (`NormalModeKeyRoutingTests`
+  `.testACommandLeaderThatCanNeverCompleteIsNotEatenWhileTheModeOwnsTheKeys`).
+  Such a sequence is inert while the mode is on, exactly as its bare-leader sibling `map ctrl+a>s …` is.
 - **A Command chord and a reserved monitor chord are never consumed BY THE MODE while it is on.** The monitor
   runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
   ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose

@@ -62,8 +62,11 @@ final class CustomCommandRunner {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.normalMode.isActive else { return }
+                // both matchers, not just the timer: a yielded key arms the GLOBAL one while the mode is on,
+                // and cancelling the timer alone would leave that prefix armed with nothing to time it out.
+                // It runs BEFORE the exit so the mode's own leader is still visible to the guard.
+                self.abandonLeader()
                 self.normalMode.exit()
-                self.cancelLeaderTimer()
             }
         }
     }
@@ -145,6 +148,7 @@ final class CustomCommandRunner {
         }
         // normal mode takes the key ahead of the global matcher: its binds are bare keys that would otherwise
         // fall through to whatever the global map holds.
+        var modeOwnsBareKeys = false
         if normalMode.isActive {
             // terminal zoom, the dashboard grid or a pending picker owns the keyboard for the same reason a
             // focused text field does, and needs the arrows and Return the mode would swallow. Entry is
@@ -187,6 +191,9 @@ final class CustomCommandRunner {
             guard yielded || (event.modifierFlags.contains(.command) && !normalMode.isArmed) else {
                 return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
             }
+            // a yielded key is the mode not owning the keyboard at all, so only the Command chord leaves the
+            // mode still holding every bare key below. `.armed` is what that costs — see the case.
+            modeOwnsBareKeys = !yielded
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
         // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding
@@ -234,6 +241,15 @@ final class CustomCommandRunner {
             actions.perform(action, in: keyWindow)
             return true
         case .armed:
+            // with the mode still owning every bare key, only a Command chord gets this far, and the
+            // sequence it would start can never be finished: its next chord is bare and the mode swallows
+            // it. So do not arm — hand the chord back like an unmatched one rather than eat it for a
+            // sequence that cannot fire. `map cmd+r>t …` is therefore inert while the mode is on, the way
+            // its bare-leader sibling `map ctrl+a>s …` already is.
+            guard !modeOwnsBareKeys else {
+                commandEngine.reset()
+                return false
+            }
             startLeaderTimer()
             return true
         case .unmatched:

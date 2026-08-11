@@ -1037,7 +1037,8 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
 - `map <chord|sequence> <action>` — rebind a built-in menu action to a single chord or a leader
   sequence. A sequence (chords joined by `>`, e.g. `ctrl+space>s`) carries a modifier on its first chord
   only. When a built-in's only binding is a sequence, its menu key equivalent is removed, but the action
-  palette and tooltips show the joined glyphs (e.g. `⌃␣>S`).
+  palette and tooltips show the joined glyphs (e.g. `⌃␣>S`). A sequence is inert while normal mode is on:
+  its tail chords are bare keys, and the mode swallows those. The first chord is not eaten for it either.
 - `command "<name>" [chord] <shell...>` — define a custom shell command, listed in the action palette
   marked `custom`. The quoted name may contain spaces. The post-name token is the chord only if it
   parses AND carries a modifier (a bare modifier-less key is rejected). A custom chord may be a leader

@@ -15,8 +15,9 @@ import agtermCore
 ///
 /// ⚠️ These cases carry NO ASCII-layout skip, unlike `UndoCloseShortcutTests`. Every key code they
 /// synthesize is a `latinKey(forKeyCode:)` table position typing the letter its bind is spelled with
-/// (0→a, 1→s, 3→f, 5→g, 6→z, 12→q, 14→e, 18→1, 19→2, 34→i, 46→m) or a named key, so a layout that cannot
-/// type ASCII resolves every one of them by physical position to exactly the same chord. Skipping there
+/// (0→a, 1→s, 3→f, 5→g, 6→z, 12→q, 14→e, 15→r, 17→t, 18→1, 19→2, 34→i, 46→m) or a named key, so a layout
+/// that cannot type ASCII resolves every one of them by physical position to exactly the same chord.
+/// Skipping there
 /// hid two thirds of this suite — the whole overlay handover included — behind whichever input source
 /// happened to be selected, on the one gate `.claude/rules/fork-rebase.md` names for `handleKeyDown`.
 @MainActor
@@ -457,6 +458,56 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertFalse(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
                        "with the stale prefix gone this key is the overlay program's")
         XCTAssertEqual(fired, [.nextSession], "no half-typed `map ctrl+a>s` may complete behind it")
+    }
+
+    /// ⚠️ The key window losing key ends the mode, and it has to drop the GLOBAL leader with it. Cancelling
+    /// the shared timer alone left a prefix a yielded key had armed alive with nothing to time it out, so
+    /// a plain `s` typed at the shell later — mode long gone — completed a sequence the user never started
+    /// and never reached the pty.
+    func testTheKeyWindowResigningKeyDropsAStrandedGlobalLeader() throws {
+        let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\n")
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("q", keyCode: 12), in: window), "remembers the target")
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("a", keyCode: 0, flags: .control), in: window),
+                      "the yielded chord reaches the global matcher and arms it")
+
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertFalse(NormalModeController.shared.isActive, "losing key ends the mode")
+
+        store.closeOverlay(session.id)
+        XCTAssertFalse(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                       "with the mode gone this key is the terminal's")
+        XCTAssertTrue(fired.isEmpty, "no half-typed `map ctrl+a>s` may complete behind the mode's exit")
+    }
+
+    /// ⚠️ A Command chord falls through to the global matcher, but one that only STARTS a sequence must not
+    /// be consumed there: the next chord is bare, so the mode swallows it and the sequence can never
+    /// complete. Eating it lost the chord outright and left a prefix armed in front of ⌘⌃F's dispatch.
+    func testACommandLeaderThatCanNeverCompleteIsNotEatenWhileTheModeOwnsTheKeys() throws {
+        let seeded = try seededRunner(keymap: "map cmd+r>t new_session\nnmap s toggle_split\n")
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+
+        XCTAssertFalse(seeded.handleKeyDown(try keyDown("r", keyCode: 15, flags: .command), in: window),
+                       "a sequence the mode would break must not consume its first chord")
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("t", keyCode: 17), in: window),
+                      "the bare tail is the mode's, like every other bare key")
+        XCTAssertTrue(fired.isEmpty, "the sequence must not fire from behind the mode")
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window))
+        XCTAssertEqual(fired, [.toggleSplit], "the mode's own binds are untouched")
+
+        // positive control: the same two keys fire with the mode off, so the assertions above are the mode
+        // holding the tail rather than a keymap that never parsed.
+        NormalModeController.shared.exit()
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("r", keyCode: 15, flags: .command), in: window))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("t", keyCode: 17), in: window))
+        XCTAssertEqual(fired, [.toggleSplit, .newSession])
     }
 
     /// ⚠️ A Command chord passes through the mode so ⌘Q reaches the menu bar — but a custom command bound to
