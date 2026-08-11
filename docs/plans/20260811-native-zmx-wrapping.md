@@ -241,17 +241,17 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 **Model:** opus
 
-- [ ] add one pure function taking the pane role, whether a pinned command exists and what it is, the
+- [x] add one pure function taking the pane role, whether a pinned command exists and what it is, the
       `keepShellOpen` flag, the resolved zmx path, the budget probe result and whether the state directory is
       isolated, returning either no wrapping or the exact command string
-- [ ] build every string through `CommandRestore.shellQuotedLine` (`CommandRestore.swift:175`)
-- [ ] the plain form is `zmx attach <key>`; the keep-shell-open form is
+- [x] build every string through `CommandRestore.shellQuotedLine` (`CommandRestore.swift:175`)
+- [x] the plain form is `zmx attach <key>`; the keep-shell-open form is
       `zmx attach <key> <shell> -lc '<command>; exec <shell> -l'`
-- [ ] write tests for every branch of the diagram in Solution Overview, including scratch and overlay roles
+- [x] write tests for every branch of the diagram in Solution Overview, including scratch and overlay roles
       and the isolated-state-directory bypass
-- [ ] write tests for a keep-shell-open command containing a double quote, a dollar sign and a backtick,
+- [x] write tests for a keep-shell-open command containing a double quote, a dollar sign and a backtick,
       asserting the command survives exactly one level of shell evaluation and no more
-- [ ] run `cd agtermCore && swift test --filter ZmxWrapTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxWrapTests` — must pass before the next task
 
 ### Task 5: keepShellOpen in the model and the snapshot
 
