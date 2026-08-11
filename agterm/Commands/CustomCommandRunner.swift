@@ -156,24 +156,33 @@ final class CustomCommandRunner {
                 return false
             }
             // a caller's program in an overlay owns the keyboard until it exits, and the mode's bare keys
-            // would eat every keystroke it needs. This SUSPENDS rather than exits: the mode is still on when
-            // the overlay closes, so opening an editor from it and quitting lands back in it.
-            if library.activeStore?.activeSession?.programOverlayOwnsKeyboard == true {
+            // would eat every keystroke it needs. The question is an EVENT, not a state: the mode yields only
+            // to an overlay that appeared on the keyboard target the previous key saw, never to one the user
+            // walked onto with `j`/`k`, which would otherwise trap her with no way to navigate off or leave.
+            // The yield is not an exit either — the mode is still on when the overlay closes, so opening an
+            // editor from a bind and quitting lands back in it.
+            let active = library.activeStore?.activeSession
+            if normalMode.stepOverlayHandover(session: active?.id,
+                                              pane: active?.focusedPane ?? .left,
+                                              ownsKeyboard: active?.programOverlayOwnsKeyboard == true) {
                 abandonLeader()
-                return false
+                // fall through to the global matcher below rather than dropping the key: yielded means what
+                // the mode being OFF means, so `map` binds still fire, ⌘⌃F reaches its dispatch, and
+                // ctrl+space takes the keyboard back.
+            } else {
+                // `toggle_fullscreen` is dispatched below, PAST this branch, because it is the one built-in
+                // with no menu item (see there). Every other Command chord passing through here reaches
+                // `performKeyEquivalent` and its menu item; this one would reach nothing, so the mode has to
+                // dispatch it itself or ⌘⌃F silently dies for as long as the mode is on. Command-carrying
+                // only: a fullscreen chord rebound to a bare key stays the mode's to swallow, like any other
+                // `map` bind, and an armed normal-mode leader still outranks it.
+                if event.modifierFlags.contains(.command), !normalMode.isArmed, let chord = chord(from: event),
+                   chord == settings.keymap.equivalent(for: .toggleFullscreen) {
+                    keyWindow.toggleFullScreen(nil)
+                    return true
+                }
+                return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
             }
-            // `toggle_fullscreen` is dispatched below, PAST this branch, because it is the one built-in with
-            // no menu item (see there). Every other Command chord passing through here reaches
-            // `performKeyEquivalent` and its menu item; this one would reach nothing, so the mode has to
-            // dispatch it itself or ⌘⌃F silently dies for as long as the mode is on. Command-carrying only:
-            // a fullscreen chord rebound to a bare key stays the mode's to swallow, like any other `map`
-            // bind, and an armed normal-mode leader still outranks it.
-            if event.modifierFlags.contains(.command), !normalMode.isArmed, let chord = chord(from: event),
-               chord == settings.keymap.equivalent(for: .toggleFullscreen) {
-                keyWindow.toggleFullScreen(nil)
-                return true
-            }
-            return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
         // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding

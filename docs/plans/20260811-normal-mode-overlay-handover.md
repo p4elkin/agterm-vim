@@ -173,20 +173,20 @@ reaches the global copy further down and needs no second one.
 
 **Model:** opus
 
-- [ ] hold a `NormalModeOverlayHandover` in `NormalModeController` as `@ObservationIgnored`, reset it
+- [x] hold a `NormalModeOverlayHandover` in `NormalModeController` as `@ObservationIgnored`, reset it
       in `enter()`, `exit()` and `rebuild(binds:)`, and expose `stepOverlayHandover(session:pane:ownsKeyboard:)`
-- [ ] keep `enter()` argument-free, so `AppActions.enterNormalMode()` and the seven existing test call
+- [x] keep `enter()` argument-free, so `AppActions.enterNormalMode()` and the seven existing test call
       sites stay untouched
-- [ ] replace the branch in `handleKeyDown` with the shape in Technical Details: step once, and on a
+- [x] replace the branch in `handleKeyDown` with the shape in Technical Details: step once, and on a
       yield drop the half-typed leader and fall through to the global matcher instead of returning
       `false`
-- [ ] rewrite the comment at `:159-161` to state the event rule, not the state rule, and to say why
+- [x] rewrite the comment at `:159-161` to state the event rule, not the state rule, and to say why
       the yielded path falls through
-- [ ] fix `testAProgramOverlaySuspendsTheModeAndReleasesItsKeysWithoutEndingIt`: it enters the mode in
+- [x] fix `testAProgramOverlaySuspendsTheModeAndReleasesItsKeysWithoutEndingIt`: it enters the mode in
       `setUp` before any session exists, so the overlay open is not an appearance to anything. Press
       one unbound key (`q`, swallowed and consumed, leaves `fired` empty) after `selectedSession()` and
       before `openOverlay`, so the target is remembered and the test walks the real flow
-- [ ] run `scripts/test-app.sh -only-testing:agtermTests/NormalModeKeyRoutingTests` - must pass before
+- [x] run `scripts/test-app.sh -only-testing:agtermTests/NormalModeKeyRoutingTests` - must pass before
       task 3
 
 ### Task 3: Pin arrival, entry over an overlay, and the keyboard coming back

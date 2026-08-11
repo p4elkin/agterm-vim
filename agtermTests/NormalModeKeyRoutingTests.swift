@@ -266,11 +266,14 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     }
 
     /// ⚠️ A program overlay (vifm, an editor, `session.overlay.open`) owns the keyboard, and the mode would
-    /// otherwise eat every key before the overlay's pty saw one. The mode SUSPENDS instead of exiting, so the
+    /// otherwise eat every key before the overlay's pty saw one. The mode YIELDS instead of exiting, so the
     /// editor a bind opened hands the user back to the mode on quit.
     func testAProgramOverlaySuspendsTheModeAndReleasesItsKeysWithoutEndingIt() throws {
         try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
+        // the mode yields only to an overlay that APPEARED on the target the previous key saw, so this
+        // session has to be that target first. `q` binds to nothing: swallowed, consumed, fires nothing.
+        XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
         XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
 
         XCTAssertFalse(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
