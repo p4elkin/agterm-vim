@@ -26,6 +26,25 @@ was previously driven by a zprofile hook inside agterm itself. Every plain inter
 wrapped with `zmx attach <key>` so the app knows which zmx session owns it, enabling accurate
 foreground reporting and correct session cleanup.
 
+### Known caveats
+
+Behaviour that is surprising, deliberate, and will not be fixed by accident. Each one is argued where it
+is implemented; this list exists so nobody has to read the whole file to find out what bites.
+
+- **A promoted row's second pane is never zmx-backed again.** Close the left pane of a split and the
+  survivor keeps `-right` for good, so the next Command-D would derive a key its sibling already holds.
+  That pane is left as a plain login shell instead. See "Which key a pane owns".
+- **A runtime attach failure closes the row.** The old zprofile hook fell through to a normal shell on a
+  failed `zmx attach`; the wrapper cannot, because the fall-through shell would become the pane's
+  foreground group leader and break every wrapper detection. See "Wrapper form".
+- **Detach, close the row, come back after a relaunch, and the session is gone.** Nothing claims a daemon
+  whose row left the snapshot, so the launch reap ends it. Accepted 2026-08-11; the parked-session idea in
+  "Lifecycle traps" is the way out if it ever matters.
+- **A row with an automatic name keeps the label from its last surface build.** Only an explicit rename
+  relabels; following the cwd would spawn a `zmx set` per OSC report.
+- **Unknown: whether a restored keep-shell-open row re-runs its command.** A second
+  `zmx attach <name> <command>` reads as create-time only, but nothing verifies it. See "Keep-shell-open form".
+
 ### Session key convention
 
 Session keys follow `<session-uuid>-<role>` where role is `left` or `right`.
