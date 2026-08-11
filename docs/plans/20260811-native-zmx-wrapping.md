@@ -390,12 +390,12 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Create: `.claude/rules/zmx.md`
 - Modify: `docs/plans/20260811-native-zmx-wrapping.md` (this file, on move)
 
-- [ ] add `.claude/rules/zmx.md` describing the key convention, the wrap rule, the isolated-instance bypass,
+- [x] add `.claude/rules/zmx.md` describing the key convention, the wrap rule, the isolated-instance bypass,
       and the two lifecycle traps, in the semantic-line style the other rules files use
-- [ ] reference the new rules file from `CLAUDE.md`'s path-scoped rules list
-- [ ] note in `CLAUDE.md` that this is fork-only work and is not to be offered upstream
-- [ ] do NOT touch `CHANGELOG.md` — it is release-only
-- [ ] move this plan to `docs/plans/completed/`
+- [x] reference the new rules file from `CLAUDE.md`'s path-scoped rules list
+- [x] note in `CLAUDE.md` that this is fork-only work and is not to be offered upstream
+- [x] do NOT touch `CHANGELOG.md` — it is release-only
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 *Items requiring manual intervention or external systems — no checkboxes, informational only*

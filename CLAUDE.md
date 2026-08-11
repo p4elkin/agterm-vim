@@ -162,6 +162,8 @@ C-boundary concurrency before changing the bridge.
   teardown, and no SIGHUP reaches the process because the pty's session leader is the surviving `login`, so
   it outlives the app in whatever loop it was in. `hud.sh` takes the app's pid through its input file and
   exits on a builtin `kill -0`.
+- Native zmx wrapping is fork-only work. It is not offered upstream and is documented in
+  `.claude/rules/zmx.md`.
 
 ## Cross-surface contracts
 
@@ -228,4 +230,5 @@ spans intact, and format long catalogs as lists.
 - `app-icon.md`: adaptive Icon Composer build.
 - `ci.md`: jobs, filters, coverage, badge.
 - `release.md`: local signing, notarization, release, Homebrew, changelog.
+- `zmx.md`: native zmx wrapping, session keys, wrap decisions, lifecycle traps, foreground resolution.
 - `fork-rebase.md`: rebasing this fork onto upstream, the gate set, the files that keep colliding.
