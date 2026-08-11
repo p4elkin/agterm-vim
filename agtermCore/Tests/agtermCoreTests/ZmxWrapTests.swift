@@ -7,12 +7,13 @@ struct ZmxWrapTests {
     private let zmx = "/opt/homebrew/bin/zmx"
     private let shell = "/bin/zsh"
 
-    private func inputs(role: ZmxSessionKey.Role = .left, existingKey: String? = nil, command: String? = nil,
-                        keepShellOpen: Bool = false, zmxPath: String? = "/opt/homebrew/bin/zmx",
-                        budgetReason: String? = nil, isolated: Bool = false) -> ZmxWrap.Inputs {
-        ZmxWrap.Inputs(sessionID: id, role: role, existingKey: existingKey, pinnedCommand: command,
-                       keepShellOpen: keepShellOpen, shell: shell, zmxPath: zmxPath, budgetReason: budgetReason,
-                       isolatedStateDir: isolated)
+    private func inputs(role: ZmxSessionKey.Role = .left, existingKey: String? = nil, siblingKey: String? = nil,
+                        command: String? = nil, keepShellOpen: Bool = false,
+                        zmxPath: String? = "/opt/homebrew/bin/zmx", budgetReason: String? = nil,
+                        isolated: Bool = false) -> ZmxWrap.Inputs {
+        ZmxWrap.Inputs(sessionID: id, role: role, existingKey: existingKey, siblingKey: siblingKey,
+                       pinnedCommand: command, keepShellOpen: keepShellOpen, shell: shell, zmxPath: zmxPath,
+                       budgetReason: budgetReason, isolatedStateDir: isolated)
     }
 
     private func wrapped(_ decision: ZmxWrap.Decision) -> (command: String, key: String)? {
@@ -106,6 +107,29 @@ struct ZmxWrapTests {
         #expect(argv(of: result?.command ?? "") == [zmx, "attach", promoted])
     }
 
+    /// ⚠️ The re-split after a promotion: the main pane holds `-right`, so deriving `-right` for the new
+    /// split would put both panes on one daemon and let an `exit` in either end the agent in both.
+    @Test func aKeyTheSiblingPaneOwnsIsNeverDerived() {
+        let promoted = "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-right"
+        let reason = unwrappedReason(ZmxWrap.decide(inputs(role: .right, siblingKey: promoted)))
+        #expect(reason?.contains(promoted) == true)
+        #expect(wrapped(ZmxWrap.decide(inputs(role: .right, siblingKey: promoted))) == nil)
+    }
+
+    /// The same collision arriving from a snapshot that already holds it, so a row persisted by an older
+    /// build cannot bring two panes back onto one daemon.
+    @Test func aRecordedKeyTheSiblingPaneOwnsIsRefusedToo() {
+        let shared = "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-right"
+        #expect(wrapped(ZmxWrap.decide(inputs(role: .left, existingKey: shared, siblingKey: shared))) == nil)
+        #expect(wrapped(ZmxWrap.decide(inputs(role: .right, existingKey: shared, siblingKey: shared))) == nil)
+    }
+
+    @Test func aSiblingKeyOfTheOtherRoleLeavesTheWrapAlone() {
+        let left = "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left"
+        #expect(wrapped(ZmxWrap.decide(inputs(role: .right, siblingKey: left)))?.key
+                == "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-right")
+    }
+
     @Test func aRecordedKeyOfAnotherSessionIsRefused() {
         let foreign = "\(UUID().uuidString)-left"
         for bogus in [foreign, "not-a-key", ""] {
@@ -166,8 +190,9 @@ struct ZmxWrapTests {
     @Test func shellPathWithASpaceStaysOneArgument() {
         let spaced = "/opt/my shells/zsh"
         let decision = ZmxWrap.decide(ZmxWrap.Inputs(sessionID: id, role: .left, existingKey: nil,
-                                                     pinnedCommand: "claude", keepShellOpen: true, shell: spaced,
-                                                     zmxPath: zmx, budgetReason: nil, isolatedStateDir: false))
+                                                     siblingKey: nil, pinnedCommand: "claude",
+                                                     keepShellOpen: true, shell: spaced, zmxPath: zmx,
+                                                     budgetReason: nil, isolatedStateDir: false))
         let parts = argv(of: wrapped(decision)?.command ?? "")
         #expect(parts.count == 6)
         #expect(parts[3] == spaced)

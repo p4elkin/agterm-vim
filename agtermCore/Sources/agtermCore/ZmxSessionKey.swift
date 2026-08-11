@@ -16,6 +16,14 @@ public enum ZmxSessionKey {
     /// Recognized by `isOwned` so the reaper can end one, never produced by `key`.
     static let legacyRoleNames = ["scratch", "overlay"]
 
+    /// Every role suffix `isOwned` accepts, so a scanner looking for keys inside other text asks one place
+    /// which endings can finish one.
+    static let ownedRoleNames = Role.allCases.map(\.rawValue) + legacyRoleNames
+
+    /// The character count of the uuid a key starts with, for a scanner that has found the role suffix and
+    /// needs the prefix in front of it.
+    static let uuidLength = 36
+
     /// A key split back into the parts the wrap decision needs.
     public struct Parsed: Equatable, Sendable {
         public let sessionID: UUID
@@ -63,5 +71,5 @@ public enum ZmxSessionKey {
     /// Worst-case key size for `ZmxSocketBudget`'s probe: a uuid string is always 36 bytes plus a separator
     /// and the longest role. Taken over `Role.allCases` rather than written down, so adding a role fails the
     /// budget test instead of quietly eating the socket-path margin.
-    public static let maxByteCount = 36 + 1 + (Role.allCases.map { $0.rawValue.utf8.count }.max() ?? 0)
+    public static let maxByteCount = uuidLength + 1 + (Role.allCases.map { $0.rawValue.utf8.count }.max() ?? 0)
 }

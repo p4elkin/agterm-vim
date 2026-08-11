@@ -40,7 +40,13 @@ extension ZmxClient {
             },
             setLabel: { key, name in
                 guard let zmx = locateBinary() else { return }
-                _ = capture(zmx, ["set", key, "agterm_name=\(name)"])
+                // a pane is labelled the moment it is wrapped, which is BEFORE its own `zmx attach` has
+                // created the session, and `zmx set` on a session that is not there yet exits non-zero. Retry
+                // briefly rather than leave every never-renamed row showing a bare uuid in `zmx list`.
+                for attempt in 0..<labelAttempts {
+                    if attempt > 0 { Thread.sleep(forTimeInterval: labelRetryInterval) }
+                    if capture(zmx, ["set", key, "agterm_name=\(name)"]) != nil { return }
+                }
             },
             kill: { key in
                 guard let zmx = locateBinary() else { return }
@@ -71,6 +77,12 @@ extension ZmxClient {
 
     /// How long an abandoned child gets to honour SIGTERM before SIGKILL frees the drain thread.
     static let terminateGrace: TimeInterval = 1
+
+    /// How many times a label is attempted, and how long apart. The first attempt races the pane's own
+    /// `zmx attach`, so the run has to cover a session that takes a moment to exist; every attempt after the
+    /// successful one is skipped, so a rename still costs exactly one call.
+    static let labelAttempts = 5
+    static let labelRetryInterval: TimeInterval = 0.4
 
     /// Run a zmx subcommand and return its stdout, or nil when it could not be spawned, overran the timeout,
     /// or exited non-zero. stdout is drained on another queue: a full pipe buffer blocks the child, and the
@@ -153,11 +165,14 @@ struct ZmxWrapping: Sendable {
     /// The command this pane should run instead of what it would have run, or nil to leave it exactly as it
     /// is. Every nil is a normal outcome — no binary, an over-budget socket path, an isolated state
     /// directory, a plain `--command` row — so the wrapping can never break a pane.
-    func command(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, pinnedCommand: String?,
-                 keepShellOpen: Bool) -> Wrapped? {
+    /// `keys` is `Session.zmxKeys(for:)`, taken whole rather than as two arguments so the pane's own key and
+    /// its sibling's cannot be handed over the wrong way round.
+    func command(sessionID: UUID, role: ZmxSessionKey.Role, keys: (own: String?, sibling: String?),
+                 pinnedCommand: String?, keepShellOpen: Bool) -> Wrapped? {
         let probe = ZmxSocketBudget.probe(env: env, keyByteCount: ZmxSessionKey.maxByteCount)
-        let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, existingKey: existingKey,
-                                    pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen, shell: shell,
+        let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, existingKey: keys.own,
+                                    siblingKey: keys.sibling, pinnedCommand: pinnedCommand,
+                                    keepShellOpen: keepShellOpen, shell: shell,
                                     zmxPath: client.locate(), budgetReason: probe,
                                     isolatedStateDir: env["AGTERM_STATE_DIR"] != nil)
         let pane = "\(sessionID.uuidString)-\(role.rawValue)"
@@ -202,13 +217,13 @@ struct ZmxWrapping: Sendable {
             // absent from the listing and so cannot be reaped, while the other order would see its daemon
             // without seeing the snapshot that claims it.
             guard let listing = client.list() else { return }
-            guard let snapshots = ZmxReaper.persistedSnapshots(directory: directory) else {
+            guard let claimed = ZmxReaper.persistedClaim(directory: directory) else {
                 // one unreadable window file turns the whole reap off, which is the safe answer but an
                 // invisible one: without this the daemons pile up with nothing to explain why.
                 logger.notice("skipping the zmx reap: the persisted window claim could not be read")
                 return
             }
-            for key in ZmxReaper.orphans(in: listing, claimed: ZmxReaper.claimedKeys(from: snapshots)) {
+            for key in ZmxReaper.orphans(in: listing, claimed: claimed) {
                 logger.info("reaping orphaned zmx session \(key, privacy: .public)")
                 client.kill(key)
             }

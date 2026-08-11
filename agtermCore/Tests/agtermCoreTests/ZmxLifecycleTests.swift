@@ -24,6 +24,20 @@ struct ZmxLifecycleTests {
         ZmxLifecycle.Row(primaryKey: primary, splitKey: split)
     }
 
+    /// One surface build, as `agtermApp`'s factories perform it: decide from the keys the row already holds,
+    /// then record what was wrapped. Returns the key the pane took, nil when it was left a plain shell.
+    @discardableResult
+    private func buildPane(_ store: AppStore, _ session: Session, role: ZmxSessionKey.Role) -> String? {
+        let keys = session.zmxKeys(for: role)
+        let inputs = ZmxWrap.Inputs(sessionID: session.id, role: role, existingKey: keys.own,
+                                    siblingKey: keys.sibling, pinnedCommand: nil, keepShellOpen: false,
+                                    shell: "/bin/zsh", zmxPath: "/opt/homebrew/bin/zmx", budgetReason: nil,
+                                    isolatedStateDir: false)
+        guard case let .wrap(_, key) = ZmxWrap.decide(inputs) else { return nil }
+        store.recordZmxSession(key, role: role, forSession: session)
+        return key
+    }
+
     /// A session whose panes were wrapped, as the surface factories leave it.
     @discardableResult
     private func wrapSession(_ session: Session, split: Bool = false) -> Session {
@@ -159,6 +173,47 @@ struct ZmxLifecycleTests {
         store.closePrimaryPane(session.id)
         store.renameSession(session.id, to: "rebase")
         #expect(spy.labelled.map(\.key) == ["\(session.id.uuidString)-right"])
+    }
+
+    // MARK: - what a surface build records
+
+    /// ⚠️ Command-D after a promotion. The main pane is a live client of `-right`, so the split factory must
+    /// not derive `-right` a second time: both panes would drive one terminal and an `exit` in either would
+    /// end the agent in both. A restart replays the same decision off the snapshot, so it must hold there too.
+    @Test func aReSplitAfterAPromotionNeverTakesTheMainPanesKey() {
+        let store = makeStore(zmx: ZmxSinkSpy().sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        buildPane(store, session, role: .left)
+        buildPane(store, session, role: .right)
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        session.isSplit = true
+        session.hasSplit = true
+        store.closePrimaryPane(session.id)
+
+        #expect(buildPane(store, session, role: .right) == nil)
+        #expect(session.zmxPrimaryKey == "\(session.id.uuidString)-right")
+        #expect(session.zmxSplitKey == nil)
+
+        let restored = store.session(from: store.sessionSnapshot(session))
+        #expect(buildPane(store, restored, role: .left) == "\(session.id.uuidString)-right")
+        #expect(buildPane(store, restored, role: .right) == nil)
+        #expect(restored.zmxSplitKey == nil)
+    }
+
+    /// The label is not a rename-only effect: the retired `agterm-zmx-sync` is what used to keep it current,
+    /// so without this every never-renamed row shows a bare uuid in `zmx list` and the pick list.
+    @Test func wrappingAPaneLabelsItsSessionWithoutARename() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a/project")!
+        buildPane(store, session, role: .left)
+        buildPane(store, session, role: .right)
+        #expect(spy.labelled.map(\.key)
+                == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
+        #expect(spy.labelled.allSatisfy { $0.name == session.displayName })
     }
 
     // MARK: - the other teardown paths

@@ -24,6 +24,9 @@ public enum ZmxWrap {
     ///   instead of the role-derived one. A promoted split survivor is the main pane of a `-right` session, so
     ///   deriving would re-attach it to a fresh `-left` and strand the daemon holding its agent. Ignored
     ///   unless it parses as a key of THIS session, so a hand-edited snapshot cannot name a foreign socket.
+    /// - `siblingKey`: the key the row's OTHER pane owns (`Session.zmxSplitKey` when deciding for the main
+    ///   pane, `zmxPrimaryKey` when deciding for the split). A pane never takes a key its sibling holds — see
+    ///   `decide` for the promoted-row case that would otherwise put two panes on one daemon.
     /// - `pinnedCommand`: the row's `initialCommand`. nil OR blank means a plain login shell — `""` already
     ///   means "pinned to no command" elsewhere in the model (`Session.restoreCommand`).
     /// - `keepShellOpen`: run the command inside zmx's own shell so the row survives it exiting.
@@ -36,6 +39,7 @@ public enum ZmxWrap {
         public let sessionID: UUID
         public let role: ZmxSessionKey.Role
         public let existingKey: String?
+        public let siblingKey: String?
         public let pinnedCommand: String?
         public let keepShellOpen: Bool
         public let shell: String
@@ -43,12 +47,13 @@ public enum ZmxWrap {
         public let budgetReason: String?
         public let isolatedStateDir: Bool
 
-        public init(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, pinnedCommand: String?,
-                    keepShellOpen: Bool, shell: String, zmxPath: String?, budgetReason: String?,
-                    isolatedStateDir: Bool) {
+        public init(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, siblingKey: String?,
+                    pinnedCommand: String?, keepShellOpen: Bool, shell: String, zmxPath: String?,
+                    budgetReason: String?, isolatedStateDir: Bool) {
             self.sessionID = sessionID
             self.role = role
             self.existingKey = existingKey
+            self.siblingKey = siblingKey
             self.pinnedCommand = pinnedCommand
             self.keepShellOpen = keepShellOpen
             self.shell = shell
@@ -62,6 +67,12 @@ public enum ZmxWrap {
     /// creating a shell, so it becomes the session's whole process: it exits, the session ends, the client
     /// exits, and the pane has nothing left in it. `keepShellOpen` therefore hands zmx a shell and puts the
     /// command inside it.
+    ///
+    /// ⚠️ A pane is left unwrapped rather than given the key its SIBLING owns. `closePrimaryPane` promotes
+    /// the split survivor with its `-right` key into the main slot and clears `zmxSplitKey`, so the next ⌘D
+    /// derives `-right` again — two panes on one daemon, mirroring each other, and an `exit` in either ending
+    /// the agent in both. The row keeps one persistent pane and gets a plain shell for the second, which is
+    /// the same safe outcome every other rejection here produces.
     public static func decide(_ inputs: Inputs) -> Decision {
         let isSplit = inputs.role == .right
         if inputs.isolatedStateDir { return .unwrapped(reason: "AGTERM_STATE_DIR is set") }
@@ -69,6 +80,9 @@ public enum ZmxWrap {
         if let budgetReason = inputs.budgetReason { return .unwrapped(reason: budgetReason) }
 
         let key = adoptedKey(inputs) ?? ZmxSessionKey.key(sessionID: inputs.sessionID, isSplit: isSplit)
+        guard key != inputs.siblingKey else {
+            return .unwrapped(reason: "the row's other pane already owns \(key)")
+        }
         let pinned = inputs.pinnedCommand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !pinned.isEmpty else {
             return .wrap(command: CommandRestore.shellQuotedLine([zmx, "attach", key]), key: key)

@@ -248,11 +248,12 @@ struct agtermApp: App {
         // inside zmx's own shell instead. A wrapped pane drops `plan.initialInput` (the persistent session
         // already holds what was running) and `commandWait`, which held the user's OWN command at exit.
         let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .left,
-                                               existingKey: session.zmxPrimaryKey, pinnedCommand: plan.command,
+                                               keys: session.zmxKeys(for: .left), pinnedCommand: plan.command,
                                                keepShellOpen: session.keepShellOpen)
         // recorded, never re-derived: `closePrimaryPane` promotes a `-right` pane into this slot, and close,
-        // rename and the next launch's wrapper all read the key back from here.
-        if let wrapped { session.zmxPrimaryKey = wrapped.key }
+        // rename and the next launch's wrapper all read the key back from here. The same call labels the
+        // daemon, so a row that is never renamed still reads as itself in `zmx list`.
+        if let wrapped { store.recordZmxSession(wrapped.key, role: .left, forSession: session) }
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
                                       command: wrapped?.command ?? plan.command,
                                       initialInput: wrapped == nil ? plan.initialInput : nil,
@@ -408,11 +409,12 @@ struct agtermApp: App {
                                                        restoreOverride: session.takePendingRestoreOverride(pane: .right),
                                                        capturedInput: capturedInput)
         // a split never carries an `initialCommand`, so its only wrapped form is the plain `zmx attach` under
-        // the session's `right` key. See makeSurface for why a wrapped pane drops the restore input.
+        // the session's `right` key. See makeSurface for why a wrapped pane drops the restore input, and
+        // `ZmxWrap.decide` for why a row whose main pane was promoted gets a plain shell here instead.
         let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .right,
-                                               existingKey: session.zmxSplitKey, pinnedCommand: nil,
+                                               keys: session.zmxKeys(for: .right), pinnedCommand: nil,
                                                keepShellOpen: false)
-        if let wrapped { session.zmxSplitKey = wrapped.key }
+        if let wrapped { store.recordZmxSession(wrapped.key, role: .right, forSession: session) }
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
                                       fontSize: session.fontSize.map(Float.init), command: wrapped?.command,
                                       initialInput: wrapped == nil ? restoreInput : nil, env: env)

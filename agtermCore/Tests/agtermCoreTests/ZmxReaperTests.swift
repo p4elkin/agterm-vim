@@ -91,9 +91,55 @@ struct ZmxReaperTests {
         #expect(ZmxReaper.orphans(in: [], claimed: []).isEmpty)
     }
 
+    // MARK: - keys a snapshot merely mentions
+
+    /// ⚠️ The picked-row case, and the most destructive thing the reaper can get wrong. `agterm-zmx pick`
+    /// binds a row to ANOTHER row's key through its command, which this build leaves unwrapped, so the row
+    /// records no key of its own and its id derives a different one. Without the mention the daemon is
+    /// unclaimed, zero-client at launch, and killed with the detached agent inside it.
+    @Test func aForeignKeyInACommandIsClaimed() {
+        let foreign = "\(UUID().uuidString)-left"
+        let text = "zsh -lc 'zmx attach \"\(foreign)\"'"
+        #expect(ZmxReaper.keysMentioned(in: text) == [foreign])
+    }
+
+    @Test func everyOwnedRoleIsFoundInsideText() {
+        let id = UUID()
+        let text = ZmxSessionKey.ownedRoleNames.map { "attach \(id.uuidString)-\($0);" }.joined()
+        #expect(ZmxReaper.keysMentioned(in: text)
+                == Set(ZmxSessionKey.ownedRoleNames.map { "\(id.uuidString)-\($0)" }))
+    }
+
+    @Test func textWithoutAnOwnedKeyMentionsNothing() {
+        #expect(ZmxReaper.keysMentioned(in: "").isEmpty)
+        #expect(ZmxReaper.keysMentioned(in: "-left").isEmpty)
+        #expect(ZmxReaper.keysMentioned(in: "zmx attach mctl-left").isEmpty)
+        // lowercase never reads as owned, so the reaper cannot kill it and must not claim it either
+        #expect(ZmxReaper.keysMentioned(in: "zmx attach \(UUID().uuidString.lowercased())-left").isEmpty)
+    }
+
     // MARK: - the persisted claim
 
-    @Test func persistedSnapshotsReadEveryWindowFile() throws {
+    /// The whole point of scanning the stored text: a row whose command names another row's session keeps
+    /// that daemon alive across a launch, in every field a command can be persisted in.
+    @Test func theClaimSparesEveryPersistedForeignBinding() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let windows = directory.appendingPathComponent("windows", isDirectory: true)
+        let picked = "\(UUID().uuidString)-left"
+        let restored = "\(UUID().uuidString)-right"
+        let captured = "\(UUID().uuidString)-left"
+        var row = session(UUID())
+        row.initialCommand = "zsh -lc 'zmx attach \"\(picked)\"'"
+        row.restoreCommand = "zmx attach \(restored)"
+        row.foregroundCommand = ["zmx", "attach", captured]
+        try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(snapshot([row]))
+        let claimed = try #require(ZmxReaper.persistedClaim(directory: directory))
+        let listing = [entry(picked, clients: 0), entry(restored, clients: 0), entry(captured, clients: 0)]
+        #expect(ZmxReaper.orphans(in: listing, claimed: claimed).isEmpty)
+    }
+
+    @Test func theClaimReadsEveryWindowFile() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let windows = directory.appendingPathComponent("windows", isDirectory: true)
@@ -101,9 +147,9 @@ struct ZmxReaperTests {
         let second = UUID()
         try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(snapshot([session(first)]))
         try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(snapshot([session(second)]))
-        let snapshots = try #require(ZmxReaper.persistedSnapshots(directory: directory))
-        #expect(ZmxReaper.claimedKeys(from: snapshots).contains("\(first.uuidString)-left"))
-        #expect(ZmxReaper.claimedKeys(from: snapshots).contains("\(second.uuidString)-left"))
+        let claimed = try #require(ZmxReaper.persistedClaim(directory: directory))
+        #expect(claimed.contains("\(first.uuidString)-left"))
+        #expect(claimed.contains("\(second.uuidString)-left"))
     }
 
     /// ⚠️ The most destructive input the reaper accepts, pinned as a DECISION rather than left implicit: a
@@ -115,49 +161,48 @@ struct ZmxReaperTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let windows = directory.appendingPathComponent("windows", isDirectory: true)
         try FileManager.default.createDirectory(at: windows, withIntermediateDirectories: true)
-        let snapshots = try #require(ZmxReaper.persistedSnapshots(directory: directory))
-        #expect(snapshots.isEmpty)
+        let claimed = try #require(ZmxReaper.persistedClaim(directory: directory))
+        #expect(claimed.isEmpty)
         let live = UUID()
         let listing = [ZmxListParser.Entry(name: "\(live.uuidString)-left", clients: 0, leaderPID: 1)]
-        #expect(ZmxReaper.orphans(in: listing, claimed: ZmxReaper.claimedKeys(from: snapshots))
-                == ["\(live.uuidString)-left"])
+        #expect(ZmxReaper.orphans(in: listing, claimed: claimed) == ["\(live.uuidString)-left"])
     }
 
-    @Test func persistedSnapshotsAreUnknownWithoutAWindowsDirectory() throws {
+    @Test func theClaimIsUnknownWithoutAWindowsDirectory() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(ZmxReaper.persistedSnapshots(directory: directory) == nil)
+        #expect(ZmxReaper.persistedClaim(directory: directory) == nil)
     }
 
     /// ⚠️ One unreadable window file makes the whole claim unknown. Treating it as an empty window would
     /// leave every session it holds unclaimed, and the reap would kill their agents.
-    @Test func persistedSnapshotsAreUnknownWhenAFileDoesNotDecode() throws {
+    @Test func theClaimIsUnknownWhenAFileDoesNotDecode() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let windows = directory.appendingPathComponent("windows", isDirectory: true)
         try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(snapshot([session(UUID())]))
         try Data("{ not json".utf8).write(to: windows.appendingPathComponent("\(UUID().uuidString).json"))
-        #expect(ZmxReaper.persistedSnapshots(directory: directory) == nil)
+        #expect(ZmxReaper.persistedClaim(directory: directory) == nil)
     }
 
-    @Test func persistedSnapshotsAreUnknownOnAVersionMismatch() throws {
+    @Test func theClaimIsUnknownOnAVersionMismatch() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let windows = directory.appendingPathComponent("windows", isDirectory: true)
         var future = snapshot([session(UUID())])
         future.version = Snapshot.currentVersion + 1
         try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(future)
-        #expect(ZmxReaper.persistedSnapshots(directory: directory) == nil)
+        #expect(ZmxReaper.persistedClaim(directory: directory) == nil)
     }
 
-    @Test func persistedSnapshotsIgnoreNonSnapshotFiles() throws {
+    @Test func theClaimIgnoresNonSnapshotFiles() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let windows = directory.appendingPathComponent("windows", isDirectory: true)
         let id = UUID()
         try PersistenceStore(directory: windows, fileName: "\(UUID().uuidString).json").save(snapshot([session(id)]))
         try Data("junk".utf8).write(to: windows.appendingPathComponent(".DS_Store"))
-        let snapshots = try #require(ZmxReaper.persistedSnapshots(directory: directory))
-        #expect(ZmxReaper.claimedKeys(from: snapshots) == ["\(id.uuidString)-left", "\(id.uuidString)-right"])
+        let claimed = try #require(ZmxReaper.persistedClaim(directory: directory))
+        #expect(claimed == ["\(id.uuidString)-left", "\(id.uuidString)-right"])
     }
 }

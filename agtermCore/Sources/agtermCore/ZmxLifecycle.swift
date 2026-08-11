@@ -70,6 +70,18 @@ public struct ZmxSessionSink {
     }
 }
 
+extension Session {
+    /// The two keys a wrap decision for `role` reads: the one this pane recorded, and the one its sibling
+    /// pane holds. One function rather than two field reads at each factory, because swapping them hands a
+    /// pane the daemon the pane beside it is already attached to.
+    public func zmxKeys(for role: ZmxSessionKey.Role) -> (own: String?, sibling: String?) {
+        switch role {
+        case .left: (zmxPrimaryKey, zmxSplitKey)
+        case .right: (zmxSplitKey, zmxPrimaryKey)
+        }
+    }
+}
+
 extension ZmxLifecycle.Row {
     @MainActor public init(_ session: Session) {
         self.init(primaryKey: session.zmxPrimaryKey, splitKey: session.zmxSplitKey)
@@ -82,6 +94,20 @@ extension ZmxLifecycle.Row {
 }
 
 extension AppStore {
+    /// A pane's surface just wrapped under `key`: the row RECORDS it (see `ZmxLifecycle.Row` for why it is
+    /// never re-derived) and the daemon takes the row's display name as its `agterm_name` label.
+    ///
+    /// Labelling here rather than in `renameSession` alone is what keeps `zmx list` and the pick list
+    /// readable for a row nobody ever renamed; it also relabels every wrapped row at each launch, since a
+    /// restored pane comes back through the same factories.
+    public func recordZmxSession(_ key: String, role: ZmxSessionKey.Role, forSession session: Session) {
+        switch role {
+        case .left: session.zmxPrimaryKey = key
+        case .right: session.zmxSplitKey = key
+        }
+        zmx?.label(key, session.displayName)
+    }
+
     /// The row `ZmxLifecycle` reads, built from the live session.
     func zmxRow(_ session: Session) -> ZmxLifecycle.Row { ZmxLifecycle.Row(session) }
 

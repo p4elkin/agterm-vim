@@ -50,10 +50,27 @@ the next launch's wrapper all read it back from there.
 The reason is `closePrimaryPane`. It promotes the split survivor into the main slot, and that survivor
 stays the client of the `-right` session it attached to while the model calls it the main pane. Deriving
 `-left` from "this is the main pane" would kill the wrong daemon on close, label the wrong one on rename,
-attach a second client to the live one on the next Command-D, and re-attach the row to a fresh `-left`
-after a restart. `ZmxWrap.Inputs.existingKey` is how the recorded key gets back into the decision; it is
-refused unless it parses as a key of THAT session, so a copied snapshot cannot alias two rows onto one
-daemon.
+and re-attach the row to a fresh `-left` after a restart. `ZmxWrap.Inputs.existingKey` is how the recorded
+key gets back into the decision; it is refused unless it parses as a key of THAT session, so a copied
+snapshot cannot alias two rows onto one daemon.
+
+⚠️ Recording alone does not stop the DERIVED key of one pane from landing on the RECORDED key of the other.
+A promoted row holds `-right` in the main slot with `zmxSplitKey` nil, so the next Command-D derives
+`-right` again — two panes driving one terminal, and an `exit` in either ending the agent in both.
+`ZmxWrap.Inputs.siblingKey` closes that: a pane is left UNWRAPPED, with a plain login shell, rather than
+take the key its sibling holds. The check covers the adopted key too, so a snapshot that already carries
+the collision cannot bring it back. `Session.zmxKeys(for:)` is the one place that says which key is a
+pane's own and which is its sibling's, so a factory cannot swap them.
+
+The cost is deliberate: a promoted row's second pane is never zmx-backed again, because its main pane keeps
+`-right` for good. A plain shell there is the same safe outcome every other rejection produces, and the
+alternative — handing the new split the free `-left` — can drop the user into the daemon the exited primary
+detached from, where a later `exit` destroys the agent in it.
+
+That exited primary's own `-left` daemon is left running on purpose. Its client going away may have been a
+DETACH (`ZmxLifecycle.Close.clientExit`), so nothing may kill it. It stays claimed while the row exists,
+because the claim covers both role keys of every persisted session, and it is reaped at the first launch
+after that row is closed — the same end-of-life as any other detached session whose row is gone.
 
 ### Wrap decision
 
@@ -150,11 +167,26 @@ Rename has no zmx counterpart — zmx has no rename command — so a renamed row
 into each owned session's `agterm_name` label instead, which is what keeps `zmx list` and the pick list
 readable.
 
+A label is NOT a rename-only effect. `AppStore.recordZmxSession` both records the key and labels the
+daemon, so every wrapped pane is labelled when its surface is built and again at each launch, and the
+retired `dev.sasha.agterm-zmx-sync` is not needed to keep `zmx list` readable.
+⚠️ That first label races the pane's own `zmx attach`: `zmx set` on a session that does not exist yet exits
+1, so `ZmxClient` retries the call (`labelAttempts` times, `labelRetryInterval` apart) and stops at the
+first success. A rename therefore still costs exactly one call.
+What this does not cover is a row whose AUTOMATIC display name later follows its cwd: only a surface build
+or a rename writes the label, so the daemon keeps the name the row had when its pane was built.
+
 ### Reaping
 
 The launch reap ends detached daemons nothing claims any more. Three constraints hold it back, and each
 one is there because the failure mode is killing a live agent:
 
+- the claim covers keys a row does not own but MENTIONS. `agterm-zmx pick` binds a row to another row's
+  key through its command, and that row is a `--command` row, so it is unwrapped and records no key of its
+  own. ⚠️ `ZmxReaper.persistedClaim` therefore scans each window file's raw text for owned key shapes on top
+  of the ids it derives keys from. Without it the picked daemon is unclaimed, zero-client at launch, and
+  killed with the detached agent inside it. Scanning the text rather than named fields is deliberate: a
+  field added later is covered without anyone remembering to list it.
 - the claim comes from the snapshots persisted under `windows/`, NEVER from live windows. Restoration is
   asynchronous and a restored pane is zero-client until its client attaches, so `AppDelegate` runs the
   reap BEFORE `scheduleRestoredWindowReconciliation`. ⚠️ Moving that call later leaves every test green

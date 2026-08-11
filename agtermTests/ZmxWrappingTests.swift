@@ -19,8 +19,9 @@ final class ZmxWrappingTests: XCTestCase {
     }
 
     private func command(_ wrapping: ZmxWrapping, role: ZmxSessionKey.Role = .left, existingKey: String? = nil,
-                         pinnedCommand: String? = nil, keepShellOpen: Bool = false) -> String? {
-        wrapping.command(sessionID: sessionID, role: role, existingKey: existingKey,
+                         siblingKey: String? = nil, pinnedCommand: String? = nil,
+                         keepShellOpen: Bool = false) -> String? {
+        wrapping.command(sessionID: sessionID, role: role, keys: (existingKey, siblingKey),
                          pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen)?.command
     }
 
@@ -38,15 +39,22 @@ final class ZmxWrappingTests: XCTestCase {
     /// The factories record `key` on the session and hand it back here on the next launch, so a promoted
     /// survivor re-attaches to the `-right` daemon holding its agent rather than a fresh `-left` one.
     func testTheReportedKeyIsWhatTheFactoryMustRecord() {
-        let wrapped = wrapping().command(sessionID: sessionID, role: .left, existingKey: nil,
+        let wrapped = wrapping().command(sessionID: sessionID, role: .left, keys: (nil, nil),
                                          pinnedCommand: nil, keepShellOpen: false)
         XCTAssertEqual(wrapped?.key, leftKey)
         XCTAssertTrue(wrapped?.command.contains(leftKey) == true)
         let promoted = "\(sessionID.uuidString)-right"
-        let readBack = wrapping().command(sessionID: sessionID, role: .left, existingKey: promoted,
+        let readBack = wrapping().command(sessionID: sessionID, role: .left, keys: (promoted, nil),
                                           pinnedCommand: nil, keepShellOpen: false)
         XCTAssertEqual(readBack?.key, promoted)
         XCTAssertEqual(readBack?.command, "'\(zmx)' 'attach' '\(promoted)'")
+    }
+
+    /// ⚠️ The sibling's key has to reach the decision through this seam too, or a Command-D after a
+    /// promotion hands the new split the daemon the main pane is already a client of.
+    func testAPaneIsNotWrappedUnderTheKeyItsSiblingOwns() {
+        XCTAssertNil(command(wrapping(), role: .right, siblingKey: "\(sessionID.uuidString)-right"))
+        XCTAssertNotNil(command(wrapping(), role: .right, siblingKey: leftKey))
     }
 
     func testPinnedCommandRowIsLeftAlone() {
