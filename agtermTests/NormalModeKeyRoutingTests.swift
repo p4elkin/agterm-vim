@@ -12,6 +12,13 @@ import agtermCore
 ///
 /// The last case here is the one exit that is NOT a keystroke: a click in a terminal pane, which
 /// `GhosttySurfaceView.mouseDown` has to spell itself because nothing else sees the click.
+///
+/// ⚠️ These cases carry NO ASCII-layout skip, unlike `UndoCloseShortcutTests`. Every key code they
+/// synthesize is a `latinKey(forKeyCode:)` table position typing the letter its bind is spelled with
+/// (0→a, 1→s, 3→f, 5→g, 6→z, 12→q, 14→e, 18→1, 19→2, 34→i, 46→m) or a named key, so a layout that cannot
+/// type ASCII resolves every one of them by physical position to exactly the same chord. Skipping there
+/// hid two thirds of this suite — the whole overlay handover included — behind whichever input source
+/// happened to be selected, on the one gate `.claude/rules/fork-rebase.md` names for `handleKeyDown`.
 @MainActor
 final class NormalModeKeyRoutingTests: XCTestCase {
     private var stateDir: URL!
@@ -84,13 +91,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         try await super.tearDown()
     }
 
-    /// Skip a case whose outcome only holds while the machine's own layout can type ASCII: `chordKey` reads
-    /// the live input source, and on a non-Latin layout the chord resolves by physical position instead.
-    private func skipUnlessLayoutIsASCIICapable() throws {
-        try XCTSkipUnless(KeyboardLayout.isASCIICapable,
-                          "needs an ASCII-capable keyboard layout; chord resolution is covered in KeybindTests")
-    }
-
     /// Clicking a pane with the mode on used to leave it stuck: the pill stayed up and every bare key went to
     /// the shell, because the mode holds no first responder and nothing else observes a click. The exit sits
     /// ABOVE `mouseDown`'s surface guard, so an unrealized pane — the only pane a hosted test can build —
@@ -142,24 +142,18 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     }
 
     func testAKeyNoBindMatchesIsSwallowedRatherThanSentToTheTerminal() throws {
-        try skipUnlessLayoutIsASCIICapable()
-
         XCTAssertTrue(runner.handleKeyDown(try keyDown("z", keyCode: 6), in: window))
         XCTAssertTrue(NormalModeController.shared.isActive, "an unmatched key stays in the mode")
         XCTAssertTrue(fired.isEmpty)
     }
 
     func testABoundKeyFiresItsActionAndIsConsumed() throws {
-        try skipUnlessLayoutIsASCIICapable()
-
         XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window))
         XCTAssertEqual(fired, [.toggleSplit])
         XCTAssertTrue(NormalModeController.shared.isActive, "a fired bind leaves the mode on for the next key")
     }
 
     func testTheExitKeyLeavesTheModeAndIsConsumed() throws {
-        try skipUnlessLayoutIsASCIICapable()
-
         XCTAssertTrue(runner.handleKeyDown(try keyDown("i", keyCode: 34), in: window),
                       "the exit key itself must not reach the terminal")
         XCTAssertFalse(NormalModeController.shared.isActive)
@@ -196,7 +190,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// ⚠️ Esc on an armed leader abandons the sequence and STAYS in the mode, so it must send nothing: an
     /// Escape delivered here reaches the shell from behind a mode that is still swallowing every key.
     func testEscapeAbandoningAHalfTypedLeaderSendsNothingAndStaysInTheMode() throws {
-        try skipUnlessLayoutIsASCIICapable()
         NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "g"),
                                                                             Chord(mods: [], key: "g")],
                                                                   target: .builtin(.toggleSplit))])
@@ -225,8 +218,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// Holding a bare key is the mode's headline move — `k` held down walks back through sessions — so the
     /// repeat guard the custom-command path keeps must not sit in front of the mode.
     func testAHeldBoundKeyRepeatsItsAction() throws {
-        try skipUnlessLayoutIsASCIICapable()
-
         XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1), in: window))
         XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1, isARepeat: true), in: window))
         XCTAssertTrue(runner.handleKeyDown(try keyDown("s", keyCode: 1, isARepeat: true), in: window))
@@ -239,8 +230,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// mode is and whose order among the four `.keyDown` monitors is not controlled. `nmap` rejects them for
     /// exactly that reason, so eating one here would only make registration order decide whether they work.
     func testReservedMonitorChordsPassThroughToTheirOwnMonitors() throws {
-        try skipUnlessLayoutIsASCIICapable()
-
         XCTAssertFalse(runner.handleKeyDown(try keyDown("\t", keyCode: 48, flags: .control), in: window),
                        "⌃Tab belongs to the session switcher")
         XCTAssertFalse(runner.handleKeyDown(try keyDown("1", keyCode: 18, flags: .control), in: window),
@@ -255,7 +244,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// and they need the arrows and Return the mode swallows. An `nmap dashboard` bind opens one with the
     /// mode still on, so the gate that blocks ENTRY has to be re-read on the way in as well.
     func testAModalSurfaceEndsTheModeAndKeepsItsKeystroke() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let activeWindow = try XCTUnwrap(library.activeWindowID)
         let dashboard = DashboardController()
         dashboard.open(members: [DashboardMember(session: UUID(), surface: .primary)])
@@ -283,7 +271,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// otherwise eat every key before the overlay's pty saw one. The mode YIELDS instead of exiting, so the
     /// editor a bind opened hands the user back to the mode on quit.
     func testAProgramOverlayYieldsTheModeAndReleasesItsKeysWithoutEndingIt() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
         // the mode yields only to an overlay that APPEARED on the target the previous key saw, so this
         // session has to be that target first. `q` binds to nothing: swallowed, consumed, fires nothing.
@@ -304,7 +291,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// A HUD is a passive message panel that takes no keystrokes, so it must leave the mode driving — the
     /// yield asks `programOverlayOwnsKeyboard`, never the raw slot.
     func testAHudDoesNotYieldTheMode() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
         // the HUD has to be an APPEARANCE on the remembered target, or the key would read as an arrival and
         // this would pass however `programOverlayOwnsKeyboard` answers.
@@ -324,7 +310,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// honest state to come back to. The GLOBAL matcher's own prefix survives instead — see
     /// `testAGlobalLeaderSequenceStillCompletesWhileYielded`.
     func testAnOverlayAbandonsAHalfTypedLeader() throws {
-        try skipUnlessLayoutIsASCIICapable()
         NormalModeController.shared.rebuild(binds: [NormalModeBind(keybind: [Chord(mods: [], key: "g"),
                                                                             Chord(mods: [], key: "g")],
                                                                   target: .builtin(.toggleSplit))])
@@ -346,7 +331,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// is an arrival, not an appearance. Yielding there trapped the user — bare keys, Esc and the enter chord
     /// all went to the program, so she could neither navigate off nor leave the mode.
     func testWalkingOntoASessionWhoseOverlayIsAlreadyOpenKeepsTheKeyboard() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let (store, _) = try selectedSession()
         XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window), "remembers the target")
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
@@ -364,7 +348,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// "when the mode turns on, the keyboard is the mode's" — entering over a running overlay takes the keys,
     /// and `i` gives them back.
     func testEnteringOverALiveOverlayTakesTheKeyboard() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let (store, session) = try selectedSession()
         XCTAssertTrue(runner.handleKeyDown(try keyDown("q", keyCode: 12), in: window))
         XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
@@ -383,7 +366,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// the mode being off means. `map ctrl+space normal_mode` is the way back in, and entering resets the
     /// handover, so the key after it is the mode's again.
     func testTheEnterChordWhileYieldedReachesTheGlobalMatcherAndTakesTheKeyboardBack() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let seeded = try seededRunner(keymap: "map ctrl+space normal_mode\nnmap s toggle_split\n")
         seeded.start()
         defer { seeded.stop() }
@@ -405,7 +387,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// through reaches nothing. Dropping the yielded key is what killed ⌘⌃F for as long as an overlay held
     /// the keyboard; falling through reaches the global copy of the dispatch.
     func testTheFullScreenChordStillTogglesWhileYielded() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let recording = RecordingWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
                                         styleMask: [.titled], backing: .buffered, defer: false)
         recording.isReleasedWhenClosed = false
@@ -435,7 +416,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// Dropping the mode's leader with `abandonLeader()` reset the GLOBAL engine too, so the second chord
     /// arrived with the prefix already wiped and no `map ctrl+a>s` could ever fire under an overlay.
     func testAGlobalLeaderSequenceStillCompletesWhileYielded() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\n")
         seeded.start()
         defer { seeded.stop() }
@@ -453,11 +433,36 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(NormalModeController.shared.isActive)
     }
 
+    /// ⚠️ A key the MODE takes must also drop a global leader a yielded key armed. Cancelling the shared
+    /// timer without resetting the matcher left that prefix armed with no timeout — nothing can complete it
+    /// while the mode owns the keys — so a much later chord finished a sequence the user never started, here
+    /// the `s` she meant for the overlay's program.
+    func testAKeyTheModeTakesDropsAGlobalLeaderArmedWhileYielded() throws {
+        let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\nnmap z next_session\n")
+        seeded.start()
+        defer { seeded.stop() }
+        NormalModeController.shared.enter()
+        let (store, session) = try selectedSession()
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("q", keyCode: 12), in: window), "remembers the target")
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("a", keyCode: 0, flags: .control), in: window),
+                      "the yielded chord reaches the global matcher and arms it")
+
+        store.closeOverlay(session.id)
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("z", keyCode: 6), in: window),
+                      "the keyboard is the mode's again, so the mode takes this key")
+        XCTAssertEqual(fired, [.nextSession])
+
+        XCTAssertTrue(store.openOverlay(session.id, command: "vifm"))
+        XCTAssertFalse(seeded.handleKeyDown(try keyDown("s", keyCode: 1), in: window),
+                       "with the stale prefix gone this key is the overlay program's")
+        XCTAssertEqual(fired, [.nextSession], "no half-typed `map ctrl+a>s` may complete behind it")
+    }
+
     /// ⚠️ A Command chord passes through the mode so ⌘Q reaches the menu bar — but a custom command bound to
     /// one has no menu item waiting, exactly like `toggle_fullscreen`, so it reached nothing at all while the
     /// mode was on. The mode hands Command chords to the global matcher instead.
     func testACommandChordBoundToACustomCommandStillFiresWhileTheModeOwnsTheKeys() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let marker = stateDir.appendingPathComponent("fired.txt")
         let seeded = try seededRunner(keymap: """
         command "Marker" cmd+ctrl+m echo x >> "\(marker.path)"
@@ -535,7 +540,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     }
 
     func testABareKeyBoundToACustomCommandSpawnsItAndIsConsumed() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let marker = stateDir.appendingPathComponent("fired.txt")
         let seeded = try seededRunner(keymap: markerCommandKeymap(marker: marker))
         seeded.start()
@@ -552,7 +556,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// spawns a process, and inheriting repeats there would stack one per repeat. The guard sits inside the
     /// command case alone and still consumes the key; a built-in bind keeps repeating.
     func testHoldingACommandBindSpawnsOnceWhileAHeldBuiltinStillRepeats() throws {
-        try skipUnlessLayoutIsASCIICapable()
         let marker = stateDir.appendingPathComponent("fired.txt")
         let seeded = try seededRunner(keymap: markerCommandKeymap(marker: marker,
                                                                  extraLines: "nmap s toggle_split"))
@@ -580,7 +583,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// one per OS repeat — which is why the guard moved below the normal-mode branch instead of away. A
     /// built-in leader stands in for a custom command so the test fires an action instead of a process.
     func testTheGlobalMatcherStillIgnoresKeyRepeats() throws {
-        try skipUnlessLayoutIsASCIICapable()
         // the mode rebuilds off this same (nmap-free) file and stays off, which is the state this path needs.
         let seeded = try seededRunner(keymap: "map ctrl+a>s toggle_split\n")
         seeded.start()

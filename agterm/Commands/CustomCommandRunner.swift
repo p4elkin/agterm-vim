@@ -169,6 +169,8 @@ final class CustomCommandRunner {
                 // drop the MODE's half-typed leader only: the chord that would have completed it went to the
                 // program. `abandonLeader()` would also reset `commandEngine`, wiping a global leader armed by
                 // the previous yielded key, so no `map ctrl+a>g` sequence could ever complete while yielded.
+                // Cancelling the shared timer is safe here because the mode's leader being armed means the
+                // global one is not — arming the mode's resets it (`handleNormalModeKey`).
                 normalMode.reset()
                 cancelLeaderTimer()
             }
@@ -274,16 +276,17 @@ final class CustomCommandRunner {
         }
         switch outcome {
         case .fired(let action):
-            cancelLeaderTimer()
+            dropGlobalLeader()
             // the same seam a `.firedBuiltin` chord takes, so an `nmap` bind does exactly what the palette row
             // behind its action does, gate included.
             actions.perform(action, in: keyWindow)
             return true
         case .armed:
+            commandEngine.reset()
             startLeaderTimer()
             return true
         case .firedCommand(let id):
-            cancelLeaderTimer()
+            dropGlobalLeader()
             // the mode honors OS key repeats so a held bare key can skim sessions; a command target must NOT
             // inherit that, or holding the key spawns one process per repeat. The key stays consumed either way.
             guard !event.isARepeat else { return true }
@@ -295,11 +298,23 @@ final class CustomCommandRunner {
             }
             return true
         case .exited, .swallowed:
-            cancelLeaderTimer()
+            dropGlobalLeader()
             return true
         case .inactive:
             return false
         }
+    }
+
+    /// End any half-typed GLOBAL leader, because the mode just took a key. Both matchers CAN be armed at
+    /// once — a yielded key arms the global one while the mode is on — but a global sequence can no longer
+    /// reach its next chord once the mode owns the keys, so leaving it armed only breaks things later:
+    /// cancelling the shared timer alone strands it with no timeout, which skips `handleKeyDown`'s
+    /// `toggle_fullscreen` dispatch (guarded on `isArmed`) and lets a much later chord finish a sequence the
+    /// user never started. Resetting it wherever the mode consumes a key is what keeps `startLeaderTimer`'s
+    /// and `abandonLeader`'s "only one can be armed" true.
+    private func dropGlobalLeader() {
+        commandEngine.reset()
+        cancelLeaderTimer()
     }
 
     /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base

@@ -706,9 +706,11 @@ private func splitMapAlternatives(_ parsed: Alternatives, line: Int,
 ///
 /// Deliberately NO modifier rule, the one grammar difference from `map`: normal mode intercepts every key
 /// before the terminal sees it, so a bare `j` swallows nothing the user still wants. Reserved monitor chords
-/// stay rejected at any position — those monitors run whatever the mode is — and `normalModeExitKey` is
-/// rejected as a leading chord because it is how the user gets back out. Those chord rules are applied before
-/// the target is read, so they hold for a command target exactly as they do for a built-in one.
+/// and Command chords stay rejected at any position — the monitor never lets the MODE take either, so a bind
+/// on one could not fire and the chord would run whatever `map` or the menu bar already owns — and
+/// `normalModeExitKey` is rejected as a leading chord because it is how the user gets back out. Those chord
+/// rules are applied before the target is read, so they hold for a command target exactly as they do for a
+/// built-in one.
 ///
 /// One bind per line, through `parseKeybind` rather than `alternativeKeybinds`: `|` alternatives exist so a
 /// binding can offer a menu chord AND a monitor one, and normal mode has only the second path.
@@ -728,6 +730,12 @@ private func parseNormalModeLine(_ rest: String, line: Int, binds: inout [Parsed
     guard !keybind.contains(where: isReservedMonitorChord) else {
         diagnostics.append(KeymapDiagnostic(line: line,
                                             message: "chord '\(chordText)' is a reserved shortcut; nmap skipped"))
+        return
+    }
+    guard !keybind.contains(where: { $0.mods.contains(.command) }) else {
+        diagnostics.append(KeymapDiagnostic(
+            line: line,
+            message: "chord '\(chordText)' uses cmd, which normal mode never takes; nmap skipped"))
         return
     }
     // only as a LEADING chord: the exit key is consulted when no leader is armed, so `space>i` is unambiguous.

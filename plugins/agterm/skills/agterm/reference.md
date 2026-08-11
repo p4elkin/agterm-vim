@@ -1048,7 +1048,8 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   (names are resolved after the whole file is read) — a target matching no command is dropped with an
   `unknown command '<name>'` diagnostic on that line. `map` and `nmap` are separate namespaces, so the
   same chord may appear in both. Holding a key bound to an action repeats it; a command target runs once
-  and swallows the repeats.
+  and swallows the repeats. A chord carrying `cmd`, `ctrl+tab` or `ctrl+1`/`ctrl+2` is rejected at any
+  position: the mode never takes those, so the bind could not fire.
 
 Either verb's chord token may hold **alternatives** joined by `|`, with no spaces around it (everything
 after the first token is the shell line): `map cmd+t|ctrl+space>s toggle_split` fires the action from

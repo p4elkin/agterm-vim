@@ -145,7 +145,10 @@ paths:
   unresolved and `resolveNormalModeBinds` resolves it; the `command` may therefore sit above or below the
   `nmap` naming it. A name matching nothing is dropped with `unknown command '<name>'` on the `nmap` line,
   BEFORE the prefix pass, so it blocks no later bind. The chord rules are the target's business either
-  way: reserved monitor chords and a leading exit key stay rejected.
+  way: reserved monitor chords, any chord carrying Command, and a leading exit key stay rejected.
+  Command is rejected at any position for the same reason the reserved chords are — the monitor hands
+  every Command chord to the GLOBAL matcher, so the mode can never take one, and `nmap cmd+d new_session`
+  would silently run whatever `cmd+d` already owns.
 - **An action whose `BuiltinAction.leavesNormalMode` holds takes the mode off as it fires**, so the pane it
   just created is typed into with no `i`. The set is the four that hand over a brand-new pane:
   `new_session`, `new_window`, `new_workspace`, `duplicate_session`, pinned by `BuiltinActionTests`.
@@ -258,7 +261,10 @@ paths:
 - Do not switch the runner to `charactersIgnoringModifiers`: it breaks shifted-symbol normalization and
   still cannot test the non-Latin branch. The accessor means `undo_close` cannot match shifted
   punctuation/digits on ASCII layouts (`shift+/` parses `/`, but runtime reports `?`); shifted letters
-  work, and non-ASCII physical lookup works. Hosted tests skip when the machine layout is non-ASCII.
+  work, and non-ASCII physical lookup works. `UndoCloseShortcutTests` skips when the machine layout is
+  non-ASCII. `NormalModeKeyRoutingTests` deliberately does NOT: every key code it sends is a `latinKey`
+  table position typing the letter its bind is spelled with, so a non-ASCII layout resolves the same
+  chord by physical position, and the skip hid two thirds of that suite behind the current input source.
   After monitor changes, manually verify a letter, `cmd+r>t`, `ctrl+a>d`, and ⌘Z on isolated
   Russian-Phonetic and U.S. instances. Russian-Phonetic does not cover Greek/Hebrew punctuation, which
   host-free measured-data tests cover.

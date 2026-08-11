@@ -530,21 +530,31 @@ struct KeymapTests {
                                                           target: .builtin(.dashboard))])
     }
 
-    @Test func nmapMayRepeatALiveBuiltinMenuChord() {
+    /// The monitor hands every Command chord to the GLOBAL matcher so ⌘Q reaches the menu bar, so the mode
+    /// can never take one: `nmap cmd+d new_session` would silently run whatever `cmd+d` already owns.
+    @Test func nmapWithACommandChordIsRejected() {
         let (keymap, diagnostics) = parseKeymap("nmap cmd+d new_session")
-        #expect(diagnostics.isEmpty)
-        #expect(keymap.normalModeBinds.count == 1)
-        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.command], key: "d"))
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 1)
+        #expect(diagnostics[0].message.contains("cmd"))
+    }
+
+    @Test func nmapWithACommandChordInTheTailIsRejected() {
+        let (keymap, diagnostics) = parseKeymap("nmap g>cmd+s toggle_split")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("cmd"))
     }
 
     @Test func nmapMayRepeatAGlobalMapChordForTheSameAction() {
         let text = """
-        map cmd+shift+e toggle_split
-        nmap cmd+shift+e toggle_split
+        map ctrl+shift+e toggle_split
+        nmap ctrl+shift+e toggle_split
         """
         let (keymap, diagnostics) = parseKeymap(text)
         #expect(diagnostics.isEmpty)
-        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.command, .shift], key: "e"))
+        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.control, .shift], key: "e"))
         #expect(keymap.normalModeBinds.count == 1)
     }
 
