@@ -41,6 +41,10 @@ struct agtermApp: App {
     }
 
     init() {
+        // before any surface can spawn: an agterm launched from inside a wrapped pane inherits that pane's
+        // ZMX_SESSION, and libghostty spawns from the app's own environment, so every shell it starts would
+        // otherwise report the parent's session identity.
+        ZmxWrapping.scrubInheritedSession()
         let stateDirectory = ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? PersistenceStore.defaultDirectory
         // FIRST, before anything reads or writes the state directory: `WindowLibrary`'s bootstrap seeds a
@@ -237,9 +241,17 @@ struct agtermApp: App {
                                                   initialCommand: session.initialCommand,
                                                   restoreOverride: session.takePendingRestoreOverride(pane: .left))
         let plan = CommandRestore.restorePlan(inputs)
+        // zmx wrapping: a pane that would run a login shell instead runs `zmx attach <key>`, so its processes
+        // and scrollback outlive the app. `plan.command` is what would REPLACE that shell, so it is also what
+        // decides against wrapping — unless the row asked to keep its shell open, which runs the command
+        // inside zmx's own shell instead. A wrapped pane drops `plan.initialInput` (the persistent session
+        // already holds what was running) and `commandWait`, which held the user's OWN command at exit.
+        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .left, pinnedCommand: plan.command,
+                                               keepShellOpen: session.keepShellOpen)
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
-                                      command: plan.command, initialInput: plan.initialInput,
-                                      waitAfterCommand: session.commandWait, env: env)
+                                      command: wrapped ?? plan.command,
+                                      initialInput: wrapped == nil ? plan.initialInput : nil,
+                                      waitAfterCommand: wrapped == nil && session.commandWait, env: env)
         view.session = session
         let sessionID = session.id
         view.onExit = { [weak view] in
@@ -390,8 +402,13 @@ struct agtermApp: App {
         let restoreInput = CommandRestore.restoreInput(restoreEnabled: GhosttyApp.shared.restoreRunningCommand,
                                                        restoreOverride: session.takePendingRestoreOverride(pane: .right),
                                                        capturedInput: capturedInput)
+        // a split never carries an `initialCommand`, so its only wrapped form is the plain `zmx attach` under
+        // the session's `right` key. See makeSurface for why a wrapped pane drops the restore input.
+        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .right, pinnedCommand: nil,
+                                               keepShellOpen: false)
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
-                                      fontSize: session.fontSize.map(Float.init), initialInput: restoreInput, env: env)
+                                      fontSize: session.fontSize.map(Float.init), command: wrapped,
+                                      initialInput: wrapped == nil ? restoreInput : nil, env: env)
         view.session = session
         view.isSplitPane = true
         let sessionID = session.id

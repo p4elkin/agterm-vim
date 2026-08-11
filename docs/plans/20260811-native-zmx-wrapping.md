@@ -297,17 +297,17 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Create: `agterm/Ghostty/ZmxClient.swift`
 - Modify: `agterm/agtermApp.swift` (`makeSurface` at :216 and `makeSplitSurface` at :375, where the command is chosen)
 
-- [ ] add `ZmxClient` as a struct of `@Sendable` closures — locate the installed binary, list sessions with
+- [x] add `ZmxClient` as a struct of `@Sendable` closures — locate the installed binary, list sessions with
       client counts and leader pids, set a label, kill a session — plus a `.noop` for tests, so the decision
       logic stays in `agtermCore` and only the effects live here
-- [ ] implement the subprocess runner with a bounded timeout and drained pipes, parsing through
+- [x] implement the subprocess runner with a bounded timeout and drained pipes, parsing through
       `ZmxListParser` from task 3
-- [ ] both factories consult `ZmxWrap` from task 4 and set the surface command when it says to wrap;
+- [x] both factories consult `ZmxWrap` from task 4 and set the surface command when it says to wrap;
       `makeSplitSurface` passes the `right` role
-- [ ] over budget, no binary found, or an isolated state directory all mean a plain shell — never a broken pane
-- [ ] scrub an inherited `ZMX_SESSION` at startup so an agterm launched from inside a wrapped pane does not
+- [x] over budget, no binary found, or an isolated state directory all mean a plain shell — never a broken pane
+- [x] scrub an inherited `ZMX_SESSION` at startup so an agterm launched from inside a wrapped pane does not
       adopt its parent's session identity
-- [ ] run `cd agtermCore && swift test --filter ZmxWrapTests && make build` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxWrapTests && make build` — must pass before the next task
 
 ### Task 8: foreground resolution past the wrapper
 

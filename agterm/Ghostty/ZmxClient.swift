@@ -1,0 +1,148 @@
+import agtermCore
+import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.umputun.agterm", category: "zmx")
+
+/// The zmx effects the app performs, as closures so every decision above them stays host-free in
+/// `agtermCore` (`ZmxWrap`, `ZmxListParser`, `ZmxSocketBudget`) and only the subprocess calls live here.
+/// `.noop` is what a test injects.
+struct ZmxClient: Sendable {
+    /// The installed binary, nil when zmx is not on the widened PATH.
+    var locate: @Sendable () -> String?
+    /// `zmx list`, parsed. nil means the listing could not be READ; an empty listing parses to `[]`, and the
+    /// reaper turns on that difference.
+    var list: @Sendable () -> [ZmxListParser.Entry]?
+    /// `zmx set <key> agterm_name=<name>`. zmx has no rename, so the label is what carries a renamed row.
+    var setLabel: @Sendable (_ key: String, _ name: String) -> Void
+    /// `zmx kill <key>`, ending the session and every client attached to it.
+    var kill: @Sendable (_ key: String) -> Void
+}
+
+extension ZmxClient {
+    static let noop = ZmxClient(locate: { nil }, list: { nil }, setLabel: { _, _ in }, kill: { _ in })
+
+    static let live = ZmxClient(
+        locate: { locateBinary() },
+        list: {
+            guard let zmx = locateBinary(), let output = capture(zmx, ["list"]) else { return nil }
+            return ZmxListParser.parse(output)
+        },
+        setLabel: { key, name in
+            guard let zmx = locateBinary() else { return }
+            _ = capture(zmx, ["set", key, "agterm_name=\(name)"])
+        },
+        kill: { key in
+            guard let zmx = locateBinary() else { return }
+            _ = capture(zmx, ["kill", key])
+        }
+    )
+
+    /// Where `zmx` is, scanned over the same widened PATH a custom command gets: the app's own PATH is
+    /// launchd's and carries no `/opt/homebrew/bin`. A stat scan rather than `which`, because a surface
+    /// factory asks this on the main actor while building a pane and must not spawn a process to answer.
+    static func locateBinary(env: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+        let manager = FileManager.default
+        for dir in CommandPath.widened(env["PATH"], bundledCLIDirectory: nil).split(separator: ":") {
+            let candidate = "\(dir)/zmx"
+            if manager.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
+    /// How long a zmx call may take before it is abandoned. Every caller has a usable answer for "nothing
+    /// came back": an unwrapped pane, an unknown client count, a label left as it was.
+    static let defaultTimeout: TimeInterval = 2
+
+    /// Run a zmx subcommand and return its stdout, or nil when it could not be spawned, overran the timeout,
+    /// or exited non-zero. stdout is drained on another queue: a full pipe buffer blocks the child, and the
+    /// thread that would drain it is the one waiting here.
+    static func capture(_ executable: String, _ arguments: [String],
+                        timeout: TimeInterval = defaultTimeout) -> String? {
+        let subcommand = arguments.first ?? ""
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            logger.error("zmx \(subcommand, privacy: .public) failed to spawn: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        // FileHandle is not Sendable; the handle is used by this closure alone, and only until it hits EOF.
+        nonisolated(unsafe) let reader = pipe.fileHandleForReading
+        let collected = OSAllocatedUnfairLock(initialState: Data())
+        let drained = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let data = reader.readDataToEndOfFile()
+            collected.withLock { $0 = data }
+            drained.signal()
+        }
+        guard drained.wait(timeout: .now() + timeout) == .success else {
+            // do NOT wait for the terminated child here: this thread is a pane being built, and a zmx that
+            // already overran its budget must not hold it any longer. Foundation reaps it.
+            process.terminate()
+            logger.error("zmx \(subcommand, privacy: .public) timed out")
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            logger.notice("zmx \(subcommand, privacy: .public) exited \(process.terminationStatus, privacy: .public)")
+            return nil
+        }
+        return String(decoding: collected.withLock { $0 }, as: UTF8.self)
+    }
+}
+
+/// Assembles `ZmxWrap.Inputs` for the two surface factories from the app's environment and the located
+/// binary, and reports the outcome to the log. A struct rather than static functions so a test can drive the
+/// same seam with an environment and a client of its own.
+struct ZmxWrapping: Sendable {
+    let env: [String: String]
+    let client: ZmxClient
+
+    /// What the surface factories use.
+    static let live = ZmxWrapping(env: ProcessInfo.processInfo.environment, client: .live)
+
+    /// The macOS default login shell, used when `$SHELL` is unset. A full path, never a basename: it is
+    /// `exec`ed inside the keep-shell-open wrapper's `-lc` script.
+    static let fallbackShell = "/bin/zsh"
+
+    /// The variable zmx exports into a session's shell, and the one an agterm launched from inside a wrapped
+    /// pane inherits. `ZMX_DIR` is deliberately NOT touched: the budget probe and every spawned `zmx` call
+    /// need whatever directory the user pinned.
+    static let inheritedSessionVariable = "ZMX_SESSION"
+
+    /// The command this pane should run instead of what it would have run, or nil to leave it exactly as it
+    /// is. Every nil is a normal outcome — no binary, an over-budget socket path, an isolated state
+    /// directory, a plain `--command` row — so the wrapping can never break a pane.
+    func command(sessionID: UUID, role: ZmxSessionKey.Role, pinnedCommand: String?,
+                 keepShellOpen: Bool) -> String? {
+        let probe = ZmxSocketBudget.probe(env: env, keyByteCount: ZmxSessionKey.maxByteCount)
+        let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, pinnedCommand: pinnedCommand,
+                                    keepShellOpen: keepShellOpen, shell: shell, zmxPath: client.locate(),
+                                    budgetReason: probe, isolatedStateDir: env["AGTERM_STATE_DIR"] != nil)
+        let pane = "\(sessionID.uuidString)-\(role.rawValue)"
+        switch ZmxWrap.decide(inputs) {
+        case .wrap(let command, let key):
+            logger.info("pane \(pane, privacy: .public) runs zmx session \(key, privacy: .public)")
+            return command
+        case .unwrapped(let reason):
+            logger.debug("pane \(pane, privacy: .public) not wrapped: \(reason, privacy: .public)")
+            return nil
+        }
+    }
+
+    private var shell: String {
+        env["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackShell
+    }
+
+    /// Drops an inherited `ZMX_SESSION`, so a pane spawned by an agterm that was itself launched from inside
+    /// a wrapped pane does not report its parent's session identity. libghostty spawns from the app's own
+    /// environment, so this has to run before any surface exists.
+    static func scrubInheritedSession() { unsetenv(inheritedSessionVariable) }
+}
