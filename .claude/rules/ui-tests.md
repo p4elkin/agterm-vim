@@ -57,6 +57,14 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   environment, not arguments, launches, and activates. Keep Settings non-restorable because reopen
   retriggers restoration. Diagnose with timed `NSApp.windows.count` logging; persistent zero means
   "never created". See [[reference_swiftui-windowgroup-no-window-xcuitest]].
+- **`launchForUITest` also sets `AGTERM_ZMX_SKIP`, and that is not optional.** A developer's login shell can
+  hand every agterm pane to a multiplexer and exit when it detaches (`zmx attach "$AGTERM_SESSION_ID-left"
+  && exit` in `~/.zprofile`), so the seeded session's shell exits about 7 seconds in, `onExit` closes the
+  session, and every `session-row` disappears with no key pressed. Only a test that idles longer than that
+  sees it, which makes it read as a defect in whatever the test did last: it cost a full session diagnosing
+  `KeymapUITests.testBuiltinSequenceClearsMenuKeyEquivalent`, whose ⌘N is inert and merely happens to
+  precede a five-second poll. The flag rides the app's own environment because the pane's shell inherits it
+  from there.
 - Use retrying `settingsControl(tab:control:)`; reopen can leave a non-key Settings window that drops the
   first tab click.
 - Add UI coverage for UI behavior. For Metal/transient state absent from AX, assert an observable side

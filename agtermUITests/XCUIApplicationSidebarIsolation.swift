@@ -20,6 +20,11 @@ extension XCUIApplication {
     /// (and any test-specific env) before calling.
     func launchForUITest(file: StaticString = #filePath, line: UInt = #line) {
         launchEnvironment["AGTERM_UITEST_FORCE_SIDEBAR_VISIBLE"] = "1"
+        // a developer's login shell may hand every agterm pane to a multiplexer and exit when that detaches
+        // (`zmx attach "$AGTERM_SESSION_ID-left" && exit` in ~/.zprofile), which closes the seeded session
+        // mid-test — measured at about 7 seconds, so only a test that idles longer than that sees it. The
+        // skip flag rides the app's own environment because the pane's shell inherits it from there.
+        launchEnvironment["AGTERM_ZMX_SKIP"] = "1"
         launchForeground(file: file, line: line)
     }
 
