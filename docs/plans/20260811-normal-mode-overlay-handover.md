@@ -153,16 +153,16 @@ reaches the global copy further down and needs no second one.
 - Create: `agtermCore/Sources/agtermCore/NormalModeOverlayHandover.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/NormalModeOverlayHandoverTests.swift`
 
-- [ ] create `NormalModeOverlayHandover` as a `public struct ... Sendable` with `isYielded`
+- [x] create `NormalModeOverlayHandover` as a `public struct ... Sendable` with `isYielded`
       `private(set)`, `reset()`, and `step(session:pane:ownsKeyboard:) -> Bool`
-- [ ] implement the four rules from Solution Overview, recording the target and ownership on every
+- [x] implement the four rules from Solution Overview, recording the target and ownership on every
       step, including the first one where the remembered target is nil (that is an arrival)
-- [ ] write tests: an overlay opening on an unchanged target yields; the yield holds while she stays;
+- [x] write tests: an overlay opening on an unchanged target yields; the yield holds while she stays;
       the overlay closing clears it
-- [ ] write tests for the arrival cases: a changed session id does not yield, a changed focused pane
+- [x] write tests for the arrival cases: a changed session id does not yield, a changed focused pane
       on the same session does not yield, and a step with nothing remembered does not yield
-- [ ] write a test that `reset()` forgets a live yield, so re-entering the mode owns the keyboard
-- [ ] run `cd agtermCore && swift test --filter NormalModeOverlayHandover` - must pass before task 2
+- [x] write a test that `reset()` forgets a live yield, so re-entering the mode owns the keyboard
+- [x] run `cd agtermCore && swift test --filter NormalModeOverlayHandover` - must pass before task 2
 
 ### Task 2: Route the key monitor through the handover
 
