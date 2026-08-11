@@ -1,4 +1,5 @@
 import agtermCore
+import os
 import XCTest
 @testable import agterm
 
@@ -118,6 +119,80 @@ final class ZmxWrappingTests: XCTestCase {
         XCTAssertNil(ZmxClient.noop.list())
         ZmxClient.noop.setLabel("key", "name")
         ZmxClient.noop.kill("key")
+    }
+
+    // MARK: - what an isolated instance may reach
+
+    /// The reap and the close/rename sink are the two effects that can touch a daemon this instance never
+    /// created, so both bypasses are driven rather than read: a deployed instance ends the unclaimed daemon
+    /// and spares the claimed one, and the same call under `AGTERM_STATE_DIR` touches nothing.
+    func testReapEndsOnlyAnUnclaimedDaemonAndNothingAtAllWhenIsolated() throws {
+        let directory = try makeTemporaryDirectory()
+        let claimed = UUID()
+        let orphan = UUID()
+        let session = SessionSnapshot(id: claimed, customName: nil, cwd: "/a")
+        let snapshot = Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [session])])
+        try PersistenceStore(directory: directory.appendingPathComponent("windows", isDirectory: true),
+                             fileName: "\(UUID().uuidString).json").save(snapshot)
+        let listing = [ZmxListParser.Entry(name: "\(claimed.uuidString)-left", clients: 0, leaderPID: 1),
+                       ZmxListParser.Entry(name: "\(orphan.uuidString)-left", clients: 0, leaderPID: 2)]
+
+        let killed = KillLog()
+        var client = ZmxClient.noop
+        client.locate = { "/opt/homebrew/bin/zmx" }
+        client.list = { listing }
+        client.kill = { killed.record($0) }
+
+        ZmxWrapping(env: ["SHELL": "/bin/zsh"], client: client).reapOrphanedSessions(directory: directory)
+        killed.waitForOneCall()
+        XCTAssertEqual(killed.keys, ["\(orphan.uuidString)-left"])
+
+        let isolated = ZmxWrapping(env: ["SHELL": "/bin/zsh", "AGTERM_STATE_DIR": directory.path], client: client)
+        isolated.reapOrphanedSessions(directory: directory)
+        killed.waitForNothingMore()
+        XCTAssertEqual(killed.keys, ["\(orphan.uuidString)-left"])
+    }
+
+    @MainActor
+    func testTheSessionSinkOfAnIsolatedInstanceEndsAndLabelsNothing() {
+        let killed = KillLog()
+        var client = ZmxClient.noop
+        client.kill = { killed.record($0) }
+        client.setLabel = { key, _ in killed.record(key) }
+
+        let isolated = ZmxWrapping(env: ["AGTERM_STATE_DIR": "/tmp/agterm-test"], client: client).sessionSink
+        isolated.end(leftKey)
+        isolated.label(leftKey, "work")
+        killed.waitForNothingMore()
+        XCTAssertTrue(killed.keys.isEmpty)
+
+        ZmxWrapping(env: [:], client: client).sessionSink.end(leftKey)
+        killed.waitForOneCall()
+        XCTAssertEqual(killed.keys, [leftKey])
+    }
+
+    /// Both effects run off the main actor, so the keys arrive on another thread. Polled rather than waited
+    /// on: a semaphore here is the caller's user-interactive thread blocking on a utility one, which the
+    /// thread performance checker reports as a priority inversion on every run.
+    private final class KillLog: Sendable {
+        private let recorded = OSAllocatedUnfairLock(initialState: [String]())
+
+        var keys: [String] { recorded.withLock { $0 } }
+
+        func record(_ key: String) { recorded.withLock { $0.append(key) } }
+
+        func waitForOneCall(file: StaticString = #filePath, line: UInt = #line) {
+            let deadline = Date().addingTimeInterval(2)
+            while keys.isEmpty, Date() < deadline { usleep(5_000) }
+            XCTAssertFalse(keys.isEmpty, "no zmx call arrived", file: file, line: line)
+        }
+
+        /// A bypassed call gets the same window to land in before it counts as never having happened.
+        func waitForNothingMore(file: StaticString = #filePath, line: UInt = #line) {
+            let settled = keys
+            usleep(300_000)
+            XCTAssertEqual(keys, settled, "an isolated instance called zmx", file: file, line: line)
+        }
     }
 
     // MARK: - the inherited session scrub

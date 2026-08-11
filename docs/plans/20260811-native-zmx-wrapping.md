@@ -371,15 +371,15 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 ### Task 11: Verify acceptance criteria
 
-- [ ] verify every Overview requirement: a plain row is wrapped, `tree` reports the real program, a row close
+- [x] verify every Overview requirement: a plain row is wrapped, `tree` reports the real program, a row close
       ends its session, a window close does not, a keep-shell-open row survives its command exiting
-- [ ] verify the edge cases: split panes get the `right` key, scratch and overlay are never wrapped, an
+- [x] verify the edge cases: split panes get the `right` key, scratch and overlay are never wrapped, an
       isolated instance wraps nothing and reaps nothing, an over-budget socket path falls back to a plain shell
-- [ ] verify backward compatibility: a legacy snapshot decodes, and a tree with no keep-shell-open session
+- [x] verify backward compatibility: a legacy snapshot decodes, and a tree with no keep-shell-open session
       serialises exactly as before
-- [ ] run the full host-free suite: `cd agtermCore && swift test`
-- [ ] run the hosted control round-trip: `make test-app`
-- [ ] run `make lint` — zero findings required
+- [x] run the full host-free suite: `cd agtermCore && swift test`
+- [x] run the hosted control round-trip: `make test-app`
+- [x] run `make lint` — zero findings required
 
 ### Task 12: [Final] Update documentation
 
