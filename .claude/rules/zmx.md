@@ -92,6 +92,12 @@ combination. Store this flag on the session for both tree read-back and wrap dec
 The command and the `exec` tail are separated by a NEWLINE, not `; ` — a pinned command ending in a `#`
 comment would otherwise swallow the tail and the row would vanish exactly as it does without the flag.
 
+⚠️ Open question: a restored keep-shell-open row hands that same `-lc` script to a zmx session that already
+exists. `zmx attach <name> [command...]` is documented as "attach to session, creating if needed" with the
+command used INSTEAD of creating a shell, which reads as create-time only — but nothing in code, tests or
+the manual checklist confirms that a second attach with a command is a no-op. If it is not, such a row
+re-runs its command inside the live session on every launch.
+
 ### Isolated instance bypass
 
 When `AGTERM_STATE_DIR` is set, three things are turned off: wrapping (panes run plain shells),
@@ -129,6 +135,11 @@ good and ends their keys, taken from the live store when open and from the persi
 
 The GUI close path is soft close followed by a grace period, then `hardFinalizePendingSession`
 (not `closeSession`). This trap also applies to workspace closes routed through pending cleanup.
+
+⚠️ The close/rename sink hands `zmx kill`/`zmx set` to a background queue so a timing-out zmx cannot hold
+the main actor. At ⌘Q that means a row closed moments earlier can lose the race with the app's own exit and
+leave its daemon behind until the next launch's reap. Accepted: a two-second main-actor stall on every close
+is the alternative, and a leaked daemon is the recoverable side.
 
 Rename has no zmx counterpart — zmx has no rename command — so a renamed row writes its display name
 into each owned session's `agterm_name` label instead, which is what keeps `zmx list` and the pick list
