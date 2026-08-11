@@ -65,6 +65,17 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   `KeymapUITests.testBuiltinSequenceClearsMenuKeyEquivalent`, whose ⌘N is inert and merely happens to
   precede a five-second poll. The flag rides the app's own environment because the pane's shell inherits it
   from there.
+- ⚠️ **The UI suite requires an ASCII-capable input source, and the machine's can change under you.**
+  XCUITest resolves `typeKey("s")` through the LIVE input source, so on a Russian/Greek/Hebrew layout the
+  synthesized event no longer carries the physical key the app resolves chords by (issue #306 policy, see
+  [[keymap]]), and every letter chord dies six `pressUntil` retries later. Named keys are unaffected, so
+  ⌃␣ still enters normal mode while `nmap s` never fires, and ⌃A>S never completes: it reads as a broken
+  keymap, or as whatever else changed that day. `launchForUITest` now fails immediately instead, and
+  `UndoCloseShortcutTests` skips on the same reading. Measured on 2026-08-11: the same five tests, 4 green
+  under `com.apple.keylayout.US` and 2 green under `RussianWin` half an hour later, with no code between
+  them that touched dispatch. macOS remembers an input source PER APP, so merely activating an agterm
+  build that last ran under a non-Latin layout can switch the machine before a run; check with
+  `TISCopyCurrentKeyboardInputSource` rather than trusting the menu bar glyph.
 - Use retrying `settingsControl(tab:control:)`; reopen can leave a non-key Settings window that drops the
   first tab click.
 - Add UI coverage for UI behavior. For Metal/transient state absent from AX, assert an observable side
