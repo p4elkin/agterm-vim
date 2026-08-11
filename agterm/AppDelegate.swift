@@ -61,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // then re-side the config to the launch appearance, while NSApp exists and no scene has mounted —
         // a dark launch otherwise strips the env, restore replay and command off every restored surface.
         GhosttyApp.shared.syncLaunchColorScheme()
+        // before any window restores, so the claim is read from what is PERSISTED: a restored pane is
+        // zero-client until its client attaches, and reaping off live windows would kill the agents of every
+        // window that had not come back yet.
+        ZmxWrapping.live.reapOrphanedSessions()
         scheduleRestoredWindowReconciliation(reason: "did-finish-launching")
         NotificationCenter.default.addObserver(self, selector: #selector(menuBeganTracking),
                                                name: NSMenu.didBeginTrackingNotification, object: nil)

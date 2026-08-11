@@ -356,18 +356,18 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 **Model:** opus
 
-- [ ] add `claimedKeys(from:)` building the claimed set from every window's persisted snapshot across the whole
+- [x] add `claimedKeys(from:)` building the claimed set from every window's persisted snapshot across the whole
       library, both panes of every session
-- [ ] add `orphans(in:claimed:)` selecting only owned names with a client count of exactly zero that are absent
+- [x] add `orphans(in:claimed:)` selecting only owned names with a client count of exactly zero that are absent
       from the claimed set; an unknown count is never an orphan
-- [ ] ⚠️ run the reap only after the complete claimed set is assembled, never per window. Window restoration is
+- [x] ⚠️ run the reap only after the complete claimed set is assembled, never per window. Window restoration is
       asynchronous and a restored session is zero-client until it attaches, so reaping early kills live agents
       belonging to windows that have not restored yet
-- [ ] ⚠️ skip the reap entirely when `AGTERM_STATE_DIR` is set, so an isolated instance can never reap the
+- [x] ⚠️ skip the reap entirely when `AGTERM_STATE_DIR` is set, so an isolated instance can never reap the
       deployed app's detached daemons
-- [ ] write tests: the claimed set across a multi-window snapshot including splits; orphan selection spares
+- [x] write tests: the claimed set across a multi-window snapshot including splits; orphan selection spares
       unknown counts, attached sessions, claimed names and foreign names; an empty listing yields no orphans
-- [ ] run `cd agtermCore && swift test --filter ZmxReaperTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxReaperTests` — must pass before the next task
 
 ### Task 11: Verify acceptance criteria
 

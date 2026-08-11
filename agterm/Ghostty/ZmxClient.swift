@@ -154,6 +154,28 @@ struct ZmxWrapping: Sendable {
         )
     }
 
+    /// End the detached daemons nothing claims any more: a row whose app was force-quit before its close
+    /// could end them, or one the old `~/.zprofile` hook left behind. Runs off the main actor because it
+    /// spawns `zmx list` and one `zmx kill` per orphan.
+    ///
+    /// ⚠️ Skipped entirely under `AGTERM_STATE_DIR`. An isolated instance wraps nothing, so every daemon it
+    /// can see belongs to the deployed app and killing one would end a live agent session.
+    func reapOrphanedSessions(directory: URL = PersistenceStore.defaultDirectory) {
+        guard env["AGTERM_STATE_DIR"] == nil else { return }
+        let client = client
+        DispatchQueue.global(qos: .utility).async {
+            // the listing is taken BEFORE the claimed set, never after: a row created while this runs is
+            // absent from the listing and so cannot be reaped, while the other order would see its daemon
+            // without seeing the snapshot that claims it.
+            guard let listing = client.list(),
+                  let snapshots = ZmxReaper.persistedSnapshots(directory: directory) else { return }
+            for key in ZmxReaper.orphans(in: listing, claimed: ZmxReaper.claimedKeys(from: snapshots)) {
+                logger.info("reaping orphaned zmx session \(key, privacy: .public)")
+                client.kill(key)
+            }
+        }
+    }
+
     private var shell: String {
         env["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackShell
     }
