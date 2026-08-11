@@ -124,9 +124,14 @@ process IS the zmx client, and a client exits for two reasons the app cannot tel
 ended, so there is nothing left to kill, or the user DETACHED from it, where killing would destroy the
 agent they detached to keep. `closePrimaryPane` and `closeSplitPane` therefore pass `endingZmx: false`
 into `closeSession`/`closeSplit`. The daemon a detach leaves behind is reattachable by name; an
-abandoned one is reaped at the next launch. ⚠️ That reap is also what makes "detach, close the row,
-reattach tomorrow" unsafe across a relaunch: the row is gone from the snapshot, so nothing claims the
-daemon any more.
+abandoned one is reaped at the next launch.
+
+That reap ends a detached session whose row was then closed, because the row is gone from the snapshot
+and nothing claims the daemon any more. This is ACCEPTED, decided 2026-08-11: within one launch a detach
+is safe, and losing the session on the next launch is the price of never killing a live agent on exit.
+Do not add a workaround for it in the reaper.
+The idea it leaves open, if it ever becomes annoying: a PARKED session — an explicit "keep this daemon
+without a row" claim the reaper honours, which is a claim-side feature and not a change to any close path.
 
 A closed WINDOW keeps its session ids persisted under `~/Library/Application Support/agterm/windows/`
 and does not end any zmx session, because the window reopens with them. A closed window is not
