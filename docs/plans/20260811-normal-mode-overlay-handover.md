@@ -224,15 +224,16 @@ reaches the global copy further down and needs no second one.
 - Modify: `FORK-NOTES.md` (the "A program overlay ... SUSPENDS the mode" line in "How it owns the keyboard")
 - Modify: `plugins/agterm/skills/agterm/SKILL.md` (the `**mode**` entry, around line 433)
 
-- [ ] rewrite the `keymap.md` paragraph: the mode yields only to an overlay that appears on an
+- [x] rewrite the `keymap.md` paragraph: the mode yields only to an overlay that appears on an
       unchanged target, arriving by navigation or entering the mode keeps the keyboard, and the
       yielded path falls through to the global matcher rather than dropping the key
-- [ ] update the `FORK-NOTES.md` line to the same rule, in one sentence
-- [ ] add one sentence to the bundled skill's `mode` entry, which today does not mention overlays at
+- [x] update the `FORK-NOTES.md` line to the same rule, in one sentence
+- [x] add one sentence to the bundled skill's `mode` entry, which today does not mention overlays at
       all, so an agent driving the app knows a program overlay can hold the keys
-- [ ] check `cookbook/vim-keys/README.md` — it does not mention the suspension today, so leave it
-      alone unless the rewrite makes a claim it contradicts
-- [ ] move this plan and `20260811-normal-mode-overlay-decision.md` to `docs/plans/completed/`
+- [x] check `cookbook/vim-keys/README.md` — it does not mention the suspension today, so leave it
+      alone unless the rewrite makes a claim it contradicts (checked: no overlay claim, left untouched)
+- [x] move this plan and `20260811-normal-mode-overlay-decision.md` to `docs/plans/completed/`
+      (deferred to the harness — moving mid-run breaks the later review and finalize phases)
 
 ## Post-Completion
 

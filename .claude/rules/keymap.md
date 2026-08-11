@@ -95,10 +95,21 @@ paths:
   Settings, search bar) ends the mode and passes its key through, the modal gate failing ends it the same
   way, a click in a pane ends it from `GhosttySurfaceView.mouseDown`, and the key window resigning key ends
   it from the monitor's observer.
-  A program overlay is a SUSPEND, not a fifth exit: while
-  `Session.programOverlayOwnsKeyboard` holds on the active session (the session-wide overlay or the
-  FOCUSED pane's own, never a HUD), the monitor abandons any half-typed leader and passes the key to the
-  overlay with the mode left ON, so quitting an editor opened from a bind lands back in the mode.
+  A program overlay is a YIELD, not a fifth exit, and the question is an EVENT rather than a state:
+  host-free `NormalModeOverlayHandover` remembers the keyboard target (active session id plus
+  `focusedPane`) it saw at the previous key, and the mode yields only when
+  `Session.programOverlayOwnsKeyboard` (the session-wide overlay or the FOCUSED pane's own, never a HUD)
+  turned true on that same unchanged target.
+  So an overlay opened from an `nmap` bind takes the keys at once and quitting it lands back in the mode,
+  while walking onto a session or pane whose overlay is ALREADY running is an arrival and keeps the keys,
+  so `j`/`k` carry past it instead of trapping her there.
+  Entering the mode forgets the target, which is what makes the first key after `ctrl+space` the mode's
+  even over a live overlay; `i` hands the keyboard over.
+  A yielded key abandons any half-typed leader and FALLS THROUGH to the global matcher rather than being
+  dropped, so yielded means exactly what the mode being off means: `map` binds fire, ⌘⌃F reaches its
+  dispatch, and `ctrl+space` takes the keyboard back.
+  `NormalModeController.stepOverlayHandover` advances that memory, so call it exactly once per key event,
+  after the `uiActionsEnabled` re-check and before the in-branch `toggle_fullscreen` dispatch.
   Ask that predicate, never a raw `overlayActive`, and never widen `uiActionsEnabled` instead — that gate
   also disables the menu bar and the palette.
   The focus paths carry NO normal-mode gate — `focusActiveSession`/`focusSplitPane` move focus normally, so
