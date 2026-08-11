@@ -64,7 +64,6 @@ final class CustomCommandRunner {
                 guard let self, self.normalMode.isActive else { return }
                 // both matchers, not just the timer: a yielded key arms the GLOBAL one while the mode is on,
                 // and cancelling the timer alone would leave that prefix armed with nothing to time it out.
-                // It runs BEFORE the exit so the mode's own leader is still visible to the guard.
                 self.abandonLeader()
                 self.normalMode.exit()
             }
@@ -136,8 +135,8 @@ final class CustomCommandRunner {
         // field would eat the typing — and a field is focused only because the user asked to type into it,
         // including through a mode bind that opened a palette.
         if responder is NSText {
-            if normalMode.isActive { normalMode.exit() }
             abandonLeader()
+            if normalMode.isActive { normalMode.exit() }
             return false
         }
         let focusedSurface = responder as? GhosttySurfaceView
@@ -155,8 +154,8 @@ final class CustomCommandRunner {
             // gated on this predicate already; this is the re-check for a modal opened WHILE the mode was
             // on — an `nmap dashboard` bind, or a control command.
             guard AppActions.uiActionsEnabled(for: library.activeWindowID) else {
-                normalMode.exit()
                 abandonLeader()
+                normalMode.exit()
                 return false
             }
             // a caller's program in an overlay owns the keyboard until it exits, and the mode's bare keys
@@ -248,6 +247,7 @@ final class CustomCommandRunner {
             // its bare-leader sibling `map ctrl+a>s …` already is.
             guard !modeOwnsBareKeys else {
                 commandEngine.reset()
+                cancelLeaderTimer()
                 return false
             }
             startLeaderTimer()
@@ -378,6 +378,8 @@ final class CustomCommandRunner {
 
     /// Drop a half-typed leader and its timer when focus leaves the terminal. Only one matcher can be armed,
     /// so resetting the other is a no-op.
+    /// Drop both matchers and the shared timer. Every caller that also leaves normal mode calls this FIRST:
+    /// the guard reads the mode's leader, which `normalMode.exit()` has already cleared.
     private func abandonLeader() {
         guard commandEngine.isArmed || normalMode.isArmed else { return }
         commandEngine.reset()

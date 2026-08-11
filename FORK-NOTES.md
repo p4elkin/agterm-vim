@@ -83,7 +83,8 @@ then opening a palette left its text field unable to type — and was deleted.
 
 Consequences worth knowing:
 
-- Command chords always pass through, so ⌘Q can never be swallowed and you cannot be trapped.
+- A Command chord goes to the global matcher, so ⌘⌃F and a Command-bound custom command still fire; one
+  that matches nothing passes through, so ⌘Q can never be swallowed and you cannot be trapped.
 - A focused text field passes keys through and ends the mode.
 - The mode ends on a click in a pane, on a modal taking the keyboard, and on the window resigning key.
 - A program overlay (an editor, vifm, `session.overlay.open`) that APPEARS where you already were yields

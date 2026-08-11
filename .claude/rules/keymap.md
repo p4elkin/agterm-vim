@@ -181,7 +181,8 @@ paths:
   the first chord for it lost the key AND left a prefix armed in front of the `toggle_fullscreen` dispatch,
   which is guarded on `isArmed` (`NormalModeKeyRoutingTests`
   `.testACommandLeaderThatCanNeverCompleteIsNotEatenWhileTheModeOwnsTheKeys`).
-  Such a sequence is inert while the mode is on, exactly as its bare-leader sibling `map ctrl+a>s …` is.
+  Such a sequence cannot fire while the mode is on, as its bare-leader sibling `map ctrl+a>s …` cannot —
+  but the sibling's first chord is one the mode swallows, and this one is handed back.
 - **A Command chord and a reserved monitor chord are never consumed BY THE MODE while it is on.** The monitor
   runs ahead of `performKeyEquivalent`, so consuming ⌘Q would trap the user in the mode; ctrl+tab and
   ctrl+1/2 belong to `SessionSwitcher`/`PaneShortcuts`, whose monitors run whatever the mode is and whose
