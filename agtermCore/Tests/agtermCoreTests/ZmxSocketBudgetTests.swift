@@ -33,13 +33,14 @@ struct ZmxSocketBudgetTests {
         #expect(ZmxSocketBudget.socketDir(env: ["TMPDIR": "/"], uid: 501) == "/zmx-501")
     }
 
+    /// ⚠️ The live machine has two spare bytes and no more. Anything that lengthens the directory, the key or
+    /// the safety margin silently unwraps every pane, so this pins the pair rather than the constants.
     @Test func realSetupIsUnderBudget() {
         let dir = ZmxSocketBudget.socketDir(env: ["TMPDIR": realTmp], uid: 501)
         #expect(dir.utf8.count == 56)
+        #expect(ZmxSessionKey.maxByteCount == worstCaseKey)
         #expect(ZmxSocketBudget.probe(env: ["TMPDIR": realTmp], keyByteCount: worstCaseKey, uid: 501) == nil)
-        // ZmxSessionKey.maxByteCount is 44, not 42: it reserves room for the longest role name. That lands
-        // the live directory exactly on the budget, so a wider margin would wrap nothing on this machine.
-        #expect(ZmxSocketBudget.probe(env: ["TMPDIR": realTmp], keyByteCount: 44, uid: 501) == nil)
+        #expect(dir.utf8.count + 1 + worstCaseKey == ZmxSocketBudget.maxPathByteCount - 2)
     }
 
     @Test func longZmxDirIsOverBudget() {

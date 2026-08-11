@@ -70,10 +70,14 @@ struct ZmxWrapTests {
         #expect(argv(of: result?.command ?? "").last == result?.key)
     }
 
-    @Test func scratchAndOverlayAreNeverWrapped() {
-        for role in [ZmxSessionKey.Role.scratch, .overlay] {
-            #expect(unwrappedReason(ZmxWrap.decide(inputs(role: role)))?.contains(role.rawValue) == true)
-        }
+    /// Scratch and overlay are not "never wrapped" by a rule that could be edited away — the role type has no
+    /// case for them, so their factories cannot ask for a key. What stays testable is that the reaper still
+    /// recognizes a daemon the outside tooling left under one of those names.
+    @Test func scratchAndOverlayAreNotRolesAtAllButStayReapable() {
+        #expect(ZmxSessionKey.Role.allCases.map(\.rawValue) == ["left", "right"])
+        #expect(ZmxSessionKey.isOwned("\(id.uuidString)-scratch"))
+        #expect(ZmxSessionKey.isOwned("\(id.uuidString)-overlay"))
+        #expect(ZmxSessionKey.parse("\(id.uuidString)-scratch") == nil)
     }
 
     @Test func isolatedStateDirWrapsNothing() {
@@ -131,7 +135,16 @@ struct ZmxWrapTests {
         // never `zmx attach <key> <command>`: a command given to zmx REPLACES its shell and takes the
         // session down with it when it exits.
         #expect(parts == [zmx, "attach", "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left", shell, "-lc",
-                          "claude; exec '\(shell)' '-l'"])
+                          "claude\nexec '\(shell)' '-l'"])
+    }
+
+    /// A `; ` separator puts the tail inside a trailing comment and the row vanishes silently, which is the
+    /// exact failure `--keep-shell-open` exists to prevent.
+    @Test func aCommandEndingInACommentStillReachesTheExecTail() {
+        let parts = argv(of: wrapped(ZmxWrap.decide(inputs(command: "claude # notes", keepShellOpen: true)))?
+            .command ?? "")
+        #expect(parts.last?.hasSuffix("exec '\(shell)' '-l'") == true)
+        #expect(parts.last?.contains("\n") == true)
     }
 
     @Test func keepShellOpenIgnoredWithoutACommand() {
@@ -146,7 +159,7 @@ struct ZmxWrapTests {
         // the outer level yields the script verbatim: nothing in the command was expanded or re-escaped on
         // the way through, so the `-lc` shell is the first and only thing that evaluates it.
         #expect(parts.count == 6)
-        #expect(parts[5] == "\(command); exec '\(shell)' '-l'")
+        #expect(parts[5] == "\(command)\nexec '\(shell)' '-l'")
         #expect(parts[5].hasPrefix(command))
     }
 
@@ -158,7 +171,7 @@ struct ZmxWrapTests {
         let parts = argv(of: wrapped(decision)?.command ?? "")
         #expect(parts.count == 6)
         #expect(parts[3] == spaced)
-        #expect(parts[5] == "claude; exec '\(spaced)' '-l'")
+        #expect(parts[5] == "claude\nexec '\(spaced)' '-l'")
     }
 
     @Test func zmxPathWithASpaceStaysOneArgument() {

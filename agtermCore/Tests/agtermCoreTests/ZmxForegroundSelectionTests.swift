@@ -55,6 +55,24 @@ struct ZmxForegroundSelectionTests {
         #expect(ZmxForegroundSelection.decide(argv: wrapperArgv, listing: unplaceable) == .keepArgv)
     }
 
+    /// `ForegroundProcess` compares this against the pane's OWN recorded key, so an attach to another row's
+    /// session must come back as a DIFFERENT key rather than as "a wrapper". `agterm-zmx pick` binds a row
+    /// that way, and reading it as the wrapper drops it from the restore capture.
+    @Test func anotherRowsKeyIsReportedAsItselfNotAsThisPanesWrapper() {
+        let other = "\(UUID().uuidString)-left"
+
+        #expect(ZmxForegroundSelection.wrappedKey(argv: ["zmx", "attach", other]) == other)
+        #expect(ZmxForegroundSelection.wrappedKey(argv: ["zmx", "attach", other]) != leftKey)
+    }
+
+    /// The capture normalizes argv before comparing, and `stripLoginDash` touches only a leading dash on a
+    /// login shell — never `argv[0]` of the wrapper, which would make the comparison miss.
+    @Test func normalizingTheWrapperArgvLeavesItRecognisable() {
+        #expect(CommandRestore.stripLoginDash(wrapperArgv) == wrapperArgv)
+        #expect(CommandRestore.isIdleShell(argv: wrapperArgv, extra: "zsh") == false)
+        #expect(ZmxForegroundSelection.wrappedKey(argv: CommandRestore.stripLoginDash(wrapperArgv)) == leftKey)
+    }
+
     @Test func recognisesTheKeyThroughABarePathAndEitherRole() {
         let rightKey = "\(sessionID.uuidString)-right"
 

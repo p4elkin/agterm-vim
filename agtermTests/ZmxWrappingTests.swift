@@ -55,7 +55,23 @@ final class ZmxWrappingTests: XCTestCase {
 
     func testKeepShellOpenRunsTheCommandInsideZmxShell() {
         let line = command(wrapping(), pinnedCommand: "claude", keepShellOpen: true)
-        XCTAssertEqual(line, "'\(zmx)' 'attach' '\(leftKey)' '/bin/zsh' '-lc' 'claude; exec '\\''/bin/zsh'\\'' '\\''-l'\\'''")
+        XCTAssertEqual(line, "'\(zmx)' 'attach' '\(leftKey)' '/bin/zsh' '-lc' 'claude\nexec '\\''/bin/zsh'\\'' '\\''-l'\\'''")
+    }
+
+    /// ⚠️ The claim the whole flag exists for, RUN rather than spelled: the row must land at a prompt after
+    /// its command exits. The stub stands in for `zmx attach <key>`, which drops those two arguments and runs
+    /// the rest, so the assertion covers the real line including every level of quoting.
+    func testTheKeepShellOpenWrapperLeavesAShellRunningAfterTheCommand() throws {
+        let stub = try makeTemporaryDirectory().appendingPathComponent("zmx")
+        try "#!/bin/sh\nshift 2\nexec \"$@\"\n".write(to: stub, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
+        let wrapper = try XCTUnwrap(command(wrapping(env: ["SHELL": "/bin/sh"], zmxPath: stub.path),
+                                            pinnedCommand: "echo ran-the-command", keepShellOpen: true))
+
+        let output = ZmxClient.capture("/bin/sh", ["-c", "printf 'echo survived\\n' | \(wrapper)"], timeout: 10)
+
+        XCTAssertEqual(output?.contains("ran-the-command"), true, "\(output ?? "no output")")
+        XCTAssertEqual(output?.contains("survived"), true, "the shell did not outlive the command")
     }
 
     /// The fallback is the FULL path, because the wrapper `exec`s it inside its own script.
@@ -82,12 +98,15 @@ final class ZmxWrappingTests: XCTestCase {
         XCTAssertNil(command(wrapping(env: ["SHELL": "/bin/zsh", "ZMX_DIR": long])))
     }
 
-    /// The budget probe must be fed `ZmxSessionKey.maxByteCount`, not the 42 bytes a `left`/`right` key
-    /// really takes: this directory is 57 bytes, which fits at 42 and overruns at 44.
-    func testBudgetProbeUsesTheWorstCaseKeyLength() {
-        let dir = "/tmp/" + String(repeating: "z", count: 52)
-        XCTAssertEqual(dir.utf8.count, 57)
-        XCTAssertNil(command(wrapping(env: ["SHELL": "/bin/zsh", "ZMX_DIR": dir])))
+    /// The probe is fed the key length rather than a number written down beside it: at 42 bytes plus a
+    /// separator the budget breaks between a 58-byte and a 59-byte directory, and the pane must wrap on the
+    /// low side of that line and not on the high side.
+    func testBudgetIsMeasuredWithTheRealKeyLength() {
+        func directory(bytes: Int) -> String { "/tmp/" + String(repeating: "z", count: bytes - 5) }
+        let fits = directory(bytes: ZmxSocketBudget.maxPathByteCount - 1 - ZmxSessionKey.maxByteCount)
+        XCTAssertEqual(fits.utf8.count, 58)
+        XCTAssertNotNil(command(wrapping(env: ["SHELL": "/bin/zsh", "ZMX_DIR": fits])))
+        XCTAssertNil(command(wrapping(env: ["SHELL": "/bin/zsh", "ZMX_DIR": directory(bytes: 59)])))
     }
 
     // MARK: - locating the binary

@@ -15,7 +15,7 @@ final class ZmxForegroundResolver {
     /// is not re-spawned for every remaining pane in the same tree build.
     private var listing: [ZmxListParser.Entry]??
 
-    init(client: ZmxClient = .live) { self.client = client }
+    init(client: ZmxClient = .mainActorBounded) { self.client = client }
 
     /// The zmx session leader behind this pane's argv, or nil to report the argv as it is.
     func leaderPID(behind argv: [String]) -> pid_t? {

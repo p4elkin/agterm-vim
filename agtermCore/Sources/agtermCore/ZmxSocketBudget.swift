@@ -10,9 +10,9 @@ import Foundation
 public enum ZmxSocketBudget {
     /// `sockaddr_un.sun_path` is a 104-byte array on Darwin, and the path it holds is NUL-terminated.
     public static let sunPathByteLimit = 104
-    /// Held back from the limit so a path that only just fits is treated as over budget. The real setup
-    /// leaves 4 bytes of headroom (a 56-byte directory plus a 42-byte key), so this stays tiny: a larger
-    /// margin would reject a configuration that works today.
+    /// Held back from the limit so a path that only just fits is treated as over budget. The real setup needs
+    /// 99 bytes — a 56-byte directory, a separator and a 42-byte key — so it clears the resulting 101-byte
+    /// budget by 2 and no more; a larger margin would reject a configuration that works today.
     public static let safetyMarginBytes = 2
     /// The longest socket path a wrapped pane may use.
     public static var maxPathByteCount: Int { sunPathByteLimit - 1 - safetyMarginBytes }

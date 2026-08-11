@@ -22,21 +22,32 @@ struct ZmxClient: Sendable {
 extension ZmxClient {
     static let noop = ZmxClient(locate: { nil }, list: { nil }, setLabel: { _, _ in }, kill: { _ in })
 
-    static let live = ZmxClient(
-        locate: { locateBinary() },
-        list: {
-            guard let zmx = locateBinary(), let output = capture(zmx, ["list"]) else { return nil }
-            return ZmxListParser.parse(output)
-        },
-        setLabel: { key, name in
-            guard let zmx = locateBinary() else { return }
-            _ = capture(zmx, ["set", key, "agterm_name=\(name)"])
-        },
-        kill: { key in
-            guard let zmx = locateBinary() else { return }
-            _ = capture(zmx, ["kill", key])
-        }
-    )
+    static let live = makeLive(listTimeout: defaultTimeout)
+
+    /// The client a `tree` read uses. Identical but for the listing's budget: `agtermctl tree` runs on the
+    /// main actor and agent hooks call it constantly, so an unresponsive daemon may stall the UI for a
+    /// fraction of a second, never for the two seconds a background reap can afford. A listing that does not
+    /// arrive costs nothing — the pane reports its own `zmx attach` argv, today's answer.
+    static let mainActorBounded = makeLive(listTimeout: mainActorListTimeout)
+
+    static func makeLive(listTimeout: TimeInterval) -> ZmxClient {
+        ZmxClient(
+            locate: { locateBinary() },
+            list: {
+                guard let zmx = locateBinary(),
+                      let output = capture(zmx, ["list"], timeout: listTimeout) else { return nil }
+                return ZmxListParser.parse(output)
+            },
+            setLabel: { key, name in
+                guard let zmx = locateBinary() else { return }
+                _ = capture(zmx, ["set", key, "agterm_name=\(name)"])
+            },
+            kill: { key in
+                guard let zmx = locateBinary() else { return }
+                _ = capture(zmx, ["kill", key])
+            }
+        )
+    }
 
     /// Where `zmx` is, scanned over the same widened PATH a custom command gets: the app's own PATH is
     /// launchd's and carries no `/opt/homebrew/bin`. A stat scan rather than `which`, because a surface
@@ -53,6 +64,13 @@ extension ZmxClient {
     /// How long a zmx call may take before it is abandoned. Every caller has a usable answer for "nothing
     /// came back": an unwrapped pane, an unknown client count, a label left as it was.
     static let defaultTimeout: TimeInterval = 2
+
+    /// The budget for a call made from the main actor. A measured `zmx list` with 41 live sessions takes
+    /// about 11 ms, so this is two orders of magnitude of slack and still short of a visible stall.
+    static let mainActorListTimeout: TimeInterval = 0.4
+
+    /// How long an abandoned child gets to honour SIGTERM before SIGKILL frees the drain thread.
+    static let terminateGrace: TimeInterval = 1
 
     /// Run a zmx subcommand and return its stdout, or nil when it could not be spawned, overran the timeout,
     /// or exited non-zero. stdout is drained on another queue: a full pipe buffer blocks the child, and the
@@ -86,6 +104,13 @@ extension ZmxClient {
             // do NOT wait for the terminated child here: this thread is a pane being built, and a zmx that
             // already overran its budget must not hold it any longer. Foundation reaps it.
             process.terminate()
+            // a child that ignores SIGTERM keeps the pipe's write end open, and the drain closure above stays
+            // blocked on it forever — one leaked thread and one leaked Pipe per timeout. Follow up out of
+            // band so the read hits EOF; the Process object holds the pid, so it cannot have been recycled.
+            nonisolated(unsafe) let child = process
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + terminateGrace) {
+                if child.isRunning { Darwin.kill(child.processIdentifier, SIGKILL) }
+            }
             logger.error("zmx \(subcommand, privacy: .public) timed out")
             return nil
         }

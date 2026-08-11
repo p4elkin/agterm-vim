@@ -18,8 +18,8 @@ public enum ZmxWrap {
         case unwrapped(reason: String)
     }
 
-    /// - `sessionID` and `role` form the key. Only `left` and `right` are ever wrapped; a scratch or overlay
-    ///   surface is not a persistent row.
+    /// - `sessionID` and `role` form the key. `ZmxSessionKey.Role` has no scratch or overlay case, so a
+    ///   surface that is not a persistent row cannot be offered here at all.
     /// - `existingKey`: the key this pane already owns (`Session.zmxPrimaryKey`/`zmxSplitKey`), used verbatim
     ///   instead of the role-derived one. A promoted split survivor is the main pane of a `-right` session, so
     ///   deriving would re-attach it to a fresh `-left` and strand the daemon holding its agent. Ignored
@@ -63,9 +63,7 @@ public enum ZmxWrap {
     /// exits, and the pane has nothing left in it. `keepShellOpen` therefore hands zmx a shell and puts the
     /// command inside it.
     public static func decide(_ inputs: Inputs) -> Decision {
-        guard let isSplit = splitFlag(for: inputs.role) else {
-            return .unwrapped(reason: "a \(inputs.role.rawValue) surface is never zmx-backed")
-        }
+        let isSplit = inputs.role == .right
         if inputs.isolatedStateDir { return .unwrapped(reason: "AGTERM_STATE_DIR is set") }
         guard let zmx = inputs.zmxPath, !zmx.isEmpty else { return .unwrapped(reason: "zmx is not installed") }
         if let budgetReason = inputs.budgetReason { return .unwrapped(reason: budgetReason) }
@@ -80,7 +78,10 @@ public enum ZmxWrap {
         }
         // one level of quoting per level of shell: the script is quoted as one argument here, and the `exec`
         // tail is quoted again inside it because that string is what zmx's `-lc` shell evaluates.
-        let script = "\(pinned); exec \(CommandRestore.shellQuotedLine([inputs.shell, "-l"]))"
+        //
+        // Separated by a NEWLINE, not `; ` — a pinned command ending in a `#` comment would swallow the tail
+        // on one line and the row would vanish exactly as it does without the flag.
+        let script = "\(pinned)\nexec \(CommandRestore.shellQuotedLine([inputs.shell, "-l"]))"
         return .wrap(command: CommandRestore.shellQuotedLine([zmx, "attach", key, inputs.shell, "-lc", script]),
                      key: key)
     }
@@ -92,14 +93,5 @@ public enum ZmxWrap {
         guard let existing = inputs.existingKey,
               ZmxSessionKey.parse(existing)?.sessionID == inputs.sessionID else { return nil }
         return existing
-    }
-
-    /// The two panes of a real row, as `ZmxSessionKey.key` wants them; nil for a role that is never wrapped.
-    private static func splitFlag(for role: ZmxSessionKey.Role) -> Bool? {
-        switch role {
-        case .left: false
-        case .right: true
-        case .scratch, .overlay: nil
-        }
     }
 }

@@ -19,10 +19,15 @@ struct ZmxSessionKeyTests {
         for role in ZmxSessionKey.Role.allCases {
             #expect(ZmxSessionKey.isOwned("\(Self.uuidText)-\(role.rawValue)"))
         }
+        for legacy in ZmxSessionKey.legacyRoleNames {
+            #expect(ZmxSessionKey.isOwned("\(Self.uuidText)-\(legacy)"))
+        }
     }
 
-    @Test func isOwnedAcceptsALowercaseUUIDSoAHandWrittenKeyStaysReapable() {
-        #expect(ZmxSessionKey.isOwned("\(Self.uuidText.lowercased())-left"))
+    /// ⚠️ A lowercase uuid parses but is not what `key` emits, so `ZmxReaper.claimedKeys` can never contain
+    /// it: accepting one would make it permanently unclaimable and reapable while a live agent runs in it.
+    @Test func isOwnedRejectsALowercaseUUIDBecauseNoClaimCanEverMatchIt() {
+        #expect(!ZmxSessionKey.isOwned("\(Self.uuidText.lowercased())-left"))
     }
 
     @Test func isOwnedRejectsForeignNames() {
