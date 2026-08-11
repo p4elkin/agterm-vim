@@ -271,6 +271,8 @@ public final class AppStore {
                                           hud: hudNode(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
+                                          keepShellOpen: (session.initialCommand != nil && session.keepShellOpen)
+                                              ? true : nil,
                                           foreground: foreground(session),
                                           splitForeground: splitForeground(session),
                                           // the PERSISTED overrides, not the transient pending payloads, so
@@ -373,7 +375,8 @@ public final class AppStore {
     /// workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
-                           name: String? = nil, wait: Bool = false, at index: Int? = nil, select: Bool = true) -> Session? {
+                           name: String? = nil, wait: Bool = false, keepShellOpen: Bool = false,
+                           at index: Int? = nil, select: Bool = true) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // cwd feeds {AGT_SESSION_PWD} through initialCwd → effectiveCwd until OSC 7 reports; name feeds
         // {AGT_SESSION_NAME}. See TerminalText.
@@ -381,6 +384,7 @@ public final class AppStore {
                               customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
         session.initialCommand = command
         session.commandWait = wait
+        session.keepShellOpen = keepShellOpen
         if let index {
             let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
             workspaces[wsIndex].sessions.insert(session, at: destination)

@@ -224,6 +224,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// closing: `session.overlay.open --wait`, and `session.new --command … --wait` (the primary session
     /// surface, held via `Session.commandWait`).
     public var wait: Bool?
+    /// For `session.new --command`, run the command inside the pane's persistent shell so the row lands at a
+    /// prompt when it exits instead of vanishing. The dispatcher rejects it without a `--command`, and rejects
+    /// it beside `wait`: that one holds a FINISHED surface at a press-any-key prompt and then closes it.
+    public var keepShellOpen: Bool?
     /// For `session.overlay.open`, the percent of the pane (1...100) a *floating* overlay panel occupies in
     /// both dimensions; omitted gives the default full-pane overlay. Also the new size for
     /// `session.overlay.resize` (mutually exclusive with `full`), and the caller's OVERRIDE of the HUD panel's
@@ -305,7 +309,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
                 noSelect: Bool? = nil,
                 text: String? = nil, select: Bool? = nil, mode: String? = nil, axis: String? = nil,
-                command: String? = nil, wait: Bool? = nil, sizePercent: Int? = nil, full: Bool? = nil,
+                command: String? = nil, wait: Bool? = nil, keepShellOpen: Bool? = nil,
+                sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, message: String? = nil, detail: String? = nil, spinner: String? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, window: String? = nil,
@@ -336,6 +341,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.axis = axis
         self.command = command
         self.wait = wait
+        self.keepShellOpen = keepShellOpen
         self.sizePercent = sizePercent
         self.full = full
         self.follow = follow
@@ -525,6 +531,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// --command … --wait`) instead of closing; nil/omitted for a plain or non-holding session. The read
     /// side of `session.new --wait`; it persists across restart, unlike an overlay's live-only wait.
     public let commandWait: Bool?
+    /// For a `--command` session, whether the command runs inside the pane's persistent shell so the row
+    /// survives it exiting (`session.new --command … --keep-shell-open`); nil/omitted otherwise. Mutually
+    /// exclusive with `commandWait` at creation, so at most one of the two is ever set.
+    public let keepShellOpen: Bool?
     /// The LIVE foreground process command (full argv) in the main pane; nil/omitted at the shell prompt —
     /// the same capture restore-running-command uses.
     public let foreground: [String]?
@@ -592,7 +602,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, paneOverlays: [String]? = nil,
                 hud: ControlHudNode? = nil, scratch: Bool = false, flagged: Bool = false,
-                commandWait: Bool? = nil,
+                commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
                 restoreCommand: String? = nil, splitRestoreCommand: String? = nil, status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
@@ -617,6 +627,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.scratch = scratch
         self.flagged = flagged
         self.commandWait = commandWait
+        self.keepShellOpen = keepShellOpen
         self.foreground = foreground
         self.splitForeground = splitForeground
         self.restoreCommand = restoreCommand

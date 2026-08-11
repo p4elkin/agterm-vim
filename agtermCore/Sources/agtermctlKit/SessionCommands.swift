@@ -29,6 +29,7 @@ struct Session: ParsableCommand {
         @Flag(name: .long, help: "With --workspace-name, create the workspace when it does not exist (reuse it otherwise).") var createWorkspace = false
         @Option(name: .long, help: "Run this command as the session's process instead of the login shell (no echoed command line; the session closes when it exits).") var command: String?
         @Flag(name: .long, help: "With --command, hold the session open after the command exits (press any key to close) instead of closing immediately.") var wait = false
+        @Flag(name: .long, help: "With --command, run it inside the session's shell so the row lands at a prompt when it exits. Excludes --wait.") var keepShellOpen = false
         @Option(name: .long, help: "Initial session name (defaults to the auto basename).") var name: String?
         @Option(name: .long, help: "Place the new session right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace, replacing --workspace.") var after: String?
         @Option(name: .long, help: "Place the new session right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
@@ -53,13 +54,21 @@ struct Session: ParsableCommand {
             if wait, command == nil {
                 throw ValidationError("--wait requires --command")
             }
+            if keepShellOpen, command == nil {
+                throw ValidationError("--keep-shell-open requires --command")
+            }
+            // both answer "the command exited" — one with a prompt that closes, one with a live shell.
+            if keepShellOpen, wait {
+                throw ValidationError("--keep-shell-open cannot be combined with --wait")
+            }
         }
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionNew, args: options.withWindow(
                 ControlArgs(name: name, cwd: cwd, workspace: workspace, workspaceName: workspaceName,
                             createWorkspace: createWorkspace ? true : nil, noSelect: noSelect ? true : nil,
-                            command: command, wait: wait ? true : nil, after: after, before: before)))
+                            command: command, wait: wait ? true : nil,
+                            keepShellOpen: keepShellOpen ? true : nil, after: after, before: before)))
         }
     }
 

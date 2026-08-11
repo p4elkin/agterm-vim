@@ -281,15 +281,15 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherTests.swift`
 - Modify: `agtermCore/Tests/agtermctlKitTests/CommandsTests.swift`
 
-- [ ] add `keepShellOpen: Bool?` to the create options, and report `keepShellOpen` on `ControlSessionNode`
-- [ ] add `--keep-shell-open` to `agtermctl session new`, and reject it without a `--command` the same way
+- [x] add `keepShellOpen: Bool?` to the create options, and report `keepShellOpen` on `ControlSessionNode`
+- [x] add `--keep-shell-open` to `agtermctl session new`, and reject it without a `--command` the same way
       `--wait` is rejected
-- [ ] ⚠️ reject `--keep-shell-open` combined with `--wait` — they are two different answers to the same
+- [x] ⚠️ reject `--keep-shell-open` combined with `--wait` — they are two different answers to the same
       problem and one row cannot have both
-- [ ] wire the flag through session creation in the dispatcher and populate the tree field from the live session
-- [ ] write dispatcher tests for the Codable round trip, the two rejections, and the tree field
-- [ ] write CLI tests for argument parsing and both error messages
-- [ ] run `cd agtermCore && swift test --filter "ControlDispatcherTests|CommandsTests"` — must pass before the next task
+- [x] wire the flag through session creation in the dispatcher and populate the tree field from the live session
+- [x] write dispatcher tests for the Codable round trip, the two rejections, and the tree field
+- [x] write CLI tests for argument parsing and both error messages
+- [x] run `cd agtermCore && swift test --filter "ControlDispatcherTests|CommandsTests"` — must pass before the next task
 
 ### Task 7: ZmxClient and applying the wrapper in both surface factories
 

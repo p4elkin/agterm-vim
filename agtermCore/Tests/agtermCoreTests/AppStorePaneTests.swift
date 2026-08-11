@@ -617,6 +617,23 @@ struct AppStorePaneTests {
         #expect(node.commandWait == nil)
     }
 
+    @Test func controlTreeReportsKeepShellOpen() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude", keepShellOpen: true)
+        var node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.keepShellOpen == true)
+        #expect(node.commandWait == nil)
+        let plain = try #require(store.addSession(toWorkspace: ws.id, cwd: "/b", command: "claude"))
+        node = try #require(store.controlTree().workspaces[0].sessions.first { $0.id == plain.id.uuidString })
+        #expect(node.keepShellOpen == nil)
+        // gated on initialCommand, exactly like commandWait: a plain shell reports nothing even when set.
+        let shell = try #require(store.addSession(toWorkspace: ws.id, cwd: "/c"))
+        shell.keepShellOpen = true
+        node = try #require(store.controlTree().workspaces[0].sessions.first { $0.id == shell.id.uuidString })
+        #expect(node.keepShellOpen == nil)
+    }
+
     @Test func controlTreeReportsOverlaySizePercent() throws {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

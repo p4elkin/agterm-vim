@@ -642,7 +642,9 @@ final class ControlServer {
         let cwd = options.cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
-                                             wait: options.wait ?? false, at: index, select: !options.noSelect) else {
+                                             wait: options.wait ?? false,
+                                             keepShellOpen: options.keepShellOpen ?? false,
+                                             at: index, select: !options.noSelect) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
         if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }
