@@ -195,14 +195,14 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 **Wave:** pure
 
-- [ ] add `ZmxSessionKey.key(sessionID:isSplit:)` returning `<uuid>-left` or `<uuid>-right`, in the exact
+- [x] add `ZmxSessionKey.key(sessionID:isSplit:)` returning `<uuid>-left` or `<uuid>-right`, in the exact
       letter case the zprofile hook produces today, so existing daemons are recognised rather than duplicated
-- [ ] add `isOwned(_:)` matching that shape, and `parse(_:)` returning the id and role for the reaper
-- [ ] add `maxByteCount` for the budget probe in task 2 to use
-- [ ] write tests for both roles, a foreign name rejected, and a round trip through `parse`
-- [ ] write a stability test: the key is identical for the same session id regardless of workspace name, so a
+- [x] add `isOwned(_:)` matching that shape, and `parse(_:)` returning the id and role for the reaper
+- [x] add `maxByteCount` for the budget probe in task 2 to use
+- [x] write tests for both roles, a foreign name rejected, and a round trip through `parse`
+- [x] write a stability test: the key is identical for the same session id regardless of workspace name, so a
       rename or a move never orphans a daemon
-- [ ] run `cd agtermCore && swift test --filter ZmxSessionKeyTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxSessionKeyTests` — must pass before the next task
 
 ### Task 2: zmx socket path budget probe
 
@@ -212,12 +212,12 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 **Wave:** pure
 
-- [ ] add `socketDir(env:)` resolving the directory the way zmx itself does, honouring `ZMX_DIR` then the
+- [x] add `socketDir(env:)` resolving the directory the way zmx itself does, honouring `ZMX_DIR` then the
       temporary directory, and deliberately **not** pinning an agterm-specific directory; say why in the doc comment
-- [ ] add `probe(env:)` returning a non-nil reason when directory plus worst-case key would exceed the
+- [x] add `probe(env:)` returning a non-nil reason when directory plus worst-case key would exceed the
       104-byte `sun_path` limit minus a small margin, else nil
-- [ ] write tests for under budget, over budget through a long `ZMX_DIR`, and a trailing slash trimmed
-- [ ] run `cd agtermCore && swift test --filter ZmxSocketBudgetTests` — must pass before the next task
+- [x] write tests for under budget, over budget through a long `ZMX_DIR`, and a trailing slash trimmed
+- [x] run `cd agtermCore && swift test --filter ZmxSocketBudgetTests` — must pass before the next task
 
 ### Task 3: zmx ls output parser
 
@@ -227,11 +227,11 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 
 **Wave:** pure
 
-- [ ] add `parse(_:)` returning entries of name, client count and session leader pid
-- [ ] a malformed or error line yields a nil client count, meaning unknown, never zero — the reaper depends on
+- [x] add `parse(_:)` returning entries of name, client count and session leader pid
+- [x] a malformed or error line yields a nil client count, meaning unknown, never zero — the reaper depends on
       this distinction
-- [ ] write tests for healthy lines, an error line, a line with no leader pid, and an empty listing
-- [ ] run `cd agtermCore && swift test --filter ZmxListParserTests` — must pass before the next task
+- [x] write tests for healthy lines, an error line, a line with no leader pid, and an empty listing
+- [x] run `cd agtermCore && swift test --filter ZmxListParserTests` — must pass before the next task
 
 ### Task 4: the wrap decision and the command it produces
 
