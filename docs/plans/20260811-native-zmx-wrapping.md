@@ -317,15 +317,15 @@ until it attaches. An unknown client count is never an orphan. The whole reap is
 - Create: `agtermCore/Sources/agtermCore/ZmxForegroundSelection.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/ZmxForegroundSelectionTests.swift`
 
-- [ ] add the pure selection logic in `agtermCore`: given a pane's immediate child argv and a parsed `zmx ls`
+- [x] add the pure selection logic in `agtermCore`: given a pane's immediate child argv and a parsed `zmx ls`
       listing, decide whether this is a wrapper and which leader pid to inspect instead
-- [ ] in `ForegroundProcess`, route through the resolver so a wrapped pane reports the real running program
+- [x] in `ForegroundProcess`, route through the resolver so a wrapped pane reports the real running program
       rather than `zmx attach`
-- [ ] cache the listing for the duration of one tree build, so a single `tree --json` does not spawn one
+- [x] cache the listing for the duration of one tree build, so a single `tree --json` does not spawn one
       subprocess per session
-- [ ] write tests for the selection logic: a wrapper is detected, a plain shell is untouched, a foreign
+- [x] write tests for the selection logic: a wrapper is detected, a plain shell is untouched, a foreign
       `zmx attach` for an unowned key is untouched, and a missing listing falls back to today's answer
-- [ ] run `cd agtermCore && swift test --filter ZmxForegroundSelectionTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter ZmxForegroundSelectionTests` — must pass before the next task
 
 ### Task 9: end the zmx session when a row really closes, and keep its label current
 

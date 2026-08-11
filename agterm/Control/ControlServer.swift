@@ -589,15 +589,18 @@ final class ControlServer {
         // the window's dashboard controller (nil until WindowContentView registers it), read LIVE for the four
         // dashboard read-backs: the keyboard-driven dashboard bypasses the command path, so a cache goes stale.
         let dashboard = DashboardControllerRegistry.shared.controller(for: windowID)
+        // one resolver for the whole build: it caches the `zmx list` subprocess both foreground closures
+        // need, so a window of wrapped panes spawns zmx once instead of once per pane.
+        let zmx = ZmxForegroundResolver()
         return store.controlTree(
             foreground: { session in
                 (session.surface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx)
                 }
             },
             splitForeground: { session in
                 (session.splitSurface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx)
                 }
             },
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },
