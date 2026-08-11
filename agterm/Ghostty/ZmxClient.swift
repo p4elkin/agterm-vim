@@ -117,22 +117,31 @@ struct ZmxWrapping: Sendable {
     /// need whatever directory the user pinned.
     static let inheritedSessionVariable = "ZMX_SESSION"
 
+    /// What a wrapped pane runs and which zmx session it thereby owns. The caller must record `key` on the
+    /// session: it is the ONLY place the ownership is decided, and re-deriving it later gets a promoted split
+    /// survivor wrong.
+    struct Wrapped {
+        let command: String
+        let key: String
+    }
+
     /// The command this pane should run instead of what it would have run, or nil to leave it exactly as it
     /// is. Every nil is a normal outcome — no binary, an over-budget socket path, an isolated state
     /// directory, a plain `--command` row — so the wrapping can never break a pane.
-    func command(sessionID: UUID, role: ZmxSessionKey.Role, pinnedCommand: String?,
-                 keepShellOpen: Bool) -> String? {
+    func command(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, pinnedCommand: String?,
+                 keepShellOpen: Bool) -> Wrapped? {
         let probe = ZmxSocketBudget.probe(env: env, keyByteCount: ZmxSessionKey.maxByteCount)
-        let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, pinnedCommand: pinnedCommand,
-                                    keepShellOpen: keepShellOpen, shell: shell, zmxPath: client.locate(),
-                                    budgetReason: probe, isolatedStateDir: env["AGTERM_STATE_DIR"] != nil)
+        let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, existingKey: existingKey,
+                                    pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen, shell: shell,
+                                    zmxPath: client.locate(), budgetReason: probe,
+                                    isolatedStateDir: env["AGTERM_STATE_DIR"] != nil)
         let pane = "\(sessionID.uuidString)-\(role.rawValue)"
         switch ZmxWrap.decide(inputs) {
         case .wrap(let command, let key):
             logger.info("pane \(pane, privacy: .public) runs zmx session \(key, privacy: .public)")
-            return command
+            return Wrapped(command: command, key: key)
         case .unwrapped(let reason):
-            logger.debug("pane \(pane, privacy: .public) not wrapped: \(reason, privacy: .public)")
+            logger.notice("pane \(pane, privacy: .public) not wrapped: \(reason, privacy: .public)")
             return nil
         }
     }

@@ -490,10 +490,16 @@ public final class WindowLibrary {
         // live store when open, the persisted snapshot when closed — else a closed window's PNGs orphan in
         // <stateDir>/watermarks/. `directory` is the same root WatermarkStorage resolves against, so passing
         // it is production-identical and lets a test sweep into an injected temp dir.
-        let sessionIDsToSweep: [UUID] = stores[id].map { $0.workspaces.flatMap(\.sessions).map(\.id) }
-            ?? persistenceStore(for: id).load().workspaces.flatMap(\.sessions).map(\.id)
-        for sessionID in sessionIDsToSweep {
-            WatermarkStorage.removeRenderedText(sessionID: sessionID, stateDir: directory)
+        let doomed: [(id: UUID, zmx: ZmxLifecycle.Row)] = stores[id]
+            .map { $0.workspaces.flatMap(\.sessions).map { ($0.id, ZmxLifecycle.Row($0)) } }
+            ?? persistenceStore(for: id).load().workspaces.flatMap(\.sessions).map { ($0.id, ZmxLifecycle.Row($0)) }
+        for session in doomed {
+            WatermarkStorage.removeRenderedText(sessionID: session.id, stateDir: directory)
+        }
+        // window DELETE is the one window path that ends zmx sessions: it destroys its rows for good, while a
+        // window CLOSE keeps their ids in `windows/<id>.json` and reopens with them.
+        if let zmx {
+            for key in doomed.flatMap({ ZmxLifecycle.keysToEnd($0.zmx, close: .row) }) { zmx.end(key) }
         }
         stores[id] = nil
         windows.remove(at: index)

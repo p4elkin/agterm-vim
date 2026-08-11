@@ -7,16 +7,22 @@ struct ZmxWrapTests {
     private let zmx = "/opt/homebrew/bin/zmx"
     private let shell = "/bin/zsh"
 
-    private func inputs(role: ZmxSessionKey.Role = .left, command: String? = nil, keepShellOpen: Bool = false,
-                        zmxPath: String? = "/opt/homebrew/bin/zmx", budgetReason: String? = nil,
-                        isolated: Bool = false) -> ZmxWrap.Inputs {
-        ZmxWrap.Inputs(sessionID: id, role: role, pinnedCommand: command, keepShellOpen: keepShellOpen,
-                       shell: shell, zmxPath: zmxPath, budgetReason: budgetReason, isolatedStateDir: isolated)
+    private func inputs(role: ZmxSessionKey.Role = .left, existingKey: String? = nil, command: String? = nil,
+                        keepShellOpen: Bool = false, zmxPath: String? = "/opt/homebrew/bin/zmx",
+                        budgetReason: String? = nil, isolated: Bool = false) -> ZmxWrap.Inputs {
+        ZmxWrap.Inputs(sessionID: id, role: role, existingKey: existingKey, pinnedCommand: command,
+                       keepShellOpen: keepShellOpen, shell: shell, zmxPath: zmxPath, budgetReason: budgetReason,
+                       isolatedStateDir: isolated)
     }
 
     private func wrapped(_ decision: ZmxWrap.Decision) -> (command: String, key: String)? {
         guard case let .wrap(command, key) = decision else { return nil }
         return (command, key)
+    }
+
+    private func unwrappedReason(_ decision: ZmxWrap.Decision) -> String? {
+        guard case let .unwrapped(reason) = decision else { return nil }
+        return reason
     }
 
     /// Split a `shellQuotedLine` back into argv the way one level of shell evaluation would, so a test can
@@ -66,19 +72,19 @@ struct ZmxWrapTests {
 
     @Test func scratchAndOverlayAreNeverWrapped() {
         for role in [ZmxSessionKey.Role.scratch, .overlay] {
-            #expect(ZmxWrap.decide(inputs(role: role)) == .unwrapped(reason: "a \(role.rawValue) surface is never zmx-backed"))
+            #expect(unwrappedReason(ZmxWrap.decide(inputs(role: role)))?.contains(role.rawValue) == true)
         }
     }
 
     @Test func isolatedStateDirWrapsNothing() {
-        #expect(ZmxWrap.decide(inputs(isolated: true)) == .unwrapped(reason: "AGTERM_STATE_DIR is set"))
-        #expect(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, isolated: true))
-                == .unwrapped(reason: "AGTERM_STATE_DIR is set"))
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(isolated: true)))?.contains("AGTERM_STATE_DIR") == true)
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, isolated: true)))?
+            .contains("AGTERM_STATE_DIR") == true)
     }
 
     @Test func missingBinaryFallsBackToAPlainShell() {
-        #expect(ZmxWrap.decide(inputs(zmxPath: nil)) == .unwrapped(reason: "zmx is not installed"))
-        #expect(ZmxWrap.decide(inputs(zmxPath: "")) == .unwrapped(reason: "zmx is not installed"))
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(zmxPath: nil)))?.contains("zmx") == true)
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(zmxPath: "")))?.contains("zmx") == true)
     }
 
     @Test func overBudgetSocketPathFallsBackAndKeepsTheReason() {
@@ -86,6 +92,22 @@ struct ZmxWrapTests {
         #expect(ZmxWrap.decide(inputs(budgetReason: reason)) == .unwrapped(reason: reason))
         #expect(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, budgetReason: reason))
                 == .unwrapped(reason: reason))
+    }
+
+    /// ⚠️ The promoted-survivor case: the pane is addressed as `left` but is a client of the `-right` session.
+    @Test func aRecordedKeyIsAdoptedInsteadOfDerivedFromTheRole() {
+        let promoted = "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-right"
+        let result = wrapped(ZmxWrap.decide(inputs(role: .left, existingKey: promoted)))
+        #expect(result?.key == promoted)
+        #expect(argv(of: result?.command ?? "") == [zmx, "attach", promoted])
+    }
+
+    @Test func aRecordedKeyOfAnotherSessionIsRefused() {
+        let foreign = "\(UUID().uuidString)-left"
+        for bogus in [foreign, "not-a-key", ""] {
+            #expect(wrapped(ZmxWrap.decide(inputs(existingKey: bogus)))?.key
+                    == "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left")
+        }
     }
 
     @Test func plainCommandRowKeepsItsOwnCommand() {
@@ -130,9 +152,9 @@ struct ZmxWrapTests {
 
     @Test func shellPathWithASpaceStaysOneArgument() {
         let spaced = "/opt/my shells/zsh"
-        let decision = ZmxWrap.decide(ZmxWrap.Inputs(sessionID: id, role: .left, pinnedCommand: "claude",
-                                                     keepShellOpen: true, shell: spaced, zmxPath: zmx,
-                                                     budgetReason: nil, isolatedStateDir: false))
+        let decision = ZmxWrap.decide(ZmxWrap.Inputs(sessionID: id, role: .left, existingKey: nil,
+                                                     pinnedCommand: "claude", keepShellOpen: true, shell: spaced,
+                                                     zmxPath: zmx, budgetReason: nil, isolatedStateDir: false))
         let parts = argv(of: wrapped(decision)?.command ?? "")
         #expect(parts.count == 6)
         #expect(parts[3] == spaced)

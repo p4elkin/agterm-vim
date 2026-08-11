@@ -20,45 +20,53 @@ struct ZmxLifecycleTests {
     private var left: String { "\(id.uuidString)-left" }
     private var right: String { "\(id.uuidString)-right" }
 
-    private func row(command: String? = nil, keepShellOpen: Bool = false, hasSplit: Bool = false) -> ZmxLifecycle.Row {
-        ZmxLifecycle.Row(sessionID: id, pinnedCommand: command, keepShellOpen: keepShellOpen, hasSplit: hasSplit)
+    private func row(primary: String? = nil, split: String? = nil) -> ZmxLifecycle.Row {
+        ZmxLifecycle.Row(primaryKey: primary, splitKey: split)
+    }
+
+    /// A session whose panes were wrapped, as the surface factories leave it.
+    @discardableResult
+    private func wrapSession(_ session: Session, split: Bool = false) -> Session {
+        session.zmxPrimaryKey = "\(session.id.uuidString)-left"
+        if split { session.zmxSplitKey = "\(session.id.uuidString)-right" }
+        return session
     }
 
     // MARK: - the predicate
 
     @Test func rowCloseEndsTheOnePaneKey() {
-        #expect(ZmxLifecycle.keysToEnd(row(), close: .row) == [left])
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left), close: .row) == [left])
     }
 
     @Test func rowCloseWithASplitEndsBothPaneKeys() {
-        #expect(ZmxLifecycle.keysToEnd(row(hasSplit: true), close: .row) == [left, right])
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .row) == [left, right])
     }
 
     @Test func splitCloseEndsOnlyTheSplitKey() {
-        #expect(ZmxLifecycle.keysToEnd(row(hasSplit: true), close: .split) == [right])
-        #expect(ZmxLifecycle.keysToEnd(row(), close: .split).isEmpty)
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .split) == [right])
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left), close: .split).isEmpty)
     }
 
     @Test func windowCloseEndsNothing() {
-        #expect(ZmxLifecycle.keysToEnd(row(hasSplit: true), close: .window).isEmpty)
-        #expect(ZmxLifecycle.keysToEnd(row(command: "claude", keepShellOpen: true, hasSplit: true),
-                                       close: .window).isEmpty)
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .window).isEmpty)
     }
 
-    @Test func aCommandRowOwnsNothingBecauseItWasNeverWrapped() {
-        #expect(ZmxLifecycle.keysToEnd(row(command: "htop"), close: .row).isEmpty)
-        #expect(ZmxLifecycle.ownedKeys(row(command: "htop")).isEmpty)
-        // its split pane is still a plain shell, and so still wrapped
-        #expect(ZmxLifecycle.keysToEnd(row(command: "htop", hasSplit: true), close: .row) == [right])
+    /// ⚠️ The client that went away may have DETACHED, leaving a live agent in the session behind it.
+    @Test func aClientExitEndsNothing() {
+        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .clientExit).isEmpty)
     }
 
-    @Test func keepShellOpenMakesACommandRowOwnItsKey() {
-        #expect(ZmxLifecycle.keysToEnd(row(command: "claude", keepShellOpen: true), close: .row) == [left])
+    @Test func anUnwrappedRowOwnsNothing() {
+        #expect(ZmxLifecycle.keysToEnd(row(), close: .row).isEmpty)
+        #expect(ZmxLifecycle.ownedKeys(row()).isEmpty)
+        // an unwrapped left pane beside a wrapped split still ends only the split's key
+        #expect(ZmxLifecycle.keysToEnd(row(split: right), close: .row) == [right])
     }
 
-    @Test func aBlankPinnedCommandCountsAsNone() {
-        #expect(ZmxLifecycle.ownedKeys(row(command: "   ")) == [left])
-        #expect(ZmxLifecycle.ownedKeys(row(command: "")) == [left])
+    /// A promoted survivor's key is `-right` while the model calls it the main pane, so ownership can never
+    /// be re-derived from the role.
+    @Test func aPromotedRowOwnsTheKeyItActuallyAttachedTo() {
+        #expect(ZmxLifecycle.keysToEnd(row(primary: right), close: .row) == [right])
     }
 
     // MARK: - the store
@@ -67,27 +75,99 @@ struct ZmxLifecycleTests {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
         store.toggleSplit(session.id)
         store.closeSession(session.id)
         #expect(spy.ended == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
+    }
+
+    @Test func closingAnUnwrappedRowEndsNothing() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        store.closeSession(session.id)
+        #expect(spy.ended.isEmpty)
     }
 
     @Test func closingTheSplitEndsOnlyTheSplitSession() {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
         store.toggleSplit(session.id)
         store.closeSplit(session.id)
         #expect(spy.ended == ["\(session.id.uuidString)-right"])
+        #expect(session.zmxSplitKey == nil, "the right pane is gone, so the row stops owning its key")
     }
+
+    // MARK: - a pane's own exit
+
+    /// ⚠️ The path that actually fires in production. Under wrapping the pane's process IS the zmx client, so
+    /// its exit means only that the client went away: the user may have detached from a session still running
+    /// their agent. `agtermApp.handlePaneExit` routes here, and it must end nothing.
+    @Test func theSplitPanesOwnExitEndsNothing() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        store.toggleSplit(session.id)
+        store.closeSplitPane(session.id)
+        #expect(spy.ended.isEmpty)
+        #expect(store.session(withID: session.id) != nil)
+    }
+
+    @Test func thePrimaryPanesOwnExitEndsNothing() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
+        store.closePrimaryPane(session.id) // no split: the whole row goes, but its daemon may be detached
+        #expect(spy.ended.isEmpty)
+        #expect(store.session(withID: session.id) == nil)
+    }
+
+    /// ⚠️ The critical case: the survivor keeps attaching to `-right`, so the row must own THAT key
+    /// afterwards. Re-deriving `-left` here kills the wrong daemon on close and lets a later ⌘D open a second
+    /// client on the live one.
+    @Test func aPromotedSurvivorCarriesItsOwnKeyIntoTheMainSlot() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        session.isSplit = true
+        session.hasSplit = true
+        store.closePrimaryPane(session.id)
+        #expect(session.zmxPrimaryKey == "\(session.id.uuidString)-right")
+        #expect(session.zmxSplitKey == nil)
+        #expect(spy.ended.isEmpty)
+        store.closeSession(session.id)
+        #expect(spy.ended == ["\(session.id.uuidString)-right"])
+    }
+
+    @Test func aPromotedRowIsRenamedUnderItsOwnKey() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        store.closePrimaryPane(session.id)
+        store.renameSession(session.id, to: "rebase")
+        #expect(spy.labelled.map(\.key) == ["\(session.id.uuidString)-right"])
+    }
+
+    // MARK: - the other teardown paths
 
     @Test func aGraceCloseEndsTheSessionOnlyWhenItFinalizes() {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
         #expect(store.softCloseSession(session.id, grace: 60))
         #expect(spy.ended.isEmpty)
         store.finalizeAllPendingCloses()
@@ -98,18 +178,31 @@ struct ZmxLifecycleTests {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
         #expect(store.softCloseSession(session.id, grace: 60))
         #expect(store.undoPendingClose())
         #expect(spy.ended.isEmpty)
+    }
+
+    @Test func aGracefullyClosedWorkspaceEndsEverySessionInIt() {
+        let spy = ZmxSinkSpy()
+        let store = makeStore(zmx: spy.sink)
+        let workspace = store.addWorkspace(name: "work")
+        let first = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
+        let second = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/b")!)
+        _ = store.addWorkspace(name: "other") // the last workspace is never removable
+        #expect(store.softRemoveWorkspace(workspace.id, grace: 60))
+        #expect(spy.ended.isEmpty)
+        store.finalizeAllPendingCloses()
+        #expect(spy.ended == ["\(first.id.uuidString)-left", "\(second.id.uuidString)-left"])
     }
 
     @Test func removingAWorkspaceEndsEverySessionInIt() {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let first = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
-        let second = store.addSession(toWorkspace: workspace.id, cwd: "/b")!
+        let first = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
+        let second = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/b")!)
         _ = store.addWorkspace(name: "other") // the last workspace is never removable
         store.removeWorkspace(workspace.id)
         #expect(spy.ended == ["\(first.id.uuidString)-left", "\(second.id.uuidString)-left"])
@@ -119,7 +212,7 @@ struct ZmxLifecycleTests {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
+        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
         store.toggleSplit(session.id)
         store.renameSession(session.id, to: "rebase")
         #expect(spy.labelled.map(\.key) == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
@@ -127,7 +220,7 @@ struct ZmxLifecycleTests {
         #expect(spy.ended.isEmpty)
     }
 
-    @Test func renamingAnUnwrappedCommandRowLabelsNothing() {
+    @Test func renamingAnUnwrappedRowLabelsNothing() {
         let spy = ZmxSinkSpy()
         let store = makeStore(zmx: spy.sink)
         let workspace = store.addWorkspace(name: "work")
@@ -137,22 +230,57 @@ struct ZmxLifecycleTests {
         #expect(spy.labelled.isEmpty)
     }
 
+    // MARK: - windows
+
     /// ⚠️ The one mistake that would kill every agent in a window on ⌘W. A closed window keeps its session
     /// ids in `windows/<id>.json` and reopens with them, so its teardown must reach no zmx session at all.
     @Test func closingAWindowEndsNothing() throws {
+        try withLibrary { library, spy in
+            let windowID = library.windows[0].id
+            let store = try #require(library.store(for: windowID))
+            let session = try #require(store.workspaces.first?.sessions.first)
+            wrapSession(session, split: true)
+            store.toggleSplit(session.id)
+            library.closeWindow(windowID)
+            #expect(spy.ended.isEmpty)
+            // and the row is still claimed by the persisted window, which is what makes ending it wrong
+            let reopened = try #require(library.loadStore(for: windowID))
+            #expect(reopened.workspaces.first?.sessions.first?.id == session.id)
+        }
+    }
+
+    /// Deleting a window destroys its rows for good, so it is the one window path that DOES end them.
+    @Test func deletingAnOpenWindowEndsItsSessions() throws {
+        try withLibrary { library, spy in
+            let doomed = library.newWindow()
+            let store = try #require(library.store(for: doomed.id))
+            let session = try #require(store.workspaces.first?.sessions.first)
+            wrapSession(session, split: true)
+            library.removeWindow(doomed.id)
+            #expect(spy.ended == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
+        }
+    }
+
+    /// The same for a window whose store is not loaded: the keys come off its persisted snapshot.
+    @Test func deletingAClosedWindowEndsTheSessionsItsSnapshotRecords() throws {
+        try withLibrary { library, spy in
+            let doomed = library.newWindow()
+            let store = try #require(library.store(for: doomed.id))
+            let session = try #require(store.workspaces.first?.sessions.first)
+            wrapSession(session)
+            store.save()
+            library.closeWindow(doomed.id)
+            #expect(spy.ended.isEmpty)
+            library.removeWindow(doomed.id)
+            #expect(spy.ended == ["\(session.id.uuidString)-left"])
+        }
+    }
+
+    private func withLibrary(_ body: (WindowLibrary, ZmxSinkSpy) throws -> Void) throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-zmx-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let spy = ZmxSinkSpy()
-        let library = WindowLibrary(directory: directory, zmx: spy.sink)
-        let windowID = library.windows[0].id
-        let store = try #require(library.store(for: windowID))
-        let session = try #require(store.workspaces.first?.sessions.first)
-        store.toggleSplit(session.id)
-        library.closeWindow(windowID)
-        #expect(spy.ended.isEmpty)
-        // and the row is still claimed by the persisted window, which is what makes ending it wrong
-        let reopened = try #require(library.loadStore(for: windowID))
-        #expect(reopened.workspaces.first?.sessions.first?.id == session.id)
+        try body(WindowLibrary(directory: directory, zmx: spy.sink), spy)
     }
 }

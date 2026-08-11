@@ -595,12 +595,14 @@ final class ControlServer {
         return store.controlTree(
             foreground: { session in
                 (session.surface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx,
+                                              ownedKey: session.zmxPrimaryKey)
                 }
             },
             splitForeground: { session in
                 (session.splitSurface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx,
+                                              ownedKey: session.zmxSplitKey)
                 }
             },
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },

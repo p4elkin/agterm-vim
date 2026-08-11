@@ -454,13 +454,16 @@ public final class AppStore {
 
     /// Removes a session, tears down its surface, and — if it was active — reselects the most-recently-active
     /// surviving session in scope (`closeReselectionTarget(after:)`), falling back to the positional neighbor.
-    public func closeSession(_ sessionID: UUID) {
+    ///
+    /// `endingZmx` is false when the caller is a pane's own EXIT rather than a deliberate close — see
+    /// `ZmxLifecycle.Close.clientExit` for why a zmx client that went away may not take its session with it.
+    public func closeSession(_ sessionID: UUID, endingZmx: Bool = true) {
         guard let location = location(ofSession: sessionID) else { return }
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
-        endZmxSessions(removed, close: .row)
+        endZmxSessions(removed, close: endingZmx ? .row : .clientExit)
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
         removed.surface?.teardown()

@@ -18,15 +18,17 @@ enum ForegroundProcess {
     /// `initialCommand` in `CommandRestore.restorePlan` — so a descending capture would restore a
     /// `--command` session by typing its command into a login shell instead of taking the exec path,
     /// losing the `--wait` hold and the close-on-exit shape.
+    /// `ownedKey` is the pane's recorded zmx session (`Session.zmxPrimaryKey`/`zmxSplitKey`).
     @MainActor
-    static func command(for view: GhosttySurfaceView, shellBasename: String?) -> [String]? {
+    static func command(for view: GhosttySurfaceView, shellBasename: String?, ownedKey: String?) -> [String]? {
         guard let pid = view.foregroundPid(), let argv = procArgs(pid: pid),
               let usable = usable(argv, shellBasename: shellBasename) else { return nil }
-        // a wrapped pane's `zmx attach <key>` is agterm's own doing, never something the user ran: capturing
-        // it would make a restore re-attach to a key this app now generates itself, and the persistent
-        // session already holds whatever was running.
-        guard ZmxForegroundSelection.wrappedKey(argv: usable) == nil else { return nil }
-        return usable
+        // THIS pane's own `zmx attach <key>` is agterm's own doing, never something the user ran: capturing it
+        // would make a restore re-attach to a key this app now generates itself, and the persistent session
+        // already holds whatever was running. An attach to any OTHER name is the user's — `agterm-zmx pick`
+        // binds a row to another row's session with exactly this shape — and must survive the restart.
+        guard let ownedKey, ZmxForegroundSelection.wrappedKey(argv: usable) == ownedKey else { return usable }
+        return nil
     }
 
     /// The pane's foreground command for the `tree` read-side: as `command`, plus a descent into the
@@ -47,10 +49,13 @@ enum ForegroundProcess {
     /// capture and every test without a resolver want.
     @MainActor
     static func running(for view: GhosttySurfaceView, shellBasename: String?,
-                        zmx: ZmxForegroundResolver? = nil) -> [String]? {
+                        zmx: ZmxForegroundResolver? = nil, ownedKey: String? = nil) -> [String]? {
         guard let pgid = view.foregroundPid(),
               let argv = groupArgv(pgid: pgid, shellBasename: shellBasename) else { return nil }
-        guard let leader = zmx?.leaderPID(behind: argv) else { return argv }
+        // only past THIS pane's own wrapper: a session the user picked by hand is a zmx client the row really
+        // runs, and reporting what lives inside it would name a program this row does not own.
+        guard let ownedKey, ZmxForegroundSelection.wrappedKey(argv: argv) == ownedKey,
+              let leader = zmx?.leaderPID(behind: argv) else { return argv }
         // the pane's own tty carries the zmx CLIENT. What runs in the session is on the daemon's pty, whose
         // descriptor this process does not hold — so ask the leader's kinfo_proc for that pty's foreground
         // group, then read it exactly as a pane's own group is read. A shell at its prompt in there reads
@@ -73,7 +78,7 @@ enum ForegroundProcess {
     /// The foreground process group of `pid`'s controlling terminal, read from `kinfo_proc.kp_eproc.e_tpgid`.
     /// This is `tcgetpgrp` for a pty this process has no descriptor for. nil when the process is gone or has
     /// no controlling terminal.
-    private static func terminalForegroundGroup(of pid: pid_t) -> pid_t? {
+    static func terminalForegroundGroup(of pid: pid_t) -> pid_t? {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride

@@ -18,10 +18,10 @@ final class ZmxWrappingTests: XCTestCase {
         return ZmxWrapping(env: env, client: client)
     }
 
-    private func command(_ wrapping: ZmxWrapping, role: ZmxSessionKey.Role = .left,
+    private func command(_ wrapping: ZmxWrapping, role: ZmxSessionKey.Role = .left, existingKey: String? = nil,
                          pinnedCommand: String? = nil, keepShellOpen: Bool = false) -> String? {
-        wrapping.command(sessionID: sessionID, role: role, pinnedCommand: pinnedCommand,
-                         keepShellOpen: keepShellOpen)
+        wrapping.command(sessionID: sessionID, role: role, existingKey: existingKey,
+                         pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen)?.command
     }
 
     // MARK: - what the factories get back
@@ -33,6 +33,20 @@ final class ZmxWrappingTests: XCTestCase {
     func testSplitPaneIsWrappedUnderTheRightKey() {
         XCTAssertEqual(command(wrapping(), role: .right),
                        "'\(zmx)' 'attach' '\(sessionID.uuidString)-right'")
+    }
+
+    /// The factories record `key` on the session and hand it back here on the next launch, so a promoted
+    /// survivor re-attaches to the `-right` daemon holding its agent rather than a fresh `-left` one.
+    func testTheReportedKeyIsWhatTheFactoryMustRecord() {
+        let wrapped = wrapping().command(sessionID: sessionID, role: .left, existingKey: nil,
+                                         pinnedCommand: nil, keepShellOpen: false)
+        XCTAssertEqual(wrapped?.key, leftKey)
+        XCTAssertTrue(wrapped?.command.contains(leftKey) == true)
+        let promoted = "\(sessionID.uuidString)-right"
+        let readBack = wrapping().command(sessionID: sessionID, role: .left, existingKey: promoted,
+                                          pinnedCommand: nil, keepShellOpen: false)
+        XCTAssertEqual(readBack?.key, promoted)
+        XCTAssertEqual(readBack?.command, "'\(zmx)' 'attach' '\(promoted)'")
     }
 
     func testPinnedCommandRowIsLeftAlone() {
@@ -108,17 +122,26 @@ final class ZmxWrappingTests: XCTestCase {
         XCTAssertNil(ZmxClient.capture("/nonexistent/zmx", ["list"]))
     }
 
+    /// Bounded by a small multiple of the CONFIGURED timeout: a five-second bound passes a timeout broken by
+    /// an order of magnitude.
     func testCaptureAbandonsAnOverrunningCall() {
         let started = Date()
         XCTAssertNil(ZmxClient.capture("/bin/sh", ["-c", "sleep 20"], timeout: 0.3))
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5)
     }
 
+    /// Output larger than the 64 KB pipe buffer: draining stdout on the CALLING thread deadlocks here, and
+    /// `zmx list` on a busy machine is what would hit it in production.
+    func testCaptureDrainsMoreThanOnePipeBuffer() {
+        let output = ZmxClient.capture("/bin/sh", ["-c", "yes agterm | head -c 200000"], timeout: 5)
+        XCTAssertEqual(output?.utf8.count, 200_000)
+    }
+
+    /// `setLabel`/`kill` return nothing and reach nothing, so there is no assertion to make about them here;
+    /// that a noop client performs no effect is pinned where it matters, through the sink below.
     func testNoopClientAnswersNothing() {
         XCTAssertNil(ZmxClient.noop.locate())
         XCTAssertNil(ZmxClient.noop.list())
-        ZmxClient.noop.setLabel("key", "name")
-        ZmxClient.noop.kill("key")
     }
 
     // MARK: - what an isolated instance may reach
@@ -198,6 +221,11 @@ final class ZmxWrappingTests: XCTestCase {
     // MARK: - the inherited session scrub
 
     func testScrubRemovesAnInheritedSession() {
+        // restored even on failure: leaking ZMX_SESSION would follow every later test in this host process
+        let previous = ProcessInfo.processInfo.environment[ZmxWrapping.inheritedSessionVariable]
+        addTeardownBlock {
+            if let previous { setenv(ZmxWrapping.inheritedSessionVariable, previous, 1) }
+        }
         setenv(ZmxWrapping.inheritedSessionVariable, "\(leftKey)", 1)
         ZmxWrapping.scrubInheritedSession()
         XCTAssertNil(ProcessInfo.processInfo.environment[ZmxWrapping.inheritedSessionVariable])

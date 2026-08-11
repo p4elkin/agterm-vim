@@ -63,4 +63,44 @@ final class ZmxForegroundResolverTests: XCTestCase {
 
         XCTAssertEqual(spy.calls, 1)
     }
+
+    // MARK: - the syscall the resolved leader is fed to
+
+    /// The second real step past the wrapper: a session leader's pid to the foreground process group of the
+    /// pty it owns. The injected-listing tests above stop at the leader, so without this the `e_tpgid` read
+    /// is unverified — and it is exactly the read a zmx daemon's pty is inspected through, a descriptor this
+    /// process does not hold. A pty of its own stands in for the daemon; the test host itself has no
+    /// controlling terminal under `xcodebuild`.
+    func testTerminalForegroundGroupIsThePtysOwnForegroundGroup() throws {
+        let argv: [String] = ["/bin/sh", "-c", "exec sleep 30"]
+        var arguments: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) }
+        arguments.append(nil)
+        defer { arguments.forEach { free($0) } }
+        var controller: Int32 = -1
+        let child = forkpty(&controller, nil, nil, nil)
+        try XCTSkipIf(child < 0, "forkpty failed: \(errno)")
+        if child == 0 {
+            execv("/bin/sh", &arguments)
+            _exit(127)
+        }
+        defer {
+            kill(child, SIGKILL)
+            var status: Int32 = 0
+            waitpid(child, &status, 0)
+            close(controller)
+        }
+        var expected = tcgetpgrp(controller)
+        let deadline = Date().addingTimeInterval(2)
+        while expected <= 0, Date() < deadline {
+            usleep(5_000)
+            expected = tcgetpgrp(controller)
+        }
+        XCTAssertGreaterThan(expected, 0, "the child never claimed the pty's foreground group")
+        XCTAssertEqual(ForegroundProcess.terminalForegroundGroup(of: child), expected)
+    }
+
+    func testTerminalForegroundGroupOfADeadProcessIsNil() {
+        // a pid no process can hold: `kern.maxproc` caps well below this on every supported machine
+        XCTAssertNil(ForegroundProcess.terminalForegroundGroup(of: 0x7FFF_FFFE))
+    }
 }

@@ -14,45 +14,41 @@ public enum ZmxLifecycle {
         /// `agterm-zmx-sync` records that mistake in its own header; it is the reason this case exists at all
         /// rather than being an absent call.
         case window
+        /// ⚠️ The pane's own process exited, which ends NOTHING. Under wrapping that process IS the zmx
+        /// client, and a client exits for two reasons the app cannot tell apart: the session ended (there is
+        /// then nothing left to kill) or the user DETACHED from it (killing it would destroy the running
+        /// agent they detached to keep). The daemon a detach leaves behind is reattachable by name, and an
+        /// abandoned one is reaped at the next launch, so leaking is the recoverable side of this choice.
+        case clientExit
     }
 
-    /// A row as the model knows it while it is being torn down.
+    /// A row as the model knows it while it is being torn down: the zmx sessions its two panes actually
+    /// attached to, recorded by the surface factory (`Session.zmxPrimaryKey`/`zmxSplitKey`).
+    ///
+    /// ⚠️ Deliberately NOT the pane roles. Re-deriving `<uuid>-left` from "this is the main pane" is wrong
+    /// for a promoted split survivor, which keeps the `-right` session it attached to, and wrong for any row
+    /// whose wrap decision differed from what the model can see (`plan.command` versus `initialCommand`).
     public struct Row: Equatable, Sendable {
-        public let sessionID: UUID
-        /// `Session.initialCommand`. nil or blank means the left pane runs a login shell, which is exactly the
-        /// pane `ZmxWrap` wraps — same blank-is-none reading.
-        public let pinnedCommand: String?
-        public let keepShellOpen: Bool
-        /// `Session.hasSplit`: whether the right pane's shell exists. A split never carries a pinned command,
-        /// so its existence is the whole test.
-        public let hasSplit: Bool
+        public let primaryKey: String?
+        public let splitKey: String?
 
-        public init(sessionID: UUID, pinnedCommand: String?, keepShellOpen: Bool, hasSplit: Bool) {
-            self.sessionID = sessionID
-            self.pinnedCommand = pinnedCommand
-            self.keepShellOpen = keepShellOpen
-            self.hasSplit = hasSplit
+        public init(primaryKey: String?, splitKey: String?) {
+            self.primaryKey = primaryKey
+            self.splitKey = splitKey
         }
     }
 
-    /// The zmx sessions this row owns, left pane first. Empty for a row `ZmxWrap` would not have wrapped, so
-    /// a command row that never had a daemon is never killed by name.
+    /// The zmx sessions this row owns, main pane first. Empty for a row no pane of which was ever wrapped.
     public static func ownedKeys(_ row: Row) -> [String] {
-        var keys: [String] = []
-        let pinned = row.pinnedCommand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if pinned.isEmpty || row.keepShellOpen {
-            keys.append(ZmxSessionKey.key(sessionID: row.sessionID, isSplit: false))
-        }
-        if row.hasSplit { keys.append(ZmxSessionKey.key(sessionID: row.sessionID, isSplit: true)) }
-        return keys
+        [row.primaryKey, row.splitKey].compactMap { $0 }
     }
 
     /// The keys `close` must end.
     public static func keysToEnd(_ row: Row, close: Close) -> [String] {
         switch close {
-        case .window: []
+        case .window, .clientExit: []
         case .row: ownedKeys(row)
-        case .split: row.hasSplit ? [ZmxSessionKey.key(sessionID: row.sessionID, isSplit: true)] : []
+        case .split: [row.splitKey].compactMap { $0 }
         }
     }
 }
@@ -74,12 +70,20 @@ public struct ZmxSessionSink {
     }
 }
 
+extension ZmxLifecycle.Row {
+    @MainActor public init(_ session: Session) {
+        self.init(primaryKey: session.zmxPrimaryKey, splitKey: session.zmxSplitKey)
+    }
+
+    /// The row a closed window's persisted sessions describe, for the delete path that has no live store.
+    public init(_ snapshot: SessionSnapshot) {
+        self.init(primaryKey: snapshot.zmxPrimaryKey, splitKey: snapshot.zmxSplitKey)
+    }
+}
+
 extension AppStore {
     /// The row `ZmxLifecycle` reads, built from the live session.
-    func zmxRow(_ session: Session) -> ZmxLifecycle.Row {
-        ZmxLifecycle.Row(sessionID: session.id, pinnedCommand: session.initialCommand,
-                         keepShellOpen: session.keepShellOpen, hasSplit: session.hasSplit)
-    }
+    func zmxRow(_ session: Session) -> ZmxLifecycle.Row { ZmxLifecycle.Row(session) }
 
     /// End the zmx sessions a teardown owns. Every caller is a place the row or its split really went away;
     /// ⚠️ no window-close path may call this at all, see `ZmxLifecycle.Close.window`.

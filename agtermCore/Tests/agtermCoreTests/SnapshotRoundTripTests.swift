@@ -135,6 +135,38 @@ struct SnapshotRoundTripTests {
         #expect(restored.workspaces[0].sessions[0].keepShellOpen == false)
     }
 
+    /// A promoted survivor's key is what makes this worth persisting: the row is addressed as the main pane
+    /// but attaches to `-right`, and only the snapshot carries that across a restart.
+    @Test func theZmxKeysRoundTripThroughSnapshot() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.zmxPrimaryKey = "\(session.id.uuidString)-right"
+        session.zmxSplitKey = "\(session.id.uuidString)-left"
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
+        #expect(restored.workspaces[0].sessions[0].zmxSplitKey == "\(session.id.uuidString)-left")
+    }
+
+    @Test func anUnwrappedRowWritesNoZmxKeys() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let json = try String(decoding: JSONEncoder().encode(store.snapshot()), as: UTF8.self)
+        #expect(!json.contains("zmxPrimaryKey"), "an unwrapped row must write no key; got \(json)")
+        #expect(!json.contains("zmxSplitKey"))
+    }
+
+    @Test func legacySnapshotWithoutZmxKeysDecodesNil() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","zmxPrimaryKey":7}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.zmxPrimaryKey == nil)
+        #expect(snap.zmxSplitKey == nil)
+    }
+
     @Test func legacySnapshotWithoutKeepShellOpenDecodesNil() throws {
         let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","initialCommand":"claude","commandWait":true}"#
         let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))

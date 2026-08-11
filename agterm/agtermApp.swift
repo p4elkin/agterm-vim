@@ -247,10 +247,14 @@ struct agtermApp: App {
         // decides against wrapping — unless the row asked to keep its shell open, which runs the command
         // inside zmx's own shell instead. A wrapped pane drops `plan.initialInput` (the persistent session
         // already holds what was running) and `commandWait`, which held the user's OWN command at exit.
-        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .left, pinnedCommand: plan.command,
+        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .left,
+                                               existingKey: session.zmxPrimaryKey, pinnedCommand: plan.command,
                                                keepShellOpen: session.keepShellOpen)
+        // recorded, never re-derived: `closePrimaryPane` promotes a `-right` pane into this slot, and close,
+        // rename and the next launch's wrapper all read the key back from here.
+        if let wrapped { session.zmxPrimaryKey = wrapped.key }
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
-                                      command: wrapped ?? plan.command,
+                                      command: wrapped?.command ?? plan.command,
                                       initialInput: wrapped == nil ? plan.initialInput : nil,
                                       waitAfterCommand: wrapped == nil && session.commandWait, env: env)
         view.session = session
@@ -405,10 +409,12 @@ struct agtermApp: App {
                                                        capturedInput: capturedInput)
         // a split never carries an `initialCommand`, so its only wrapped form is the plain `zmx attach` under
         // the session's `right` key. See makeSurface for why a wrapped pane drops the restore input.
-        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .right, pinnedCommand: nil,
+        let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .right,
+                                               existingKey: session.zmxSplitKey, pinnedCommand: nil,
                                                keepShellOpen: false)
+        if let wrapped { session.zmxSplitKey = wrapped.key }
         let view = GhosttySurfaceView(workingDirectory: session.initialSplitCwd ?? session.effectiveCwd,
-                                      fontSize: session.fontSize.map(Float.init), command: wrapped,
+                                      fontSize: session.fontSize.map(Float.init), command: wrapped?.command,
                                       initialInput: wrapped == nil ? restoreInput : nil, env: env)
         view.session = session
         view.isSplitPane = true
