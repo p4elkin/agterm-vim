@@ -35,6 +35,8 @@ public enum ZmxWrap {
     /// - `budgetReason`: `ZmxSocketBudget.probe`'s answer; non-nil means the socket could not bind.
     /// - `isolatedStateDir`: `AGTERM_STATE_DIR` is set, so this is a dev or test instance. It wraps nothing,
     ///   which is what keeps a hosted run from leaving a daemon behind or adopting the deployed app's.
+    /// - `skipRequested`: `AGTERM_ZMX_SKIP` is set to something non-empty. The escape hatch for a pane that
+    ///   should stay plain, honoured here because the zprofile hook that used to read it is being retired.
     public struct Inputs: Equatable, Sendable {
         public let sessionID: UUID
         public let role: ZmxSessionKey.Role
@@ -46,10 +48,11 @@ public enum ZmxWrap {
         public let zmxPath: String?
         public let budgetReason: String?
         public let isolatedStateDir: Bool
+        public let skipRequested: Bool
 
         public init(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, siblingKey: String?,
                     pinnedCommand: String?, keepShellOpen: Bool, shell: String, zmxPath: String?,
-                    budgetReason: String?, isolatedStateDir: Bool) {
+                    budgetReason: String?, isolatedStateDir: Bool, skipRequested: Bool = false) {
             self.sessionID = sessionID
             self.role = role
             self.existingKey = existingKey
@@ -60,6 +63,7 @@ public enum ZmxWrap {
             self.zmxPath = zmxPath
             self.budgetReason = budgetReason
             self.isolatedStateDir = isolatedStateDir
+            self.skipRequested = skipRequested
         }
     }
 
@@ -76,6 +80,7 @@ public enum ZmxWrap {
     public static func decide(_ inputs: Inputs) -> Decision {
         let isSplit = inputs.role == .right
         if inputs.isolatedStateDir { return .unwrapped(reason: "AGTERM_STATE_DIR is set") }
+        if inputs.skipRequested { return .unwrapped(reason: "AGTERM_ZMX_SKIP is set") }
         guard let zmx = inputs.zmxPath, !zmx.isEmpty else { return .unwrapped(reason: "zmx is not installed") }
         if let budgetReason = inputs.budgetReason { return .unwrapped(reason: budgetReason) }
 

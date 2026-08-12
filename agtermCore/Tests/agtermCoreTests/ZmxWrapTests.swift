@@ -10,10 +10,10 @@ struct ZmxWrapTests {
     private func inputs(role: ZmxSessionKey.Role = .left, existingKey: String? = nil, siblingKey: String? = nil,
                         command: String? = nil, keepShellOpen: Bool = false,
                         zmxPath: String? = "/opt/homebrew/bin/zmx", budgetReason: String? = nil,
-                        isolated: Bool = false) -> ZmxWrap.Inputs {
+                        isolated: Bool = false, skip: Bool = false) -> ZmxWrap.Inputs {
         ZmxWrap.Inputs(sessionID: id, role: role, existingKey: existingKey, siblingKey: siblingKey,
                        pinnedCommand: command, keepShellOpen: keepShellOpen, shell: shell, zmxPath: zmxPath,
-                       budgetReason: budgetReason, isolatedStateDir: isolated)
+                       budgetReason: budgetReason, isolatedStateDir: isolated, skipRequested: skip)
     }
 
     private func wrapped(_ decision: ZmxWrap.Decision) -> (command: String, key: String)? {
@@ -85,6 +85,17 @@ struct ZmxWrapTests {
         #expect(unwrappedReason(ZmxWrap.decide(inputs(isolated: true)))?.contains("AGTERM_STATE_DIR") == true)
         #expect(unwrappedReason(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, isolated: true)))?
             .contains("AGTERM_STATE_DIR") == true)
+    }
+
+    /// The escape hatch the retiring zprofile hook used to own. It has to keep working once the hook is gone,
+    /// and it must beat every later gate, including a row that asked to keep its shell open.
+    @Test func skipRequestedWrapsNothing() {
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(skip: true)))?.contains("AGTERM_ZMX_SKIP") == true)
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(role: .right, skip: true)))?
+            .contains("AGTERM_ZMX_SKIP") == true)
+        #expect(unwrappedReason(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, skip: true)))?
+            .contains("AGTERM_ZMX_SKIP") == true)
+        #expect(wrapped(ZmxWrap.decide(inputs(skip: false))) != nil)
     }
 
     @Test func missingBinaryFallsBackToAPlainShell() {

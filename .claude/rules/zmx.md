@@ -93,10 +93,15 @@ after that row is closed — the same end-of-life as any other detached session 
 
 ### Wrap decision
 
-A pane is wrapped when ALL of these hold: its session is not isolated (no `AGTERM_STATE_DIR`); zmx is
-installed on the widened PATH; the socket path is inside `ZmxSocketBudget`; and it has no pinned command
-(would run a shell, not replace it). The wrap produces `zmx attach <key>` through
-`CommandRestore.shellQuotedLine`.
+A pane is wrapped when ALL of these hold: its session is not isolated (no `AGTERM_STATE_DIR`);
+`AGTERM_ZMX_SKIP` is unset or empty; zmx is installed on the widened PATH; the socket path is inside
+`ZmxSocketBudget`; and it has no pinned command (would run a shell, not replace it). The wrap produces
+`zmx attach <key>` through `CommandRestore.shellQuotedLine`.
+
+⚠️ `AGTERM_ZMX_SKIP` is honoured HERE, not only by the zprofile hook, and that is load-bearing rather than
+tidy. It is the documented escape hatch for a pane that should stay plain, the hook that used to read it is
+being retired, and `agtermUITests` sets it in `launchForUITest` to keep a test pane off the multiplexer. Had
+the wrapper ignored it, setting it would have gone on looking correct while the app wrapped the pane anyway.
 
 Isolated instances never wrap. A row with a pinned command and `--keep-shell-open` wraps as
 `zmx attach <key> <shell> -lc '<command>\nexec <shell> -l'`.

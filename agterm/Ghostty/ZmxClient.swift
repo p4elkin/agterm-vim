@@ -174,7 +174,8 @@ struct ZmxWrapping: Sendable {
                                     siblingKey: keys.sibling, pinnedCommand: pinnedCommand,
                                     keepShellOpen: keepShellOpen, shell: shell,
                                     zmxPath: client.locate(), budgetReason: probe,
-                                    isolatedStateDir: env["AGTERM_STATE_DIR"] != nil)
+                                    isolatedStateDir: env["AGTERM_STATE_DIR"] != nil,
+                                    skipRequested: !(env["AGTERM_ZMX_SKIP"] ?? "").isEmpty)
         let pane = "\(sessionID.uuidString)-\(role.rawValue)"
         switch ZmxWrap.decide(inputs) {
         case .wrap(let command, let key):
