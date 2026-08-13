@@ -161,7 +161,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     nonisolated(unsafe) private var focusObservers: [NSObjectProtocol] = []
     private var pendingSurfaceCreation = false
     /// After `destroySurface()` the view is retired: never recreate a surface (a stray viewDidMoveToWindow).
-    private var isDestroyed = false
+    private(set) var isDestroyed = false
 
     /// Guards `handleProcessExit` so the close runs once. Both the `SHOW_CHILD_EXITED` action and the
     /// `close_surface_cb` can fire for one exit (ghostty documents no ordering/exclusivity between them).
@@ -195,8 +195,14 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
             updateDropRegistration()
             updatePointerTracking()
             postAccessibilityExposureChange() // one of the `axExposed` terms; tell AX if the element came or went
+            setRealized(deckVisible)
         }
     }
+
+    /// Whether libghostty currently holds this surface's GPU resources. Tracked here rather than read back
+    /// because the renderer answers on its own thread; see `GhosttySurfaceView+Realize.swift` for the
+    /// pairing rule this enforces.
+    var realizeState = true
 
     /// View-only mode: rendered but taking NO mouse or keyboard input (the dashboard grid cell). SwiftUI's
     /// `.allowsHitTesting(false)` does NOT stop AppKit routing a click to this real NSView (hit resolution
