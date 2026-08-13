@@ -98,7 +98,10 @@ struct WindowContentView: View {
         }
     }
 
-    var body: some View {
+    /// The window's stacked layers, split out of `body` only to keep the type checker inside its budget:
+    /// this ZStack plus `body`'s modifier chain in one expression fails a clean Debug build under
+    /// Swift 6.2.3 with "unable to type-check this expression in reasonable time". Layering is unchanged.
+    private var windowLayers: some View {
         ZStack(alignment: .top) {
             // the AppKit HSplitView overruns into the titlebar and steals header clicks, so the deck stays
             // inset below it; kept mounted while zoomed so background sessions and overlays still realize.
@@ -130,6 +133,12 @@ struct WindowContentView: View {
                 .padding(.top, titlebarHeight)
                 .zIndex(20)
         }
+    }
+
+    /// `windowLayers` plus the state-change handlers. Second split point, same type-checker budget reason
+    /// as `windowLayers`: the layers and the full modifier chain do not compile as one expression.
+    private var windowLayersWithStateHandlers: some View {
+        windowLayers
         // with the title bar hidden (.hiddenTitleBar), pull our header to the very top so the traffic
         // lights overlay it as one row; no system title bar is left to clip the content.
         .ignoresSafeArea(.container, edges: .top)
@@ -199,6 +208,10 @@ struct WindowContentView: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        windowLayersWithStateHandlers
         // `GhosttyApp` isn't observable, so re-read every mirror when a settings appearance change posts.
         .onReceive(NotificationCenter.default.publisher(for: .agtermAppearanceChanged)) { _ in
             terminalColor = WindowContentView.resolvedTerminalColor()
