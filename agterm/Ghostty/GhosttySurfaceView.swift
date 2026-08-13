@@ -195,7 +195,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
             updateDropRegistration()
             updatePointerTracking()
             postAccessibilityExposureChange() // one of the `axExposed` terms; tell AX if the element came or went
-            setRealized(deckVisible)
+            updateRealizeForVisibility()
         }
     }
 
@@ -203,6 +203,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// because the renderer answers on its own thread; see `GhosttySurfaceView+Realize.swift` for the
     /// pairing rule this enforces.
     var realizeState = true
+
+    /// The scheduled unrealize for this pane, nil when none is pending. Cancelled when the pane comes back
+    /// on screen or the surface is torn down.
+    var realizeWorkItem: DispatchWorkItem?
 
     /// View-only mode: rendered but taking NO mouse or keyboard input (the dashboard grid cell). SwiftUI's
     /// `.allowsHitTesting(false)` does NOT stop AppKit routing a click to this real NSView (hit resolution
@@ -641,6 +645,10 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         // the overlay grabs first responder itself (TerminalView's once-on-attach grab misses the deferred
         // overlay surface); a bounded run-loop retry beats the SwiftUI/AppKit responder race.
         requestAutoFocus(in: window)
+
+        // a surface born hidden — every restored session past the selected one — would otherwise hold its
+        // GPU resources forever: `deckVisible`'s observer only fires on a CHANGE, and it never changes.
+        updateRealizeForVisibility()
     }
 
     /// Marks the surface focused in libghostty after a retried `makeFirstResponder` (the overlay/reparent
@@ -723,6 +731,7 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
 
     func destroySurface() {
         isDestroyed = true
+        cancelPendingRealizeWork()
         focusObservers.forEach { NotificationCenter.default.removeObserver($0) }
         focusObservers = []
         if let surface { ghostty_surface_free(surface) }
