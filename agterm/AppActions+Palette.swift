@@ -149,6 +149,7 @@ extension AppActions {
         case .commandPalette: return toggleActionPalette
         case .customCommandPalette: return toggleCustomCommandPalette
         case .normalMode: return { self.enterNormalMode() }
+        case .overlayRedirectToggle: return { self.toggleOverlayRedirect() }
         default: return nil
         }
     }
@@ -164,6 +165,22 @@ extension AppActions {
     func enterNormalMode() {
         guard uiActionsEnabled, keyWindowProvider() != nil else { return }
         NormalModeController.shared.enter()
+    }
+
+    /// Flip the overlay-redirect toggle — the keymap-chord path (`map <chord> overlay_redirect_toggle`),
+    /// the counterpart of the `overlay-redirect.toggle` control command. Unlike `enterNormalMode`, this
+    /// carries no modal-keyboard gate: it is a plain persisted setting, not a key-swallowing mode.
+    ///
+    /// `settingsModel` is wired in a scene `.task`, so a chord pressed before that lands has none. Flip the
+    /// live controller anyway rather than swallowing the press: the toggle then works, it just does not
+    /// persist until the next write through the model.
+    func toggleOverlayRedirect() {
+        let want = !OverlayRedirectController.shared.isEnabled
+        guard let settingsModel else {
+            OverlayRedirectController.shared.setEnabled(want)
+            return
+        }
+        settingsModel.setOverlayRedirectEnabled(want)
     }
 
     /// The app's commands as palette items, sharing the same logic as the menu/buttons. Includes a

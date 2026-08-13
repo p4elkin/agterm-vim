@@ -71,6 +71,10 @@ final class SettingsModel {
         applyAttentionButtonEnabled()
         applyInterfaceElements()
         applyAutoHideSidebarInactiveWindows()
+        // seed the app-global controller from the last-persisted value, before any command or chord reads
+        // `OverlayRedirectController.shared.isEnabled` — the one setting this class does not also apply to
+        // live chrome/config, since it drives only the overlay-open decision and the title-bar pill.
+        OverlayRedirectController.shared.setEnabled(settings.overlayRedirectEnabled ?? false)
         ensureStarterKeymap()
         loadKeymap()
         ensureStarterGhosttyConfig()
@@ -266,6 +270,14 @@ final class SettingsModel {
     func setCloseGraceUndoEnabled(_ value: Bool?) { settings.closeGraceUndoEnabled = value; try? settingsStore.save(settings) }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
+    /// Persist the overlay-redirect toggle and fan it into `OverlayRedirectController`, the value the pill
+    /// and `openSessionOverlay`'s decision read. Not a ghostty key — save-only, no config rewrite or surface
+    /// reload. Persisted, unlike normal mode: Sasha should not have to re-arm this every launch.
+    func setOverlayRedirectEnabled(_ value: Bool) {
+        settings.overlayRedirectEnabled = value ? true : nil
+        try? settingsStore.save(settings)
+        OverlayRedirectController.shared.setEnabled(value)
+    }
     /// Persist the user-idle auto-follow timeout (nil = off) and push it into every open window's `AppStore`
     /// (a newly opened window seeds itself via `applyAutoFollow(to:)`).
     func setAutoFollowAttention(_ value: String?) {

@@ -120,4 +120,34 @@ final class AppActionsPaletteTests: XCTestCase {
         XCTAssertTrue(viaPalette.isDisjoint(with: paletteLess), "an action must have exactly one dispatch path")
         XCTAssertEqual(viaPalette.union(paletteLess), Set(BuiltinAction.allCases))
     }
+
+    // MARK: - the overlay-redirect chord
+
+    /// ⚠️ `settingsModel` is wired in a scene `.task`, so a chord pressed before that lands has none. It must
+    /// still flip the live toggle rather than parsing, resolving and silently doing nothing — the same
+    /// failure mode the keyless-action merge exists to prevent, one layer down.
+    func testTheOverlayRedirectChordFlipsTheToggleEvenBeforeTheSettingsModelIsWired() {
+        OverlayRedirectController.shared.setEnabled(false)
+        defer { OverlayRedirectController.shared.setEnabled(false) }
+        XCTAssertNil(actions.settingsModel)
+
+        actions.toggleOverlayRedirect()
+        XCTAssertTrue(OverlayRedirectController.shared.isEnabled)
+
+        actions.toggleOverlayRedirect()
+        XCTAssertFalse(OverlayRedirectController.shared.isEnabled)
+    }
+
+    /// Once the model IS wired, the same chord persists the flip, so it survives a relaunch.
+    func testTheOverlayRedirectChordPersistsThroughSettingsOnceItIsWired() {
+        OverlayRedirectController.shared.setEnabled(false)
+        defer { OverlayRedirectController.shared.setEnabled(false) }
+        let settingsStore = SettingsStore(directory: stateDir)
+        actions.settingsModel = SettingsModel(library: library, settingsStore: settingsStore)
+
+        actions.toggleOverlayRedirect()
+
+        XCTAssertTrue(OverlayRedirectController.shared.isEnabled)
+        XCTAssertEqual(settingsStore.load().overlayRedirectEnabled, true)
+    }
 }

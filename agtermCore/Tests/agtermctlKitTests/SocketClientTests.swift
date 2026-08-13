@@ -288,6 +288,7 @@ struct SocketClientTests {
             show_attention              ctrl+shift+i
             dashboard                   cmd+shift+g
             normal_mode                 -
+            overlay_redirect_toggle     -
 
         commands:
             Deploy  cmd+shift+y

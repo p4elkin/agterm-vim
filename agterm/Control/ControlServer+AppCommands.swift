@@ -95,6 +95,19 @@ extension ControlServer {
         return ControlResponse(ok: true)
     }
 
+    // MARK: - Overlay redirect
+
+    /// Turn the overlay-redirect toggle on / off / toggle — the control half of the `overlay_redirect_toggle`
+    /// built-in. Unlike `setNormalMode`, this is app-wide with no entry gate and PERSISTS: `SettingsModel`
+    /// writes it to `settings.json` and fans it into `OverlayRedirectController.shared`, so Sasha does not
+    /// have to re-arm it every launch.
+    func setOverlayRedirectToggle(_ mode: ControlToggleMode) -> ControlResponse {
+        let want = mode.desiredValue(current: OverlayRedirectController.shared.isEnabled)
+        guard want != OverlayRedirectController.shared.isEnabled else { return ControlResponse(ok: true) }
+        settingsModel.setOverlayRedirectEnabled(want)
+        return ControlResponse(ok: true)
+    }
+
     // MARK: - Keymap
 
     /// Re-read and re-parse `keymap.conf`, returning the parse-diagnostic count. The SAME `reloadKeymap()` path

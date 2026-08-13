@@ -94,6 +94,10 @@ final class CustomCommandRunner {
         if let chord = keymap.equivalent(for: .normalMode) {
             sequences[.normalMode, default: []].insert([chord], at: 0)
         }
+        // same reasoning for `overlay_redirect_toggle` (fork only): keyless, and no menu item to carry it.
+        if let chord = keymap.equivalent(for: .overlayRedirectToggle) {
+            sequences[.overlayRedirectToggle, default: []].insert([chord], at: 0)
+        }
         commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences)
         normalMode.rebuild(binds: keymap.normalModeBinds)
         cancelLeaderTimer()

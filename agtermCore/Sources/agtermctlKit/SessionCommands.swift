@@ -672,6 +672,11 @@ struct Session: ParsableCommand {
                 cannot be combined with --size-percent.
                 """)
             var pane: String?
+            /// Phase two of the overlay redirect: this open is already wrapped, so the app must NOT run the
+            /// decision again. Set by `agtermctl` itself on a local re-send, and carried over ssh to the
+            /// viewer's `agtermctl`, whose own row usually carries a pairing that would otherwise bounce the
+            /// overlay straight back. Hidden: nothing but the redirect has any business passing it.
+            @Flag(name: .long, help: .hidden) var resolved = false
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
@@ -692,6 +697,7 @@ struct Session: ParsableCommand {
                 ControlRequest(cmd: .sessionOverlayOpen, target: target.target,
                                args: options.withWindow(ControlArgs(cwd: cwd, command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
+                                                                     resolved: resolved ? true : nil,
                                                                      pane: pane, color: backgroundColor)))
             }
 
@@ -703,35 +709,13 @@ struct Session: ParsableCommand {
                 ControlRequest(cmd: .sessionOverlayResult, target: id, args: pane.map { ControlArgs(pane: $0) })
             }
 
+            /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
+            /// `makeRequest()` as before, and what happens next depends on whether the app answers with a
+            /// redirect. In block mode `validate()` guarantees `!wait`, so its `wait` is nil there and the
+            /// floating `--size-percent` rides that single source instead of a duplicated ControlArgs.
             func run() throws {
-                guard block else { try defaultRun(); return }
                 let client = SocketClient(path: options.socketPath())
-                // open via the same `makeRequest()` as the non-block path: in block mode `validate()` guarantees
-                // `!wait`, so its `wait` is nil, and the floating `--size-percent` rides that single source
-                // instead of a duplicated ControlArgs.
-                let opened = try client.send(makeRequest())
-                guard opened.ok, let id = opened.result?.id else {
-                    SocketClient.printResponse(opened, json: options.json)
-                    throw ExitCode.failure
-                }
-                while true {
-                    let res = try client.send(resultRequest(id: id))
-                    if res.ok {
-                        if options.json { SocketClient.printResponse(res, json: true) }
-                        // a successful result must carry the status; its absence is a protocol violation, not success.
-                        guard let code = res.result?.exitCode else {
-                            FileHandle.standardError.write(Data("error: result missing exit code\n".utf8))
-                            throw ExitCode.failure
-                        }
-                        throw ExitCode(rawValue: Int32(code))
-                    }
-                    if res.error == OverlayResultError.stillRunning {
-                        Thread.sleep(forTimeInterval: 0.1)
-                        continue
-                    }
-                    SocketClient.printResponse(res, json: options.json)
-                    throw ExitCode.failure
-                }
+                try runRedirecting(environment: .live, send: client.send)
             }
         }
 

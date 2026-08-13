@@ -221,6 +221,19 @@ public final class Session: Identifiable {
     /// The split (right) pane's persisted restore-command override, the split analogue of `restoreCommand`.
     @ObservationIgnored public var splitRestoreCommand: String?
 
+    /// The workstation session this row mirrors, set by `agterm-zmx-mirror` on the LAPTOP's row when it
+    /// creates it. nil for a session that mirrors nothing. See `OverlayRedirect.swift`.
+    ///
+    /// ⚠️ Deliberately NOT `@ObservationIgnored`, unlike its neighbours here: the title-bar OVERLAY pill
+    /// reads it inside a SwiftUI body, so ignoring it would leave the pill showing the colour it had before
+    /// the mirror job wrote the pairing — pill and behaviour disagreeing, which the rule in
+    /// `OverlayRedirect.swift` exists to prevent.
+    public var mirrorsSession: OverlayMirrorSource?
+    /// The remote agterm currently watching this session, set on the WORKSTATION by the laptop's mirror job
+    /// over its existing ssh connection and refreshed on every pass. nil when nothing is watching.
+    /// See `OverlayRedirect.swift`. Observed for the same reason as `mirrorsSession` above.
+    public var viewer: OverlayViewer?
+
     /// The main pane's TRANSIENT override for THIS launch, copied from `restoreCommand` by an app-bootstrap
     /// restore, consumed by `takePendingRestoreOverride(pane:)`, never persisted. A session that was not
     /// bootstrap-restored (fresh, Recent Closed, duplicated, rebuilt after a mid-process window reload) starts

@@ -241,6 +241,14 @@ paths:
   `CustomCommandRunner.rebuild` feeds `keymap.binding(for: .normalMode)` into `builtinSequences` and even a
   SINGLE-chord `map ctrl+space normal_mode` is dispatched by the sequence engine. All are absent from
   `keymap list`'s `menu` by design.
+- ⚠️ **A KEYLESS built-in (nil `defaultChord`, no menu item) needs its own merge line in
+  `CustomCommandRunner.rebuild()`** — `settings.keymap.binding(for: .theAction)` folded into
+  `builtinSequences` — or a bound chord parses, resolves, and fires nothing. A single-chord `map` line to a
+  keyless action lands in `builtinOverrides` (a would-be menu equivalent) and never in `builtinSequences`,
+  which is the monitor's only table; only a 2+-chord leader lands there by itself. This is now a PATTERN,
+  not a one-off: `normal_mode` and `overlay_redirect_toggle` (fork only, [[overlay-redirect]]) each needed
+  the identical line for the identical reason. Grep that block before adding a third keyless action, and
+  pin it with a runner-level test, not a keymap-level one — a keymap-level test passes either way.
 - Write shifted symbols as `shift+<base>`: `shift+/` for `?`, `shift+=` for `+`, `shift+5` for `%`, and
   `shift+.` for `>`. `CustomCommandRunner` uses `characters(byApplyingModifiers: [])` to recover that
   base; keep `KeymapUITests.testCustomCommandShiftedSymbolFires`.

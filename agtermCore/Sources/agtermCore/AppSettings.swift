@@ -267,6 +267,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether the first-launch pointer at the Help menu extras has been shown; nil/false = not yet.
     /// Written once, by the launch that shows it. See `FirstRunWelcome`.
     public var welcomeShown: Bool?
+    /// Whether `session.overlay.open` may redirect an overlay to/from a paired machine; nil/false = off.
+    /// The persisted half of `OverlayRedirectController` — unlike normal mode, this survives a restart.
+    public var overlayRedirectEnabled: Bool?
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -288,7 +291,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
                 interfaceFontSize: Double? = nil,
                 hiddenInterfaceElements: [String]? = nil,
-                autoHideSidebarInactiveWindows: Bool? = nil, welcomeShown: Bool? = nil) {
+                autoHideSidebarInactiveWindows: Bool? = nil, welcomeShown: Bool? = nil,
+                overlayRedirectEnabled: Bool? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -329,6 +333,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.hiddenInterfaceElements = hiddenInterfaceElements
         self.autoHideSidebarInactiveWindows = autoHideSidebarInactiveWindows
         self.welcomeShown = welcomeShown
+        self.overlayRedirectEnabled = overlayRedirectEnabled
     }
 
     /// The hidden chrome elements, unknown (future-written) raw names dropped. The single read point.

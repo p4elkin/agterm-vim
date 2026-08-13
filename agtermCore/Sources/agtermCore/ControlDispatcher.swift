@@ -66,6 +66,15 @@ public protocol ControlActions {
     /// key window for the key monitor to act in) and reports a blocked entry as an error rather than a
     /// silent ok.
     func setNormalMode(_ mode: ControlToggleMode) -> ControlResponse
+    /// Set or clear a session's overlay-redirect pairing (`session.pairing`): MIRRORS on the LAPTOP's row
+    /// (which workstation session it stands in for), VIEWER on the WORKSTATION session (which remote
+    /// agterm is watching it). The host stamps `viewer`'s confirmation time on receipt — the two machines'
+    /// clocks never need to agree.
+    func setOverlayPairing(_ target: String?, window: String?,
+                           update: ControlOverlayPairingUpdate) -> ControlResponse
+    /// Turn the overlay-redirect toggle on/off/toggle. App-wide like `setNormalMode`, but PERSISTED across
+    /// a restart — the host writes it through `SettingsModel` and fans it into `OverlayRedirectController`.
+    func setOverlayRedirectToggle(_ mode: ControlToggleMode) -> ControlResponse
     func setQuickTerminal(mode: String?) -> ControlResponse
     func typeQuick(text: String) async -> ControlResponse
     func readQuickText(all: Bool, lines: Int?) async -> ControlResponse
@@ -111,6 +120,20 @@ public protocol ControlActions {
     func clearRestoreCommands() -> ControlResponse
 }
 
+/// The parsed `session.pairing` update: which field to touch and what to set it to, or that it should be
+/// cleared. Parsed host-free in the dispatcher (`dispatchSessionPairing`) from `mode`/`host`/`name`, so a
+/// raw socket client's malformed pairing is rejected before any session is touched.
+public enum ControlOverlayPairingUpdate: Equatable, Sendable {
+    /// This row mirrors `OverlayMirrorSource`'s session on its host.
+    case setMirrors(OverlayMirrorSource)
+    /// This row mirrors nothing.
+    case clearMirrors
+    /// `host`/`row` is now watching this session; the host stamps the confirmation time on receipt.
+    case setViewer(host: String, row: String)
+    /// Nothing is watching this session.
+    case clearViewer
+}
+
 public extension ControlActions {
     func splitSession(_ target: String?, window: String?, mode: String?, axis _: SplitAxis?) -> ControlResponse {
         splitSession(target, window: window, mode: mode)
@@ -139,9 +162,12 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     /// The pane to cover, nil for the session-wide overlay. A pane overlay is always full, so this and
     /// `sizePercent` are mutually exclusive (rejected in the dispatcher).
     public let pane: OverlayPane?
+    /// The two-phase resolved re-send (see `ControlArgs.resolved`): true only on `agtermctl`'s second,
+    /// already-wrapped request. The host must skip the redirect decision and open plainly when this is true.
+    public let resolved: Bool
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
-                follow: Bool = false, pane: OverlayPane? = nil) {
+                follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
@@ -149,6 +175,7 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
         self.backgroundColor = backgroundColor
         self.follow = follow
         self.pane = pane
+        self.resolved = resolved
     }
 }
 
@@ -202,7 +229,7 @@ public struct ControlDispatcher {
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
-                .sidebarCollapse, .normalMode, .restoreClear:
+                .sidebarCollapse, .normalMode, .restoreClear, .sessionPairing, .overlayRedirectToggle:
             return dispatchAppCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
@@ -619,7 +646,8 @@ public struct ControlDispatcher {
                                                 sizePercent: request.args?.sizePercent,
                                                 backgroundColor: request.args?.color,
                                                 follow: request.args?.follow ?? false,
-                                                pane: pane
+                                                pane: pane,
+                                                resolved: request.args?.resolved ?? false
                                               ))
         case .sessionOverlayClose:
             switch parseOverlayPane(request.args?.pane) {
@@ -710,8 +738,57 @@ public struct ControlDispatcher {
             return actions.setNormalMode(mode)
         case .restoreClear:
             return actions.clearRestoreCommands()
+        case .sessionPairing:
+            return dispatchSessionPairing(request)
+        case .overlayRedirectToggle:
+            guard let mode = ControlToggleMode.parse(request.args?.mode) else {
+                return ControlResponse(ok: false, error: "invalid mode: \(request.args?.mode ?? "toggle")")
+            }
+            return actions.setOverlayRedirectToggle(mode)
         default:
             preconditionFailure("unexpected app command: \(request.cmd.rawValue)")
+        }
+    }
+
+    /// `session.pairing`: parse `mode` (`mirrors`|`viewer`) plus `host`/`name` into a
+    /// `ControlOverlayPairingUpdate`. `host` missing is always rejected — there being nothing to pair or
+    /// clear; an EMPTY `host` clears the field `mode` names (ignoring `name`); a non-empty `host` requires a
+    /// non-empty `name` (the mirrored session's key, or the watching row's), or the request is rejected —
+    /// a pairing naming a host but no session/row could never be read back into a working redirect.
+    ///
+    /// `cwd` is `mirrors` only and stays optional, never rejected: it is the remote session's directory, and
+    /// an older mirror job sends none. Trimmed to nil like `host`, since a whitespace-only path could only
+    /// ever fail later, inside the redirected `cd`, on a machine nobody is watching.
+    private func dispatchSessionPairing(_ request: ControlRequest) -> ControlResponse {
+        let args = request.args
+        guard let rawHost = args?.host else {
+            return ControlResponse(ok: false, error: "session.pairing requires --host (or --clear)")
+        }
+        // trimmed like `name` below: a whitespace-only host would otherwise be stored and could only ever
+        // fail later, at ssh time, on a machine nobody is watching.
+        let host = rawHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch args?.mode {
+        case "mirrors":
+            guard !host.isEmpty else {
+                return actions.setOverlayPairing(request.target, window: args?.window, update: .clearMirrors)
+            }
+            guard let session = args?.name?.trimmedOrNil else {
+                return ControlResponse(ok: false, error: "session.pairing mirrors requires --session")
+            }
+            let source = OverlayMirrorSource(host: host, session: session, cwd: args?.cwd?.trimmedOrNil)
+            return actions.setOverlayPairing(request.target, window: args?.window, update: .setMirrors(source))
+        case "viewer":
+            guard !host.isEmpty else {
+                return actions.setOverlayPairing(request.target, window: args?.window, update: .clearViewer)
+            }
+            guard let row = args?.name?.trimmedOrNil else {
+                return ControlResponse(ok: false, error: "session.pairing viewer requires --row")
+            }
+            return actions.setOverlayPairing(request.target, window: args?.window,
+                                             update: .setViewer(host: host, row: row))
+        default:
+            return ControlResponse(ok: false,
+                                   error: "invalid session.pairing mode: \(args?.mode ?? "") (mirrors|viewer)")
         }
     }
 

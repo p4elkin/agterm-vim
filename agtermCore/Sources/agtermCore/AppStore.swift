@@ -257,9 +257,13 @@ public final class AppStore {
                 let surfaces = TerminalZoomSurface.allCases.compactMap { surface -> ControlSurfaceNode? in
                     guard surface.isAvailable(in: session) else { return nil }
                     let id = TerminalSurfaceID(sessionID: session.id, surface: surface).rawValue
+                    // only the split pane can sit somewhere else: the session node's cwd is `effectiveCwd`,
+                    // always the primary's. Nil means "the session's", so nothing changes for the other kinds.
+                    let paneCwd = surface == .split ? (session.splitCwd ?? session.initialSplitCwd) : nil
                     return ControlSurfaceNode(id: id, kind: surface.rawValue,
                                               active: surface.isActive(in: session),
-                                              visible: surface.isVisible(in: session))
+                                              visible: surface.isVisible(in: session),
+                                              cwd: paneCwd)
                 }
                 return ControlSessionNode(id: session.id.uuidString, name: session.displayName,
                                           cwd: session.effectiveCwd, title: session.oscTitle,
@@ -283,7 +287,9 @@ public final class AppStore {
                                           // the PERSISTED overrides, not the transient pending payloads, so
                                           // a read after one fired still reports what stays pinned.
                                           restoreCommand: session.restoreCommand,
-                                          splitRestoreCommand: session.splitRestoreCommand, status: status,
+                                          splitRestoreCommand: session.splitRestoreCommand,
+                                          mirrorsSession: session.mirrorsSession, viewer: session.viewer,
+                                          status: status,
                                           statusPane: statusPane,
                                           statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
                                           statusColor: idle ? nil : session.agentIndicator.color,

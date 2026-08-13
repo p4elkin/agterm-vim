@@ -52,6 +52,8 @@ final class MockControlActions: ControlActions {
         case expand(window: String?)
         case collapse(window: String?)
         case normalMode(ControlToggleMode)
+        case overlayPairing(target: String?, window: String?, ControlOverlayPairingUpdate)
+        case overlayRedirectToggle(ControlToggleMode)
         case quick(String?)
         case quickType(text: String)
         case quickText(all: Bool, lines: Int?)
@@ -105,6 +107,8 @@ final class MockControlActions: ControlActions {
     var nextSidebarVisibilityResponse = ControlResponse(ok: true)
     var nextSidebarViewModeResponse = ControlResponse(ok: true)
     var nextNormalModeResponse = ControlResponse(ok: true)
+    var nextOverlayPairingResponse = ControlResponse(ok: true)
+    var nextOverlayRedirectToggleResponse = ControlResponse(ok: true)
     var nextExpandResponse = ControlResponse(ok: true)
     var nextCollapseResponse = ControlResponse(ok: true)
     var nextFontResponse = ControlResponse(ok: true)
@@ -381,6 +385,17 @@ final class MockControlActions: ControlActions {
     func setNormalMode(_ mode: ControlToggleMode) -> ControlResponse {
         calls.append(.normalMode(mode))
         return nextNormalModeResponse
+    }
+
+    func setOverlayPairing(_ target: String?, window: String?,
+                           update: ControlOverlayPairingUpdate) -> ControlResponse {
+        calls.append(.overlayPairing(target: target, window: window, update))
+        return nextOverlayPairingResponse
+    }
+
+    func setOverlayRedirectToggle(_ mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.overlayRedirectToggle(mode))
+        return nextOverlayRedirectToggleResponse
     }
 
     func setQuickTerminal(mode: String?) -> ControlResponse {
