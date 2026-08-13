@@ -55,11 +55,13 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             library = WindowLibrary(directory: stateDir)
             fired = []
             escapeTargets = []
+            actions = AppActions(library: library)
             runner = CustomCommandRunner(library: library,
                                          settings: SettingsModel(library: library,
                                                                  settingsStore: SettingsStore(directory: stateDir)),
-                                         performBuiltin: { [weak self] in self?.record($0) },
+                                         actions: actions,
                                          socketProvider: { "" })
+            runner.builtinPerformer = { [weak self] action, _ in self?.record(action) }
             runner.escapeSender = { [weak self] pane in self?.escapeTargets.append(pane) }
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
                               styleMask: [.titled], backing: .buffered, defer: false)
@@ -542,10 +544,12 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         var seededSettings = store.load()
         seededSettings.configDirectory = configDir.path
         try store.save(seededSettings)
-        return CustomCommandRunner(library: library,
-                                   settings: SettingsModel(library: library, settingsStore: store),
-                                   performBuiltin: { [weak self] in self?.record($0) },
-                                   socketProvider: { "" })
+        let seeded = CustomCommandRunner(library: library,
+                                         settings: SettingsModel(library: library, settingsStore: store),
+                                         actions: AppActions(library: library),
+                                         socketProvider: { "" })
+        seeded.builtinPerformer = { [weak self] action, _ in self?.record(action) }
+        return seeded
     }
 
     private func markerLineCount(_ url: URL) -> Int {

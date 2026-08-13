@@ -28,8 +28,11 @@ final class NormalModeEscapeHandoffTests: XCTestCase {
             runner = CustomCommandRunner(library: library,
                                         settings: SettingsModel(library: library,
                                                                 settingsStore: SettingsStore(directory: stateDir)),
-                                        performBuiltin: { _ in },
+                                        actions: AppActions(library: library),
                                         socketProvider: { "" })
+            // these tests drive Escape alone; a dispatched built-in stays inert, as it was before the hub
+            // replaced the injected closure.
+            runner.builtinPerformer = { _, _ in }
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
                               styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false

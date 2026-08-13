@@ -108,6 +108,10 @@ final class CustomCommandRunner {
     /// itself leaves no trace to assert on.
     var escapeSender: @MainActor (GhosttySurfaceView) -> Void = { $0.sendEscapeKey() }
 
+    /// Test seam beside `escapeSender`: performing a built-in needs the windows, sessions and palette state a
+    /// hosted test cannot build, so those record the action instead. Nil dispatches through the real hub.
+    var builtinPerformer: (@MainActor (BuiltinAction, NSWindow) -> Void)?
+
     /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Normal
     /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while armed
     /// resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
@@ -229,7 +233,7 @@ final class CustomCommandRunner {
             // like the palette row behind it. Consumed even when `perform` finds the action gated out: the
             // gate lives inside each action, so this cannot see the outcome, and passing a leader's LAST chord
             // through after swallowing its prefix would type a stray character into the terminal.
-            actions.perform(action, in: keyWindow)
+            performBuiltin(action, in: keyWindow)
             return true
         case .armed:
             // only a Command chord reaches here with the mode still owning the bare keys, and the sequence
@@ -284,7 +288,7 @@ final class CustomCommandRunner {
             dropGlobalLeader()
             // the same seam a `.firedBuiltin` chord takes, so an `nmap` bind does exactly what the palette row
             // behind its action does, gate included.
-            actions.perform(action, in: keyWindow)
+            performBuiltin(action, in: keyWindow)
             return true
         case .armed:
             commandEngine.reset()
@@ -316,6 +320,12 @@ final class CustomCommandRunner {
     private func dropGlobalLeader() {
         commandEngine.reset()
         cancelLeaderTimer()
+    }
+
+    /// The one path a monitor-dispatched built-in takes, so a `.firedBuiltin` chord and an `nmap` bind cannot
+    /// drift apart.
+    private func performBuiltin(_ action: BuiltinAction, in window: NSWindow) {
+        if let builtinPerformer { builtinPerformer(action, window) } else { actions.perform(action, in: window) }
     }
 
     /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base
