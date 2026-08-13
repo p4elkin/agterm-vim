@@ -2,8 +2,9 @@
 # Build libghostty (GhosttyKit.xcframework) and ghostty resources from upstream ghostty source.
 #
 # We build from source rather than downloading a prebuilt artifact so the toolchain is fully
-# self-owned: the only inputs are upstream ghostty-org/ghostty at a pinned SHA, zig 0.15.2, and
-# Xcode's Metal Toolchain. No third-party fork, no daily-build release that can be pruned.
+# self-owned: the only inputs are upstream ghostty-org/ghostty at a pinned SHA, zig 0.15.2,
+# Xcode's Metal Toolchain, and the additive patches in patches/ghostty. No third-party fork,
+# no daily-build release that can be pruned.
 #
 # The pin is DELIBERATELY a pre-regression commit: a libghostty renderer regression introduced on
 # main after this SHA blanks the terminal scrollback on a font-size increase.
@@ -64,6 +65,16 @@ git init -q "$BUILD_DIR"
 git -C "$BUILD_DIR" remote add origin "$GHOSTTY_REPO"
 git -C "$BUILD_DIR" fetch -q --depth 1 origin "$GHOSTTY_REV"
 git -C "$BUILD_DIR" -c advice.detachedHead=false checkout -q FETCH_HEAD
+
+# Local patches on top of the pinned upstream tree. Each is additive and carries its own
+# rationale in patches/ghostty/README.md; the build fails loudly if one stops applying, which
+# is the signal to rebase it when GHOSTTY_REV moves.
+if compgen -G "patches/ghostty/*.patch" >/dev/null; then
+  for patch in patches/ghostty/*.patch; do
+    echo "applying $(basename "$patch")..."
+    git -C "$BUILD_DIR" apply --verbose "$(pwd)/$patch"
+  done
+fi
 
 echo "building GhosttyKit.xcframework with zig 0.15.2 (a few minutes)..."
 ( cd "$BUILD_DIR" && "$ZIG" build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false )
