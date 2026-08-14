@@ -20,7 +20,7 @@ extension AppStore {
     /// `navigableRecentSessions(limit:)` shaped for the control tree's `sessionRecency`. Passing the stack's
     /// own bound leaves the wire list UNCAPPED, unlike the popover's `SessionSwitcher.maxCandidates`, so a
     /// consumer picks its own count.
-    public func controlSessionRecency() -> [String]? {
+    func controlSessionRecency() -> [String]? {
         let ids = navigableRecentSessions(limit: sessionRecency.limit).map(\.uuidString)
         return ids.isEmpty ? nil : ids
     }

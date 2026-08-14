@@ -72,6 +72,16 @@ struct AppStoreSessionRecencyTests {
         #expect(store.controlTree().sessionRecency == [b.id.uuidString])
     }
 
+    // the wire list is uncapped; the popover's ten-candidate cap would pass every other case here.
+    @Test func controlTreeSessionRecencyIsNotCappedAtThePopoverCandidateCount() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let sessions = (0..<12).map { store.addSession(toWorkspace: ws.id, cwd: "/s\($0)")! }
+        for session in sessions { store.selectSession(session.id) }
+
+        #expect(store.controlTree().sessionRecency == sessions.dropLast().reversed().map(\.id.uuidString))
+    }
+
     /// The encoded key, which neither the model tests nor the `ControlTree` round-trip assert together.
     @Test func sessionRecencyReachesTheEncodedTreeAndIsOmittedWithoutIt() throws {
         let store = makeStore()

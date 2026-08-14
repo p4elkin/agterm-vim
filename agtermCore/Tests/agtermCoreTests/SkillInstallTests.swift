@@ -45,14 +45,15 @@ struct SkillInstallTests {
 
     @Test func bundledSkillDocumentsSessionRecency() throws {
         let skillDirectory = repository.appendingPathComponent("plugins/agterm/skills/agterm")
-        let skill = try String(contentsOf: skillDirectory.appendingPathComponent("SKILL.md"), encoding: .utf8)
-        let reference = try String(contentsOf: skillDirectory.appendingPathComponent("reference.md"), encoding: .utf8)
+        let skill = unwrapped(try String(contentsOf: skillDirectory.appendingPathComponent("SKILL.md"), encoding: .utf8))
+        let reference = unwrapped(
+            try String(contentsOf: skillDirectory.appendingPathComponent("reference.md"), encoding: .utf8))
         let examples = try String(contentsOf: skillDirectory.appendingPathComponent("examples.md"), encoding: .utf8)
 
         #expect(examples.contains(".result.tree.sessionRecency"))
         #expect(reference.contains("thirteen top-level read-only fields"))
         #expect(reference.contains("All thirteen are read-only projections"))
-        #expect(unwrapped(skill).contains("thirteen read-only top-level fields"))
+        #expect(skill.contains("thirteen read-only top-level fields"))
 
         let fields = treeTopLevelFieldNames
         #expect(fields.count == 13, "ControlTree's top-level fields changed; update the skill's counts")
@@ -71,7 +72,8 @@ struct SkillInstallTests {
             .children.compactMap(\.label).filter { $0 != "workspaces" }
     }
 
-    // SKILL.md is reflowed prose, so a substring spanning its line wrap pins where the paragraph breaks.
+    // the skill docs are reflowed prose, so a raw substring spanning a line wrap would pin where the
+    // paragraph happens to break.
     private func unwrapped(_ markdown: String) -> String {
         markdown.replacingOccurrences(of: "\n", with: " ")
     }
