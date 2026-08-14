@@ -45,19 +45,21 @@ command name; nmap skipped`. No keymap that parses today can change meaning.
 
 ## Context (from discovery)
 
-Files and the exact places inside them:
+Files and the exact places inside them. Line numbers are against `f60712d`, the rebase tip this plan was
+replanted onto; every entry also names its symbol, so a later rebase moving them costs nothing.
 
-- `agtermCore/Sources/agtermCore/Keymap.swift` — `NormalModeBind` (line 56), `ParsedNormalBind` (line 259),
-  `parseNormalModeLine` (line 682), `parseNormalModeTarget` (line 715), and `resolveNormalModeBinds`
-  (line 761), which builds the final `NormalModeBind` from each parsed line.
+- `agtermCore/Sources/agtermCore/Keymap.swift` — `NormalModeBind` (line 56), `ParsedNormalBind` (line 290),
+  `parseNormalModeLine` (line 717), `parseNormalModeTarget` (line 756), and `resolveNormalModeBinds`
+  (line 802), which builds the final `NormalModeBind` from each parsed line.
 - `agtermCore/Sources/agtermCore/KeybindMatcher.swift` — `advance(_:)` (line 41), with two fire paths: the
-  exact match at the top, and the re-arm path near the bottom that resets and calls itself.
-- `agtermCore/Sources/agtermCore/NormalModeState.swift` — `advance(_:)` (line 51) and its
-  `case .fired(.builtin(let action))` branch (line 63), where `if action.leavesNormalMode { exit() }` lives.
-- `agtermCore/Sources/agtermCore/BuiltinAction.swift` — `leavesNormalMode` (line 76). Read, not changed.
-- `agtermCore/Sources/agtermCore/ControlKeymap.swift` — `ControlKeymapNormalBind` (line 50) and the mapping
-  that builds it (line 157).
-- `agtermCore/Sources/agtermctlKit/SocketClient.swift` — the human `normal mode:` block (line 250).
+  exact match at the top, and the re-arm path at line 56 that resets and calls itself.
+- `agtermCore/Sources/agtermCore/NormalModeState.swift` — `advance(_:)` (line 53) and its
+  `case .fired(.builtin(let action))` branch (line 63), where `if action.leavesNormalMode { exit() }` sits at
+  line 66.
+- `agtermCore/Sources/agtermCore/BuiltinAction.swift` — `leavesNormalMode` (line 77). Read, not changed.
+- `agtermCore/Sources/agtermCore/ControlKeymap.swift` — `ControlKeymapNormalBind` (line 50) and the
+  `keymap.normalModeBinds.map` builder (line 160).
+- `agtermCore/Sources/agtermctlKit/SocketClient.swift` — the human `normal mode:` block (line 253).
 - `cookbook/vim-keys-cheatsheet/cheatsheet.py` — `NMAP_LINE` (line 157), unanchored at the end, so a trailing
   word already parses.
 
