@@ -16,4 +16,12 @@ extension AppStore {
         if let activeID = activeSession?.id { valid.remove(activeID) }
         return sessionRecency.top(limit, in: valid)
     }
+
+    /// The same navigation candidates as `navigableRecentSessions(limit:)`, shaped for the control tree's
+    /// `sessionRecency` field: uuid strings, most-recent first, nil when there is nowhere to jump back to.
+    /// The limit is the stack's own bound, so a consumer picks its own count.
+    public func controlSessionRecency() -> [String]? {
+        let ids = navigableRecentSessions(limit: sessionRecency.limit).map(\.uuidString)
+        return ids.isEmpty ? nil : ids
+    }
 }

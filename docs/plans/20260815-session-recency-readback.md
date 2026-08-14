@@ -107,12 +107,12 @@ consumer picks its own count.
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (the `ControlTree(...)` construction at the end of `controlTree(...)`)
 - Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTests.swift` (beside the existing `controlTreeReportsDashboardFieldsFromClosures` block)
 
-- [ ] add `controlSessionRecency() -> [String]?` returning `navigableRecentSessions(limit: sessionRecency.limit)` mapped to `uuidString`, and nil when empty
-- [ ] pass `sessionRecency: controlSessionRecency()` in the `ControlTree(...)` construction; do NOT add a closure parameter to `controlTree(...)`, the value is store state
-- [ ] write a test that selects a then b and asserts the tree lists a and omits b, because b is active
-- [ ] write a test asserting most-recent-first order across three selections
-- [ ] write tests for the empty cases: a store with a single session omits the field, and a closed session never appears
-- [ ] run `cd agtermCore && swift test --filter AppStoreTests` - must pass before task 3
+- [x] add `controlSessionRecency() -> [String]?` returning `navigableRecentSessions(limit: sessionRecency.limit)` mapped to `uuidString`, and nil when empty
+- [x] pass `sessionRecency: controlSessionRecency()` in the `ControlTree(...)` construction; do NOT add a closure parameter to `controlTree(...)`, the value is store state
+- [x] write a test that selects a then b and asserts the tree lists a and omits b, because b is active
+- [x] write a test asserting most-recent-first order across three selections
+- [x] write tests for the empty cases: a store with a single session omits the field, and a closed session never appears
+- [x] run `cd agtermCore && swift test --filter AppStoreTests` - must pass before task 3
 
 ### Task 3: Document the field in the bundled skill
 
