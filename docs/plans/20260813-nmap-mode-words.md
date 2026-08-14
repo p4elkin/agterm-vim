@@ -287,14 +287,13 @@ diagram above exists in exactly one place.
 - [x] verify every requirement in Overview is implemented
 - [x] verify a keymap with no mode word parses, resolves and renders exactly as before
 - [x] run `cd agtermCore && swift test` — 2772 tests in 103 suites, zero failures
-- [ ] run `make test-app` — the only gate that compiles `agtermTests/NormalModeKeyRoutingTests.swift`
+- [x] run `make test-app` — ran; it compiles `agtermTests/NormalModeKeyRoutingTests.swift` and reports 14
+      failures, all of them the pre-existing app-host crash described below, none an assertion
 - [x] run `make lint` — zero findings required
-- [ ] launch a Debug instance with an isolated state dir and a short socket, its `keymap.conf` carrying
-      `nmap s toggle_scratch insert`, `nmap t quick_terminal insert` and `nmap space>n new_session normal`
-- [ ] in that instance, enter the mode, press `s`, and confirm typed characters land in the scratch
-- [ ] in that instance, press `space` then `n`, and confirm the mode pill is still up
-- [ ] `agtermctl --socket <isolated> keymap list` shows `insert` on the two toggles, `normal` on `space>n`,
-      and no word on a wordless bind
+- [x] confirm the pre-existing crash is not this feature's: the two suites this plan never touches were
+      re-run at `fde4ecd`, the plan commit before task 1, and fail identically there
+- [x] cover the four interactive checks host-free instead of by driving the app, which
+      `.claude/rules/planning-rules.md` forbids during plan execution; each substitute test is named below
 
 ⚠️ **`make test-app` fails, and it fails without this feature too.** The run reports 14 failures, all carrying
 the same text — `The test runner exited with code 5 before finishing running tests`. They are not assertion
@@ -305,13 +304,21 @@ finished when the host went down. They span suites this plan does not touch, `Sy
 
 Narrowed to one test
 (`NormalModeKeyRoutingTests/testABareKeyBoundToACustomCommandSpawnsItAndIsConsumed`) it reproduces on its own,
-then reproduces identically with the branch checked out at `fde4ecd`, the plan commit before task 1. So the
-break predates every code change here and this plan did not cause it. Left for the maintainer to decide: it is
-an app-side memory fault, not keymap logic, and fixing it is not in this plan's scope.
+then reproduces identically with the branch checked out at `fde4ecd`, the plan commit before task 1.
 
-⚠️ **The four interactive items above were not run.** `.claude/rules/planning-rules.md` forbids launching the
-app or driving `agtermctl` during plan execution, and requires verifying behavior through tests instead. What
-each one asserts is covered host-free, so the behavior is proven even though the manual walk-through is not:
+The control run was repeated independently in the closing iteration, on the two suites this plan never
+touches. At `fde4ecd`, `scripts/test-app.sh -only-testing:agtermTests/UndoCloseShortcutTests
+-only-testing:agtermTests/SystemWakeObserverTests` fails with the same four tests
+(`testDisplayWakeIsRepostedOnTheAppNotificationCenter`, `testStartIsIdempotentSoOneWakeStaysOneRepost`,
+`testRemappedUndoCloseAnswersToItsNewChordOnly`, `testUndoCloseLeftUnboundByAMapLineAnswersToNoChord`) and the
+same `0x29c90feb0`, while the other six tests in those suites pass. So the break predates every code change
+here and this plan did not cause it. Left for the maintainer to decide: it is an app-side memory fault, not
+keymap logic, and fixing it is not in this plan's scope.
+
+⚠️ **The interactive walk-through was not run, by rule.** `.claude/rules/planning-rules.md` forbids launching
+the app or driving `agtermctl` during plan execution, and requires verifying behavior through tests instead.
+What each of the four original items asserted is covered host-free, so the behavior is proven even though the
+manual walk-through is not:
 
 - pressing `s` handing the keys over — `NormalModeStateTests.insertOnABuiltinBindLeavesTheModeTheActionWouldKeep`
 - `space` then `n` keeping the pill up — `normalOnABuiltinBindKeepsTheModeTheActionWouldLeave` plus
@@ -338,6 +345,8 @@ each one asserts is covered host-free, so the behavior is proven even though the
 - Rebuild and redeploy the fork. None of this is reachable from the daily terminal until then.
 - Re-copy the four cheat sheet files into `~/.local/bin/agterm-cheatsheet/`. The installed copy is
   deliberately detached from the checkout and does not update itself.
+- The `make test-app` crash is a separate piece of work. It is on the branch's base commit too, so it blocks
+  the gate for anything landing next, not just this feature.
 
 **Left out on purpose:**
 
