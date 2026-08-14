@@ -83,7 +83,7 @@ index 730913e..9a5b9d5 100644
      /// `macos-option-as-alt`. The filtered mods should be used for
      /// key translation but should NOT be sent back via the `_key`
 diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
-index 5087213..01daf46 100644
+index 5087213..0c5f281 100644
 --- a/src/renderer/Thread.zig
 +++ b/src/renderer/Thread.zig
 @@ -107,6 +107,12 @@ flags: packed struct {
@@ -99,7 +99,7 @@ index 5087213..01daf46 100644
  } = .{},
  
  pub const DerivedConfig = struct {
-@@ -376,6 +382,28 @@ fn drainMailbox(self: *Thread) !void {
+@@ -376,6 +382,35 @@ fn drainMailbox(self: *Thread) !void {
                  // check the visible state themselves to control their behavior.
              },
  
@@ -118,6 +118,13 @@ index 5087213..01daf46 100644
 +                        break :realized;
 +                    };
 +                    self.flags.realized = true;
++                    // The rebuilt swap chain's targets hold nothing, so the
++                    // next frame must repaint everything rather than the cells
++                    // the terminal happens to consider dirty. A quiet surface
++                    // dirties nothing at all, and one resized while unrealized
++                    // dirties only part, which paints the new target at the old
++                    // geometry and leaves the rest blank until a keystroke.
++                    self.renderer.markDirty();
 +                    self.drawFrame(false);
 +                } else {
 +                    self.flags.realized = false;
@@ -128,7 +135,7 @@ index 5087213..01daf46 100644
              .focus => |v| focus: {
                  // If our state didn't change we do nothing.
                  if (self.flags.focused == v) break :focus;
-@@ -495,6 +523,9 @@ fn drawFrame(self: *Thread, now: bool) void {
+@@ -495,6 +530,9 @@ fn drawFrame(self: *Thread, now: bool) void {
      // If we're invisible, we do not draw.
      if (!self.flags.visible) return;
  
