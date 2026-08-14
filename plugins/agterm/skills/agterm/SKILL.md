@@ -98,12 +98,19 @@ Inspect the live tree any time with `agtermctl tree --json` (workspaces → sess
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, `overlay`, `overlay-left`, or
-`overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries five
+`overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries thirteen
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (whether the window's quick
-terminal is shown — the read side of the write-only `quick` command). List windows with
+(`tree` or `flagged` — the read side of `sidebar mode`), `quickVisible` (whether the window's quick
+terminal is shown — the read side of the write-only `quick` command), `workspaceFilter` (whether the
+workspace focus filter is applied — the read side of `workspace filter`), `zoomedSurface` (the control id
+of the zoomed surface, omitted when nothing is zoomed — the read side of `surface zoom`),
+`dashboardMembers`, `dashboardHighlighted`, `dashboardFontSize` and `dashboardFontMode` (the read sides of
+the write-only `dashboard` command, all omitted when no dashboard is open), `sessionRecency` (the window's
+jump-back targets, session ids most recent first, with the active session dropped and the visible
+navigation scope applied; omitted when there is nothing to jump back to), and `pickPending` (the id of the
+picker awaiting an answer, omitted when none is pending). List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame), and `fullscreen`/`zoomed`/`minimized` (the read side

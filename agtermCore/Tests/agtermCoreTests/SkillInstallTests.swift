@@ -43,6 +43,20 @@ struct SkillInstallTests {
         #expect(examples.contains("agtermctl workspace filter on"))
     }
 
+    @Test func bundledSkillDocumentsSessionRecency() throws {
+        let skillDirectory = repository.appendingPathComponent("plugins/agterm/skills/agterm")
+        let skill = try String(contentsOf: skillDirectory.appendingPathComponent("SKILL.md"), encoding: .utf8)
+        let reference = try String(contentsOf: skillDirectory.appendingPathComponent("reference.md"), encoding: .utf8)
+        let examples = try String(contentsOf: skillDirectory.appendingPathComponent("examples.md"), encoding: .utf8)
+
+        #expect(skill.contains("`sessionRecency`"))
+        #expect(reference.contains("`sessionRecency`"))
+        #expect(examples.contains(".result.tree.sessionRecency"))
+        #expect(reference.contains("thirteen top-level read-only fields"))
+        #expect(skill.contains("thirteen\nread-only top-level fields"))
+        #expect(!reference.contains("twelve"))
+    }
+
     // the plugin manifests and the app bundle read the SAME directory, so a moved skill or a renamed leaf
     // breaks one consumer silently while the others keep working.
     @Test func pluginManifestsPointAtTheBundledSkillDirectory() throws {

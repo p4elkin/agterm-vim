@@ -827,6 +827,22 @@ shared with `session overlay open`, which means a second `hud` replaces the firs
 replaces a HUD, and `overlay result` over one errors `no overlay result: the slot holds a hud`. A HUD over
 a RUNNING program is refused instead: a message is replaceable, a program is not.
 
+## Jump back to the session you were on before
+
+```bash
+# the window's jump-back targets, most recent first; the ACTIVE session is not among them
+agtermctl tree --json | jq -r '.result.tree.sessionRecency // [] | .[]'
+
+# jump straight to the previous one
+agtermctl session select --target "$(agtermctl tree --json | jq -r '.result.tree.sessionRecency[0]')"
+```
+
+The key is absent when there is nothing to jump back to, so the `// []` keeps a one-session window quiet.
+The visible navigation scope applies, exactly as it does to `session go`: in flagged mode, or while the
+workspace focus filter is applied, the list carries only sessions inside that set. A session that was
+never selected has no entry, so this array can be shorter than the session count — tree order stays the
+fallback for a complete list.
+
 ## Navigate and manage windows
 
 ```bash

@@ -122,11 +122,15 @@ consumer picks its own count.
 - Modify: `plugins/agterm/skills/agterm/examples.md` (the jq query reading `{dashboardMembers, dashboardHighlighted, dashboardFontSize, dashboardFontMode}`)
 - Modify: `.claude/rules/control-api.md` (the bullet opening "Top-level tree includes idle/auto-follow" in the `## Tree and window read-back` section)
 
-- [ ] add `sessionRecency` to the reference.md catalog, describing the dropped active session and the visible-scope narrowing, and change both "twelve" mentions to "thirteen"
-- [ ] correct the SKILL.md sentence: it claims five fields and lists five while thirteen exist, so list them all and give the honest count
-- [ ] add `sessionRecency` to the examples.md jq object query, and add a one-line example that jumps to the previous session
-- [ ] add a line to `.claude/rules/control-api.md` recording that `site/commands.html` still claims seven top-level fields, lists seven of thirteen, and is deliberately not fixed on this fork
-- [ ] run `cd agtermCore && swift test --filter SkillInstallTests` - must pass before task 4
+- [x] add `sessionRecency` to the reference.md catalog, describing the dropped active session and the visible-scope narrowing, and change both "twelve" mentions to "thirteen"
+- [x] correct the SKILL.md sentence: it claims five fields and lists five while thirteen exist, so list them all and give the honest count
+- [x] add `sessionRecency` to the examples.md jq object query, and add a one-line example that jumps to the previous session
+      ⚠️ deviation: the only jq object query in examples.md is the dashboard read-back
+      (`{dashboardMembers, dashboardHighlighted, ...}`). `sessionRecency` is not dashboard state, so
+      putting it there would document it wrongly. It got its own "Jump back to the session you were on
+      before" section instead, with the read-back and the jump one-liner.
+- [x] add a line to `.claude/rules/control-api.md` recording that `site/commands.html` still claims seven top-level fields, lists seven of thirteen, and is deliberately not fixed on this fork
+- [x] run `cd agtermCore && swift test --filter SkillInstallTests` - must pass before task 4
 
 ### Task 4: Verify acceptance criteria
 
