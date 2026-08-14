@@ -56,11 +56,17 @@ public struct ControlKeymapNormalBind: Codable, Sendable, Equatable {
     public var action: String?
     /// The custom command's name, as its `command` line quotes it.
     public var command: String?
+    /// The line's `insert`/`normal` word, present only when it CHANGES the outcome; omitted otherwise.
+    ///
+    /// So `nmap space>n new_session insert` reports nothing, because `insert` already is that action's own
+    /// default. A caller reading the field as "the line carried a word" would call that a dropped line.
+    public var mode: String?
 
-    public init(bind: String, action: String? = nil, command: String? = nil) {
+    public init(bind: String, action: String? = nil, command: String? = nil, mode: String? = nil) {
         self.bind = bind
         self.action = action
         self.command = command
+        self.mode = mode
     }
 }
 
@@ -159,18 +165,28 @@ public extension ControlKeymap {
         }
         let normalMode = keymap.normalModeBinds.map { bind -> ControlKeymapNormalBind in
             let spelling = bind.keybind.map(\.displayString).joined(separator: ">")
+            let mode = deviatingMode(of: bind)
             switch bind.target {
             case .builtin(let action):
-                return ControlKeymapNormalBind(bind: spelling, action: action.rawValue)
+                return ControlKeymapNormalBind(bind: spelling, action: action.rawValue, mode: mode)
             case .command(let id):
                 // an unresolvable id can only be a bug; report the raw id rather than leave the row empty.
                 let name = keymap.commands.first { $0.id == id }?.name ?? id.uuidString
-                return ControlKeymapNormalBind(bind: spelling, command: name)
+                return ControlKeymapNormalBind(bind: spelling, command: name, mode: mode)
             }
         }
         return ControlKeymap(path: path, actions: actions, commands: commands,
                              diagnostics: diagnostics.map { ControlKeymapDiagnostic(line: $0.line, message: $0.message) },
                              normalMode: normalMode.isEmpty ? nil : normalMode,
                              menu: menu)
+    }
+
+    /// The word to report for a normal-mode bind: its effective value when that differs from what the same
+    /// bind with no word would do, else nil. Compared against a wordless copy rather than against a rule
+    /// spelled here, so `NormalModeBind.leavesNormalMode` stays the only place the default is decided.
+    private static func deviatingMode(of bind: NormalModeBind) -> String? {
+        let wordless = NormalModeBind(keybind: bind.keybind, target: bind.target)
+        guard bind.leavesNormalMode != wordless.leavesNormalMode else { return nil }
+        return (bind.leavesNormalMode ? NormalModeBind.Mode.insert : .normal).rawValue
     }
 }

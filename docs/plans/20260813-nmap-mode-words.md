@@ -236,12 +236,12 @@ diagram above exists in exactly one place.
 **Model:** sonnet
 **Wave:** apply
 
-- [ ] add the optional `mode` field, documented as present only when it changes the outcome
-- [ ] set it in the builder by comparing the effective value against the action default
-- [ ] render it as a third column in the human `normal mode:` block
-- [ ] write tests that a word differing from the default is reported, on both target kinds
-- [ ] write tests that a wordless bind and a word matching the action default both omit the field
-- [ ] run `cd agtermCore && swift test --filter ControlKeymapTests` — must pass before the next task
+- [x] add the optional `mode` field, documented as present only when it changes the outcome
+- [x] set it in the builder by comparing the effective value against the action default
+- [x] render it as a third column in the human `normal mode:` block
+- [x] write tests that a word differing from the default is reported, on both target kinds
+- [x] write tests that a wordless bind and a word matching the action default both omit the field
+- [x] run `cd agtermCore && swift test --filter ControlKeymapTests` — must pass before the next task
 
 ### Task 5: Document the grammar
 

@@ -173,6 +173,57 @@ import Testing
         #expect(!json.contains(#""command""#), "the nil half is omitted, not encoded as null")
     }
 
+    @Test func normalModeReportsAWordThatOverridesTheActionDefault() throws {
+        let parsed = parseKeymap("nmap s toggle_scratch insert\nnmap space>n new_session normal\n")
+        try #require(parsed.diagnostics.isEmpty, "both nmap lines are clean")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        #expect(payload.normalMode == [ControlKeymapNormalBind(bind: "s", action: "toggle_scratch",
+                                                              mode: "insert"),
+                                       ControlKeymapNormalBind(bind: "space>n", action: "new_session",
+                                                              mode: "normal")])
+    }
+
+    // a command target has no hand-over default, so `insert` on one always changes the outcome.
+    @Test func normalModeReportsAWordOnACommandBind() throws {
+        let parsed = parseKeymap("""
+        command "Annotate" cmd+shift+e echo hi
+        nmap e "Annotate" insert
+        """)
+        try #require(parsed.diagnostics.isEmpty, "both lines are clean")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        #expect(payload.normalMode == [ControlKeymapNormalBind(bind: "e", command: "Annotate", mode: "insert")])
+    }
+
+    @Test func normalModeOmitsTheWordWhenTheLineCarriedNone() throws {
+        let parsed = parseKeymap("nmap s toggle_scratch\nnmap space>n new_session\n")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        #expect(payload.normalMode?.allSatisfy { $0.mode == nil } == true)
+        let json = String(decoding: try JSONEncoder().encode(try #require(payload.normalMode?.first)),
+                          as: UTF8.self)
+        #expect(!json.contains(#""mode""#), "the nil field is omitted, so a wordless bind's JSON is unchanged")
+    }
+
+    // the field answers "does this line change the outcome", not "did this line spell a word".
+    @Test func normalModeOmitsAWordThatMatchesTheDefaultItRestates() throws {
+        let parsed = parseKeymap("""
+        command "Annotate" cmd+shift+e echo hi
+        nmap space>n new_session insert
+        nmap j next_session normal
+        nmap e "Annotate" normal
+        """)
+        try #require(parsed.diagnostics.isEmpty, "every line is clean")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        #expect(payload.normalMode?.map(\.mode) == [nil, nil, nil])
+    }
+
     @Test func normalModeIsOmittedWhenTheKeymapDeclaresNone() {
         let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
                                             diagnostics: [], path: "/tmp/keymap.conf")
