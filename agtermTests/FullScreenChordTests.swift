@@ -17,6 +17,9 @@ final class FullScreenChordTests: XCTestCase {
     private var runner: CustomCommandRunner!
     private var window: RecordingWindow!
     private var windowID: WindowInfo.ID!
+    /// Holds every seeded `runner(keymap:)` so its `AppActions` is released by the async `tearDown`;
+    /// see [[ui-tests]].
+    private var seededRunners: [CustomCommandRunner] = []
 
     /// Records `toggleFullScreen` instead of performing it: the real call opens a Space and animates, which
     /// a unit test must not do to the machine running it.
@@ -60,6 +63,7 @@ final class FullScreenChordTests: XCTestCase {
             window.orderOut(nil)
             window = nil
             runner = nil
+            seededRunners = []
             library = nil
             try? FileManager.default.removeItem(at: stateDir)
             stateDir = nil
@@ -90,7 +94,10 @@ final class FullScreenChordTests: XCTestCase {
         settings.setConfigDirectory(configDir.path)
         let actions = AppActions(library: library)
         actions.settingsModel = settings
-        return CustomCommandRunner(library: library, settings: settings, actions: actions, socketProvider: { "" })
+        let seeded = CustomCommandRunner(library: library, settings: settings, actions: actions,
+                                         socketProvider: { "" })
+        seededRunners.append(seeded)
+        return seeded
     }
 
     func testShippedChordTogglesFullScreenAndIsConsumed() throws {

@@ -7,9 +7,23 @@ import XCTest
 /// pane (#416). Measured: creation starts succeeding at display wake, with the screen still locked.
 @MainActor
 final class SystemWakeObserverTests: XCTestCase {
-    func testDisplayWakeIsRepostedOnTheAppNotificationCenter() {
+    /// Holds every observer so its `isolated deinit` runs from the async `tearDown`; see [[ui-tests]].
+    private var observers: [SystemWakeObserver] = []
+
+    override func tearDown() async throws {
+        await MainActor.run { observers = [] }
+        try await super.tearDown()
+    }
+
+    private func startedObserver() -> SystemWakeObserver {
         let observer = SystemWakeObserver()
+        observers.append(observer)
         observer.start()
+        return observer
+    }
+
+    func testDisplayWakeIsRepostedOnTheAppNotificationCenter() {
+        _ = startedObserver()
 
         let reposted = expectation(forNotification: .agtermScreensDidWake, object: nil, notificationCenter: .default)
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
@@ -18,8 +32,7 @@ final class SystemWakeObserverTests: XCTestCase {
     }
 
     func testStartIsIdempotentSoOneWakeStaysOneRepost() {
-        let observer = SystemWakeObserver()
-        observer.start()
+        let observer = startedObserver()
         observer.start()
         observer.start()
 

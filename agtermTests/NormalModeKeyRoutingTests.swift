@@ -32,6 +32,8 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// Every pane the mode handed an Escape to, in order. The send itself needs a realized libghostty surface
     /// no hosted test can build, so `escapeSender` is what these read.
     private var escapeTargets: [GhosttySurfaceView] = []
+    /// Holds every `seededRunner` so its `AppActions` is released by the async `tearDown`; see [[ui-tests]].
+    private var seededRunners: [CustomCommandRunner] = []
 
     /// Records `toggleFullScreen` instead of performing it: the real call opens a Space and animates, which
     /// a unit test must not do to the machine running it.
@@ -55,6 +57,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             library = WindowLibrary(directory: stateDir)
             fired = []
             escapeTargets = []
+            seededRunners = []
             actions = AppActions(library: library)
             runner = CustomCommandRunner(library: library,
                                          settings: SettingsModel(library: library,
@@ -84,6 +87,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
             windowID = nil
             actions = nil
             escapeTargets = []
+            seededRunners = []
             window.orderOut(nil)
             window = nil
             runner = nil
@@ -549,6 +553,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
                                          actions: AppActions(library: library),
                                          socketProvider: { "" })
         seeded.builtinPerformer = { [weak self] action, _ in self?.record(action) }
+        seededRunners.append(seeded)
         return seeded
     }
 

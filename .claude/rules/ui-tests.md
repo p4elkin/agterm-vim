@@ -13,6 +13,19 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   the main-queue autorelease-pool pop. xcodebuild reports `Restarting after unexpected exit, crash, or
   test timeout`, may restart and finish, and can fail only on CI or after unrelated tests alter reuse.
   `orderOut(nil)` is safe.
+- ⚠️ **Never let a synchronous test method release the last reference to a class with an `isolated deinit`.**
+  It aborts the host with `malloc: *** error for object …: pointer being freed was not allocated` inside
+  `swift_task_deinitOnExecutorImpl`, and every test not yet run is reported as failed against whatever suite
+  it belongs to, so the failure list names suites that did nothing wrong.
+  The cause is a Swift runtime defect, not agterm's: XCTest wraps a synchronous test body in
+  `XCTSwiftErrorObservation`, which pushes a task-local while no task is current, and the isolated-deinit
+  path then frees that non-heap task-local record. Reproducible in 22 lines with no XCTest at all —
+  `TaskLocal.withValue { }` around the release, outside a `Task`. An `async` test method is unaffected
+  because it runs in a real task. Raising the deployment target does not help.
+  `AppActions`, `SystemWakeObserver`, `SystemAccessibilityObserver` and `WorkspaceSidebar`'s coordinator
+  carry such a deinit today. Keep every instance in a property the async `tearDown` clears, as the four
+  suites that hit this do, rather than in a `let` inside the test body. The app itself is not exposed: it
+  holds no `@TaskLocal`.
 - For a dead host, inspect `xcrun xcresulttool get test-results tests --path <xcresult>`.
   `~/.local/state/ghostty/crash/*.ghosttycrash` is a sentry envelope: split its header and
   item-header/payload pairs, write the minidump attachment as `.dmp`, then run

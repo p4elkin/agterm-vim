@@ -16,6 +16,9 @@ final class UndoCloseShortcutTests: XCTestCase {
     private var stateDir: URL!
     private var library: WindowLibrary!
     private var shortcut: UndoCloseShortcut!
+    /// Holds every seeded `shortcut(keymap:)` so its `AppActions` is released by the async `tearDown`;
+    /// see [[ui-tests]].
+    private var seededShortcuts: [UndoCloseShortcut] = []
 
     override func setUp() async throws {
         try await super.setUp()
@@ -30,6 +33,7 @@ final class UndoCloseShortcutTests: XCTestCase {
     override func tearDown() async throws {
         await MainActor.run {
             shortcut = nil
+            seededShortcuts = []
             library = nil
             try? FileManager.default.removeItem(at: stateDir)
             stateDir = nil
@@ -55,7 +59,9 @@ final class UndoCloseShortcutTests: XCTestCase {
         settings.setConfigDirectory(configDir.path)
         let actions = AppActions(library: library)
         actions.settingsModel = settings
-        return UndoCloseShortcut(actions: actions)
+        let seeded = UndoCloseShortcut(actions: actions)
+        seededShortcuts.append(seeded)
+        return seeded
     }
 
     /// A key press as the active layout reports it: `characters` is what the layout puts on that physical
