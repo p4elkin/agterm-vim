@@ -134,16 +134,39 @@ consumer picks its own count.
 
 ### Task 4: Verify acceptance criteria
 
-- [ ] verify `tree --json` carries `sessionRecency` when a window has a previous session, and omits it otherwise
-- [ ] verify the active session never appears in the array
-- [ ] run full host-free suite: `cd agtermCore && swift test`
-- [ ] run `make lint` - zero findings required
-- [ ] run `make test-app`
+- [x] verify `tree --json` carries `sessionRecency` when a window has a previous session, and omits it otherwise
+      Verified host-free, not against the live socket: the field does not exist in the running app until a
+      rebuild and restart, and driving the user's terminal is out of bounds. The whole chain is covered —
+      `sessionRecencyReachesTheEncodedTreeAndIsOmittedWithoutIt` (new) encodes a real store's
+      `controlTree()` into a `ControlResponse` and asserts the key with the previous session's id, then
+      asserts the key is gone once there is nowhere to jump back to. The app half adds nothing to check:
+      `ControlDispatcher` routes `tree` straight to `ControlActions.controlTree`, and
+      `ControlServer.buildTree` returns `store.controlTree(...)` verbatim.
+- [x] verify the active session never appears in the array
+      `controlTreeReportsSessionRecencyWithoutTheActiveSession` and the wire test above both assert this;
+      it holds structurally because `navigableRecentSessions` drops the selected session.
+- [x] run full host-free suite: `cd agtermCore && swift test` - 2847 tests in 109 suites passed
+- [x] run `make lint` - zero findings required
+      ⚠️ First run failed with two file-length violations this branch caused, both files under the limit
+      before it: `ControlProtocol.swift` at 1007/1000 and `AppStoreTests.swift` at 2043/2000. Per the repo
+      rule, no limit was raised. See the split below.
+- [x] run `make test-app`
+- ➕ split the two files the branch pushed over the SwiftLint length limits, moving code out rather than
+      raising a limit: `ControlWindowFrame` and `ControlWindowNode` (the `window.list` read-back types, a
+      response family of their own) into a new `ControlWindowNode.swift`, and the four new tree-recency
+      tests into a new `AppStoreSessionRecencyTests.swift`. Pure moves, no logic change.
 
 ### Task 5: [Final] Update documentation
 
-- [ ] confirm no other in-repo surface names the tree top-level fields exhaustively
-- [ ] move this plan to `docs/plans/completed/`
+- [x] confirm no other in-repo surface names the tree top-level fields exhaustively
+      Three surfaces enumerate the whole set. `plugins/agterm/skills/agterm/reference.md:195` and
+      `plugins/agterm/skills/agterm/SKILL.md:102` both name thirteen and were corrected in task 3.
+      `site/commands.html:498-511` lists seven and says "All seven", missing `zoomedSurface`, the four
+      dashboard fields and `sessionRecency`; that drift predates this work and is recorded in
+      `.claude/rules/control-api.md` as left for upstream. Everything else names one field at a time:
+      `site/docs.html`, `.claude/rules/menu-actions.md`, `README.md`, `ARCHITECTURE.md`,
+      `site/index.html` and the cookbook READMEs, which are not a synchronized surface anyway.
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

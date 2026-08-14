@@ -1603,54 +1603,6 @@ struct AppStoreTests {
         #expect(store.controlTree(dashboardMembers: { nil }).dashboardMembers == nil)
     }
 
-    @Test func controlTreeReportsSessionRecencyWithoutTheActiveSession() {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
-        store.selectSession(a.id)
-        store.selectSession(b.id)
-
-        #expect(store.controlTree().sessionRecency == [a.id.uuidString])
-    }
-
-    @Test func controlTreeSessionRecencyIsMostRecentFirst() {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
-        let c = store.addSession(toWorkspace: ws.id, cwd: "/c")!
-        store.selectSession(a.id)
-        store.selectSession(b.id)
-        store.selectSession(c.id)
-
-        #expect(store.controlTree().sessionRecency == [b.id.uuidString, a.id.uuidString])
-    }
-
-    @Test func controlTreeOmitsSessionRecencyWithNowhereToJumpBackTo() {
-        let store = makeStore()
-        #expect(store.controlTree().sessionRecency == nil)
-        let ws = store.addWorkspace(name: "work")
-        let only = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        store.selectSession(only.id)
-
-        #expect(store.controlTree().sessionRecency == nil)
-    }
-
-    @Test func controlTreeSessionRecencyDropsAClosedSession() {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
-        let c = store.addSession(toWorkspace: ws.id, cwd: "/c")!
-        store.selectSession(a.id)
-        store.selectSession(b.id)
-        store.selectSession(c.id)
-        store.closeSession(a.id)
-
-        #expect(store.controlTree().sessionRecency == [b.id.uuidString])
-    }
-
     @Test func setSidebarVisiblePostsChangeNotificationOnlyOnChange() {
         // the app-target ControlServer observes this to refresh window.list's cached sidebarVisible; the
         // post must fire only on an actual change (queue nil so the synchronous post delivers inline).
