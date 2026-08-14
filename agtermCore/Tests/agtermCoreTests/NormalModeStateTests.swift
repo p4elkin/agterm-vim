@@ -150,6 +150,84 @@ struct NormalModeStateTests {
         #expect(mode.advance(i) == .exited)
     }
 
+    @Test func insertOnABuiltinBindLeavesTheModeTheActionWouldKeep() {
+        var mode = state([NormalModeBind(keybind: [s], target: .builtin(.toggleScratch), mode: .insert)])
+        #expect(mode.advance(s) == .fired(.toggleScratch))
+        #expect(!mode.isActive)
+    }
+
+    @Test func normalOnABuiltinBindKeepsTheModeTheActionWouldLeave() {
+        let n = Chord(mods: [], key: "n")
+        var mode = state([NormalModeBind(keybind: [n], target: .builtin(.newSession), mode: .normal)])
+        #expect(mode.advance(n) == .fired(.newSession))
+        #expect(mode.isActive)
+    }
+
+    @Test func aWordlessBuiltinBindStillFollowsTheAction() {
+        let n = Chord(mods: [], key: "n")
+        var mode = state([
+            NormalModeBind(keybind: [n], target: .builtin(.newSession)),
+            NormalModeBind(keybind: [d], target: .builtin(.toggleSplit))
+        ])
+        #expect(mode.advance(d) == .fired(.toggleSplit))
+        #expect(mode.isActive)
+        #expect(mode.advance(n) == .fired(.newSession))
+        #expect(!mode.isActive)
+    }
+
+    @Test func insertOnACommandBindLeavesTheMode() {
+        let id = UUID()
+        var mode = state([NormalModeBind(keybind: [d], target: .command(id), mode: .insert)])
+        #expect(mode.advance(d) == .firedCommand(id))
+        #expect(!mode.isActive)
+    }
+
+    @Test func normalOnACommandBindKeepsTheMode() {
+        let id = UUID()
+        var mode = state([NormalModeBind(keybind: [d], target: .command(id), mode: .normal)])
+        #expect(mode.advance(d) == .firedCommand(id))
+        #expect(mode.isActive)
+    }
+
+    @Test func aWordlessCommandBindKeepsTheMode() {
+        let id = UUID()
+        var mode = state([NormalModeBind(keybind: [d], target: .command(id))])
+        #expect(mode.advance(d) == .firedCommand(id))
+        #expect(mode.isActive)
+    }
+
+    @Test func twoBindsOnOneActionFollowTheirOwnWords() {
+        var mode = state([
+            NormalModeBind(keybind: [s], target: .builtin(.toggleScratch), mode: .insert),
+            NormalModeBind(keybind: [d], target: .builtin(.toggleScratch), mode: .normal)
+        ])
+        #expect(mode.advance(d) == .fired(.toggleScratch))
+        #expect(mode.isActive)
+        #expect(mode.advance(s) == .fired(.toggleScratch))
+        #expect(!mode.isActive)
+    }
+
+    @Test func aSequenceBindsWordApplies() {
+        var mode = state([NormalModeBind(keybind: [space, s], target: .builtin(.toggleScratch), mode: .insert)])
+        #expect(mode.advance(space) == .armed)
+        #expect(mode.advance(s) == .fired(.toggleScratch))
+        #expect(!mode.isActive)
+    }
+
+    @Test func aRearmedSequencesWordApplies() {
+        var mode = state([
+            NormalModeBind(keybind: [space, s], target: .builtin(.toggleScratch), mode: .insert),
+            NormalModeBind(keybind: [space, d], target: .builtin(.toggleScratch), mode: .normal)
+        ])
+        #expect(mode.advance(space) == .armed)
+        #expect(mode.advance(space) == .armed)
+        #expect(mode.advance(d) == .fired(.toggleScratch))
+        #expect(mode.isActive)
+        #expect(mode.advance(space) == .armed)
+        #expect(mode.advance(s) == .fired(.toggleScratch))
+        #expect(!mode.isActive)
+    }
+
     @Test func prefixConflictKeepsTheEarlierBindAndNamesItsCommandTarget() {
         let command = CustomCommand(name: "Annotate last response", command: "annotate", shortcut: "")
         let parsed = [

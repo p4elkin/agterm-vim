@@ -216,13 +216,13 @@ diagram above exists in exactly one place.
 **Model:** opus
 **Wave:** apply
 
-- [ ] keep the binds on the state so the fired keybind can be looked up
-- [ ] resolve the effective mode through the task 1 helper and apply it in the built-in branch
-- [ ] apply it in the custom-command branch too, which today never leaves the mode
-- [ ] write tests for all six paths in the diagram: each word on each target kind, and no word on each
-- [ ] write a test that two binds sharing one action but carrying different words behave differently
-- [ ] write a test that a sequence bind's word applies, so the re-arm path is covered end to end
-- [ ] run `cd agtermCore && swift test --filter NormalModeStateTests` — must pass before the next task
+- [x] keep the binds on the state so the fired keybind can be looked up
+- [x] resolve the effective mode through the task 1 helper and apply it in the built-in branch
+- [x] apply it in the custom-command branch too, which today never leaves the mode
+- [x] write tests for all six paths in the diagram: each word on each target kind, and no word on each
+- [x] write a test that two binds sharing one action but carrying different words behave differently
+- [x] write a test that a sequence bind's word applies, so the re-arm path is covered end to end
+- [x] run `cd agtermCore && swift test --filter NormalModeStateTests` — must pass before the next task
 
 ### Task 4: Report the word in keymap list
 
