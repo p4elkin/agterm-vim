@@ -91,9 +91,9 @@ struct ConfigPathsTests {
             guard verb == "map" || verb == "nmap" || verb == "command", !text.contains("<") else { return nil }
             return String(text)
         }
-        // an example silently dropped from the guard must fail here: four `map` lines, one `nmap` and
+        // an example silently dropped from the guard must fail here: four `map` lines, two `nmap` and
         // three `command`.
-        #expect(examples.count == 8)
+        #expect(examples.count == 9)
         var bound = 0
         for example in examples {
             let (keymap, diagnostics) = parseKeymap(example)
@@ -106,7 +106,7 @@ struct ConfigPathsTests {
         }
         // every `map` and `nmap` example plus the two chorded `command` ones; `Deploy` is palette-only.
         // the alternatives example counts twice, its menu chord and its monitor-bound half.
-        #expect(bound == 8)
+        #expect(bound == 9)
     }
 
     @Test func ghosttyConfigPathIsGhosttyConfInDir() {

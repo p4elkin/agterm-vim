@@ -161,13 +161,18 @@ paths:
   the pane, which is what keeps `i` and Esc different.
   An unrecognised word is `unknown mode '<word>'; nmap skipped`, following the rule that a malformed piece
   of a line kills the whole line.
+  ⚠️ `normal` cannot outlive an action that makes ANOTHER window key, so `nmap <key> new_window normal` still
+  ends the mode, through the resign-key observer that stops it surviving in a background titlebar.
+  `keymap list` reports the word anyway, since it deviates from that action's default. `new_window` is the
+  only case: the other three actions defaulting to `insert` all act inside the current window.
   `splitNormalModeWord` takes the word off BEFORE `parseNormalModeTarget` runs, so the bare-action and
   quoted-command forms share one rule; where the target ends is the only per-form difference, the closing
-  quote else the first whitespace. That also removed the quoted form's own trailing-text diagnostic.
+  quote else the first whitespace. The character after that boundary must be whitespace, so
+  `nmap f "FZF Files"insert` stays the diagnostic it was before the word existed rather than binding.
   `map` does not take the word: a global chord fires outside the mode, where there is no mode to leave.
 - `NormalModeBind.leavesNormalMode` is the SINGLE resolver — the line's word, else the built-in's own
   default, else stay in the mode for a command target, which has no hand-over default of its own.
-  `NormalModeState.advance` and `ControlKeymap.from` both read it, so the rule lives in one place.
+  `NormalModeState.advance` and `ControlKeymap.project` both read it, so the rule lives in one place.
   `keymap list` reports the word only when it CHANGES the outcome, comparing the bind against a wordless
   copy of itself rather than restating the rule. So `nmap space>n new_session insert` prints no word,
   because `insert` already is that action's default; a row with no word is on its action's default, never a

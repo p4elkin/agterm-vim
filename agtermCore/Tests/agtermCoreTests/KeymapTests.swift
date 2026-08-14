@@ -830,6 +830,27 @@ struct KeymapTests {
         #expect(diagnostics[0].message.contains("unknown mode 'sometimes'"))
     }
 
+    /// Only the quoted form can run a word up against its target, since a bare name ends at the first
+    /// whitespace. Without the separator rule this bound and handed the keyboard over.
+    @Test func nmapModeWordTouchingAClosingQuoteDropsTheLine() {
+        let text = """
+        command "FZF Files" fzf
+        nmap f "FZF Files"insert
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 2)
+        #expect(diagnostics[0].message.contains("must be separated"))
+    }
+
+    @Test func nmapModeWordRunTogetherWithABareActionIsAnUnknownAction() {
+        let (keymap, diagnostics) = parseKeymap("nmap s toggle_scratchinsert")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("unknown action 'toggle_scratchinsert'"))
+    }
+
     /// The word belongs to the mode, and a `map` chord fires where there is no mode to leave.
     @Test func mapLineWithAModeWordIsStillRejected() {
         let (keymap, diagnostics) = parseKeymap("map ctrl+shift+g dashboard insert")

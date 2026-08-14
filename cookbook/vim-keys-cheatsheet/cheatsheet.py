@@ -156,10 +156,13 @@ COMMAND_LINE = re.compile(r'^[ \t]*command\s+"([^"]*)"\s+((?:' + MODS + r')\+\S*
 # patterns above cannot see these lines at all — their anchor sits in front of the `n` — so an
 # `nmap` line is missed rather than half-read, which is why nothing below has to undo a bad match.
 #
-# The word is bounded on its right, so `insertion` is not read as `insert` with a stray tail. agterm
-# rejects that line outright; here it would quietly claim a word the reader never wrote.
-NMAP_LINE = re.compile(r'^[ \t]*nmap\s+(\S+)\s+(?:"([^"]*)"|(\S+))(?:\s+(insert|normal)\b)?',
-                       re.MULTILINE)
+# Anchored at both ends, so a line agterm rejects is missed here rather than half-read. Without the
+# tail, `insert garbage` matched through the word and drew a row claiming a mode agterm never bound,
+# and `toggle_scratch garbage` drew a wordless row for a line agterm skips. Only trailing spaces and
+# a comment may follow, matching where agterm itself stops reading.
+NMAP_LINE = re.compile(
+    r'^[ \t]*nmap\s+(\S+)\s+(?:"([^"]*)"|(\S+))(?:[ \t]+(insert|normal))?[ \t]*(?:#.*)?$',
+    re.MULTILINE)
 
 # Everywhere this module keys by chord, a normal-mode bind is keyed under this prefix. `nmap s`
 # and a bare `map s` are two different bindings spelled the same way, and one shared key silently

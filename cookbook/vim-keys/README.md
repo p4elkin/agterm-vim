@@ -157,8 +157,15 @@ The mode word is the last thing on an `nmap` line, and there are only two: `inse
 bind fires, `normal` keeps it on. It works after either target form, the bare action name and the quoted
 command name alike. Say nothing and the action decides, which is how every line here without a word behaves.
 Anything else there is `unknown mode '<word>'` and that one line is skipped, so a typo cannot look like a
-working bind. `map` lines take no word — a Command chord fires outside the mode, where there is no mode to
-leave.
+working bind. The word needs a space in front of it: `nmap f "FZF Files"insert` is skipped too, rather than
+binding something you did not write. `map` lines take no word — a Command chord fires outside the mode, where
+there is no mode to leave.
+
+One action escapes `normal`. `new_window` makes its new window the key one, and the mode never survives the
+old window losing key — that is what stops it sitting armed and invisible behind another window. So
+`nmap w new_window normal` still ends the mode, and `keymap list` reports `normal` anyway, because the word
+does differ from what that action would have done. The other three actions that leave by default all act
+inside the current window, so `normal` holds for them.
 
 `agtermctl keymap list` prints the word only where it changes the outcome. `nmap space>n new_session insert`
 therefore shows no word, because that action already leaves the mode on its own. A row with no third column

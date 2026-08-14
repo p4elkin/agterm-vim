@@ -783,12 +783,22 @@ private func parseNormalModeLine(_ rest: String, line: Int, binds: inout [Parsed
 /// Anything after it must be a mode word; anything else is a diagnostic naming it, and the line is skipped,
 /// the same way a malformed alternative kills its whole line. An unterminated quote is left alone for
 /// `parseNormalModeTarget` to report, since nothing in it can be told apart from the name.
+///
+/// The word must be whitespace-delimited, which only the quoted form can violate: a bare name runs to the
+/// first whitespace, so `toggle_scratchinsert` is one unresolvable action, but a closing quote ends the
+/// target wherever it sits. Without the check `nmap f "FZF Files"insert` would bind and silently hand the
+/// keyboard over, where before the word existed the line was a diagnostic.
 private func splitNormalModeWord(_ text: String, line: Int, diagnostics: inout [KeymapDiagnostic])
     -> (target: String, mode: NormalModeBind.Mode?)? {
     let targetEnd: String.Index
     if text.first == "\"" {
         guard let closeQuote = text.dropFirst().firstIndex(of: "\"") else { return (text, nil) }
         targetEnd = text.index(after: closeQuote)
+        if targetEnd < text.endIndex, !text[targetEnd].isWhitespace {
+            diagnostics.append(KeymapDiagnostic(
+                line: line, message: "mode word must be separated from the command name; nmap skipped"))
+            return nil
+        }
     } else {
         targetEnd = text.firstIndex(where: { $0.isWhitespace }) ?? text.endIndex
     }

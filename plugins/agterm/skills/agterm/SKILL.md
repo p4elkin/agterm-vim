@@ -457,8 +457,10 @@ and the reserved ⌃Tab / ⌃1 / ⌃2, still work). An `nmap` line may end in an
 `nmap <chord-or-sequence> <action|"<command name>"> [insert|normal]`: `insert` leaves the mode as that bind
 fires so the pane it opens takes typing right away, `normal` keeps the mode on, and a line saying nothing
 lets the action decide (`new_session`, `new_window`, `new_workspace` and `duplicate_session` leave; every
-other action, and every custom command, stays). An unrecognised word is a parse diagnostic
-(`unknown mode '<word>'`) and that one line is skipped. `map` lines take no word, having no mode to leave.
+other action, and every custom command, stays). `normal` cannot outlive `new_window`, whose new window takes
+key and ends the mode by itself, though `keymap list` still reports the word. An unrecognised word is a parse
+diagnostic (`unknown mode '<word>'`) and that one line is skipped, as is a word run up against a closing quote
+(`"FZF Files"insert`). `map` lines take no word, having no mode to leave.
 The titlebar shows a `NORMAL` pill while it is on, and
 `window list` tags the holding window `normalMode: true`. App-wide and held by the frontmost window, so
 there is no `--window`. Turning it on fails while terminal zoom, the dashboard or a picker owns the
