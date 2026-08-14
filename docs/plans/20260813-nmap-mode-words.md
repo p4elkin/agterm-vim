@@ -256,12 +256,14 @@ diagram above exists in exactly one place.
 **Model:** sonnet
 **Wave:** docs
 
-- [ ] state the grammar, the two words, and that the action default applies when a line says nothing
-- [ ] state that an unknown word skips the line
-- [ ] state that `keymap list` prints the word only when it changes the outcome, so a redundant word
+- [x] state the grammar, the two words, and that the action default applies when a line says nothing
+- [x] state that an unknown word skips the line
+- [x] state that `keymap list` prints the word only when it changes the outcome, so a redundant word
       showing nothing is not a dropped line
-- [ ] replace the recipe paragraph that says the toggles cannot hand over, and show `s` and `t` with the word
-- [ ] run `make lint` — must pass before the next task
+- [x] replace the recipe paragraph that says the toggles cannot hand over, and show `s` and `t` with the word
+- [x] run `make lint` — must pass before the next task
+- ➕ also updated `.claude/rules/control-api.md`, whose `keymap list` `normalMode` bullet stated the row's
+      fields and would otherwise still say a row carries only `bind` plus `action`/`command`
 
 ### Task 6: Show the word on the cheat sheet
 

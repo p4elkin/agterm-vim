@@ -39,8 +39,8 @@ nmap h focus_left_pane
 nmap l focus_right_pane
 nmap g>g first_session
 nmap shift+g last_session
-nmap s toggle_scratch
-nmap t quick_terminal
+nmap s toggle_scratch insert     # a trailing insert leaves the mode as the bind fires
+nmap t quick_terminal insert
 nmap space>s toggle_split
 nmap space>p>a command_palette
 
@@ -67,9 +67,21 @@ abandons a half-typed sequence keeps the mode and sends nothing, and neither doe
 
 **A third way out fires by itself.** `new_session`, `new_window`, `new_workspace` and `duplicate_session`
 each hand over a brand-new pane, so they take the mode off with them and the new shell is typed into
-straight away. Vim's `o` is the same bargain: it opens the line and enters insert. The toggles that also
-show a pane — `toggle_split`, `toggle_scratch`, `quick_terminal` — deliberately stay in the mode, so the
-second press that closes them again still works.
+straight away. Vim's `o` is the same bargain: it opens the line and enters insert. Every other action stays
+in the mode, and so does a custom command, which has never had a hand-over of its own. The toggles that
+also show a pane — `toggle_split`, `toggle_scratch`, `quick_terminal` — stay, so the second bare press that
+closes them again still works.
+
+**A mode word overrides that per line, in either direction.** One optional word at the end of an `nmap`
+line, `nmap <chord-or-sequence> <action|"<command name>"> [insert|normal]`. `insert` leaves the mode as the
+bind fires and, like the bare exit key it is named after, sends no Escape to the pane. `normal` keeps the
+mode on. Say nothing and the action decides, so no keymap written before this had to change. The word works
+after both target forms, and an unrecognised one is a diagnostic naming it (`unknown mode '<word>'`) that
+skips the line. `map` takes no word: a global chord fires outside the mode, where there is no mode to leave.
+
+That word is what the toggles need. Bound to a bare key alone, `s` wants the second press that closes the
+scratch; with a global chord for it as well, `nmap s toggle_scratch insert` hands the keys over instead, and
+the choice belongs to the keymap rather than to the action.
 
 `map` and `nmap` are independent namespaces — the same chord may appear in both. Bare `s` and the
 sequence `space>s` do not conflict, because they differ on their first chord.
@@ -99,6 +111,9 @@ Consequences worth knowing:
 - `window.list` reports `normalMode` on the window holding it, true-only.
 - `agtermctl keymap list` gained a `normal mode` section listing `nmap` binds. Each row carries `bind`
   plus exactly one of `action` and `command`, and prints a command target as `command "<name>"`.
+- A row also carries `mode` when the line's word CHANGES the outcome, and omits it otherwise. So
+  `nmap space>n new_session insert` prints no word, `insert` already being that action's default, and a row
+  with no word is a bind running on its default rather than a line that got dropped.
 
 ## Also here
 
