@@ -542,10 +542,19 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   visibility, zoom, dashboard, session recency, and picker state. Prefer live tree sidebar state over
   cached window list.
 - `sessionRecency` is the window's jump-back list, most recent first, with the active session dropped and
-  the visible navigation scope applied. It is `navigableRecentSessions` on the wire, so it matches the
-  title-bar recent popover, the Ctrl-Tab switcher and `dashboard --mru`, not the raw stack.
-- The bundled skill counts thirteen top-level tree fields. `site/commands.html` still says seven and lists
-  seven, and is left alone on this fork: the drift predates `sessionRecency` and belongs upstream.
+  the visible navigation scope applied.
+  It is `navigableRecentSessions`, the projection the title-bar popover and the Dock menu share, but
+  UNCAPPED: those two pass `SessionSwitcher.maxCandidates` (10) and the wire passes the stack's own bound,
+  so past ten visited sessions the array is longer than the popover.
+  ⚠️ The Ctrl-Tab switcher and `dashboard --mru` are NOT the same list and must not be cited as matching
+  it: the switcher keeps the active session at index 0, and `dashboard --mru` reads raw `recentSessions`,
+  every workspace and the active session included.
+- The bundled skill counts thirteen read-only top-level tree fields, every `ControlTree` property but
+  `workspaces`, pinned by `SkillInstallTests` against the type rather than against the prose.
+  It documents `sessionRecency` even though the field is fork-only, unlike a fork-only COMMAND
+  (see [[overlay-redirect]]): a read-back field upstream lacks is simply absent from that user's tree,
+  where a documented command upstream lacks breaks a call the skill told them to make.
+  `site/commands.html` still says seven and lists seven, and is left alone on this fork for upstream.
 - Window nodes include open/active, open-store sidebar/auto-follow, geometry, fullscreen, zoomed, minimized.
   Closed live fields are omitted. Geometry is top-left display-relative y-down and round-trips move/resize.
 - Window list is cached. Refresh after commands and frontmost/sidebar/attachment/move/resize/fullscreen/

@@ -49,12 +49,31 @@ struct SkillInstallTests {
         let reference = try String(contentsOf: skillDirectory.appendingPathComponent("reference.md"), encoding: .utf8)
         let examples = try String(contentsOf: skillDirectory.appendingPathComponent("examples.md"), encoding: .utf8)
 
-        #expect(skill.contains("`sessionRecency`"))
-        #expect(reference.contains("`sessionRecency`"))
         #expect(examples.contains(".result.tree.sessionRecency"))
         #expect(reference.contains("thirteen top-level read-only fields"))
-        #expect(skill.contains("thirteen\nread-only top-level fields"))
-        #expect(!reference.contains("twelve"))
+        #expect(reference.contains("All thirteen are read-only projections"))
+        #expect(unwrapped(skill).contains("thirteen read-only top-level fields"))
+
+        let fields = treeTopLevelFieldNames
+        #expect(fields.count == 13, "ControlTree's top-level fields changed; update the skill's counts")
+        for field in fields {
+            #expect(skill.contains("`\(field)`"), "SKILL.md never names the tree field \(field)")
+            #expect(reference.contains("`\(field)`"), "reference.md never names the tree field \(field)")
+        }
+    }
+
+    // asserting the prose against ITSELF only catches a doc edit; the counts have been wrong the other way
+    // round, a field landing on ControlTree that no surface enumerates. Mirror sees a nil-defaulted new
+    // field that an encode would omit, and the labels are the wire keys because ControlTree has no
+    // CodingKeys.
+    private var treeTopLevelFieldNames: [String] {
+        Mirror(reflecting: ControlTree(workspaces: []))
+            .children.compactMap(\.label).filter { $0 != "workspaces" }
+    }
+
+    // SKILL.md is reflowed prose, so a substring spanning its line wrap pins where the paragraph breaks.
+    private func unwrapped(_ markdown: String) -> String {
+        markdown.replacingOccurrences(of: "\n", with: " ")
     }
 
     // the plugin manifests and the app bundle read the SAME directory, so a moved skill or a renamed leaf

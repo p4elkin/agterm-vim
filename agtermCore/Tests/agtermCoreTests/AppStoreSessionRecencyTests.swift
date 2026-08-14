@@ -38,6 +38,26 @@ struct AppStoreSessionRecencyTests {
         #expect(store.controlTree().sessionRecency == nil)
     }
 
+    // pins the projection itself: swapping `navigableRecentSessions` for the raw `recentSessions` still
+    // passes every other case here.
+    @Test func controlTreeSessionRecencyNarrowsToTheVisibleScope() {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let personal = store.addWorkspace(name: "personal")
+        let a = store.addSession(toWorkspace: work.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: work.id, cwd: "/b")!
+        let c = store.addSession(toWorkspace: personal.id, cwd: "/c")!
+        let d = store.addSession(toWorkspace: personal.id, cwd: "/d", select: false)!
+        store.selectSession(d.id)
+        store.selectSession(a.id)
+        store.selectSession(c.id)
+        store.selectSession(b.id)
+
+        store.setFocusedWorkspace(personal.id)
+
+        #expect(store.controlTree().sessionRecency == [d.id.uuidString])
+    }
+
     @Test func controlTreeSessionRecencyDropsAClosedSession() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")
@@ -52,8 +72,7 @@ struct AppStoreSessionRecencyTests {
         #expect(store.controlTree().sessionRecency == [b.id.uuidString])
     }
 
-    /// The wire form, not just the model: the whole chain a `tree --json` caller sees, from a store with a
-    /// previous session through to the encoded key.
+    /// The encoded key, which neither the model tests nor the `ControlTree` round-trip assert together.
     @Test func sessionRecencyReachesTheEncodedTreeAndIsOmittedWithoutIt() throws {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

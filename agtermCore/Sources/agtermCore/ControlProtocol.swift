@@ -779,8 +779,8 @@ public struct ControlTree: Codable, Sendable, Equatable {
     public let dashboardFontMode: String?
     /// The projected window's jump-back targets — session ids as `uuidString`, most recent first;
     /// nil/omitted when there are none. The ACTIVE session is dropped and the visible navigation scope
-    /// applies, so this is the title-bar recent popover's list, not the raw recency stack. A session that
-    /// was never selected has no entry, so the array can be shorter than the session count.
+    /// applies, so this is the title-bar recent popover's projection, uncapped, not the raw recency stack.
+    /// A session that was never selected has no entry, so the array can be shorter than the session count.
     public let sessionRecency: [String]?
     /// The id of the picker currently awaiting a choice, or nil when no picker is open.
     public let pickPending: String?

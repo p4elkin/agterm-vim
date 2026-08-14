@@ -834,10 +834,13 @@ a RUNNING program is refused instead: a message is replaceable, a program is not
 agtermctl tree --json | jq -r '.result.tree.sessionRecency // [] | .[]'
 
 # jump straight to the previous one
-agtermctl session select --target "$(agtermctl tree --json | jq -r '.result.tree.sessionRecency[0]')"
+prev=$(agtermctl tree --json | jq -r '.result.tree.sessionRecency[0] // empty')
+[ -n "$prev" ] && agtermctl session select --target "$prev"
 ```
 
 The key is absent when there is nothing to jump back to, so the `// []` keeps a one-session window quiet.
+`// empty` is the same guard for a single value: without it `jq -r` prints `null` and the jump runs as
+`--target null`.
 The visible navigation scope applies, exactly as it does to `session go`: in flagged mode, or while the
 workspace focus filter is applied, the list carries only sessions inside that set. A session that was
 never selected has no entry, so this array can be shorter than the session count — tree order stays the

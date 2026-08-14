@@ -214,7 +214,8 @@ that exact pane), `dashboardFontSize` (the absolute font size in points applied 
 the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fixed` for `--font-size`, or
 `untouched`), plus `sessionRecency` (the window's jump-back targets, session ids as strings, most recent
 first — the currently ACTIVE session is dropped and the visible navigation scope applies, so this is the
-title-bar recent popover's list, not the raw stack; a session that was never selected has no entry, so the
+title-bar recent popover's filtering but uncapped, where that popover shows at most ten, not the raw stack;
+a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
 and `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending). `idleMs` is live
