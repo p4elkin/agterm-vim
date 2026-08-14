@@ -284,17 +284,43 @@ diagram above exists in exactly one place.
 
 ### Task 7: Verify acceptance criteria
 
-- [ ] verify every requirement in Overview is implemented
-- [ ] verify a keymap with no mode word parses, resolves and renders exactly as before
-- [ ] run `cd agtermCore && swift test`
+- [x] verify every requirement in Overview is implemented
+- [x] verify a keymap with no mode word parses, resolves and renders exactly as before
+- [x] run `cd agtermCore && swift test` — 2772 tests in 103 suites, zero failures
 - [ ] run `make test-app` — the only gate that compiles `agtermTests/NormalModeKeyRoutingTests.swift`
-- [ ] run `make lint` — zero findings required
+- [x] run `make lint` — zero findings required
 - [ ] launch a Debug instance with an isolated state dir and a short socket, its `keymap.conf` carrying
       `nmap s toggle_scratch insert`, `nmap t quick_terminal insert` and `nmap space>n new_session normal`
 - [ ] in that instance, enter the mode, press `s`, and confirm typed characters land in the scratch
 - [ ] in that instance, press `space` then `n`, and confirm the mode pill is still up
 - [ ] `agtermctl --socket <isolated> keymap list` shows `insert` on the two toggles, `normal` on `space>n`,
       and no word on a wordless bind
+
+⚠️ **`make test-app` fails, and it fails without this feature too.** The run reports 14 failures, all carrying
+the same text — `The test runner exited with code 5 before finishing running tests`. They are not assertion
+failures: the app under test dies with `malloc: *** error for object 0x29c90feb0: pointer being freed was not
+allocated`, at the same address on every run and every retry, and the listed tests are the ones that had not
+finished when the host went down. They span suites this plan does not touch, `SystemWakeObserverTests` and
+`UndoCloseShortcutTests` among them.
+
+Narrowed to one test
+(`NormalModeKeyRoutingTests/testABareKeyBoundToACustomCommandSpawnsItAndIsConsumed`) it reproduces on its own,
+then reproduces identically with the branch checked out at `fde4ecd`, the plan commit before task 1. So the
+break predates every code change here and this plan did not cause it. Left for the maintainer to decide: it is
+an app-side memory fault, not keymap logic, and fixing it is not in this plan's scope.
+
+⚠️ **The four interactive items above were not run.** `.claude/rules/planning-rules.md` forbids launching the
+app or driving `agtermctl` during plan execution, and requires verifying behavior through tests instead. What
+each one asserts is covered host-free, so the behavior is proven even though the manual walk-through is not:
+
+- pressing `s` handing the keys over — `NormalModeStateTests.insertOnABuiltinBindLeavesTheModeTheActionWouldKeep`
+- `space` then `n` keeping the pill up — `normalOnABuiltinBindKeepsTheModeTheActionWouldLeave` plus
+  `aSequenceBindsWordApplies` and `aRearmedSequencesWordApplies` for the sequence path
+- the `keymap list` output — `SocketClientTests.formatsKeymapShowingTheModeWordOnlyWhereItChangesTheOutcome`,
+  which renders exactly the fixture this task describes and asserts `s toggle_scratch insert`,
+  `space>n new_session normal`, and no third column on wordless `j next_session`
+- the cheat sheet was run for real against both fixtures: a wordless keymap renders byte-identically to
+  before, each word appears bracketed on both target forms, and `insertion` reports no word
 
 ### Task 8: [Final] Update documentation
 
