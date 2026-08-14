@@ -198,13 +198,13 @@ diagram above exists in exactly one place.
 **Model:** sonnet
 **Wave:** foundation
 
-- [ ] add the read-only property holding the keybind the most recent `.fired` matched
-- [ ] set it on the exact-match path at the top of `advance(_:)`
-- [ ] set it on the re-arm path, where the match is the fresh chord alone
-- [ ] write tests for a single-chord bind, a sequence bind, and the re-arm case
-- [ ] write a test that an `.armed` or `.unmatched` result leaves the previous value alone rather than
+- [x] add the read-only property holding the keybind the most recent `.fired` matched
+- [x] set it on the exact-match path at the top of `advance(_:)`
+- [x] set it on the re-arm path, where the match is the fresh chord alone
+- [x] write tests for a single-chord bind, a sequence bind, and the re-arm case
+- [x] write a test that an `.armed` or `.unmatched` result leaves the previous value alone rather than
       reporting a fire that did not happen
-- [ ] run `cd agtermCore && swift test --filter KeybindMatcherTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter KeybindMatcherTests` — must pass before the next task
 
 ### Task 3: Apply the word when a bind fires
 

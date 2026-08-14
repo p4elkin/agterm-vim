@@ -118,6 +118,51 @@ struct KeybindMatcherTests {
         #expect(matcher.advance(b) == .fired(.builtin(.toggleSplit)))
     }
 
+    @Test func lastFiredKeybindIsNilBeforeAnythingFires() {
+        let matcher = KeybindMatcher([([cmdShiftU], .command(UUID()))])
+        #expect(matcher.lastFiredKeybind == nil)
+    }
+
+    @Test func lastFiredKeybindRecordsASingleChordBind() {
+        var matcher = KeybindMatcher([([cmdShiftU], .command(UUID()))])
+        _ = matcher.advance(cmdShiftU)
+        #expect(matcher.lastFiredKeybind == [cmdShiftU])
+    }
+
+    @Test func lastFiredKeybindRecordsAWholeSequence() {
+        var matcher = KeybindMatcher([([ctrlA, b], .command(UUID()))])
+        _ = matcher.advance(ctrlA)
+        _ = matcher.advance(b)
+        #expect(matcher.lastFiredKeybind == [ctrlA, b])
+    }
+
+    @Test func lastFiredKeybindOnTheReArmPathIsTheFreshChordAlone() {
+        let simpleTarget = KeybindTarget.command(UUID())
+        var matcher = KeybindMatcher([([ctrlA, b], .command(UUID())), ([cmdShiftU], simpleTarget)])
+        _ = matcher.advance(ctrlA)
+        #expect(matcher.advance(cmdShiftU) == .fired(simpleTarget))
+        #expect(matcher.lastFiredKeybind == [cmdShiftU])
+    }
+
+    @Test func armedAndUnmatchedLeaveLastFiredKeybindAlone() {
+        var matcher = KeybindMatcher([([cmdShiftU], .command(UUID())), ([ctrlA, b], .command(UUID()))])
+        _ = matcher.advance(cmdShiftU)
+        #expect(matcher.advance(ctrlA) == .armed)
+        #expect(matcher.lastFiredKeybind == [cmdShiftU])
+        #expect(matcher.advance(c) == .unmatched)
+        #expect(matcher.lastFiredKeybind == [cmdShiftU])
+    }
+
+    @Test func twoBindsSharingATargetAreToldApartByLastFiredKeybind() {
+        let target = KeybindTarget.builtin(.toggleSplit)
+        var matcher = KeybindMatcher([([cmdShiftU], target), ([ctrlA, b], target)])
+        _ = matcher.advance(cmdShiftU)
+        #expect(matcher.lastFiredKeybind == [cmdShiftU])
+        _ = matcher.advance(ctrlA)
+        _ = matcher.advance(b)
+        #expect(matcher.lastFiredKeybind == [ctrlA, b])
+    }
+
     @Test func exactCustomMatchWinsOverBuiltinSequencePrefix() {
         let id = UUID()
         var matcher = KeybindMatcher([([ctrlA], .command(id)), ([ctrlA, b], .builtin(.toggleSplit))])
