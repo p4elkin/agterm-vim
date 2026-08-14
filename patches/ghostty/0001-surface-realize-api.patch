@@ -145,6 +145,27 @@ index 5087213..0c5f281 100644
      // If the renderer is managing a vsync on its own, we only draw
      // when we're forced to via `now`.
      if (!now and self.renderer.hasVsync()) return;
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index 0f4a294..5c627db 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -959,6 +959,16 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             );
+             self.reinitialize_shaders = false;
+             self.target_config_modified = 1;
++
++            // Forget the screen size so the next frame reconciles it from
++            // scratch. Every frame state we just built has an UNINITIALIZED
++            // uniform buffer (see `FrameState.init`), and the only writer,
++            // `updateScreenSizeUniforms`, runs behind the draw path's
++            // `size_changed` check. A surface resized while unrealized already
++            // took `setScreenSize`, so that check would be false and the new
++            // buffers would never be written — the frame then draws at
++            // whatever projection the undefined memory happens to hold.
++            self.size.screen = .{ .width = 0, .height = 0 };
+         }
+ 
+         /// This is called by the GTK apprt when the surface is being destroyed.
 diff --git a/src/renderer/message.zig b/src/renderer/message.zig
 index a47b960..d7a7439 100644
 --- a/src/renderer/message.zig
