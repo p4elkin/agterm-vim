@@ -136,9 +136,11 @@ xcodegen generate >/dev/null
 # timestamp, so trying to inject Developer ID at build time is racy. Instead we
 # re-sign authoritatively below, AFTER xcodebuild returns.
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+GIT_COMMIT_DATE="$(git log -1 --format=%cd --date=short 2>/dev/null || echo "")"
 xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" \
+  GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
   build
 [ -d "$APP" ] || { echo "expected app not found: $APP" >&2; exit 1; }
 

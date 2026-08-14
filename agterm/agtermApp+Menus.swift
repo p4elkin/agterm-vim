@@ -381,7 +381,8 @@ extension agtermApp {
     }
 
     /// Opens the standard About panel with a clickable agterm.com link and, on release builds where
-    /// `GIT_COMMIT` is baked into the bundle, the short commit in the version's parenthetical.
+    /// `GIT_COMMIT` is baked into the bundle, the short commit and its date in the version's
+    /// parenthetical. Builds past a tag all carry that tag's version, so this is what tells them apart.
     private func showAboutPanel() {
         var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
         let website = "https://agterm.com"
@@ -392,7 +393,8 @@ extension agtermApp {
             ])
         }
         if let commit = Bundle.main.infoDictionary?["GitCommit"] as? String, !commit.isEmpty, commit != "unknown" {
-            options[.version] = commit
+            let date = Bundle.main.infoDictionary?["GitCommitDate"] as? String ?? ""
+            options[.version] = date.isEmpty ? commit : "\(commit) · \(date)"
         }
         NSApplication.shared.orderFrontStandardAboutPanel(options: options)
     }
