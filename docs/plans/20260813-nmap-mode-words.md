@@ -274,10 +274,13 @@ diagram above exists in exactly one place.
 **Model:** sonnet
 **Wave:** docs
 
-- [ ] capture the optional trailing word in `NMAP_LINE`
-- [ ] show it on the normal-mode row, and show nothing when the line carried no word
-- [ ] confirm a keymap with no mode word renders exactly as it does today
-- [ ] run the cheat sheet against a keymap fixture carrying each word and read the output
+- [x] capture the optional trailing word in `NMAP_LINE`
+- [x] show it on the normal-mode row, and show nothing when the line carried no word
+- [x] confirm a keymap with no mode word renders exactly as it does today
+- [x] run the cheat sheet against a keymap fixture carrying each word and read the output
+- ➕ bounded the word on its right, so `nmap x toggle_split insertion` reports no word rather than
+      claiming `insert`; agterm rejects that line, and the sheet must not read it as a working bind
+- ➕ ran `uvx ruff check --ignore EXE001`, the cookbook CI gate for a `.py` recipe file
 
 ### Task 7: Verify acceptance criteria
 

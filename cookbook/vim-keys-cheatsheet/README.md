@@ -28,9 +28,12 @@ Bare keys, live only while normal mode is on. Press `ctrl+space` to enter the mo
 | `j` | next session |
 | `g>g` | first session |
 | `e` | Annotate last response |
+| `s` | toggle scratch (insert) |
 ```
 
 Both `nmap` target forms are read: a bare action name, and a quoted name that points at one of your `command` lines. A quoted target keeps the command's name as its first description, since that is already your own wording.
+
+A line ending in `insert` or `normal` carries that word into its row, in brackets after the target, as `s` does above. The word decides whether the key leaves normal mode as it fires, which the target name cannot show — the same `toggle_scratch` either hands the keys over or keeps the mode on. A line with no word runs on its action's own default and its row says nothing about the mode, exactly as every row did before the word existed.
 
 One case does write inside your tables, and only one: a chord that keeps its key and changes its command leaves a row naming the right chord and describing the wrong thing. If the words in it are still the model's, they are replaced with a fresh description. If you have rewritten that cell yourself, it is left alone and named in a banner instead.
 
@@ -52,7 +55,10 @@ With no sheet at all, the first run writes the whole thing: every bound chord, d
   name** (`nmap e "Annotate last response"`). That is a fork change with no released version
   behind it, so there is no number to name here. Without normal mode there is nothing for this
   variant to add, and the `keymap-cheatsheet` recipe it is built on is the one to use. Without
-  quoted targets the rest still works: agterm rejects such a line, so your keymap has none.
+  quoted targets the rest still works: agterm rejects such a line, so your keymap has none. The
+  trailing **mode word** (`nmap s toggle_scratch insert`) is newer again, and the same argument
+  covers it: a build without it drops such a line, so a keymap that runs at all has no word for this
+  to read.
 - agterm 0.22.0 or later otherwise, which is where `nmap` and normal mode ship, and where a custom
   command is spawned with a `PATH` that carries the bundled `agtermctl`, `/usr/local/bin` and
   `/opt/homebrew/bin` (`babc760`). Up to and including 0.21.0 the runner handed a custom command
@@ -139,13 +145,13 @@ The answer is not to guess a prefix inside the overlay script, and not to run th
 
 There are two scripts rather than one because agterm spawns the overlay program itself. Nothing the opener exports reaches it, so the second script takes everything it needs as arguments — which is also why it has no environment override for the sheet script: one set in the opener would never arrive.
 
-The drift check reads `keymap.conf` for three line shapes: `map <chord> <action>`, `command "<name>" <chord> <shell...>` where the chord is optional, and `nmap <key> <action or "name">`. A command with no chord is palette-only and has nothing to document, and requiring a modifier prefix on that second capture is what separates the two cases, since the shell word after a chordless command never begins with `ctrl+`, `cmd+`, `opt+` or `shift+`. Each chord is then looked for in the sheet with its markdown intact. Stripping the backticks first is the obvious move and it breaks the one chord whose key is a backtick, which would shrink to a bare `cmd+ctrl+` and match almost any row. Written either way — `` `cmd+ctrl+j` `` or ```` ``cmd+ctrl+` `` ```` — the row contains the chord as a literal substring, and the boundary rule does the rest.
+The drift check reads `keymap.conf` for three line shapes: `map <chord> <action>`, `command "<name>" <chord> <shell...>` where the chord is optional, and `nmap <key> <action or "name"> [insert|normal]`. A command with no chord is palette-only and has nothing to document, and requiring a modifier prefix on that second capture is what separates the two cases, since the shell word after a chordless command never begins with `ctrl+`, `cmd+`, `opt+` or `shift+`. Each chord is then looked for in the sheet with its markdown intact. Stripping the backticks first is the obvious move and it breaks the one chord whose key is a backtick, which would shrink to a bare `cmd+ctrl+` and match almost any row. Written either way — `` `cmd+ctrl+j` `` or ```` ``cmd+ctrl+` `` ```` — the row contains the chord as a literal substring, and the boundary rule does the rest.
 
 Normal-mode binds go through the same machinery with one thing changed: they are held in a namespace of their own, and the sheet's normal-mode section is the only place they are searched for. Both halves matter. `nmap s` and a bare `map s` are two different bindings that spell the same, so keying them together keeps whichever was read first and loses the other silently; and searching the whole sheet would let the row that documents your `s` chord stand in for the `s` you press in normal mode. The section heading, `## Normal mode`, is what marks the boundary, so keep it if you rearrange the sheet — rename it and the keys under it read as undocumented and get written again below.
 
 Those rows are written from the keymap rather than drafted, which is the one place this recipe skips the model on purpose. The model answers with a chord string and nothing else, so a bare `j` in its reply could belong to either table, and a row filed under the wrong one is worse than a plain one. An `nmap` target is usually legible anyway: a built-in action name, or the name you gave a `command` line, which is your own wording already.
 
-A binding can also stay bound while what it does changes underneath it, which leaves a row naming the right key and describing the wrong thing. The set check cannot see that, so a second file beside the stamp records what each key was bound to as of the last time the sheet was current, `nmap` lines included. Anything documented whose line has changed since is named in a banner of its own — a normal-mode key is named as such, since `j` alone would be ambiguous. A row the model wrote is rewritten; a row you wrote is left for you, and every normal-mode row counts as yours.
+A binding can also stay bound while what it does changes underneath it, which leaves a row naming the right key and describing the wrong thing. The set check cannot see that, so a second file beside the stamp records what each key was bound to as of the last time the sheet was current, `nmap` lines included. Anything documented whose line has changed since is named in a banner of its own — a normal-mode key is named as such, since `j` alone would be ambiguous. A row the model wrote is rewritten; a row you wrote is left for you, and every normal-mode row counts as yours. Adding a mode word to a key you already documented is such a change, so that key is named in the banner until you put the word in its row yourself.
 
 That check needs no acknowledgement. It compares against the sheet's own modification time: edit the sheet and everything is taken as described correctly again, leave it and the same keys are named on every press until you do.
 
