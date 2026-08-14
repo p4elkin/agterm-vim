@@ -1277,6 +1277,23 @@ struct ControlProtocolTests {
         #expect(decoded.dashboardFontMode == nil)
     }
 
+    @Test func treeRoundTripsWithSessionRecency() throws {
+        let recency = ["9F3C0000-0000-0000-0000-000000000001", "9F3C0000-0000-0000-0000-000000000002"]
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [], sessionRecency: recency)))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.sessionRecency == recency)
+    }
+
+    @Test func treeOmitsSessionRecencyWhenNil() throws {
+        let tree = ControlTree(workspaces: [])
+        let json = String(data: try JSONEncoder().encode(tree), encoding: .utf8) ?? ""
+        #expect(!json.contains("sessionRecency"), "a nil sessionRecency must be omitted; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlTree.self, from: Data(json.utf8))
+        #expect(decoded.sessionRecency == nil)
+    }
+
     @Test func backgroundWatermarkFitPositionSerializeAsRawStrings() throws {
         // the enums must serialize as ghostty's exact key strings.
         let watermark = BackgroundWatermark(kind: .image, imagePath: "/a.png", fit: .stretch, position: .bottomCenter)

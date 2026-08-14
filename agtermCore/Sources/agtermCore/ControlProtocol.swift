@@ -777,6 +777,11 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// The dashboard's font mode — `auto` (`--auto-size`), `fixed` (`--font-size`), `untouched`; nil/omitted
     /// with no dashboard. LIVE from the window's `DashboardController`, the read side of the font flags.
     public let dashboardFontMode: String?
+    /// The projected window's jump-back targets — session ids as `uuidString`, most recent first;
+    /// nil/omitted when there are none. The ACTIVE session is dropped and the visible navigation scope
+    /// applies, so this is the title-bar recent popover's list, not the raw recency stack. A session that
+    /// was never selected has no entry, so the array can be shorter than the session count.
+    public let sessionRecency: [String]?
     /// The id of the picker currently awaiting a choice, or nil when no picker is open.
     public let pickPending: String?
 
@@ -785,7 +790,8 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 quickVisible: Bool? = nil,
                 zoomedSurface: String? = nil, dashboardMembers: [String]? = nil,
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
-                dashboardFontMode: String? = nil, pickPending: String? = nil) {
+                dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
+                pickPending: String? = nil) {
         self.workspaces = workspaces
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
@@ -798,6 +804,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.dashboardHighlighted = dashboardHighlighted
         self.dashboardFontSize = dashboardFontSize
         self.dashboardFontMode = dashboardFontMode
+        self.sessionRecency = sessionRecency
         self.pickPending = pickPending
     }
 }
