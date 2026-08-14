@@ -54,12 +54,32 @@ public struct Keymap: Equatable, Sendable {
 /// bind here may freely repeat a global `map` chord or a custom command's, and carries no modifier
 /// requirement — bare keys are the point.
 public struct NormalModeBind: Equatable, Sendable {
+    /// The optional last word of an `nmap` line, overriding the action's own `leavesNormalMode` in either
+    /// direction. `insert` is named after the bare exit key and behaves like it: it leaves quietly and sends
+    /// no Escape to the pane, which is what keeps `i` and Esc different.
+    public enum Mode: String, Equatable, Sendable {
+        case insert
+        case normal
+    }
+
     public let keybind: Keybind
     public let target: KeybindTarget
+    /// `nil` when the line spelled no word, which is what leaves the action in charge.
+    public let mode: Mode?
 
-    public init(keybind: Keybind, target: KeybindTarget) {
+    public init(keybind: Keybind, target: KeybindTarget, mode: Mode? = nil) {
         self.keybind = keybind
         self.target = target
+        self.mode = mode
+    }
+
+    /// Whether firing this bind also leaves the mode: the line's word when it spelled one, else the built-in
+    /// action's own default. A command target has no hand-over default of its own, so it stays in the mode.
+    /// The single answer to that question — read by the state machine and by `keymap list` alike.
+    public var leavesNormalMode: Bool {
+        if let mode { return mode == .insert }
+        guard case .builtin(let action) = target else { return false }
+        return action.leavesNormalMode
     }
 }
 
@@ -291,6 +311,8 @@ struct ParsedNormalBind {
     let keybind: Keybind
     let target: PendingNormalTarget
     let line: Int
+    /// The mode word the line spelled, `nil` when it said nothing.
+    var mode: NormalModeBind.Mode?
 }
 
 /// An `nmap` target before the cross-section pass. A built-in name resolves on its own line; a quoted command
@@ -701,8 +723,10 @@ private func splitMapAlternatives(_ parsed: Alternatives, line: Int,
     return (menuChord, alternatives)
 }
 
-/// Parse an `nmap` line's remainder, `<chord-or-sequence> <action|"<command name>">`: on success appends a
-/// `ParsedNormalBind` in file order, on any failure a diagnostic.
+/// Parse an `nmap` line's remainder, `<chord-or-sequence> <action|"<command name>"> [insert|normal]`: on
+/// success appends a `ParsedNormalBind` in file order, on any failure a diagnostic. The trailing word is the
+/// one grammar piece `map` does not take: a global chord fires outside the mode, where there is no mode to
+/// leave.
 ///
 /// Deliberately NO modifier rule, the one grammar difference from `map`: normal mode intercepts every key
 /// before the terminal sees it, so a bare `j` swallows nothing the user still wants. Reserved monitor chords
@@ -745,9 +769,37 @@ private func parseNormalModeLine(_ rest: String, line: Int, binds: inout [Parsed
             message: "'\(normalModeExitKey)' leaves normal mode and can't be bound; nmap skipped"))
         return
     }
-    guard let target = parseNormalModeTarget(targetText, line: line, diagnostics: &diagnostics) else { return }
+    guard let split = splitNormalModeWord(targetText, line: line, diagnostics: &diagnostics) else { return }
+    guard let target = parseNormalModeTarget(split.target, line: line, diagnostics: &diagnostics) else { return }
 
-    binds.append(ParsedNormalBind(keybind: keybind, target: target, line: line))
+    binds.append(ParsedNormalBind(keybind: keybind, target: target, line: line, mode: split.mode))
+}
+
+/// Split the optional trailing mode word off an `nmap` target, so both target forms obey ONE rule: the
+/// quoted form used to reject trailing text inside `parseNormalModeTarget`, and a bare action name used to
+/// swallow it into the name it then failed to resolve.
+///
+/// Where the target ends is the only per-form difference — the closing quote, else the first whitespace.
+/// Anything after it must be a mode word; anything else is a diagnostic naming it, and the line is skipped,
+/// the same way a malformed alternative kills its whole line. An unterminated quote is left alone for
+/// `parseNormalModeTarget` to report, since nothing in it can be told apart from the name.
+private func splitNormalModeWord(_ text: String, line: Int, diagnostics: inout [KeymapDiagnostic])
+    -> (target: String, mode: NormalModeBind.Mode?)? {
+    let targetEnd: String.Index
+    if text.first == "\"" {
+        guard let closeQuote = text.dropFirst().firstIndex(of: "\"") else { return (text, nil) }
+        targetEnd = text.index(after: closeQuote)
+    } else {
+        targetEnd = text.firstIndex(where: { $0.isWhitespace }) ?? text.endIndex
+    }
+    let trailing = text[targetEnd...].trimmingCharacters(in: .whitespaces)
+    guard !trailing.isEmpty else { return (String(text[..<targetEnd]), nil) }
+    guard let mode = NormalModeBind.Mode(rawValue: trailing) else {
+        diagnostics.append(KeymapDiagnostic(
+            line: line, message: "unknown mode '\(trailing)'; nmap skipped"))
+        return nil
+    }
+    return (String(text[..<targetEnd]), mode)
 }
 
 /// The target half of an `nmap` line. A leading `"` marks a custom-command name, the same way a `command`
@@ -765,12 +817,6 @@ private func parseNormalModeTarget(_ text: String, line: Int,
     guard let closeQuote = text.dropFirst().firstIndex(of: "\"") else {
         diagnostics.append(KeymapDiagnostic(line: line,
                                             message: "unterminated command name; nmap skipped"))
-        return nil
-    }
-    let trailing = text[text.index(after: closeQuote)...].trimmingCharacters(in: .whitespaces)
-    guard trailing.isEmpty else {
-        diagnostics.append(KeymapDiagnostic(
-            line: line, message: "unexpected text '\(trailing)' after command name; nmap skipped"))
         return nil
     }
     return .commandName(String(text[text.index(after: text.startIndex)..<closeQuote]))
@@ -828,7 +874,7 @@ func resolveNormalModeBinds(_ parsed: [ParsedNormalBind], commands: [CustomComma
                 message: "normal-mode keybind conflicts with \(name); nmap skipped"))
             continue
         }
-        kept.append(NormalModeBind(keybind: entry.keybind, target: target))
+        kept.append(NormalModeBind(keybind: entry.keybind, target: target, mode: entry.mode))
     }
     return kept
 }

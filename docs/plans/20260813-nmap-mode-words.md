@@ -177,16 +177,16 @@ diagram above exists in exactly one place.
 **Model:** opus
 **Wave:** foundation
 
-- [ ] add the mode word type and store it on `NormalModeBind`, with the computed property that resolves
+- [x] add the mode word type and store it on `NormalModeBind`, with the computed property that resolves
       line word, else `action.leavesNormalMode`, else stay
-- [ ] carry the word on `ParsedNormalBind` and pass it through `resolveNormalModeBinds`
-- [ ] split a trailing `insert`/`normal` off in `parseNormalModeLine`, before `parseNormalModeTarget` sees
+- [x] carry the word on `ParsedNormalBind` and pass it through `resolveNormalModeBinds`
+- [x] split a trailing `insert`/`normal` off in `parseNormalModeLine`, before `parseNormalModeTarget` sees
       the text, so the built-in and quoted forms share one rule
-- [ ] diagnose an unrecognised trailing word by name and skip the line
-- [ ] write tests for both target forms with each word, and for a line with no word
-- [ ] write tests for an unknown word, for a word on a `map` line still being a diagnostic, and for a
+- [x] diagnose an unrecognised trailing word by name and skip the line
+- [x] write tests for both target forms with each word, and for a line with no word
+- [x] write tests for an unknown word, for a word on a `map` line still being a diagnostic, and for a
       keymap with no word parsing exactly as it does today
-- [ ] run `cd agtermCore && swift test --filter KeymapTests` — must pass before the next task
+- [x] run `cd agtermCore && swift test --filter KeymapTests` — must pass before the next task
 
 ### Task 2: Record which keybind fired
 

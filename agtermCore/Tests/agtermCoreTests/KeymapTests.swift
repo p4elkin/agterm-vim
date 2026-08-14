@@ -759,6 +759,103 @@ struct KeymapTests {
         ])
     }
 
+    // MARK: `nmap` — the trailing mode word
+
+    @Test func nmapModeWordsParseOnABuiltinTarget() {
+        let text = """
+        nmap s toggle_scratch insert
+        nmap space>n new_session normal
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [
+            NormalModeBind(keybind: [Chord(mods: [], key: "s")], target: .builtin(.toggleScratch),
+                           mode: .insert),
+            NormalModeBind(keybind: [Chord(mods: [], key: "space"), Chord(mods: [], key: "n")],
+                           target: .builtin(.newSession), mode: .normal)
+        ])
+        #expect(keymap.normalModeBinds[0].leavesNormalMode)
+        #expect(!keymap.normalModeBinds[1].leavesNormalMode)
+    }
+
+    @Test func nmapModeWordsParseOnACommandTarget() {
+        let text = """
+        command "FZF Files" fzf
+        nmap f "FZF Files" insert
+        nmap g "FZF Files" normal
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        let id = keymap.commands[0].id
+        #expect(keymap.normalModeBinds == [
+            NormalModeBind(keybind: [Chord(mods: [], key: "f")], target: .command(id), mode: .insert),
+            NormalModeBind(keybind: [Chord(mods: [], key: "g")], target: .command(id), mode: .normal)
+        ])
+        #expect(keymap.normalModeBinds[0].leavesNormalMode)
+        #expect(!keymap.normalModeBinds[1].leavesNormalMode)
+    }
+
+    @Test func nmapWithNoModeWordLeavesTheActionInCharge() {
+        let text = """
+        command "FZF Files" fzf
+        nmap n new_session
+        nmap s toggle_scratch
+        nmap f "FZF Files"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds.allSatisfy { $0.mode == nil })
+        #expect(keymap.normalModeBinds[0].leavesNormalMode == BuiltinAction.newSession.leavesNormalMode)
+        #expect(keymap.normalModeBinds[1].leavesNormalMode == BuiltinAction.toggleScratch.leavesNormalMode)
+        #expect(!keymap.normalModeBinds[2].leavesNormalMode)
+    }
+
+    @Test func nmapUnknownModeWordDropsTheLine() {
+        let (keymap, diagnostics) = parseKeymap("nmap s toggle_scratch sometimes")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 1)
+        #expect(diagnostics[0].message.contains("unknown mode 'sometimes'"))
+    }
+
+    @Test func nmapUnknownModeWordAfterACommandNameDropsTheLine() {
+        let text = """
+        command "FZF Files" fzf
+        nmap f "FZF Files" sometimes
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 2)
+        #expect(diagnostics[0].message.contains("unknown mode 'sometimes'"))
+    }
+
+    /// The word belongs to the mode, and a `map` chord fires where there is no mode to leave.
+    @Test func mapLineWithAModeWordIsStillRejected() {
+        let (keymap, diagnostics) = parseKeymap("map ctrl+shift+g dashboard insert")
+        #expect(keymap.builtinOverrides.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("unknown action"))
+    }
+
+    @Test func keymapWithNoModeWordResolvesExactlyAsItDidBeforeTheWord() {
+        let text = """
+        command "Lazygit" ctrl+a>k lazygit
+        nmap j next_session
+        nmap n new_session
+        nmap space>g "Lazygit"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [
+            NormalModeBind(keybind: [Chord(mods: [], key: "j")], target: .builtin(.nextSession)),
+            NormalModeBind(keybind: [Chord(mods: [], key: "n")], target: .builtin(.newSession)),
+            NormalModeBind(keybind: [Chord(mods: [], key: "space"), Chord(mods: [], key: "g")],
+                           target: .command(keymap.commands[0].id))
+        ])
+        #expect(keymap.normalModeBinds.map(\.leavesNormalMode) == [false, true, false])
+    }
+
     @Test func parseInvalidChordDiagnostic() {
         let (keymap, diagnostics) = parseKeymap("map cmd+f1 toggle_split")
         #expect(keymap.builtinOverrides.isEmpty)
