@@ -125,6 +125,19 @@ paths:
   The seam appears in 48px normal mode; 30px compact remains inside the native band.
   Keep the empty overlay layer free of Color/contentShape so it cannot intercept hits. Do not add an opaque
   titlebar background; it breaks translucent chrome.
+- ⚠️ Chrome that must survive terminal ZOOM goes in `windowLayers` itself, not `windowOverlayLayer` and not
+  `detailPane`.
+  `alwaysMountedSplitLayer` drops to opacity 0 while zoom is on, and `windowOverlayLayer` is not rendered at
+  all in that branch, so chrome hosted in either is present and invisible.
+  No gate catches that: the view exists, and its tests pass.
+  The floating chrome pills sit outside the zoom/non-zoom branch at `zIndex(15)`, above the zoom layer and
+  below `pickPaletteOverlay`.
+  A full-window frame there makes `allowsHitTesting(false)` mandatory, or the layer swallows every click in
+  the window rather than only the ones under its content.
+- ⚠️ `store.sidebarVisible` does NOT mean the sidebar is on screen.
+  Zoom and the dashboard both leave it set while covering the sidebar.
+  `sidebarOnScreen` in `WindowContentView.swift` is the predicate, shared with `terminalAreaInset`; anything
+  standing in for the sidebar reads that, never the raw flag.
 - With translucency, every surface has zero background opacity. A full overlay has no opaque SwiftUI
   backing, so hide panes and scratch beneath it and remove their drop eligibility. Floating overlay and
   quick terminal have opaque terminal-color panels.
