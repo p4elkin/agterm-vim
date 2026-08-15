@@ -127,6 +127,10 @@ struct WindowContentView: View {
                         .zIndex(2)
                 }
             }
+            // outside the branch above so it survives zoom, which renders neither the split layer nor the
+            // window overlays. Above the zoom layer, below the picker.
+            floatingPillsLayer
+                .zIndex(15)
             // the picker is the window's topmost modal: it stays visible and interactive even when terminal
             // zoom or the dashboard was already active when the request arrived.
             pickPaletteOverlay
@@ -415,22 +419,25 @@ struct WindowContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // the overlay renders in-deck inside `sessionDetail` (`overlayPanel`), not at this level.
                 .overlay(alignment: .topTrailing) { searchBarLayer }
-                .overlay(alignment: .bottomTrailing) { floatingPillsLayer }
         }
     }
 
-    /// The chrome pills while the sidebar is COLLAPSED, floating over the terminal. The footer they otherwise
-    /// live in belongs to `sidebarColumn`, which is not rendered at all then, so the two sites can never both
-    /// draw. Attached at `detailPane` level for the same reason `searchBarLayer` is — inside a session's
-    /// `sessionDetail` it would perturb the split and overrun the NSSplitView into the titlebar.
+    /// The chrome pills standing in for the sidebar footer whenever that footer is not on screen.
     ///
-    /// ⚠️ Indicators, not controls: without `allowsHitTesting(false)` the capsules swallow clicks and
-    /// selection drags on the terminal underneath them.
+    /// ⚠️ Mounted in `windowLayers`, NOT on `detailPane` like `searchBarLayer`. Everything inside
+    /// `alwaysMountedSplitLayer` drops to opacity 0 while terminal zoom is on, so a pill hosted there
+    /// disappears in exactly the case it exists to cover — the sidebar being gone. `sidebarOnScreen` is the
+    /// gate for the same reason: `store.sidebarVisible` stays set through zoom and the dashboard.
+    ///
+    /// ⚠️ The frame fills the window so the pills can sit bottom-trailing, which makes
+    /// `allowsHitTesting(false)` load-bearing twice over: without it this layer swallows every click in the
+    /// window, not merely the ones under the capsules.
     @ViewBuilder private var floatingPillsLayer: some View {
-        if !store.sidebarVisible {
+        if !sidebarOnScreen {
             chromePills
                 .padding(.bottom, 8)
                 .padding(.trailing, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .allowsHitTesting(false)
         }
     }
@@ -625,8 +632,15 @@ struct WindowContentView: View {
     /// paints over it), and `pickPaletteOverlay` is mounted through both. Reading the flag there shifts a
     /// picker by half a sidebar that is not on screen.
     private var terminalAreaInset: Double {
-        guard store.sidebarVisible, terminalZoom.target == nil, !dashboard.isOpen else { return 0 }
+        guard sidebarOnScreen else { return 0 }
         return store.sidebarWidth + 1
+    }
+
+    /// Whether the sidebar is actually ON SCREEN — the predicate `terminalAreaInset` above explains, named
+    /// once because the chrome pills need the same answer: they render in the sidebar footer when it is on
+    /// screen and float over the terminal when it is not, and those two must not disagree.
+    private var sidebarOnScreen: Bool {
+        store.sidebarVisible && terminalZoom.target == nil && !dashboard.isOpen
     }
 
     /// Mounted only while a palette is open in the frontmost window; its content (search field + result
@@ -683,7 +697,14 @@ struct WindowContentView: View {
         HStack(spacing: 2) {
             // the pills lead the footer; with all four controls hidden in Settings ▸ Interface it holds
             // nothing else. The trailing padding is because the row's own 2pt spacing reads as touching.
-            chromePills.padding(.trailing, 6)
+            //
+            // `sidebarOnScreen`, not just "the footer is being rendered": zoom and the dashboard leave this
+            // row mounted but invisible, and the floating layer takes over there. Gating both on the one
+            // predicate keeps exactly one copy of each pill in the view tree, which also keeps
+            // `normal-mode-pill` a single accessibility match.
+            if sidebarOnScreen {
+                chromePills.padding(.trailing, 6)
+            }
 
             if shows(.newWorkspace) {
                 Button {
