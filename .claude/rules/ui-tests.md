@@ -13,6 +13,24 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   the main-queue autorelease-pool pop. xcodebuild reports `Restarting after unexpected exit, crash, or
   test timeout`, may restart and finish, and can fail only on CI or after unrelated tests alter reuse.
   `orderOut(nil)` is safe.
+- ⚠️ **No `isolated deinit` while the minimum macOS is 14.** Releasing the last reference to such a class
+  inside a synchronous task-local scope aborts the host with `malloc: *** error for object …: pointer being
+  freed was not allocated`, inside `swift_task_deinitOnExecutorImpl` and before the deinit body runs.
+  XCTest builds exactly that scope: it wraps a synchronous test body in `XCTSwiftErrorObservation`, which
+  pushes a task-local while no task is current, and the isolated-deinit path then frees that non-heap
+  record. xcodebuild reports `Restarting after unexpected exit` plus `The test runner exited with code 5`,
+  once per crashing test, and names the test that crashed rather than the ones left unrun.
+  An `async` test method is unaffected, because it runs in a real task.
+  Reproducible in about 25 lines with no XCTest — `TaskLocal.withValue { }` around the release, outside a
+  `Task` — and at deployment targets 14, 15 and 26 alike, so it is neither a test artifact nor the
+  back-deployment shim. The defect is swiftlang/swift#85663, fixed by swiftlang/swift#87967 and confirmed
+  fixed on iOS 26.4; the runtime ships inside the OS (`/usr/lib/swift`, dyld shared cache), so it arrives
+  with macOS and not with Xcode. Revisit this rule when the deployment target passes the fixed release.
+  agterm builds no such scope of its own — it declares no `@TaskLocal` — so only XCTest reaches it today.
+  The fix still sits in the product: `AppActions`, `SystemWakeObserver`, `SystemAccessibilityObserver` and
+  `WorkspaceSidebar`'s coordinator spell the deinit `nonisolated` and mark the tokens it reads
+  `nonisolated(unsafe)`, so no later test can rearm the trap. Holding the object in a property an async
+  `tearDown` clears also avoids the abort; it was rejected because it leaves the next test to trip over.
 - For a dead host, inspect `xcrun xcresulttool get test-results tests --path <xcresult>`.
   `~/.local/state/ghostty/crash/*.ghosttycrash` is a sentry envelope: split its header and
   item-header/payload pairs, write the minidump attachment as `.dmp`, then run

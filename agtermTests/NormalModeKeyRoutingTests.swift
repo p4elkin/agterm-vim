@@ -521,8 +521,6 @@ final class NormalModeKeyRoutingTests: XCTestCase {
     /// keystroke can reach — `mode on` from a script while another app is frontmost is the real case.
     func testEnteringIsRefusedWithNoKeyWindow() throws {
         NormalModeController.shared.exit()
-        // a property, not a local: `AppActions` has an `isolated deinit`, and releasing one inside a test
-        // body over-releases and takes the host down. `tearDown` is where every other suite drops it too.
         actions = AppActions(library: library)
 
         actions.keyWindowProvider = { nil }
