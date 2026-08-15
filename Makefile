@@ -1,7 +1,7 @@
 # agterm tasks — a thin front door over scripts/*.sh (the scripts stay the source of truth).
 # Run `make` (or `make help`) to list targets.
 
-INSTALL_DIR := $(HOME)/Applications
+INSTALL_DIR := /Applications
 RELEASE_APP := build/DerivedData/Build/Products/Release/agterm.app
 
 .DEFAULT_GOAL := help
