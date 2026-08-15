@@ -415,6 +415,23 @@ struct WindowContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // the overlay renders in-deck inside `sessionDetail` (`overlayPanel`), not at this level.
                 .overlay(alignment: .topTrailing) { searchBarLayer }
+                .overlay(alignment: .bottomTrailing) { floatingPillsLayer }
+        }
+    }
+
+    /// The chrome pills while the sidebar is COLLAPSED, floating over the terminal. The footer they otherwise
+    /// live in belongs to `sidebarColumn`, which is not rendered at all then, so the two sites can never both
+    /// draw. Attached at `detailPane` level for the same reason `searchBarLayer` is — inside a session's
+    /// `sessionDetail` it would perturb the split and overrun the NSSplitView into the titlebar.
+    ///
+    /// ⚠️ Indicators, not controls: without `allowsHitTesting(false)` the capsules swallow clicks and
+    /// selection drags on the terminal underneath them.
+    @ViewBuilder private var floatingPillsLayer: some View {
+        if !store.sidebarVisible {
+            chromePills
+                .padding(.bottom, 8)
+                .padding(.trailing, 8)
+                .allowsHitTesting(false)
         }
     }
 
@@ -664,6 +681,10 @@ struct WindowContentView: View {
     /// focus filter, the flagged working-set view). Each is hideable via Settings ▸ Interface (`shows(_:)`).
     private var bottomBar: some View {
         HStack(spacing: 2) {
+            // the pills lead the footer; with all four controls hidden in Settings ▸ Interface it holds
+            // nothing else. The trailing padding is because the row's own 2pt spacing reads as touching.
+            chromePills.padding(.trailing, 6)
+
             if shows(.newWorkspace) {
                 Button {
                     actions.newWorkspace()

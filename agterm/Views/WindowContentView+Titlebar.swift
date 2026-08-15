@@ -107,13 +107,6 @@ extension WindowContentView {
                 // the title text falls through to the drag/zoom layer behind it, so double-click zooms and
                 // drag moves the window; the rest of the row is non-hittable spacers plus the buttons.
                 .allowsHitTesting(false)
-            // one app-wide mode, one titlebar per window: without the frontmost test every open window
-            // advertises a mode whose keys are not in it. The mode ends on resign-key, so it can only ever
-            // belong to the frontmost one — which is also what `window list` reports it on.
-            if NormalModeController.shared.isActive, library.activeWindowID == windowID {
-                normalModePill.padding(.leading, 8)
-            }
-            overlayRedirectPill
             Spacer(minLength: 12)
             titlebarTrailingActions
         }
@@ -161,6 +154,23 @@ extension WindowContentView {
         .padding(.trailing, 14)
     }
 
+    /// NORMAL and OVERLAY as one unit, so the sidebar footer and the collapsed-sidebar floating layer render
+    /// the same thing rather than two drifting copies. Each pill keeps its own visibility rule; the frontmost
+    /// test is shared because both answer for ONE app-wide state while there is one of this view per window,
+    /// so without it every open window advertises a mode whose keys are not in it. The mode ends on
+    /// resign-key, so it can only ever belong to the frontmost window — which is what `window list` reports.
+    ///
+    /// Not `private`: the pills are file-private to this extension, but the two render sites live in
+    /// `WindowContentView.swift`.
+    @ViewBuilder var chromePills: some View {
+        if library.activeWindowID == windowID {
+            HStack(spacing: 8) {
+                if NormalModeController.shared.isActive { normalModePill }
+                overlayRedirectPill
+            }
+        }
+    }
+
     /// Normal-mode indicator: inverted (chrome-filled, terminal-colored text) so it reads as a mode change
     /// rather than another chrome button, since an unnoticed mode silently eats keystrokes. Shows the armed
     /// leader prefix while a sequence is half-typed; absent entirely while the mode is off.
@@ -200,7 +210,6 @@ extension WindowContentView {
                         Self.overlayRedirectPillState(session: store.activeSession,
                                                       now: context.date.timeIntervalSince1970)), in: Capsule())
                     .accessibilityIdentifier("overlay-redirect-pill")
-                    .padding(.leading, 8)
             }
         }
     }
