@@ -17,6 +17,15 @@ extension AppStore {
         return sessionRecency.top(limit, in: valid)
     }
 
+    /// Where the Ctrl-Tab switcher starts in a recency order: 1 when the order LEADS with the current
+    /// session, 0 when it does not — the state a recency dwell creates, the current selection not yet
+    /// recorded. Hardcoding 1 there skips the session the switcher exists to reach. Nil when the order holds
+    /// nothing to switch to.
+    public func switcherStartIndex(in order: [UUID]) -> Int? {
+        let start = order.first == selectedSessionID ? 1 : 0
+        return order.count > start ? start : nil
+    }
+
     /// `navigableRecentSessions(limit:)` shaped for the control tree's `sessionRecency`. Passing the stack's
     /// own bound leaves the wire list UNCAPPED, unlike the popover's `SessionSwitcher.maxCandidates`, so a
     /// consumer picks its own count.

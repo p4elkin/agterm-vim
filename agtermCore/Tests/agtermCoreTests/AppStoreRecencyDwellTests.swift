@@ -113,6 +113,49 @@ struct AppStoreRecencyDwellTests {
         #expect(store.sessionRecency.items == [sessions[0].id])
     }
 
+    @Test func changingBetweenTwoDwellsRearmsOnTheNewDelay() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.setRecencyDwell(5)
+        #expect(store.recencyDwellDebouncer.pendingDelay == 5)
+        #expect(store.sessionRecency.items.isEmpty)
+        store.recencyDwellDebouncer.flush()
+        #expect(store.sessionRecency.items == [sessions[0].id])
+    }
+
+    @Test func reselectingTheSameSessionDoesNotRestartTheDwell() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        let armed = store.recencyDwellDebouncer.scheduleCount
+        store.selectSession(sessions[0].id)
+        #expect(store.recencyDwellDebouncer.scheduleCount == armed)
+    }
+
+    @Test func theSwitcherStartsPastAnOrderLeadingWithTheCurrentSession() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.recencyDwellDebouncer.flush()
+        store.selectSession(sessions[1].id)
+        store.recencyDwellDebouncer.flush()
+        #expect(store.switcherStartIndex(in: [sessions[1].id, sessions[0].id]) == 1)
+    }
+
+    @Test func theSwitcherStartsAtZeroWhileTheCurrentSessionHasNotServedItsDwell() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.recencyDwellDebouncer.flush()
+        store.selectSession(sessions[1].id)
+        #expect(store.switcherStartIndex(in: [sessions[0].id]) == 0)
+    }
+
+    @Test func theSwitcherHasNowhereToGoWithOnlyTheCurrentSessionRecorded() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.recencyDwellDebouncer.flush()
+        #expect(store.switcherStartIndex(in: [sessions[0].id]) == nil)
+        #expect(store.switcherStartIndex(in: []) == nil)
+    }
+
     @Test func theTreeReportsTheDwellInMilliseconds() {
         let (store, _) = makeDwellStore()
         #expect(store.controlTree().recencyDwellMs == 100_000)

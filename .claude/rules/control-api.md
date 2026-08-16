@@ -549,6 +549,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   milliseconds, omitted when the setting is Immediately. It is on the tree AND the window node, and like
   `autoFollowMs` it is settings-only: no command sets it, deliberately. See [[settings]] for the choices
   and the fallback.
+- ⚠️ `session.select` RECORDS RECENCY IMMEDIATELY, ignoring the dwell. Nothing headless types, so an armed
+  push would never be flushed and a script that selects and then reads `sessionRecency` or `dashboard --mru`
+  would not see its own selection — an answer that would otherwise depend on wall-clock time between the two
+  calls. The selects that ride another command stay dwell-gated (`session.overlay.open --follow`,
+  `session.search`, `session.scratch`): those are a side effect of doing something else, not a request to
+  visit. `session.new` is unaffected either way, since its recency push already runs on creation.
 - `sessionRecency` is the window's jump-back list, most recent first, with the active session dropped and
   the visible navigation scope applied.
   It is `navigableRecentSessions`, the projection the title-bar popover and the Dock menu share, but

@@ -35,9 +35,11 @@ extension AppStore {
     /// `selectSession` would keep resetting its idle timer.
     ///
     /// `typed` separates the two kinds of interaction this seam otherwise flattens: true only for a keystroke
-    /// in a surface, false for a selection (sidebar, palettes, Dock menu, switcher, recent popover). Typing
-    /// proves the session is being worked in, so it serves the recency dwell immediately instead of waiting it
-    /// out; the auto-follow arming is identical either way.
+    /// in a SESSION'S OWN surface, so it proves that session is being worked in and serves the recency dwell
+    /// immediately instead of waiting it out. False for a selection (sidebar, palettes, Dock menu, switcher,
+    /// recent popover) and for the quick terminal, which is window-level and would otherwise serve the dwell
+    /// of whichever session the sidebar happens to have selected. The auto-follow arming is identical either
+    /// way, which is what that call site wants from this seam.
     public func noteUserActivity(typed: Bool = false) {
         lastActivityAt = Date()
         if typed { recencyDwellDebouncer.flush() }

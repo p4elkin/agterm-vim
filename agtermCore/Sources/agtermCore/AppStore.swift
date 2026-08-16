@@ -445,7 +445,10 @@ public final class AppStore {
         if let sessionID { clearUnseen(sessionID) }
         clearAutoResetIndicator(sessionID)
         clearAutoResetIndicator(previous)
-        recordRecency()
+        // only when the selection actually moved: re-arming on a same-id select would make the dwell measure
+        // time since the last select CALL rather than time continuously selected, and paths that reselect the
+        // current session (`overlay open --follow`, `session.search`, a banner click) would defer it forever.
+        if previous != sessionID { recordRecency() }
         scheduleSave()
         return destinationIndicator
     }
@@ -463,11 +466,12 @@ public final class AppStore {
 
     /// Pushes the Settings dwell into this window's store (nil = record on selection). Switching to nil flushes
     /// an armed push rather than dropping it: under the new setting that selection is already recorded, and
-    /// leaving the timer running would record it a dwell later instead.
+    /// leaving the timer running would record it a dwell later instead. Any other change re-arms, so an armed
+    /// push serves the NEW delay from now instead of firing on the one it was scheduled with.
     public func setRecencyDwell(_ dwell: TimeInterval?) {
         guard recencyDwell != dwell else { return }
         recencyDwell = dwell
-        if dwell == nil { recencyDwellDebouncer.flush() }
+        if dwell == nil { recencyDwellDebouncer.flush() } else { recordRecency() }
     }
 
     /// Arms the recency push for the current selection: it reaches the front of the Ctrl-Tab order only after
@@ -486,7 +490,8 @@ public final class AppStore {
 
     /// Pushes the current selection to the front of the recency stack immediately; no-op when none. The
     /// bootstrap path: a restored selection earned its place in the previous run and must not re-serve the dwell.
-    func recordRecencyNow() {
+    /// Also the control `session.select` path, which has no one to type the dwell away.
+    public func recordRecencyNow() {
         if let selectedSessionID { sessionRecency.push(selectedSessionID) }
     }
 
