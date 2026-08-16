@@ -189,12 +189,21 @@ read-only over the socket, and this follows it.
 
 ### Task 7: Verify acceptance criteria
 
-- [ ] verify a fast walk through several sessions records none of them
-- [ ] verify the dwell elapsing records, and that typing records sooner
-- [ ] verify Immediately reproduces today's behaviour exactly
-- [ ] run full host-free suite: `cd agtermCore && swift test`
-- [ ] run `make lint` - zero findings required
-- [ ] run `make test-app`. ⚠️ It is RED on a clean checkout for unrelated reasons — exit 2, zero failing test cases, test-host crash restarts at process exit. Compare against the base commit and do NOT chase it; a separate session owns that investigation
+- [x] verify a fast walk through several sessions records none of them
+  - `walkingPastSessionsRecordsNoneOfThem`, plus `onlyTheSessionStillSelectedWhenTheDwellElapsesIsRecorded`
+    for the walk that stops: only the row still selected at the fire is pushed
+- [x] verify the dwell elapsing records, and that typing records sooner
+  - `theDwellElapsingRecordsTheSelection` and `typingRecordsThePendingSessionWithoutWaitingOutTheDwell`;
+    `aSelectionDoesNotServeTheDwell` pins that only a keystroke promotes, not a plain `noteUserActivity`
+- [x] verify Immediately reproduces today's behaviour exactly
+  - `anImmediateDwellRecordsOnSelectionWithNoTimer`: with `recencyDwell = nil` both selections land in
+    the stack in order, no debouncer involved
+- [x] run full host-free suite: `cd agtermCore && swift test` - 2897 tests in 110 suites, all passed
+- [x] run `make lint` - zero findings required
+- [x] run `make test-app`. ⚠️ It is RED on a clean checkout for unrelated reasons — exit 2, zero failing test cases, test-host crash restarts at process exit. Compare against the base commit and do NOT chase it; a separate session owns that investigation
+  - it came back GREEN here: exit 0, `** TEST SUCCEEDED **`, 319 tests with 4 skipped and 0 failures.
+    The stale `GhosttyKit.xcframework` that task 3 replaced is the likely cause of the earlier red, so
+    there was nothing to compare against the base commit
 
 ### Task 8: [Final] Update documentation
 
