@@ -734,6 +734,10 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// The window's auto-follow-blocked timeout in milliseconds, or nil when the feature is disabled
     /// (omitted from the JSON). The read side of the GUI-only Auto-follow setting.
     public let autoFollowMs: Int?
+    /// How long a session must stay selected before it enters the window's recency order, in milliseconds;
+    /// nil when the dwell is Immediately (omitted from the JSON). The read side of the GUI-only Recent
+    /// sessions setting, and like `autoFollowMs` it has no command that sets it.
+    public let recencyDwellMs: Int?
     /// Whether the projected window's sidebar is visible. LIVE, built fresh from the window's store per
     /// request — the read side of the write-only `sidebar` command. Always present on a `tree` response (the
     /// producer passes a non-optional `Bool`), unlike `idleMs`/`autoFollowMs`; the `window.list` copy omits
@@ -786,6 +790,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
     public let pickPending: String?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
+                recencyDwellMs: Int? = nil,
                 sidebarVisible: Bool? = nil, sidebarMode: String? = nil, workspaceFilter: Bool? = nil,
                 quickVisible: Bool? = nil,
                 zoomedSurface: String? = nil, dashboardMembers: [String]? = nil,
@@ -795,6 +800,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.workspaces = workspaces
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
+        self.recencyDwellMs = recencyDwellMs
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
         self.workspaceFilter = workspaceFilter

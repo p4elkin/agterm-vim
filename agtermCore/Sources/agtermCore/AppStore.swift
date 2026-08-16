@@ -322,6 +322,7 @@ public final class AppStore {
                                         sessions: sessions)
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
+                           recencyDwellMs: recencyDwellMs,
                            sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue,
                            workspaceFilter: focusEnabled,
                            quickVisible: quickVisible(), zoomedSurface: zoomedSurface(),

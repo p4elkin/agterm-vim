@@ -28,6 +28,10 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
     /// cache refresh — `window.list` answers from a nonisolated fast path, so a just-changed setting lags
     /// until the next command; the live `idleMs` is kept off `window.list` (tree-only) for that reason.
     public let autoFollowMs: Int?
+    /// How long a session must stay selected before it joins this window's recency order, in milliseconds;
+    /// nil/omitted when the dwell is Immediately or the window is closed. Rides the same cache as
+    /// `autoFollowMs`, so a just-changed setting lags by one command.
+    public let recencyDwellMs: Int?
     /// Whether this window's sidebar is visible; nil/omitted for a CLOSED window with no live store. Read
     /// from the open window's store, mirroring `autoFollowMs`. The read side of `sidebar`, per window.
     public let sidebarVisible: Bool?
@@ -56,6 +60,7 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
     public let normalMode: Bool?
 
     public init(id: String, name: String, open: Bool, active: Bool, autoFollowMs: Int? = nil,
+                recencyDwellMs: Int? = nil,
                 sidebarVisible: Bool? = nil, geometry: ControlWindowFrame? = nil,
                 fullscreen: Bool? = nil, zoomed: Bool? = nil, minimized: Bool? = nil,
                 normalMode: Bool? = nil) {
@@ -64,6 +69,7 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
         self.open = open
         self.active = active
         self.autoFollowMs = autoFollowMs
+        self.recencyDwellMs = recencyDwellMs
         self.sidebarVisible = sidebarVisible
         self.geometry = geometry
         self.fullscreen = fullscreen

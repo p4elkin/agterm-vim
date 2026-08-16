@@ -1002,12 +1002,14 @@ struct ControlProtocolTests {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
         let tree = ControlTree(workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true,
                                                                  sessions: [session])],
-                               idleMs: 4200, autoFollowMs: 30_000, sidebarVisible: false)
+                               idleMs: 4200, autoFollowMs: 30_000, recencyDwellMs: 20_000,
+                               sidebarVisible: false)
         let response = ControlResponse(ok: true, result: ControlResult(tree: tree))
         let decoded = try roundTrip(response)
         #expect(decoded == response)
         #expect(decoded.result?.tree?.idleMs == 4200)
         #expect(decoded.result?.tree?.autoFollowMs == 30_000)
+        #expect(decoded.result?.tree?.recencyDwellMs == 20_000)
         #expect(decoded.result?.tree?.sidebarVisible == false)
     }
 
@@ -1016,20 +1018,24 @@ struct ControlProtocolTests {
         let json = String(data: try JSONEncoder().encode(tree), encoding: .utf8) ?? ""
         #expect(!json.contains("idleMs"), "a nil idleMs must be omitted from the JSON; got \(json)")
         #expect(!json.contains("autoFollowMs"), "a nil autoFollowMs must be omitted from the JSON; got \(json)")
+        #expect(!json.contains("recencyDwellMs"),
+                "a nil recencyDwellMs must be omitted from the JSON; got \(json)")
         #expect(!json.contains("sidebarVisible"), "a nil sidebarVisible must be omitted from the JSON; got \(json)")
         let decoded = try JSONDecoder().decode(ControlTree.self, from: Data(json.utf8))
         #expect(decoded.idleMs == nil)
         #expect(decoded.autoFollowMs == nil)
+        #expect(decoded.recencyDwellMs == nil)
         #expect(decoded.sidebarVisible == nil)
     }
 
     @Test func windowNodeRoundTripsWithPerWindowFields() throws {
         let node = ControlWindowNode(id: "w1", name: "work", open: true, active: true, autoFollowMs: 5000,
-                                     sidebarVisible: true)
+                                     recencyDwellMs: 10_000, sidebarVisible: true)
         let response = ControlResponse(ok: true, result: ControlResult(windows: [node]))
         let decoded = try roundTrip(response)
         #expect(decoded == response)
         #expect(decoded.result?.windows?.first?.autoFollowMs == 5000)
+        #expect(decoded.result?.windows?.first?.recencyDwellMs == 10_000)
         #expect(decoded.result?.windows?.first?.sidebarVisible == true)
     }
 
@@ -1037,9 +1043,12 @@ struct ControlProtocolTests {
         let node = ControlWindowNode(id: "w1", name: "work", open: true, active: false)
         let json = String(data: try JSONEncoder().encode(node), encoding: .utf8) ?? ""
         #expect(!json.contains("autoFollowMs"), "a nil autoFollowMs must be omitted from the JSON; got \(json)")
+        #expect(!json.contains("recencyDwellMs"),
+                "a nil recencyDwellMs must be omitted from the JSON; got \(json)")
         #expect(!json.contains("sidebarVisible"), "a nil sidebarVisible must be omitted from the JSON; got \(json)")
         let decoded = try JSONDecoder().decode(ControlWindowNode.self, from: Data(json.utf8))
         #expect(decoded.autoFollowMs == nil)
+        #expect(decoded.recencyDwellMs == nil)
         #expect(decoded.sidebarVisible == nil)
     }
 

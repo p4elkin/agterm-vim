@@ -159,12 +159,19 @@ read-only over the socket, and this follows it.
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (the `ControlTree(...)` construction) and `WindowLibrary.swift` (`controlWindowNodes`)
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlProtocolTests.swift` and `WindowLibraryTests.swift`
 
-- [ ] add `recencyDwellMs` as `recencyDwell.map { Int($0 * 1000) }`, nil when immediate
-- [ ] add the field to `ControlTree` and `ControlWindowNode`, including each custom init, and populate both
-- [ ] add no control command to SET it: `autoFollowMs` is settings-only and read-only, and this follows it
-- [ ] write the omit-when-nil and round-trip pair for both the tree and the window node
-- [ ] extend `controlWindowNodesProjectListMetadata` to cover the new field
-- [ ] run `cd agtermCore && swift test --filter 'ControlProtocolTests|WindowLibraryTests'` - must pass before task 6
+- [x] add `recencyDwellMs` as `recencyDwell.map { Int($0 * 1000) }`, nil when immediate
+- [x] add the field to `ControlTree` and `ControlWindowNode`, including each custom init, and populate both
+- [x] add no control command to SET it: `autoFollowMs` is settings-only and read-only, and this follows it
+- [x] write the omit-when-nil and round-trip pair for both the tree and the window node
+  - plus `theTreeReportsTheDwellInMilliseconds` in `AppStoreRecencyDwellTests`, since the tree POPULATION
+    is store-side and the protocol tests only cover the wire shape
+- [x] extend `controlWindowNodesProjectListMetadata` to cover the new field
+- [x] run `cd agtermCore && swift test --filter 'ControlProtocolTests|WindowLibraryTests'` - must pass before task 6
+  - ⚠️ `SkillInstallTests.bundledSkillDocumentsSessionRecency` is RED from here until task 6: it counts
+    `ControlTree`'s fields off the type (now 14) and compares against the skill prose, which still says
+    thirteen. Task 6 moves both counts.
+  - the first `swift test` after the signature change failed to LINK: `SocketClientTests.swift.o` was not
+    recompiled against the new `ControlTree`/`ControlWindowNode` inits. `touch`ing that file cleared it.
 
 ### Task 6: Document the setting and the new field
 

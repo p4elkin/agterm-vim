@@ -153,4 +153,9 @@ extension AppStore {
     /// The auto-follow timeout in milliseconds, nil when disabled — the projection `tree` (this store) and
     /// `window.list` (`WindowLibrary` per open store) share, so the `* 1000` scaling lives in one place.
     var autoFollowMs: Int? { autoFollowTimeout.map { Int($0 * 1000) } }
+
+    /// How long a session must stay selected before it joins the recency order, in milliseconds; nil when
+    /// the dwell is Immediately (today's push-on-select). Shared by `tree` and `window.list` exactly as
+    /// `autoFollowMs` is, and read-only for the same reason: the threshold is a Settings value.
+    var recencyDwellMs: Int? { recencyDwell.map { Int($0 * 1000) } }
 }

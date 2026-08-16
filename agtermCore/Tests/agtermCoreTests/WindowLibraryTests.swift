@@ -337,13 +337,14 @@ final class WindowLibraryTests {
         let second = library.newWindow(name: "work")
 
         library.store(for: second.id)?.autoFollowTimeout = 30
+        library.store(for: second.id)?.setRecencyDwell(20)
         library.store(for: second.id)?.setSidebarVisible(false)
 
         #expect(library.controlWindowNodes() == [
             ControlWindowNode(id: first.id.uuidString, name: first.name, open: true, active: false,
                               sidebarVisible: true),
             ControlWindowNode(id: second.id.uuidString, name: "work", open: true, active: true,
-                              autoFollowMs: 30_000, sidebarVisible: false),
+                              autoFollowMs: 30_000, recencyDwellMs: 20_000, sidebarVisible: false),
         ])
     }
 

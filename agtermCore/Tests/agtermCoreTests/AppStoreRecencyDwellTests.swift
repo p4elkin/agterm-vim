@@ -113,6 +113,13 @@ struct AppStoreRecencyDwellTests {
         #expect(store.sessionRecency.items == [sessions[0].id])
     }
 
+    @Test func theTreeReportsTheDwellInMilliseconds() {
+        let (store, _) = makeDwellStore()
+        #expect(store.controlTree().recencyDwellMs == 100_000)
+        store.setRecencyDwell(nil)
+        #expect(store.controlTree().recencyDwellMs == nil)
+    }
+
     @Test func restoreRecordsTheSelectionWithoutServingTheDwell() {
         let store = makeStore()
         store.recencyDwell = longDwell
