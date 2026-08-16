@@ -197,7 +197,9 @@ user input in the window, omitted before any activity), `autoFollowMs` (the wind
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
 it is Immediately, which records on selection; typing in a session records it without waiting, and control
-`session select` records immediately too, so a script sees its own selection in the next read),
+`session select` records immediately too — though that selection still does not appear in
+`tree.sessionRecency`, which drops the ACTIVE session, so what the immediacy buys is the session you
+LEAVE: select A then B, and A is in B's list rather than skipped),
 `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
@@ -806,8 +808,10 @@ count is reported in the response text (`dropped N pane(s) beyond the 9-cell lim
 `--mru` draws its members from the window's recency (most-recent first); it is mutually exclusive with
 explicit ids and `--close`, composes with the font flags and `--window`, and errors with `no recent
 sessions` when the window has none. That recency is the same dwell-gated stack `recencyDwellMs` describes,
-so a session selected within the dwell is not in the grid yet — but unlike `tree.sessionRecency` it keeps
-the ACTIVE session and spans every workspace, so the two lists are not interchangeable.
+so a session visited for the FIRST time through a dwell-gated path is absent until the dwell fires; one
+visited before keeps its old rank meanwhile, since the dwell delays the move to the front rather than
+removing it, and control `session select` moves it to the front at once. Unlike `tree.sessionRecency` this
+list keeps the ACTIVE session and spans every workspace, so the two are not interchangeable.
 
 A cell placed by a `:right` ref FOLLOWS its pane through promotion: when a split session's main shell
 exits, agterm promotes the survivor into the primary slot, and the grid rewrites that cell to `<id>:left`
