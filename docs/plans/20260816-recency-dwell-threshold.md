@@ -103,13 +103,14 @@ read-only over the socket, and this follows it.
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (the stored-property block holding `autoFollowDebouncer`; `recordRecency()`; the `recordRecency()` call in `restore(from:launchRestore:)`)
 - Create: `agtermCore/Tests/agtermCoreTests/AppStoreRecencyDwellTests.swift`
 
-- [ ] add `@ObservationIgnored var recencyDwell: TimeInterval?` and `@ObservationIgnored let recencyDwellDebouncer = Debouncer()` to the AppStore class body, NOT an extension — Observation cannot add stored properties in one
-- [ ] rework `recordRecency()` to schedule the push through the debouncer, capturing the selected id and re-checking `selectedSessionID == pending` inside the closure; keep a `recordRecencyNow()` that pushes immediately, used when `recencyDwell` is nil
-- [ ] switch the `restore(from:launchRestore:)` call site to `recordRecencyNow()`: that selection earned its place in the previous run
-- [ ] check whether `reselectIfSelectionHidden` and `replaceSidebarSelection` move `selectedSessionID` without calling `recordRecency`; the equality guard exists for exactly that case, so add a test if either does
-- [ ] write tests: three fast selections record nothing; the dwell elapsing records; moving away before it records nothing; a fire whose session is no longer selected is dropped; `recencyDwell = nil` behaves exactly as today; restore records immediately
-- [ ] ⚠️ drive every timing test with `recencyDwell = 100` plus `recencyDwellDebouncer.flush()`, never a sleep
-- [ ] run `cd agtermCore && swift test --filter 'AppStoreRecencyDwellTests|AppStoreTests'` - must pass before task 3
+- [x] add `@ObservationIgnored var recencyDwell: TimeInterval?` and `@ObservationIgnored let recencyDwellDebouncer = Debouncer()` to the AppStore class body, NOT an extension — Observation cannot add stored properties in one
+- [x] rework `recordRecency()` to schedule the push through the debouncer, capturing the selected id and re-checking `selectedSessionID == pending` inside the closure; keep a `recordRecencyNow()` that pushes immediately, used when `recencyDwell` is nil
+- [x] switch the `restore(from:launchRestore:)` call site to `recordRecencyNow()`: that selection earned its place in the previous run
+- [x] check whether `reselectIfSelectionHidden` and `replaceSidebarSelection` move `selectedSessionID` without calling `recordRecency`; the equality guard exists for exactly that case, so add a test if either does
+  - `replaceSidebarSelection` only writes `sidebarSelectionRaw`, never the selection. `reselectIfSelectionHidden` goes through `selectSession`, so it re-arms — but it moves the selection while the PREVIOUS id is armed, which is the equality guard's case; covered by `unflaggingTheActiveRowDropsItsPendingPush`
+- [x] write tests: three fast selections record nothing; the dwell elapsing records; moving away before it records nothing; a fire whose session is no longer selected is dropped; `recencyDwell = nil` behaves exactly as today; restore records immediately
+- [x] ⚠️ drive every timing test with `recencyDwell = 100` plus `recencyDwellDebouncer.flush()`, never a sleep
+- [x] run `cd agtermCore && swift test --filter 'AppStoreRecencyDwellTests|AppStoreTests'` - must pass before task 3
 
 ### Task 3: Let typing promote the pending session
 
