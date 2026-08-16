@@ -29,12 +29,18 @@ extension AppStore {
     /// `autoFollowSessionIDKey` so an `autoReset` status can still route focus after selection clears it.
     public nonisolated static let autoFollowIndicatorKey = "indicator"
 
-    /// Records user interaction (a keystroke or a manual selection). Stamps `lastActivityAt` UNCONDITIONALLY
-    /// so the idle metric is independent of the feature being enabled, then arms the `autoFollowFire`
-    /// debouncer when a timeout is configured, cancelling any pending fire when not. Only USER entry points
-    /// may call it — auto-follow's OWN `selectSession` would keep resetting its idle timer.
-    public func noteUserActivity() {
+    /// Records user interaction. Stamps `lastActivityAt` UNCONDITIONALLY so the idle metric is independent of
+    /// the feature being enabled, then arms the `autoFollowFire` debouncer when a timeout is configured,
+    /// cancelling any pending fire when not. Only USER entry points may call it — auto-follow's OWN
+    /// `selectSession` would keep resetting its idle timer.
+    ///
+    /// `typed` separates the two kinds of interaction this seam otherwise flattens: true only for a keystroke
+    /// in a surface, false for a selection (sidebar, palettes, Dock menu, switcher, recent popover). Typing
+    /// proves the session is being worked in, so it serves the recency dwell immediately instead of waiting it
+    /// out; the auto-follow arming is identical either way.
+    public func noteUserActivity(typed: Bool = false) {
         lastActivityAt = Date()
+        if typed { recencyDwellDebouncer.flush() }
         guard let timeout = autoFollowTimeout else {
             autoFollowDebouncer.cancel()
             return

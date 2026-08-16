@@ -120,11 +120,15 @@ read-only over the socket, and this follows it.
 - Modify: `agterm/Views/WindowContentView.swift` (the `quickTerminal.onUserInput` closure)
 - Modify: `agtermCore/Tests/agtermCoreTests/AppStoreRecencyDwellTests.swift` (the file task 2 created)
 
-- [ ] add a defaulted `typed: Bool = false` parameter to `noteUserActivity`, flushing `recencyDwellDebouncer` when true, leaving the auto-follow arming unchanged
-- [ ] update the doc comment, which currently says the call covers "a keystroke or a manual selection" without distinguishing them — that ambiguity is the reason for the parameter
-- [ ] pass `typed: true` from the five `onUserInput` keystroke closures and from nowhere else; the sidebar, palettes, Dock menu, switcher and recent popover are selections and keep the default
-- [ ] write tests: typing records the pending session without the timer, typing with nothing pending is a no-op, and typing after the dwell already fired changes nothing
-- [ ] run `cd agtermCore && swift test --filter AppStoreRecencyDwellTests` and `make build` - both must pass before task 4
+- [x] add a defaulted `typed: Bool = false` parameter to `noteUserActivity`, flushing `recencyDwellDebouncer` when true, leaving the auto-follow arming unchanged
+- [x] update the doc comment, which currently says the call covers "a keystroke or a manual selection" without distinguishing them — that ambiguity is the reason for the parameter
+- [x] pass `typed: true` from the five `onUserInput` keystroke closures and from nowhere else; the sidebar, palettes, Dock menu, switcher and recent popover are selections and keep the default
+- [x] write tests: typing records the pending session without the timer, typing with nothing pending is a no-op, and typing after the dwell already fired changes nothing
+- [x] run `cd agtermCore && swift test --filter AppStoreRecencyDwellTests` and `make build` - both must pass before task 4
+  - ⚠️ `make build` was RED before this task for an unrelated reason: the staged `GhosttyKit.xcframework`
+    predated `patches/ghostty/0001-surface-realize-api.patch`, so `ghostty_surface_set_realized` was missing.
+    `scripts/setup.sh` skips the rebuild whenever the artifact exists, so the stale one was moved aside
+    (`/tmp/GhosttyKit.xcframework.stale`) and setup re-ran. Build is green now.
 
 ### Task 4: Settings UI and the fan-out to every window
 

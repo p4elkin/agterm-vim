@@ -69,6 +69,34 @@ struct AppStoreRecencyDwellTests {
         #expect(store.sessionRecency.items == [sessions[1].id, sessions[0].id])
     }
 
+    @Test func typingRecordsThePendingSessionWithoutWaitingOutTheDwell() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.noteUserActivity(typed: true)
+        #expect(store.sessionRecency.items == [sessions[0].id])
+    }
+
+    @Test func aSelectionDoesNotServeTheDwell() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.noteUserActivity()
+        #expect(store.sessionRecency.items.isEmpty)
+    }
+
+    @Test func typingWithNothingPendingRecordsNothing() {
+        let (store, _) = makeDwellStore()
+        store.noteUserActivity(typed: true)
+        #expect(store.sessionRecency.items.isEmpty)
+    }
+
+    @Test func typingAfterTheDwellAlreadyFiredChangesNothing() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.recencyDwellDebouncer.flush()
+        store.noteUserActivity(typed: true)
+        #expect(store.sessionRecency.items == [sessions[0].id])
+    }
+
     @Test func restoreRecordsTheSelectionWithoutServingTheDwell() {
         let store = makeStore()
         store.recencyDwell = longDwell

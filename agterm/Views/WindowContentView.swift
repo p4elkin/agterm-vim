@@ -241,7 +241,7 @@ struct WindowContentView: View {
             quickTerminal.envProvider = { [quickTerminalEnv, windowID] in quickTerminalEnv(windowID) }
             // typing counts as activity, so an idle auto-follow fire can't change this window's selected
             // session behind the overlay while the user types (mirrors the overlay/scratch).
-            quickTerminal.onUserInput = { [store] in store.noteUserActivity() }
+            quickTerminal.onUserInput = { [store] in store.noteUserActivity(typed: true) }
             quickTerminal.focusAllowed = { [pick] in pick.pending == nil }
             QuickTerminalRegistry.shared.register(windowID, controller: quickTerminal)
             terminalZoom.targetResolver = { [store, quickTerminal] in
