@@ -207,8 +207,17 @@ read-only over the socket, and this follows it.
 
 ### Task 8: [Final] Update documentation
 
-- [ ] confirm no other in-repo surface states the tree field count or lists the settings
-- [ ] move this plan to `docs/plans/completed/`
+- [x] confirm no other in-repo surface states the tree field count or lists the settings
+  - field count: only `plugins/agterm/skills/agterm/SKILL.md`, `reference.md` and
+    `.claude/rules/control-api.md` state it, all at fourteen. `site/commands.html` still says seven and
+    stays that way on this fork, which `control-api.md` already records. `site/docs.html` names
+    `autoFollowMs` in the auto-follow section without a count or an exhaustive list, and `README.md`,
+    `ARCHITECTURE.md` and `site/llms.txt` state neither.
+  - settings: `.claude/rules/settings.md` is the only in-repo catalog, and two of its lines were stale.
+    Its Agent Status tab contents did not name the new Section, and "Reset clears colors, shapes, and
+    sound, not auto-follow" now has a second unreset setting beside auto-follow. Both fixed.
+    `site/docs.html`'s "Settings has six tabs" still holds: the dwell is a Section inside Agent Status.
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
