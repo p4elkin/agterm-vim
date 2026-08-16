@@ -154,6 +154,7 @@ struct agtermApp: App {
                         // seed auto-follow into every open store now the model is wired: idempotent and
                         // order-independent of resolveStore/onAppear (later windows seed in resolveStore).
                         settingsModel.applyAutoFollowToAllWindows()
+                        settingsModel.applyRecencyDwellToAllWindows()
                         actions.customCommandRunner = customCommandRunner
                         // the action hub opens the .themes palette for the "Select Theme…" launcher + menu.
                         actions.palette = palette

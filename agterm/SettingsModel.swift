@@ -291,6 +291,14 @@ final class SettingsModel {
         try? settingsStore.save(settings)
         applyAutoFollowToAllWindows()
     }
+    /// Persist how long a session must stay selected before it joins the recency order and push it into every
+    /// open window's store. Unlike its auto-follow neighbors the picker writes a raw value for every case: nil
+    /// means `s20` here, so the zero-wait `immediate` has to be stored to mean anything.
+    func setRecencyDwell(_ value: String?) {
+        settings.recencyDwell = value
+        try? settingsStore.save(settings)
+        applyRecencyDwellToAllWindows()
+    }
 
     /// Apply a new background opacity live WITHOUT saving — the live-drag half of the slider; each tick
     /// reschedules `backgroundSaveDebouncer`, so the disk write coalesces to one on settle.
@@ -682,6 +690,20 @@ final class SettingsModel {
     func applyAutoFollowToAllWindows() {
         for store in library.openIDs().compactMap({ library.store(for: $0) }) {
             applyAutoFollow(to: store)
+        }
+    }
+
+    /// Push the recency dwell into one window's store, from `ContentView.resolveStore` so a newly opened
+    /// window honors the setting. The auto-follow counterpart's reasoning applies: the store is host-free.
+    func applyRecencyDwell(to store: AppStore) {
+        store.setRecencyDwell(AppSettings.RecencyDwell(tolerant: settings.recencyDwell).dwell)
+    }
+
+    /// Fan the recency dwell out to every open window's store — the settings-change broadcast and the launch
+    /// seed from the scene `.task`. Idempotent: an unchanged value no-ops in `AppStore.setRecencyDwell`.
+    func applyRecencyDwellToAllWindows() {
+        for store in library.openIDs().compactMap({ library.store(for: $0) }) {
+            applyRecencyDwell(to: store)
         }
     }
 

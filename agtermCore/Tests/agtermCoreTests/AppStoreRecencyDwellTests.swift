@@ -97,6 +97,22 @@ struct AppStoreRecencyDwellTests {
         #expect(store.sessionRecency.items == [sessions[0].id])
     }
 
+    @Test func switchingToImmediateRecordsThePendingSelection() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.setRecencyDwell(nil)
+        #expect(store.sessionRecency.items == [sessions[0].id])
+    }
+
+    @Test func settingTheSameDwellLeavesThePendingPushArmed() {
+        let (store, sessions) = makeDwellStore()
+        store.selectSession(sessions[0].id)
+        store.setRecencyDwell(longDwell)
+        #expect(store.sessionRecency.items.isEmpty)
+        store.recencyDwellDebouncer.flush()
+        #expect(store.sessionRecency.items == [sessions[0].id])
+    }
+
     @Test func restoreRecordsTheSelectionWithoutServingTheDwell() {
         let store = makeStore()
         store.recencyDwell = longDwell

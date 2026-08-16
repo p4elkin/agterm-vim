@@ -460,6 +460,15 @@ public final class AppStore {
         session(withID: sessionID)?.unseenCount = 0
     }
 
+    /// Pushes the Settings dwell into this window's store (nil = record on selection). Switching to nil flushes
+    /// an armed push rather than dropping it: under the new setting that selection is already recorded, and
+    /// leaving the timer running would record it a dwell later instead.
+    public func setRecencyDwell(_ dwell: TimeInterval?) {
+        guard recencyDwell != dwell else { return }
+        recencyDwell = dwell
+        if dwell == nil { recencyDwellDebouncer.flush() }
+    }
+
     /// Arms the recency push for the current selection: it reaches the front of the Ctrl-Tab order only after
     /// `recencyDwell` of staying there, so a `j`/`k` walk past a row reschedules instead of recording it. A nil
     /// dwell records now. No-op when nothing is selected, pending arm included — the fire re-checks anyway.

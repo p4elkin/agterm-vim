@@ -138,11 +138,17 @@ read-only over the socket, and this follows it.
 - Modify: `agterm/ContentView.swift` (beside the `applyAutoFollow(to: resolved)` call)
 - Modify: `agterm/agtermApp.swift` (beside the `applyAutoFollowToAllWindows()` call in the scene task)
 
-- [ ] add a `Section("Recent sessions")` with one Picker, `.accessibilityIdentifier("settings-recency-dwell")`, labelling the `immediate` case **"Immediately"** rather than "Disabled" — the feature is not off, the wait is zero
-- [ ] add a `SettingHint` saying a session joins the recent list once you stay this long, or as soon as you type
-- [ ] add the setter and the per-window fan-out, mirroring the auto-follow pair
-- [ ] seed the value where auto-follow is seeded, so a newly opened window and a fresh launch both get it
-- [ ] run `make build` - must pass before task 5
+- [x] add a `Section("Recent sessions")` with one Picker, `.accessibilityIdentifier("settings-recency-dwell")`, labelling the `immediate` case **"Immediately"** rather than "Disabled" — the feature is not off, the wait is zero
+- [x] add a `SettingHint` saying a session joins the recent list once you stay this long, or as soon as you type
+- [x] add the setter and the per-window fan-out, mirroring the auto-follow pair
+  - the fan-out needs a store seam the plan's file list did not name: `AppStore.recencyDwell` is internal,
+    so `AppStore.swift` gained `public func setRecencyDwell(_:)` beside `recordRecency`. Switching to
+    immediate flushes an armed push instead of dropping it; two tests in `AppStoreRecencyDwellTests` pin that
+    and the unchanged-value no-op.
+  - the picker writes a raw value for EVERY case, unlike the auto-follow binding which maps its default to
+    nil: nil already means `.s20` here, so collapsing the default would leave no way to store `immediate`.
+- [x] seed the value where auto-follow is seeded, so a newly opened window and a fresh launch both get it
+- [x] run `make build` - must pass before task 5
 
 ### Task 5: Report the threshold on the tree and window.list
 
