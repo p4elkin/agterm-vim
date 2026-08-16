@@ -31,3 +31,4 @@ __pycache__/
 !.claude/
 .claude/*
 !.claude/rules/
+.idea/
