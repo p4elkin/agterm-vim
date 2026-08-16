@@ -66,6 +66,12 @@ paths:
   auto-follow.
 - Auto-follow choices are Disabled, 5s, 10s, 30s, 60s, and 5m, plus the guard against leaving a running
   session.
+- `recencyDwell` (Recent sessions) is how long a session must stay selected before it joins the recency
+  order: Immediately, 5s, 10s, 20s, 30s, 60s, fanned per window into `AppStore.recencyDwell` like
+  auto-follow. Typing flushes the pending push, so `noteUserActivity(typed:)` is true only at the
+  `onUserInput` keystroke closures. ⚠️ Its tolerant init falls back to `.s20`, not the zero-wait case every
+  sibling enum here falls back to: an existing `settings.json` carries no key, and a threshold that only
+  worked once configured would never reach anyone. Immediately reproduces the pre-setting behavior exactly.
 - Notification badges gate only the sidebar pill/workspace roll-up and Dock total; counts keep tracking
   while hidden. Banners are a separate `notificationsEnabled` mirror, and neither gates agent status.
 - `SettingsModel` saves and writes last-loaded `ghostty-settings.conf`. Reload app/surfaces and clear

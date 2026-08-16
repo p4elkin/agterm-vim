@@ -180,10 +180,12 @@ read-only over the socket, and this follows it.
 - Modify: `plugins/agterm/skills/agterm/SKILL.md` (the sentence stating the top-level field count)
 - Modify: `.claude/rules/settings.md` and `.claude/rules/control-api.md`
 
-- [ ] add `recencyDwellMs` to the tree field catalog and to the `window.list` field list, and move each stated count on
-- [ ] ⚠️ derive both counts from the code, not from the existing prose — those numbers have drifted before
-- [ ] add a line to `.claude/rules/settings.md` for the new setting and to `.claude/rules/control-api.md` for the new read-back
-- [ ] run `cd agtermCore && swift test --filter SkillInstallTests` - must pass before task 7
+- [x] add `recencyDwellMs` to the tree field catalog and to the `window.list` field list, and move each stated count on
+- [x] ⚠️ derive both counts from the code, not from the existing prose — those numbers have drifted before
+  - counted off `ControlTree` itself: thirteen → fourteen. `SkillInstallTests` pins the number twice, in
+    prose and as `fields.count`, so the test moved with the docs; it is the code-derived half of the pin.
+- [x] add a line to `.claude/rules/settings.md` for the new setting and to `.claude/rules/control-api.md` for the new read-back
+- [x] run `cd agtermCore && swift test --filter SkillInstallTests` - must pass before task 7
 
 ### Task 7: Verify acceptance criteria
 

@@ -51,12 +51,12 @@ struct SkillInstallTests {
         let examples = try String(contentsOf: skillDirectory.appendingPathComponent("examples.md"), encoding: .utf8)
 
         #expect(examples.contains(".result.tree.sessionRecency"))
-        #expect(reference.contains("thirteen top-level read-only fields"))
-        #expect(reference.contains("All thirteen are read-only projections"))
-        #expect(skill.contains("thirteen read-only top-level fields"))
+        #expect(reference.contains("fourteen top-level read-only fields"))
+        #expect(reference.contains("All fourteen are read-only projections"))
+        #expect(skill.contains("fourteen read-only top-level fields"))
 
         let fields = treeTopLevelFieldNames
-        #expect(fields.count == 13, "ControlTree's top-level fields changed; update the skill's counts")
+        #expect(fields.count == 14, "ControlTree's top-level fields changed; update the skill's counts")
         for field in fields {
             #expect(skill.contains("`\(field)`"), "SKILL.md never names the tree field \(field)")
             #expect(reference.contains("`\(field)`"), "reference.md never names the tree field \(field)")

@@ -98,9 +98,11 @@ Inspect the live tree any time with `agtermctl tree --json` (workspaces → sess
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, `overlay`, `overlay-left`, or
-`overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries thirteen
+`overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries fourteen
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
-(the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
+(the Auto-follow timeout in ms, omitted when Disabled), `recencyDwellMs` (how long a session must stay
+selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately),
+`sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
 (`tree` or `flagged` — the read side of `sidebar mode`), `quickVisible` (whether the window's quick
 terminal is shown — the read side of the write-only `quick` command), `workspaceFilter` (whether the
@@ -111,7 +113,8 @@ the write-only `dashboard` command, all omitted when no dashboard is open), `ses
 jump-back targets, session ids most recent first, with the active session dropped and the visible
 navigation scope applied; omitted when there is nothing to jump back to), and `pickPending` (the id of the
 picker awaiting an answer, omitted when none is pending). List windows with
-`agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
+`agtermctl window list --json`; each window also reports `autoFollowMs`, `recencyDwellMs`,
+`sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame), and `fullscreen`/`zoomed`/`minimized` (the read side
 of `window fullscreen`/`window zoom`/`window minimize`, so a script can act idempotently) — all omitted for
