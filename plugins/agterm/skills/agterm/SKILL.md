@@ -101,7 +101,8 @@ control address for `surface zoom` (`left`, `right`, `scratch`, `overlay`, `over
 `overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries fourteen
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `recencyDwellMs` (how long a session must stay
-selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately),
+selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately; typing and
+control `session select` both record without waiting it out),
 `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
 (`tree` or `flagged` — the read side of `sidebar mode`), `quickVisible` (whether the window's quick

@@ -196,7 +196,8 @@ The tree object itself carries fourteen top-level read-only fields: `idleMs` (mi
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
-it is Immediately, which records on selection; typing in a session records it without waiting),
+it is Immediately, which records on selection; typing in a session records it without waiting, and control
+`session select` records immediately too, so a script sees its own selection in the next read),
 `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
@@ -804,7 +805,9 @@ count is reported in the response text (`dropped N pane(s) beyond the 9-cell lim
 `unresolved:` note with `; `). `--window` targets a specific window's dashboard (default: the frontmost).
 `--mru` draws its members from the window's recency (most-recent first); it is mutually exclusive with
 explicit ids and `--close`, composes with the font flags and `--window`, and errors with `no recent
-sessions` when the window has none.
+sessions` when the window has none. That recency is the same dwell-gated stack `recencyDwellMs` describes,
+so a session selected within the dwell is not in the grid yet — but unlike `tree.sessionRecency` it keeps
+the ACTIVE session and spans every workspace, so the two lists are not interchangeable.
 
 A cell placed by a `:right` ref FOLLOWS its pane through promotion: when a split session's main shell
 exits, agterm promotes the survivor into the primary slot, and the grid rewrites that cell to `<id>:left`

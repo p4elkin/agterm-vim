@@ -549,12 +549,20 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   milliseconds, omitted when the setting is Immediately. It is on the tree AND the window node, and like
   `autoFollowMs` it is settings-only: no command sets it, deliberately. See [[settings]] for the choices
   and the fallback.
-- ⚠️ `session.select` RECORDS RECENCY IMMEDIATELY, ignoring the dwell. Nothing headless types, so an armed
-  push would never be flushed and a script that selects and then reads `sessionRecency` or `dashboard --mru`
-  would not see its own selection — an answer that would otherwise depend on wall-clock time between the two
-  calls. The selects that ride another command stay dwell-gated (`session.overlay.open --follow`,
-  `session.search`, `session.scratch`): those are a side effect of doing something else, not a request to
-  visit. `session.new` is unaffected either way, since its recency push already runs on creation.
+- ⚠️ `session.select` RECORDS RECENCY IMMEDIATELY, ignoring the dwell. It is the ONLY command that does.
+  A script that selects and then reads `dashboard --mru` would otherwise get an answer depending on
+  wall-clock time between the two calls: the armed push does fire on its own once the dwell elapses
+  (`Debouncer` uses `asyncAfter`, so nothing needs to type), but a later select cancels a pending one, so a
+  burst leaves only the last selection recorded.
+  It does NOT make the selection appear in `tree.sessionRecency` — that field drops the ACTIVE session, so
+  the current selection is never in it. What the immediacy fixes is the SEQUENCE: select A then B, and A is
+  in B's jump-back list instead of having been skipped.
+  Every other select stays dwell-gated. `session.select` names ONE session, which is the request to visit
+  it; the rest either step (`session.go`, and `workspace.select` landing on a workspace's first session —
+  the headless twin of the `j`/`k` walk the dwell exists to filter) or move the selection as a side effect
+  of doing something else (`session.overlay.open --follow`, `session.search`, `session.scratch`,
+  `session.type --select`). `session.new` is gated too: `addSession` arms like any selection, so a freshly
+  created session joins the recency a dwell later, and a rapid burst of creates records only the last.
 - `sessionRecency` is the window's jump-back list, most recent first, with the active session dropped and
   the visible navigation scope applied.
   It is `navigableRecentSessions`, the projection the title-bar popover and the Dock menu share, but
