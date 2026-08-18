@@ -204,14 +204,14 @@ View notes:
 - Create: `agtermCore/Sources/agtermCore/AttentionCounts.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/AttentionCountsTests.swift`
 
-- [ ] write failing tests in `AttentionCountsTests`: each of `blocked`/`active`/`completed` lands in
+- [x] write failing tests in `AttentionCountsTests`: each of `blocked`/`active`/`completed` lands in
       its own bucket; a mixed array counts all three correctly
-- [ ] write failing tests for the edges: empty `statuses` with zero `activeUnseen` gives `isEmpty`;
+- [x] write failing tests for the edges: empty `statuses` with zero `activeUnseen` gives `isEmpty`;
       `activeUnseen` passes through unchanged; a stray `.idle` in `statuses` is counted into nothing
       and does not make `isEmpty` false on its own
-- [ ] create `AttentionCounts.swift` with the struct, `isEmpty`, and
+- [x] create `AttentionCounts.swift` with the struct, `isEmpty`, and
       `make(statuses:activeUnseen:)` — no AppKit, no CoreGraphics types
-- [ ] run `cd agtermCore && swift test --filter AttentionCounts` — must pass before task 2
+- [x] run `cd agtermCore && swift test --filter AttentionCounts` — must pass before task 2
 
 ### Task 2: AppStore.attentionCounts accessor
 
