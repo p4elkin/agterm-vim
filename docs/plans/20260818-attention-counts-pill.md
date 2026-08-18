@@ -279,16 +279,27 @@ entry cross-references `[[libghostty]]` for them rather than restating them.
 
 ### Task 5: Verify acceptance criteria
 
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify the empty case renders no pill, and a single non-zero category renders one segment
-- [ ] verify nothing in `floatingPillsLayer` changed: `git diff` on
+➕ Scope addition: the three `attentionCounts` cases task 2 added to `AppStoreTests.swift` pushed that
+file from 1995 to 2034 lines, over its 2000-line test limit. Per the "put new logic in a new file
+instead" rule they moved to a new `AppStoreAttentionCountsTests.swift`; the limit was not raised.
+
+⚠️ `make lint` does not reach zero findings, and this branch is not the cause.
+`agtermCore/Sources/agtermCore/AppStore.swift` (1060 lines) and `ControlDispatcher.swift` (1070) both
+break the 1000-line source limit. Both are byte-identical to `main`, the lint config is unchanged, and
+both arrived with the upstream merge `54b9835`, so `main` fails lint the same way. Splitting a file
+nothing here touched needs Sasha's approval per CLAUDE.md, so they are left alone and reported.
+
+- [x] verify all requirements from Overview are implemented
+- [x] verify the empty case renders no pill, and a single non-zero category renders one segment
+      (`testNoSegmentsWhenEverythingIsZero`, `testASingleNonZeroCategoryRendersOneSegment`)
+- [x] verify nothing in `floatingPillsLayer` changed: `git diff` on
       `agterm/Views/WindowContentView.swift` is empty
-- [ ] verify the diff touches no upstream-facing surface: `git diff --name-only` lists nothing under
+- [x] verify the diff touches no upstream-facing surface: `git diff --name-only` lists nothing under
       `plugins/`, `site/`, `README.md` or `CHANGELOG.md`
-- [ ] run `cd agtermCore && swift test`
-- [ ] run `make build`
-- [ ] run `make test-app`
-- [ ] run `make lint` — zero findings required
+- [x] run `cd agtermCore && swift test` — 2977 tests in 113 suites, green
+- [x] run `make build` — BUILD SUCCEEDED
+- [x] run `make test-app` — 354 tests, 4 skipped, 0 failures
+- [x] run `make lint` — the branch's own findings are zero; the two preexisting violations above remain
 
 ### Task 6: [Final] Update documentation
 
