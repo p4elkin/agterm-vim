@@ -4,8 +4,8 @@ import Foundation
 ///
 /// While the mode is on nothing reaches the terminal, so a chord matching no bind is SWALLOWED — the one
 /// behavioral difference from the global monitor, whose unmatched chords pass through. Entering is the app's
-/// job (the `normal_mode` built-in); leaving is Esc, the bare `normalModeExitKey`, or firing an action whose
-/// `leavesNormalMode` holds. Deadline-free: the
+/// job (the `normal_mode` built-in); leaving is Esc, the bare `normalModeExitKey`, or firing a bind whose
+/// `NormalModeBind.leavesNormalMode` holds. Deadline-free: the
 /// app-side leader timeout calls `reset()`.
 public struct NormalModeState: Sendable {
     /// What the caller does with the key it just fed in.
@@ -23,9 +23,11 @@ public struct NormalModeState: Sendable {
     }
 
     private var matcher: KeybindMatcher
+    private let binds: [NormalModeBind]
     public private(set) var isActive = false
 
     public init(binds: [NormalModeBind]) {
+        self.binds = binds
         matcher = KeybindMatcher(binds.map { ($0.keybind, $0.target) })
     }
 
@@ -63,15 +65,26 @@ public struct NormalModeState: Sendable {
         case .fired(.builtin(let action)):
             // an action that hands over a fresh pane takes the mode off with it, so the new shell is typed
             // into directly. `.fired` still reports the action either way; only `isActive` differs.
-            if action.leavesNormalMode { exit() }
+            if firedBindLeavesMode(target: .builtin(action)) { exit() }
             return .fired(action)
         case .fired(.command(let id)):
+            if firedBindLeavesMode(target: .command(id)) { exit() }
             return .firedCommand(id)
         case .armed:
             return .armed
         case .unmatched:
             return .swallowed
         }
+    }
+
+    /// Whether the bind that just fired leaves the mode. `.fired` carries the target alone and two lines may
+    /// share one target while spelling different words, so the keybind the matcher recorded is what tells
+    /// them apart. With no bind found the answer is the target's own default.
+    private func firedBindLeavesMode(target: KeybindTarget) -> Bool {
+        guard let keybind = matcher.lastFiredKeybind,
+              let bind = binds.first(where: { $0.keybind == keybind && $0.target == target })
+        else { return NormalModeBind(keybind: [], target: target).leavesNormalMode }
+        return bind.leavesNormalMode
     }
 
     /// Esc abandons an armed leader but stays in the mode; with nothing armed it leaves. Mirrors the global

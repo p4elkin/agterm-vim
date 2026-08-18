@@ -220,6 +220,23 @@ struct SocketClientTests {
         #expect(out.contains("    space>n  new_session"))
     }
 
+    @Test func formatsKeymapShowingTheModeWordOnlyWhereItChangesTheOutcome() {
+        let parsed = parseKeymap("""
+        nmap s toggle_scratch insert
+        nmap space>n new_session normal
+        nmap j next_session
+        """)
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        let out = SocketClient.formatKeymap(payload)
+
+        #expect(out.contains("    s  toggle_scratch  insert"))
+        #expect(out.contains("    space>n  new_session  normal"))
+        #expect(out.contains("    j  next_session\n") || out.hasSuffix("    j  next_session"),
+                "a bind on its action's default carries no third column")
+    }
+
     // the compatibility invariant: the same `|`-free fixture agtermCoreTests pins, rendered exactly as the
     // pre-alternatives formatter rendered it — every expected byte below came from that formatter.
     @Test func formatsAPipeFreeKeymapByteIdenticallyToThePreAlternativesOutput() {

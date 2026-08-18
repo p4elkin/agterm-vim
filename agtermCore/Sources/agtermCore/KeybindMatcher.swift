@@ -20,6 +20,7 @@ public enum MatchResult: Equatable, Sendable {
 public struct KeybindMatcher: Sendable {
     private let binds: [(keybind: Keybind, target: KeybindTarget)]
     private var pending: [Chord] = []
+    private var lastFired: Keybind?
 
     public init(_ binds: [(Keybind, KeybindTarget)]) {
         self.binds = binds.map { (keybind: $0.0, target: $0.1) }
@@ -33,6 +34,11 @@ public struct KeybindMatcher: Sendable {
     /// it, so a caller must not track the prefix itself.
     public var pendingPrefix: [Chord] { pending }
 
+    /// The keybind the most recent `.fired` matched, `nil` until one fires. `.fired` carries the target alone
+    /// and two binds may share one target, so `NormalModeState` needs this to tell which `nmap` line fired.
+    /// `.armed` and `.unmatched` leave it untouched, so read it only right after a `.fired`.
+    public var lastFiredKeybind: Keybind? { lastFired }
+
     /// Feed one chord: an exact match fires and resets, a strict prefix arms (keeping the pending prefix for
     /// the next chord), anything else is unmatched and resets. When armed, a chord completing no bind resets
     /// so the caller can pass it through to the terminal — UNLESS the chord is itself a fresh leader, in
@@ -43,6 +49,7 @@ public struct KeybindMatcher: Sendable {
 
         for bind in binds where bind.keybind == candidate {
             pending = []
+            lastFired = candidate
             return .fired(bind.target)
         }
 

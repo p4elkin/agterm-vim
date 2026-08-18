@@ -153,15 +153,44 @@ paths:
   Command is rejected at any position for the same reason the reserved chords are — the monitor hands
   every Command chord to the GLOBAL matcher, so the mode can never take one, and `nmap cmd+d new_session`
   would silently run whatever `cmd+d` already owns.
+- An `nmap` line may end in ONE optional mode word, `insert` or `normal`, which is the whole grammar
+  difference left: `nmap <chord-or-sequence> <action|"<command name>"> [insert|normal]`.
+  `insert` leaves the mode as the bind fires, `normal` keeps it on, and a line saying nothing leaves the
+  action in charge. So the word overrides `BuiltinAction.leavesNormalMode` per bind in either direction.
+  `insert` is named after the bare exit key and behaves like it — it leaves quietly and sends no Escape to
+  the pane, which is what keeps `i` and Esc different.
+  An unrecognised word is `unknown mode '<word>'; nmap skipped`, following the rule that a malformed piece
+  of a line kills the whole line.
+  ⚠️ `normal` cannot outlive an action that makes ANOTHER window key, so `nmap <key> new_window normal` still
+  ends the mode, through the resign-key observer that stops it surviving in a background titlebar.
+  `keymap list` reports the word anyway, since it deviates from that action's default. `new_window` is the
+  only case: the other three actions defaulting to `insert` all act inside the current window.
+  `splitNormalModeWord` takes the word off BEFORE `parseNormalModeTarget` runs, so the bare-action and
+  quoted-command forms share one rule; where the target ends is the only per-form difference, the closing
+  quote else the first whitespace. The character after that boundary must be whitespace, so
+  `nmap f "FZF Files"insert` stays the diagnostic it was before the word existed rather than binding.
+  `map` does not take the word: a global chord fires outside the mode, where there is no mode to leave.
+- `NormalModeBind.leavesNormalMode` is the SINGLE resolver — the line's word, else the built-in's own
+  default, else stay in the mode for a command target, which has no hand-over default of its own.
+  `NormalModeState.advance` and `ControlKeymap.project` both read it, so the rule lives in one place.
+  `keymap list` reports the word only when it CHANGES the outcome, comparing the bind against a wordless
+  copy of itself rather than restating the rule. So `nmap space>n new_session insert` prints no word,
+  because `insert` already is that action's default; a row with no word is on its action's default, never a
+  dropped line.
+- `KeybindMatcher.lastFiredKeybind` is how the word reaches the state machine: `MatchResult.fired` names the
+  target, not the bind, and two binds may share a target and carry different words. The matcher sets it on
+  both fire paths, and `.armed`/`.unmatched` leave the previous value alone. Rebuilding the bind inside
+  `NormalModeState` from `pendingPrefix` was the rejected alternative — it would copy the re-arm rule into a
+  second place, where it would drift.
 - **An action whose `BuiltinAction.leavesNormalMode` holds takes the mode off as it fires**, so the pane it
   just created is typed into with no `i`. The set is the four that hand over a brand-new pane:
   `new_session`, `new_window`, `new_workspace`, `duplicate_session`, pinned by `BuiltinActionTests`.
   The exit happens inside `NormalModeState.advance`, so `NormalModeController.publish` clears the pill with
   no app-side branch, and `.fired` still carries the action either way — only `isActive` differs.
-  ⚠️ The toggles that also show a pane (`toggle_split`, `toggle_scratch`, `quick_terminal`) are excluded on
-  purpose: leaving the mode there would cost the second press that closes them. The cost is that the pane
-  they open is not typed into until `i` — the scratch in particular, which is a surface in the same window
-  and so is not the overlay yield either (`quick_terminal` takes key away, which ends the mode by itself).
+  The toggles that also show a pane (`toggle_split`, `toggle_scratch`, `quick_terminal`) stay OUT of that
+  set, because a keymap binding one to a bare key alone still wants the second bare press that closes it.
+  A keymap that also carries a global chord for the toggle wants the opposite, and says so per line with
+  `insert` (`nmap s toggle_scratch insert`) rather than having the action decide for everyone.
 - **The mode honors OS key repeats; the global matcher still ignores them.** Holding `k` to skim back
   through sessions is what a bare-key bind is for, so the repeat guard sits AFTER the normal-mode branch,
   where it keeps a held custom-command chord to one spawned process. A command target inside the mode is

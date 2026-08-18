@@ -57,15 +57,20 @@ public enum ConfigPaths {
         #           map cmd+t|ctrl+a>t  toggle_scratch
         #           map ctrl+space      normal_mode
         #
-        #   nmap <key-or-sequence> <action-or-"command name">
+        #   nmap <key-or-sequence> <action-or-"command name"> [insert|normal]
         #       Bind a BARE key inside normal mode (see the `normal_mode` action above). While the mode is
         #       on these keys run their target and every other key is swallowed instead of reaching the
         #       shell; `i` leaves the mode, and so does Esc. Sequences work here too (`g>g`), and the
         #       target is either a built-in action or a custom command named in quotes, as `command`
         #       spells it. Command chords, ctrl+tab and ctrl+1/2 are rejected: they belong to the menu bar
-        #       and to the switcher. Example:
+        #       and to the switcher.
+        #       An optional last word says what firing the bind does to the mode: `insert` leaves it, so
+        #       the thing you just opened takes your typing, and `normal` keeps it on. Leave the word out
+        #       and the action decides. Any other word is `unknown mode '<word>'` and skips the line.
+        #       Examples:
         #
         #           nmap s  toggle_split
+        #           nmap t  toggle_scratch  insert
         #
         #   command "<name>" [chord] <shell...>
         #       Define a custom command, shown in the action palette marked `custom`. The quoted

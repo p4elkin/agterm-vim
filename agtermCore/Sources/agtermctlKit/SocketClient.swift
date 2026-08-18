@@ -255,7 +255,9 @@ struct SocketClient {
             // parse diagnostics use, so a bare name is always a built-in action.
             lines.append(contentsOf: normalMode.map { bind in
                 let target = bind.command.map { "command \"\($0)\"" } ?? bind.action ?? "-"
-                return "    \(bind.bind)  \(target)"
+                // a third column only where the line's word changes the outcome, which is exactly when the
+                // payload carries it — a bind printing no word is on its action's default, not dropped.
+                return "    \(bind.bind)  \(target)" + (bind.mode.map { "  \($0)" } ?? "")
             })
         }
         if !keymap.commands.isEmpty {

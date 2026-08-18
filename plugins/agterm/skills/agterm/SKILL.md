@@ -453,7 +453,15 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 
 **mode** — `mode [on|off|toggle]` — normal mode, where the keys bound with `nmap` in `keymap.conf` run
 built-in actions or custom commands and every other key is swallowed instead of reaching the shell (menu chords such as ⌘Q,
-and the reserved ⌃Tab / ⌃1 / ⌃2, still work). The titlebar shows a `NORMAL` pill while it is on, and
+and the reserved ⌃Tab / ⌃1 / ⌃2, still work). An `nmap` line may end in an optional mode word,
+`nmap <chord-or-sequence> <action|"<command name>"> [insert|normal]`: `insert` leaves the mode as that bind
+fires so the pane it opens takes typing right away, `normal` keeps the mode on, and a line saying nothing
+lets the action decide (`new_session`, `new_window`, `new_workspace` and `duplicate_session` leave; every
+other action, and every custom command, stays). `normal` cannot outlive `new_window`, whose new window takes
+key and ends the mode by itself, though `keymap list` still reports the word. An unrecognised word is a parse
+diagnostic (`unknown mode '<word>'`) and that one line is skipped, as is a word run up against a closing quote
+(`"FZF Files"insert`). `map` lines take no word, having no mode to leave.
+The titlebar shows a `NORMAL` pill while it is on, and
 `window list` tags the holding window `normalMode: true`. App-wide and held by the frontmost window, so
 there is no `--window`. Turning it on fails while terminal zoom, the dashboard or a picker owns the
 keyboard, and while agterm is not frontmost — with no key window the mode's key monitor sees nothing, so
@@ -471,7 +479,7 @@ place, and neither does turning the mode on over one.
 
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). Read the resulting size back from `tree` (`fontSize`/`splitFontSize`/`scratchFontSize` per pane).
 
-**keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count). `keymap list` — show the resolved keymap AND the live menu key equivalents: every built-in with its current binds (the menu chord first, then any `|`-separated alternatives a key monitor delivers, including leader sequences), the custom commands, the parse diagnostics, and what the menu bar is actually dispatching. Use it to check a rebind took effect, to find a free chord, or to spot a chord the keymap resolved but the menu is not carrying. Built-in actions support leader sequences too (e.g. `map ctrl+space>s toggle_split`); a sequence-only bind clears the action's menu shortcut and shows the joined glyphs in the palette and tooltips instead. `keymap list` also reports the `nmap` binds in their own `normalMode` section (bind + `action` or `command`), the only place normal-mode binds are visible.
+**keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count). `keymap list` — show the resolved keymap AND the live menu key equivalents: every built-in with its current binds (the menu chord first, then any `|`-separated alternatives a key monitor delivers, including leader sequences), the custom commands, the parse diagnostics, and what the menu bar is actually dispatching. Use it to check a rebind took effect, to find a free chord, or to spot a chord the keymap resolved but the menu is not carrying. Built-in actions support leader sequences too (e.g. `map ctrl+space>s toggle_split`); a sequence-only bind clears the action's menu shortcut and shows the joined glyphs in the palette and tooltips instead. `keymap list` also reports the `nmap` binds in their own `normalMode` section (bind + `action` or `command`, plus `mode` where the line carries a mode word that changes the outcome), the only place normal-mode binds are visible.
 
 **config** - `config reload` - re-read the agterm-scoped `ghostty.conf` (prints the diagnostic count).
 

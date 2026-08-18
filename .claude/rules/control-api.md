@@ -499,6 +499,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   A bind carries `bind` plus exactly one of `action` and `command`, the second being a quoted `nmap` target
   naming a custom command; the human section prints that one as `command "<name>"` so a bare name always
   reads as a built-in action.
+  It also carries `mode` — the line's `insert`/`normal` word — only when that word CHANGES the outcome,
+  omitting it when the bind is on its action's default. So `nmap space>n new_session insert` reports nothing,
+  and a caller must not read an absent field as a line that carried no word or got dropped. The human
+  section prints it as a third column. See [[keymap]] for the grammar and the single resolver.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
   no-op in flagged mode. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `workspace.focus on` replaces/enables; off removes and disables on empty; toggle clears sole applied

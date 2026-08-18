@@ -11,7 +11,8 @@ bare-key binds become legal. Everything else is `nmap`, live only while the mode
 - `j` / `k` — next / previous session
 - `h` / `l` — focus the left / right split pane
 - `g` then `g` — first session; `shift+g` (`G`) — last session
-- `s` — toggle the scratch terminal; `t` — quick terminal
+- `s` — toggle the scratch terminal; `t` — quick terminal. Both leave the mode as they open, so the new
+  pane takes your typing straight away
 - `space` then `s` — toggle split; `n` — new session; `d` — dashboard
 - `space` then `p` then `a` — command palette; `space` then `p` then `s` — session palette
 - `space` then `y` — a custom command, to show that an `nmap` target can be one
@@ -26,6 +27,9 @@ for in order to type into it.
   where an `nmap` line gained custom-command targets; drop that line and the `command` above it on an
   older one. Esc handing its keypress down to the pane is newer still — on an older build every bind here
   works and Esc simply leaves the mode.
+  The trailing `insert` on the two toggle lines is newer again. A build without it reads the word as part of
+  the action name and drops those two lines with `unknown action`, so remove the word there if
+  `agtermctl keymap list` reports that.
 
 ## Setup
 
@@ -44,9 +48,11 @@ nmap l focus_right_pane
 nmap g>g first_session
 nmap shift+g last_session
 
-# bare-key toggles
-nmap s toggle_scratch
-nmap t quick_terminal
+# bare-key toggles. The trailing `insert` hands the keys over as the pane opens, so you can type in
+# it without pressing `i` first. Drop the word to keep the mode on and close the pane with a second
+# bare press instead.
+nmap s toggle_scratch insert
+nmap t quick_terminal insert
 
 # `/` is vim's search, and the session palette IS the session search
 nmap / session_palette
@@ -97,8 +103,13 @@ agterm. No extra `nmap` line makes that happen; it is what Esc does.
 
 A third way out needs no key at all. `space` then `n` creates a session and leaves the mode with it, so the
 new shell takes your typing right away — vim's `o` opens a line and enters insert the same way. `new_window`,
-`new_workspace` and `duplicate_session` behave the same wherever you bind them. `space` then `s`, `s` and `t`
-do not: they toggle, and leaving the mode would cost the press that closes them again.
+`new_workspace` and `duplicate_session` behave the same wherever you bind them.
+
+The toggles decide it per line instead. `s` and `t` above end in `insert`, so the scratch and the quick
+terminal also take your typing as they open. Without the word they would keep the mode on, which is what you
+want if the same bare key is also how you close them again — `space` then `s` is left that way on purpose.
+The word works in the other direction too: `nmap space>n new_session normal` creates the session and stays
+in the mode, so you can keep navigating.
 
 ## How it works
 
@@ -141,6 +152,24 @@ A quoted `nmap` target is the name of a `command` line, which is why `space>y` a
 `command` sits before or after it — names are resolved once the whole file has been read. A target
 naming no command shows up as `unknown command '<name>'` on that line in Settings ▸ Key Mapping and in
 `agtermctl keymap list`, and only that one bind is dropped.
+
+The mode word is the last thing on an `nmap` line, and there are only two: `insert` leaves the mode as the
+bind fires, `normal` keeps it on. It works after either target form, the bare action name and the quoted
+command name alike. Say nothing and the action decides, which is how every line here without a word behaves.
+Anything else there is `unknown mode '<word>'` and that one line is skipped, so a typo cannot look like a
+working bind. The word needs a space in front of it: `nmap f "FZF Files"insert` is skipped too, rather than
+binding something you did not write. `map` lines take no word — a Command chord fires outside the mode, where
+there is no mode to leave.
+
+One action escapes `normal`. `new_window` makes its new window the key one, and the mode never survives the
+old window losing key — that is what stops it sitting armed and invisible behind another window. So
+`nmap w new_window normal` still ends the mode, and `keymap list` reports `normal` anyway, because the word
+does differ from what that action would have done. The other three actions that leave by default all act
+inside the current window, so `normal` holds for them.
+
+`agtermctl keymap list` prints the word only where it changes the outcome. `nmap space>n new_session insert`
+therefore shows no word, because that action already leaves the mode on its own. A row with no third column
+is a bind running on its action's default, not a line that got dropped.
 
 ## Limits
 

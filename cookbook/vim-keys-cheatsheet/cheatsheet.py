@@ -150,11 +150,19 @@ MAP_LINE = re.compile(r"^[ \t]*map\s+(\S+)\s+(\S+)", re.MULTILINE)
 COMMAND_LINE = re.compile(r'^[ \t]*command\s+"([^"]*)"\s+((?:' + MODS + r')\+\S*)',
                           re.MULTILINE | re.IGNORECASE)
 
-# `nmap <key> <action>`, or `nmap <key> "<command name>"` for a custom command. The key is a bare
-# one or a `>` sequence of bare ones, and it binds nothing outside normal mode. The two patterns
-# above cannot see these lines at all — their anchor sits in front of the `n` — so an `nmap` line
-# is missed rather than half-read, which is why nothing below has to undo a bad match.
-NMAP_LINE = re.compile(r'^[ \t]*nmap\s+(\S+)\s+(?:"([^"]*)"|(\S+))', re.MULTILINE)
+# `nmap <key> <action>`, or `nmap <key> "<command name>"` for a custom command, and either form may
+# end in `insert` or `normal`, the word that says what the mode does when the bind fires. The key is
+# a bare one or a `>` sequence of bare ones, and it binds nothing outside normal mode. The two
+# patterns above cannot see these lines at all — their anchor sits in front of the `n` — so an
+# `nmap` line is missed rather than half-read, which is why nothing below has to undo a bad match.
+#
+# Anchored at both ends, so a line agterm rejects is missed here rather than half-read. Without the
+# tail, `insert garbage` matched through the word and drew a row claiming a mode agterm never bound,
+# and `toggle_scratch garbage` drew a wordless row for a line agterm skips. Only trailing spaces and
+# a comment may follow, matching where agterm itself stops reading.
+NMAP_LINE = re.compile(
+    r'^[ \t]*nmap\s+(\S+)\s+(?:"([^"]*)"|(\S+))(?:[ \t]+(insert|normal))?[ \t]*(?:#.*)?$',
+    re.MULTILINE)
 
 # Everywhere this module keys by chord, a normal-mode bind is keyed under this prefix. `nmap s`
 # and a bare `map s` are two different bindings spelled the same way, and one shared key silently
@@ -216,13 +224,19 @@ def normal_bindings(keymap):
 
     A bare target is an action name and is spelled the way a `map` action is. A quoted one names a
     `command` line, which is already somebody's own words, so it is taken as it stands.
+
+    A trailing `insert` or `normal` rides along in the label, because it changes what the key does in
+    a way the target name cannot show: the same `toggle_scratch` either hands the keys over or keeps
+    the mode on. A line with no word runs on its action's default and its row says nothing, which is
+    how every row read before this word existed.
     """
     seen, pairs = set(), []
-    for key, name, action in NMAP_LINE.findall(keymap):
+    for key, name, action, mode in NMAP_LINE.findall(keymap):
         if key in seen:
             continue
         seen.add(key)
-        pairs.append((normal_key(key), name or action.replace("_", " ")))
+        label = name or action.replace("_", " ")
+        pairs.append((normal_key(key), f"{label} ({mode})" if mode else label))
     return pairs
 
 
