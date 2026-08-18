@@ -523,7 +523,8 @@ private struct NotificationsSettingsView: View {
 }
 
 /// Agent Status tab: Colors and Shapes (a row per state — active/blocked/completed — with that glyph's color
-/// well and shape picker), Sound, Auto-follow (idle timeout + stay-on-active), and a Reset clearing all three.
+/// well and shape picker), Sound, Auto-follow (idle timeout + stay-on-active), Recent sessions (the dwell
+/// before a selection joins the Ctrl-Tab order), and a Reset clearing colors, shapes and sound.
 private struct AgentStatusSettingsView: View {
     /// Gap between a glyph row's color well and its shape picker.
     private static let controlSpacing: CGFloat = 8
@@ -566,6 +567,19 @@ private struct AgentStatusSettingsView: View {
                     .accessibilityIdentifier("settings-auto-follow-stay-active")
                     .disabled(autoFollowAttention.wrappedValue == .off)
                 SettingHint("Only applies while auto-follow is on.")
+            }
+
+            Section("Recent sessions") {
+                Picker("Count a session as visited after", selection: recencyDwell) {
+                    Text("Immediately").tag(AppSettings.RecencyDwell.immediate)
+                    Text("5 sec").tag(AppSettings.RecencyDwell.s5)
+                    Text("10 sec").tag(AppSettings.RecencyDwell.s10)
+                    Text("20 sec").tag(AppSettings.RecencyDwell.s20)
+                    Text("30 sec").tag(AppSettings.RecencyDwell.s30)
+                    Text("60 sec").tag(AppSettings.RecencyDwell.s60)
+                }
+                .accessibilityIdentifier("settings-recency-dwell")
+                SettingHint("A session joins the recent list once you stay this long, or as soon as you type.")
             }
 
             Section {
@@ -690,6 +704,14 @@ private struct AgentStatusSettingsView: View {
     private var autoFollowAttention: Binding<AppSettings.AutoFollowAttention> {
         Binding(get: { AppSettings.AutoFollowAttention(tolerant: model.settings.autoFollowAttention) },
                 set: { model.setAutoFollowAttention($0 == .off ? nil : $0.rawValue) })
+    }
+
+    /// The dwell before a selection joins the recency order; nil or an unknown stored value resolves to `.s20`.
+    /// Every case is written back raw, the default included: nil already means `.s20`, so collapsing it would
+    /// leave no way to store the zero-wait `immediate`.
+    private var recencyDwell: Binding<AppSettings.RecencyDwell> {
+        Binding(get: { AppSettings.RecencyDwell(tolerant: model.settings.recencyDwell) },
+                set: { model.setRecencyDwell($0.rawValue) })
     }
 
     /// Inverted view of the stored `autoFollowStayOnActive` so the toggle reads forward — ON = do leave a

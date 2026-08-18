@@ -555,6 +555,45 @@ struct AppSettingsTests {
         #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
+    @Test func recencyDwellTolerantInitFallsBackToTwentySeconds() {
+        #expect(AppSettings.RecencyDwell(tolerant: "s5") == .s5)
+        #expect(AppSettings.RecencyDwell(tolerant: "immediate") == .immediate)
+        #expect(AppSettings.RecencyDwell(tolerant: nil) == .s20)
+        #expect(AppSettings.RecencyDwell(tolerant: "") == .s20)
+        #expect(AppSettings.RecencyDwell(tolerant: "future") == .s20)
+    }
+
+    @Test func recencyDwellMapping() {
+        #expect(AppSettings.RecencyDwell.immediate.dwell == nil)
+        #expect(AppSettings.RecencyDwell.s5.dwell == 5)
+        #expect(AppSettings.RecencyDwell.s10.dwell == 10)
+        #expect(AppSettings.RecencyDwell.s20.dwell == 20)
+        #expect(AppSettings.RecencyDwell.s30.dwell == 30)
+        #expect(AppSettings.RecencyDwell.s60.dwell == 60)
+        #expect(AppSettings.RecencyDwell.allCases.filter { $0.dwell == nil } == [.immediate])
+    }
+
+    @Test func recencyDwellDefaultsNilAndOmitsFromJSON() throws {
+        #expect(AppSettings().recencyDwell == nil)
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("recencyDwell"))
+    }
+
+    @Test func recencyDwellRoundTrips() throws {
+        let original = AppSettings(recencyDwell: "s60")
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded == original)
+        #expect(decoded.recencyDwell == "s60")
+    }
+
+    /// The one fallback that is not the zero-wait case: an existing settings file predates the key.
+    @Test func settingsJSONWithoutRecencyDwellKeyResolvesToTwentySeconds() throws {
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.recencyDwell == nil)
+        #expect(AppSettings.RecencyDwell(tolerant: legacy.recencyDwell) == .s20)
+        #expect(AppSettings.RecencyDwell(tolerant: legacy.recencyDwell).dwell == 20)
+    }
+
     @Test func hiddenInterfaceElementsDefaultsNilAndShowsEverything() {
         let settings = AppSettings()
         #expect(settings.hiddenInterfaceElements == nil)

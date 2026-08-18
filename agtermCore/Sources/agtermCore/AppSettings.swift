@@ -125,6 +125,36 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
     }
 
+    /// How long a session must stay selected before it joins the recency order. `immediate` records on
+    /// selection, which is what every consumer of `AppStore.sessionRecency` did before this existed.
+    public enum RecencyDwell: String, CaseIterable, Sendable {
+        case immediate
+        case s5
+        case s10
+        case s20
+        case s30
+        case s60
+
+        /// Tolerant lookup shared by the Settings binding and the store fan-out. Unknown or nil is `.s20`,
+        /// NOT the zero-wait case that every sibling enum here falls back to: an existing `settings.json`
+        /// has no key, and a threshold that only works once configured would never reach anyone.
+        public init(tolerant raw: String?) {
+            self = RecencyDwell(rawValue: raw ?? "") ?? .s20
+        }
+
+        /// The dwell in seconds before the selection is recorded, or nil for `immediate` (record now).
+        public var dwell: TimeInterval? {
+            switch self {
+            case .immediate: return nil
+            case .s5: return 5
+            case .s10: return 10
+            case .s20: return 20
+            case .s30: return 30
+            case .s60: return 60
+            }
+        }
+    }
+
     /// The out-of-the-box bundled theme, seeded by `SettingsStore.load()` on a fresh install. Distinct
     /// from `theme == nil`, which means ghostty's own built-in default (the picker's "default ghostty").
     public static let defaultTheme = "agterm"
@@ -251,6 +281,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether auto-follow stays put on a running (`active`) session instead of pulling to a blocked one;
     /// nil/false = off. Only meaningful when `autoFollowAttention` is set.
     public var autoFollowStayOnActive: Bool?
+    /// How long a session must stay selected before it enters the recency order, a `RecencyDwell` raw
+    /// value; nil = `s20`, not the zero-wait case. Per-window, drives `AppStore.recencyDwell`.
+    public var recencyDwell: String?
     /// The sidebar row-text point size, nil for `defaultSidebarFontSize`; the row height scales with it
     /// (`sidebarRowHeight(fontSize:)`). Independent of `interfaceFontSize`.
     public var sidebarFontSize: Double?
@@ -288,7 +321,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
                 autoFollowAttention: String? = nil,
-                autoFollowStayOnActive: Bool? = nil, sidebarFontSize: Double? = nil,
+                autoFollowStayOnActive: Bool? = nil, recencyDwell: String? = nil,
+                sidebarFontSize: Double? = nil,
                 interfaceFontSize: Double? = nil,
                 hiddenInterfaceElements: [String]? = nil,
                 autoHideSidebarInactiveWindows: Bool? = nil, welcomeShown: Bool? = nil,
@@ -328,6 +362,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
         self.autoFollowAttention = autoFollowAttention
         self.autoFollowStayOnActive = autoFollowStayOnActive
+        self.recencyDwell = recencyDwell
         self.sidebarFontSize = sidebarFontSize
         self.interfaceFontSize = interfaceFontSize
         self.hiddenInterfaceElements = hiddenInterfaceElements

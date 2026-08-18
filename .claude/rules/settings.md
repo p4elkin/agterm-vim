@@ -63,9 +63,16 @@ paths:
 - Blocked sound is nil/"None" by default and previews through `StatusSoundPlayer`. On a transition into
   blocked, the server plays it only when no non-empty per-call `--sound` exists; repeated blocked does
   not replay. `AgentStatus.effectiveSound` owns precedence. Reset clears colors, shapes, and sound, not
-  auto-follow.
+  auto-follow and not the recency dwell.
 - Auto-follow choices are Disabled, 5s, 10s, 30s, 60s, and 5m, plus the guard against leaving a running
   session.
+- `recencyDwell` (Recent sessions) is how long a session must stay selected before it joins the recency
+  order: Immediately, 5s, 10s, 20s, 30s, 60s, fanned per window into `AppStore.recencyDwell` like
+  auto-follow. Typing flushes the pending push, so `noteUserActivity(typed:)` is true at the four
+  session-pinned `onUserInput` closures and NOT at the quick terminal's, which is window-level and carries
+  no session id — its keystrokes would serve whichever session the sidebar has selected. ⚠️ Its tolerant init falls back to `.s20`, not the zero-wait case every
+  sibling enum here falls back to: an existing `settings.json` carries no key, and a threshold that only
+  worked once configured would never reach anyone. Immediately reproduces the pre-setting behavior exactly.
 - Notification badges gate only the sidebar pill/workspace roll-up and Dock total; counts keep tracking
   while hidden. Banners are a separate `notificationsEnabled` mirror, and neither gates agent status.
 - `SettingsModel` saves and writes last-loaded `ghostty-settings.conf`. Reload app/surfaces and clear
@@ -80,7 +87,8 @@ paths:
   `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse, Sessions, and Ghostty
   Config. Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row plus
   Multiple Windows. Notifications holds banner/badge/attention/bounce/sound. Agent Status holds
-  colors/shapes, sound, auto-follow, and Reset. Key Mapping holds config directory, diagnostics, and Reload.
+  colors/shapes, sound, auto-follow, recency dwell, and Reset. Key Mapping holds config directory,
+  diagnostics, and Reload.
 - Keep titlebar construction in `WindowContentView+Titlebar.swift` so `WindowContentView.swift` remains
   below the 1000-line limit.
 - Keep Agent Status shape pickers in a trailing-aligned 80-point column wider than the 64.5...68-point

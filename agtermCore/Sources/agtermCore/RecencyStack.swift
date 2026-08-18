@@ -1,6 +1,8 @@
 /// A bounded most-recent-first list of unique ids. `push` moves an id to the front (no
 /// duplicates); the front is the most recently used. Backs the Ctrl-Tab session switcher's
-/// order — `items[0]` is the current session, `items[1]` the previous one.
+/// order — `items[0]` is the current session ONCE it has been recorded, which under a recency
+/// dwell it has not yet been, so a reader wanting "the previous one" tests the front against
+/// the selection rather than indexing past it.
 public struct RecencyStack<ID: Hashable>: Equatable {
     public private(set) var items: [ID] = []
     public let limit: Int

@@ -81,9 +81,9 @@ final class SessionSwitcher {
         guard let store else { return }
         let valid = Set(store.navigableSessions.map(\.id))
         let order = store.sessionRecency.top(Self.maxCandidates, in: valid)
-        guard order.count > 1 else { return }
+        guard let start = store.switcherStartIndex(in: order) else { return }
         candidates = order
-        index = 1
+        index = start
         isActive = true
     }
 

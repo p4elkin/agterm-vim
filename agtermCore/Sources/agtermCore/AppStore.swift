@@ -135,6 +135,16 @@ public final class AppStore {
     /// fires only after `autoFollowTimeout` of idle. `internal`, not private, for the tests' `flush()` seam.
     @ObservationIgnored let autoFollowDebouncer = Debouncer()
 
+    /// How long a session must stay selected before it joins the recency order (the Ctrl-Tab stack), nil to
+    /// record on selection — what every consumer of `sessionRecency` got before the dwell existed. Set by the
+    /// Settings fan-out and read imperatively by `recordRecency`, so no view reacts.
+    @ObservationIgnored var recencyDwell: TimeInterval?
+
+    /// Coalesces selection changes into one deferred recency push: walking the sidebar reschedules, so only a
+    /// session still selected once the dwell elapses is recorded. `internal`, not private, for the tests'
+    /// `flush()` seam and the typing flush.
+    @ObservationIgnored let recencyDwellDebouncer = Debouncer()
+
     /// Coalesces the auto-follow status observer's deferred re-arms into one re-arm (and re-registration) per
     /// runloop turn, mirroring `DockBadgeController.scheduleRefresh`: one agent-status flip can fire several
     /// live observation trackers at once. `internal` only for the `AppStore+AutoFollow` extension.
@@ -312,6 +322,7 @@ public final class AppStore {
                                         sessions: sessions)
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
+                           recencyDwellMs: recencyDwellMs,
                            sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue,
                            workspaceFilter: focusEnabled,
                            quickVisible: quickVisible(), zoomedSurface: zoomedSurface(),
@@ -434,7 +445,10 @@ public final class AppStore {
         if let sessionID { clearUnseen(sessionID) }
         clearAutoResetIndicator(sessionID)
         clearAutoResetIndicator(previous)
-        recordRecency()
+        // only when the selection actually moved: re-arming on a same-id select would make the dwell measure
+        // time since the last select CALL rather than time continuously selected, and paths that reselect the
+        // current session (`overlay open --follow`, `session.search`, a banner click) would defer it forever.
+        if previous != sessionID { recordRecency() }
         scheduleSave()
         return destinationIndicator
     }
@@ -450,8 +464,34 @@ public final class AppStore {
         session(withID: sessionID)?.unseenCount = 0
     }
 
-    /// Pushes the current selection to the front of the recency stack (the Ctrl-Tab order); no-op when none.
+    /// Pushes the Settings dwell into this window's store (nil = record on selection). Switching to nil flushes
+    /// an armed push rather than dropping it: under the new setting that selection is already recorded, and
+    /// leaving the timer running would record it a dwell later instead. Any other change re-arms, so an armed
+    /// push serves the NEW delay from now instead of firing on the one it was scheduled with.
+    public func setRecencyDwell(_ dwell: TimeInterval?) {
+        guard recencyDwell != dwell else { return }
+        recencyDwell = dwell
+        if dwell == nil { recencyDwellDebouncer.flush() } else { recordRecency() }
+    }
+
+    /// Arms the recency push for the current selection: it reaches the front of the Ctrl-Tab order only after
+    /// `recencyDwell` of staying there, so a `j`/`k` walk past a row reschedules instead of recording it. A nil
+    /// dwell records now. No-op when nothing is selected, pending arm included — the fire re-checks anyway.
     func recordRecency() {
+        guard let pending = selectedSessionID else { return }
+        guard let recencyDwell else { return recordRecencyNow() }
+        recencyDwellDebouncer.schedule(after: recencyDwell) { [weak self] in
+            // the selection can move on without re-arming — a close reselection, an auto-follow jump — so the
+            // armed id counts only while it is still the selected one.
+            guard let self, self.selectedSessionID == pending else { return }
+            self.sessionRecency.push(pending)
+        }
+    }
+
+    /// Pushes the current selection to the front of the recency stack immediately; no-op when none. The
+    /// bootstrap path: a restored selection earned its place in the previous run and must not re-serve the dwell.
+    /// Also the control `session.select` path, which has no one to type the dwell away.
+    public func recordRecencyNow() {
         if let selectedSessionID { sessionRecency.push(selectedSessionID) }
     }
 
@@ -861,7 +901,7 @@ public final class AppStore {
         // restored selection floats to the front, keeping the "previous session" slot truthful.
         let restoredIDs = Set(workspaces.flatMap(\.sessions).map(\.id))
         sessionRecency = RecencyStack(items: (snapshot.sessionRecency ?? []).filter { restoredIDs.contains($0) })
-        recordRecency()
+        recordRecencyNow()
         // LAST, after the recency stack is re-seeded: the pick is MRU, so earlier finds an empty stack.
         reselectIfSelectionHidden()
     }

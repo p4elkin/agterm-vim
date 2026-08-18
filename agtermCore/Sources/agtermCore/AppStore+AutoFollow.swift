@@ -29,12 +29,20 @@ extension AppStore {
     /// `autoFollowSessionIDKey` so an `autoReset` status can still route focus after selection clears it.
     public nonisolated static let autoFollowIndicatorKey = "indicator"
 
-    /// Records user interaction (a keystroke or a manual selection). Stamps `lastActivityAt` UNCONDITIONALLY
-    /// so the idle metric is independent of the feature being enabled, then arms the `autoFollowFire`
-    /// debouncer when a timeout is configured, cancelling any pending fire when not. Only USER entry points
-    /// may call it — auto-follow's OWN `selectSession` would keep resetting its idle timer.
-    public func noteUserActivity() {
+    /// Records user interaction. Stamps `lastActivityAt` UNCONDITIONALLY so the idle metric is independent of
+    /// the feature being enabled, then arms the `autoFollowFire` debouncer when a timeout is configured,
+    /// cancelling any pending fire when not. Only USER entry points may call it — auto-follow's OWN
+    /// `selectSession` would keep resetting its idle timer.
+    ///
+    /// `typed` separates the two kinds of interaction this seam otherwise flattens: true only for a keystroke
+    /// in a SESSION'S OWN surface, so it proves that session is being worked in and serves the recency dwell
+    /// immediately instead of waiting it out. False for a selection (sidebar, palettes, Dock menu, switcher,
+    /// recent popover) and for the quick terminal, which is window-level and would otherwise serve the dwell
+    /// of whichever session the sidebar happens to have selected. The auto-follow arming is identical either
+    /// way, which is what that call site wants from this seam.
+    public func noteUserActivity(typed: Bool = false) {
         lastActivityAt = Date()
+        if typed { recencyDwellDebouncer.flush() }
         guard let timeout = autoFollowTimeout else {
             autoFollowDebouncer.cancel()
             return
@@ -147,4 +155,9 @@ extension AppStore {
     /// The auto-follow timeout in milliseconds, nil when disabled — the projection `tree` (this store) and
     /// `window.list` (`WindowLibrary` per open store) share, so the `* 1000` scaling lives in one place.
     var autoFollowMs: Int? { autoFollowTimeout.map { Int($0 * 1000) } }
+
+    /// How long a session must stay selected before it joins the recency order, in milliseconds; nil when
+    /// the dwell is Immediately (today's push-on-select). Shared by `tree` and `window.list` exactly as
+    /// `autoFollowMs` is, and read-only for the same reason: the threshold is a Settings value.
+    var recencyDwellMs: Int? { recencyDwell.map { Int($0 * 1000) } }
 }

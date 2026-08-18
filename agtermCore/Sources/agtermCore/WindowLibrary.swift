@@ -183,6 +183,7 @@ public final class WindowLibrary {
             let live = flags($0.id)
             return ControlWindowNode(id: $0.id.uuidString, name: $0.name, open: isOpen($0.id), active: $0.id == active,
                                      autoFollowMs: stores[$0.id]?.autoFollowMs,
+                                     recencyDwellMs: stores[$0.id]?.recencyDwellMs,
                                      sidebarVisible: stores[$0.id]?.sidebarVisible,
                                      geometry: geometry($0.id),
                                      fullscreen: live?.fullscreen, zoomed: live?.zoomed,

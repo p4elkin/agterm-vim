@@ -542,9 +542,27 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   grandchild stay out; a group whose leader already exited has no parentage to test, so every survivor
   qualifies. The capture (`.command`) stays leader-only, because a non-nil capture sets `hadForeground`,
   which preempts `initialCommand` in `restorePlan` and would drop the exec path.
-- Top-level tree includes idle/auto-follow, live sidebar visibility/mode, workspace filter, quick
-  visibility, zoom, dashboard, session recency, and picker state. Prefer live tree sidebar state over
+- Top-level tree includes idle/auto-follow, recency dwell, live sidebar visibility/mode, workspace filter,
+  quick visibility, zoom, dashboard, session recency, and picker state. Prefer live tree sidebar state over
   cached window list.
+- `recencyDwellMs` is the dwell a session must be selected for before it enters `sessionRecency`, in
+  milliseconds, omitted when the setting is Immediately. It is on the tree AND the window node, and like
+  `autoFollowMs` it is settings-only: no command sets it, deliberately. See [[settings]] for the choices
+  and the fallback.
+- ⚠️ `session.select` RECORDS RECENCY IMMEDIATELY, ignoring the dwell. It is the ONLY command that does.
+  A script that selects and then reads `dashboard --mru` would otherwise get an answer depending on
+  wall-clock time between the two calls: the armed push does fire on its own once the dwell elapses
+  (`Debouncer` uses `asyncAfter`, so nothing needs to type), but a later select cancels a pending one, so a
+  burst leaves only the last selection recorded.
+  It does NOT make the selection appear in `tree.sessionRecency` — that field drops the ACTIVE session, so
+  the current selection is never in it. What the immediacy fixes is the SEQUENCE: select A then B, and A is
+  in B's jump-back list instead of having been skipped.
+  Every other select stays dwell-gated. `session.select` names ONE session, which is the request to visit
+  it; the rest either step (`session.go`, and `workspace.select` landing on a workspace's first session —
+  the headless twin of the `j`/`k` walk the dwell exists to filter) or move the selection as a side effect
+  of doing something else (`session.overlay.open --follow`, `session.search`, `session.scratch`,
+  `session.type --select`). `session.new` is gated too: `addSession` arms like any selection, so a freshly
+  created session joins the recency a dwell later, and a rapid burst of creates records only the last.
 - `sessionRecency` is the window's jump-back list, most recent first, with the active session dropped and
   the visible navigation scope applied.
   It is `navigableRecentSessions`, the projection the title-bar popover and the Dock menu share, but
@@ -553,13 +571,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ⚠️ The Ctrl-Tab switcher and `dashboard --mru` are NOT the same list and must not be cited as matching
   it: the switcher keeps the active session at index 0, and `dashboard --mru` reads raw `recentSessions`,
   every workspace and the active session included.
-- The bundled skill counts thirteen read-only top-level tree fields, every `ControlTree` property but
+- The bundled skill counts fourteen read-only top-level tree fields, every `ControlTree` property but
   `workspaces`, pinned by `SkillInstallTests` against the type rather than against the prose.
   It documents `sessionRecency` even though the field is fork-only, unlike a fork-only COMMAND
   (see [[overlay-redirect]]): a read-back field upstream lacks is simply absent from that user's tree,
   where a documented command upstream lacks breaks a call the skill told them to make.
   `site/commands.html` still says seven and lists seven, and is left alone on this fork for upstream.
-- Window nodes include open/active, open-store sidebar/auto-follow, geometry, fullscreen, zoomed, minimized.
+- Window nodes include open/active, open-store sidebar/auto-follow/recency dwell, geometry, fullscreen,
+  zoomed, minimized.
   Closed live fields are omitted. Geometry is top-left display-relative y-down and round-trips move/resize.
 - Window list is cached. Refresh after commands and frontmost/sidebar/attachment/move/resize/fullscreen/
   minimize changes. Ignore `Notification` payloads rather than carrying non-Sendable values into main actor.

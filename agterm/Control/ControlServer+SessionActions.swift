@@ -252,6 +252,11 @@ extension ControlServer: ControlActions {
     func selectSession(_ target: String?, window: String?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
             store.selectSession(id)
+            // the dwell has no one to serve it here: nothing headless types, so an armed push would sit
+            // there and a script that selects and then reads `dashboard --mru` would not see its own
+            // selection. The selects that ride ANOTHER command — overlay `--follow`, `session.search`,
+            // `session.scratch` — stay dwell-gated; they are a side effect, not a request to visit.
+            store.recordRecencyNow()
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }

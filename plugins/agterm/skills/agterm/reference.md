@@ -192,9 +192,15 @@ members), and `collapsed` (whether this workspace is COLLAPSED in the sidebar tr
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
 when expanded, so an all-expanded tree carries no `collapsed` keys).
 
-The tree object itself carries thirteen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries fourteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
-timeout in milliseconds, omitted when the setting is Disabled), `sidebarVisible` (whether the
+timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
+stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
+it is Immediately, which records on selection; typing in a session records it without waiting, and control
+`session select` records immediately too — though that selection still does not appear in
+`tree.sessionRecency`, which drops the ACTIVE session, so what the immediacy buys is the session you
+LEAVE: select A then B, and A is in B's list rather than skipped),
+`sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
@@ -219,11 +225,12 @@ a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
 and `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending). `idleMs` is live
-and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
+and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
+`autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four `dashboard*` fields,
 `sessionRecency`, and `pickPending`
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale).
-All thirteen are read-only projections of GUI state.
+All fourteen are read-only projections of GUI state.
 
 ## workspace
 
@@ -698,7 +705,9 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   still see — for building a set of project windows and ending up on one you are looking at. The window
   is presented briefly before it is parked, so expect it to appear and take focus on its way to the Dock.
 - `window list` — `result.windows`, each with `id`, `name`, `open`, `active`, `autoFollowMs` (the
-  window's Auto-follow timeout in milliseconds, omitted when the setting is Disabled), and
+  window's Auto-follow timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs`
+  (how long a session must stay selected before it joins that window's `sessionRecency`, in milliseconds —
+  omitted when the Recent sessions setting is Immediately or the window is closed), and
   `sidebarVisible` (whether that window's sidebar is shown, read from the open window's store — omitted
   for a closed window with no live store), and `geometry` (the open window's live frame `{x, y, width,
   height, display}` in the SAME units `window move`/`window resize` take — `x`/`y` top-left relative to
@@ -709,8 +718,9 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   for a closed window). A MINIMIZED window still reports its `geometry` — the frame it comes back to — so a
   re-align script can include one. The `geometry`/`fullscreen`/`zoomed`/`minimized` fields stay current —
   the cache is refreshed when a window moves/resizes/zooms/enters or exits full screen/minimizes or
-  restores, so a hand-drag or GUI toggle is reflected without needing another command. (`autoFollowMs`
-  still reflects the last cache refresh, since a settings change is rare; and unlike `tree`, `window.list`
+  restores, so a hand-drag or GUI toggle is reflected without needing another command.
+  (`autoFollowMs` and `recencyDwellMs`
+  still reflect the last cache refresh, since a settings change is rare; and unlike `tree`, `window.list`
   does NOT carry `idleMs` — the live idle metric would freeze in the cache.) A window holding NORMAL MODE
   also carries `normalMode: true` — the read side of `mode`, true-only and omitted everywhere else, since the
   mode is one app-wide state that leaves when its window stops being frontmost. It is cache-refreshed on
@@ -797,7 +807,11 @@ count is reported in the response text (`dropped N pane(s) beyond the 9-cell lim
 `unresolved:` note with `; `). `--window` targets a specific window's dashboard (default: the frontmost).
 `--mru` draws its members from the window's recency (most-recent first); it is mutually exclusive with
 explicit ids and `--close`, composes with the font flags and `--window`, and errors with `no recent
-sessions` when the window has none.
+sessions` when the window has none. That recency is the same dwell-gated stack `recencyDwellMs` describes,
+so a session visited for the FIRST time through a dwell-gated path is absent until the dwell fires; one
+visited before keeps its old rank meanwhile, since the dwell delays the move to the front rather than
+removing it, and control `session select` moves it to the front at once. Unlike `tree.sessionRecency` this
+list keeps the ACTIVE session and spans every workspace, so the two are not interchangeable.
 
 A cell placed by a `:right` ref FOLLOWS its pane through promotion: when a split session's main shell
 exits, agterm promotes the survivor into the primary slot, and the grid rewrites that cell to `<id>:left`

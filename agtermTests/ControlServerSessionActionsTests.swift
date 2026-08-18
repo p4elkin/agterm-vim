@@ -42,6 +42,39 @@ final class ControlServerSessionActionsTests: XCTestCase {
                                          backgroundColor: nil, follow: follow, pane: pane)
     }
 
+    // nothing headless types, so an armed push would never be flushed and a script could not read back the
+    // selection it just made. `session.select` is the request-to-visit; the selects riding other commands
+    // are not, which is what the second test pins.
+    func testControlSelectRecordsRecencyWithoutServingTheDwell() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        // the dwell goes on FIRST, so creating only ARMS a push; the store's seeded session is already in
+        // the stack, so this asserts on the new session's own membership rather than on emptiness
+        store.setRecencyDwell(100)
+        let first = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        XCTAssertFalse(store.sessionRecency.items.contains(first.id))
+
+        let response = server.selectSession(first.id.uuidString, window: nil)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(store.sessionRecency.items.first, first.id)
+    }
+
+    func testOverlayFollowStaysDwellGated() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        store.setRecencyDwell(100)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        store.selectSession(nil)
+
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil,
+                                                 options: overlayOptions(follow: true))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(store.selectedSessionID, session.id)
+        XCTAssertFalse(store.sessionRecency.items.contains(session.id))
+    }
+
     func testFollowSelectsTheTargetWhenNothingIsSelected() throws {
         let store = try XCTUnwrap(library.activeStore)
         let owner = try XCTUnwrap(store.currentWorkspaceID)

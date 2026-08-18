@@ -154,6 +154,7 @@ struct agtermApp: App {
                         // seed auto-follow into every open store now the model is wired: idempotent and
                         // order-independent of resolveStore/onAppear (later windows seed in resolveStore).
                         settingsModel.applyAutoFollowToAllWindows()
+                        settingsModel.applyRecencyDwellToAllWindows()
                         actions.customCommandRunner = customCommandRunner
                         // the action hub opens the .themes palette for the "Select Theme…" launcher + menu.
                         actions.palette = palette
@@ -278,7 +279,7 @@ struct agtermApp: App {
             NotificationManager.shared.clearDelivered(sessionID: sessionID)
         }
         Self.wireStatusClear(view, store: store, sessionID: sessionID)
-        view.onUserInput = { store.noteUserActivity() }
+        view.onUserInput = { store.noteUserActivity(typed: true) }
         view.onFontSizeChange = { store.setFontSize(sessionID, $0) }
         Self.wireSearchCallbacks(view, store: store, sessionID: sessionID, library: library)
         return view
@@ -439,7 +440,7 @@ struct agtermApp: App {
             NotificationManager.shared.clearDelivered(sessionID: sessionID)
         }
         Self.wireStatusClear(view, store: store, sessionID: sessionID)
-        view.onUserInput = { store.noteUserActivity() }
+        view.onUserInput = { store.noteUserActivity(typed: true) }
         Self.wireSearchCallbacks(view, store: store, sessionID: sessionID, library: library)
         return view
     }
@@ -514,7 +515,7 @@ struct agtermApp: App {
         }
         // typing is user activity: resets the auto-follow idle timer so an idle fire can't change the selection
         // (vanishing the overlay) mid-typing. destroySurface nils this, breaking the store->surface->closure cycle.
-        view.onUserInput = { store.noteUserActivity() }
+        view.onUserInput = { store.noteUserActivity(typed: true) }
         return view
     }
 
@@ -553,7 +554,7 @@ struct agtermApp: App {
         view.onExit = { store.closeScratch(sessionID) }
         Self.wireStatusClear(view, store: store, sessionID: sessionID, fixedPane: .scratch)
         // same idle-timer reset as the overlay: an idle auto-follow fire must not hide the scratch mid-typing.
-        view.onUserInput = { store.noteUserActivity() }
+        view.onUserInput = { store.noteUserActivity(typed: true) }
         // the scratch is searchable (⌘F), pinned to the same session as the panes: unlike the overlay/quick
         // terminal it stays alive across hides, so a bar over it is safe.
         Self.wireSearchCallbacks(view, store: store, sessionID: sessionID, library: library)
