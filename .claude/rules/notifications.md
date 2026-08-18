@@ -141,11 +141,22 @@ paths:
   so the pill, the bell and the palette cannot disagree.
   `unseen` is the ACTIVE session's `unseenCount` alone, not `WindowLibrary.totalUnseenCount`, which
   answers the Dock's different question.
+- ⚠️ The `unseen` segment is gated on `GhosttyApp.notificationBadgeEnabled`, like
+  `WorkspaceSidebar.effectiveUnseen` and `DockBadgeController`; the three status segments are not, exactly
+  as the sidebar's status glyph is not. `NotificationManager` bumps `unseenCount` before any toggle is
+  consulted, so an ungated pill draws a badge the sidebar row beneath it correctly leaves blank.
+  The gate lives in `attentionPillSegments(_:badgesEnabled:)`, and the capsule renders on that list being
+  non-empty rather than on `AttentionCounts.isEmpty` — gating the segments alone leaves the counts non-empty
+  and draws a bare capsule.
 - `WindowContentView+AttentionPill.swift` draws one capsule with a segment per non-zero category,
   ordered blocked, active, completed, unseen.
   A zero category renders no segment; an entirely quiet window renders no pill.
-  It joins `chromePills`, so the footer site, the floating bottom-right site, `sidebarOnScreen` and the
-  frontmost-window gate all come for free, and it needs no second gate of its own.
+  It joins `chromePills`, so the footer site, the floating bottom-right site and `sidebarOnScreen` all come
+  for free, and it needs no second gate of its own.
+  ⚠️ The frontmost-window gate comes with them and is an accepted cost here, not a rule: NORMAL and OVERLAY
+  are app-wide singletons that MUST be gated, while these counts are per-window and would read correctly in
+  a background window. A background window with a collapsed sidebar therefore shows no counts. Ungating it
+  means leaving the grouping, which `bottomBar` relies on for a single accessibility match.
   See [[libghostty]] for the two traps it rides on: the full-window layer's mandatory
   `allowsHitTesting(false)`, and why `store.sidebarVisible` is the wrong predicate.
 - ⚠️ Each category has its OWN SF Symbol, so the pill does NOT follow the configured `StatusShape` the

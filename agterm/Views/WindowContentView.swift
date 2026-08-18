@@ -78,6 +78,7 @@ struct WindowContentView: View {
     @State var chromeText: Color = WindowContentView.resolvedChromeText()
     /// When true the title bar shows the attention bell.
     @State var attentionButtonEnabled: Bool = WindowContentView.resolvedAttentionButtonEnabled()
+    @State var notificationBadgeEnabled: Bool = WindowContentView.resolvedNotificationBadgeEnabled()
     /// The title-bar / sidebar-footer chrome the user hid in Settings ▸ Interface, read by `shows(_:)`.
     @State var hiddenInterfaceElements: Set<InterfaceElement> = WindowContentView.resolvedHiddenInterfaceElements()
     /// Whether the recent-sessions popover (the mouse form of the Ctrl-Tab switcher) is shown, anchored on
@@ -227,6 +228,7 @@ struct WindowContentView: View {
             toolbarMode = WindowContentView.resolvedToolbarMode()
             chromeText = WindowContentView.resolvedChromeText()
             attentionButtonEnabled = WindowContentView.resolvedAttentionButtonEnabled()
+            notificationBadgeEnabled = WindowContentView.resolvedNotificationBadgeEnabled()
             hiddenInterfaceElements = WindowContentView.resolvedHiddenInterfaceElements()
             inactivePaneMute = WindowContentView.resolvedInactivePaneMute()
             windowOpacity = WindowContentView.resolvedWindowOpacity()
@@ -519,6 +521,10 @@ struct WindowContentView: View {
 
     private static func resolvedAttentionButtonEnabled() -> Bool {
         GhosttyApp.shared.attentionButtonEnabled
+    }
+
+    private static func resolvedNotificationBadgeEnabled() -> Bool {
+        GhosttyApp.shared.notificationBadgeEnabled
     }
 
     private static func resolvedHiddenInterfaceElements() -> Set<InterfaceElement> {

@@ -154,14 +154,19 @@ extension WindowContentView {
         .padding(.trailing, 14)
     }
 
-    /// NORMAL and OVERLAY as one unit, so the sidebar footer and the collapsed-sidebar floating layer render
-    /// the same thing rather than two drifting copies. Each pill keeps its own visibility rule; the frontmost
-    /// test is shared because both answer for ONE app-wide state while there is one of this view per window,
-    /// so without it every open window advertises a mode whose keys are not in it. The mode ends on
-    /// resign-key, so it can only ever belong to the frontmost window — which is what `window list` reports.
+    /// NORMAL, OVERLAY and the attention counts as one unit, so the sidebar footer and the collapsed-sidebar
+    /// floating layer render the same thing rather than two drifting copies. Each pill keeps its own
+    /// visibility rule.
     ///
-    /// Not `private`: the pills are file-private to this extension, but the two render sites live in
-    /// `WindowContentView.swift`.
+    /// The frontmost test is shared, and it means two different things here. NORMAL and OVERLAY answer for ONE
+    /// app-wide state while there is one of this view per window, so without the gate every open window
+    /// advertises a mode whose keys are not in it; the mode ends on resign-key, so it can only ever belong to
+    /// the frontmost window — which is what `window list` reports. The attention counts are per-window data
+    /// and would read correctly in a background window, so for them the gate is an accepted cost of the
+    /// grouping, not a correctness rule: a background window with a collapsed sidebar shows no counts.
+    ///
+    /// Not `private`: `normalModePill` and `overlayRedirectPill` are file-private to this extension, but the
+    /// two render sites live in `WindowContentView.swift` and `attentionCountsPill` in its own file.
     @ViewBuilder var chromePills: some View {
         if library.activeWindowID == windowID {
             HStack(spacing: 8) {

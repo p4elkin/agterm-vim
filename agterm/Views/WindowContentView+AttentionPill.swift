@@ -59,10 +59,13 @@ struct AttentionPillSegment: Equatable {
 /// already gated on the one condition that makes it mean anything, here having something to report.
 extension WindowContentView {
     @ViewBuilder var attentionCountsPill: some View {
-        let counts = store.attentionCounts
-        if !counts.isEmpty {
+        // the segments, never `counts.isEmpty`, decide whether anything renders: the badge gate can empty the
+        // list while the counts still hold an unseen value, and two sources of truth would draw a bare capsule.
+        let segments = Self.attentionPillSegments(store.attentionCounts,
+                                                  badgesEnabled: notificationBadgeEnabled)
+        if !segments.isEmpty {
             HStack(spacing: 6) {
-                ForEach(Self.attentionPillSegments(counts), id: \.category) { segment in
+                ForEach(segments, id: \.category) { segment in
                     HStack(spacing: 2) {
                         Image(systemName: segment.category.symbolName)
                         Text("\(segment.count)")
@@ -71,27 +74,37 @@ extension WindowContentView {
                 }
             }
             .font(.caption2.weight(.bold))
+            .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(terminalColor, in: Capsule())
             .overlay(Capsule().strokeBorder(chromeText.opacity(0.25)))
+            // the footer packs this against four fixed-size controls in a `sidebarWidth` column that is never
+            // clipped, so at the 160pt minimum an ungreedy pill is what keeps the trailing buttons on screen.
+            .layoutPriority(-1)
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("attention-counts-pill")
-            .accessibilityValue(Self.attentionPillAccessibilityValue(counts))
+            .accessibilityValue(Self.attentionPillAccessibilityValue(segments))
         }
     }
 
     /// The decision half of the pill, factored out of the view body so a test can drive it without
     /// instantiating `WindowContentView`: which categories render, in which order, with which counts.
-    static func attentionPillSegments(_ counts: AttentionCounts) -> [AttentionPillSegment] {
+    ///
+    /// `badgesEnabled` gates `unseen` ALONE, matching `WorkspaceSidebar.effectiveUnseen` and
+    /// `DockBadgeController`: the count keeps tracking while the toggle is off, so re-enabling shows it again
+    /// at once, and the three status categories are no more gated by it than the sidebar's status glyph is.
+    static func attentionPillSegments(_ counts: AttentionCounts,
+                                      badgesEnabled: Bool) -> [AttentionPillSegment] {
         AttentionPillCategory.allCases
             .map { AttentionPillSegment(category: $0, count: $0.count(in: counts)) }
             .filter { $0.count > 0 }
+            .filter { badgesEnabled || $0.category != .unseen }
     }
 
     /// What VoiceOver and a test read off the capsule, since neither the glyphs nor the tints are observable.
-    static func attentionPillAccessibilityValue(_ counts: AttentionCounts) -> String {
-        attentionPillSegments(counts).map { "\($0.category.rawValue) \($0.count)" }.joined(separator: ", ")
+    static func attentionPillAccessibilityValue(_ segments: [AttentionPillSegment]) -> String {
+        segments.map { "\($0.category.rawValue) \($0.count)" }.joined(separator: ", ")
     }
 
     private static func attentionPillColor(_ category: AttentionPillCategory) -> Color {
