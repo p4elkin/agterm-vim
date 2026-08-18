@@ -645,8 +645,26 @@ struct WindowContentView: View {
 
     /// Mounted only while a palette is open in the frontmost window; its content (search field + result
     /// list) is rebuilt from `palette.mode`.
+    ///
+    /// `.newSessionWorkspace` takes the explicit-items path instead, because its rows come from the store
+    /// rather than a catalog. That path does not close the palette on its own (`CommandPalette.dismiss()`
+    /// leaves it to `onDismiss`), so the closure below is what Esc and a completed pick go through.
     @ViewBuilder private var commandPaletteOverlay: some View {
-        if isFrontmost, pick.pending == nil, palette.mode != nil {
+        if isFrontmost, pick.pending == nil, palette.mode == .newSessionWorkspace {
+            CommandPalette(
+                controller: palette,
+                actions: actions,
+                terminalAreaInset: terminalAreaInset,
+                items: actions.paletteNewSessionWorkspaces(),
+                prompt: "New session in workspace…",
+                allowCustom: true,
+                customVerb: "Create workspace",
+                customRowRule: .whenNoExactTitle,
+                accessibilityID: (panel: "new-session-workspace-palette", scrim: "new-session-workspace-scrim"),
+                onCustom: { actions.newSessionInNewWorkspace(named: $0) },
+                onDismiss: { palette.close() }
+            )
+        } else if isFrontmost, pick.pending == nil, palette.mode != nil {
             CommandPalette(controller: palette, actions: actions, terminalAreaInset: terminalAreaInset)
         }
     }

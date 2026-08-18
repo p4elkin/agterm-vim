@@ -240,6 +240,34 @@ final class CustomCommandRunnerTests: XCTestCase {
         XCTAssertFalse(window.isVisible, "the menu's fallback rung must be the alternative's too")
     }
 
+    // `new_session_in_workspace` is keyless and owns no menu item, so a SINGLE-chord `map` lands in
+    // `builtinOverrides` and reaches nothing unless `rebuild()` folds it into `builtinSequences` — the third
+    // entry in that block, after `normal_mode` and `overlay_redirect_toggle`. A keymap-level test passes
+    // either way, so the proof has to be the runner dispatching the chord.
+    func testSingleChordMapOnTheKeylessWorkspacePickerReachesItsDispatch() throws {
+        let fix = try fixture(keymap: "map cmd+ctrl+shift+n new_session_in_workspace\n")
+        let palette = PaletteController()
+        fix.actions.palette = palette
+
+        let chord = keyDown("n", keyCode: 45, mods: [.command, .control, .shift])
+        XCTAssertTrue(fix.runner.handleKeyDown(chord, in: window), "the monitor is this action's only dispatch")
+        XCTAssertEqual(palette.mode, .newSessionWorkspace)
+    }
+
+    // the merge line hands the same action a global chord, and normal mode's own table is separate: an
+    // `nmap` bind on it must keep firing with both in place.
+    func testNormalModeBindOnTheWorkspacePickerStillFiresBesideTheMergedChord() throws {
+        let fix = try fixture(keymap: "map cmd+ctrl+shift+n new_session_in_workspace\n"
+            + "nmap n new_session_in_workspace\n")
+        let palette = PaletteController()
+        fix.actions.palette = palette
+        NormalModeController.shared.enter()
+        defer { NormalModeController.shared.exit() }
+
+        XCTAssertTrue(fix.runner.handleKeyDown(keyDown("n", keyCode: 45, mods: []), in: window))
+        XCTAssertEqual(palette.mode, .newSessionWorkspace)
+    }
+
     // keymap.md requires the reload path, not only a seeded file: the matcher rebuilds on
     // `.agtermKeymapChanged`, so a built-in alternative added by an edit must start firing without a restart.
     func testKeymapReloadRebindsTheBuiltinAlternatives() throws {

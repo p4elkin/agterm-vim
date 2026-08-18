@@ -306,6 +306,7 @@ struct SocketClientTests {
             dashboard                   cmd+shift+g
             normal_mode                 -
             overlay_redirect_toggle     -
+            new_session_in_workspace    -
 
         commands:
             Deploy  cmd+shift+y

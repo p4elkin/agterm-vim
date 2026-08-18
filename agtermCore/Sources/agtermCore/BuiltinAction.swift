@@ -27,6 +27,10 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     /// See `OverlayRedirect.swift`. Keyless like `normalMode`, and PERSISTED across a restart, unlike it —
     /// see `OverlayRedirectController`.
     case overlayRedirectToggle = "overlay_redirect_toggle"
+    /// Opens the workspace picker for a new session — the only way to choose the destination workspace by
+    /// hand, matching `session.new --workspace-name --create-workspace`. Keyless and menu-less, so it needs
+    /// the `CustomCommandRunner.rebuild()` merge line like `normalMode` and `overlayRedirectToggle`.
+    case newSessionInWorkspace = "new_session_in_workspace"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
     /// `map`s one. Every action that ships with a key returns it here, including the six arrow-bound ones —
@@ -66,7 +70,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .nextAttentionSession: return Chord(mods: [.control, .option], key: "down")
         case .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
              .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-             .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle:
+             .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle, .newSessionInWorkspace:
             return nil
         }
     }

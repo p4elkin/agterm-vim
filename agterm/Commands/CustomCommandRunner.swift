@@ -98,6 +98,11 @@ final class CustomCommandRunner {
         if let chord = keymap.equivalent(for: .overlayRedirectToggle) {
             sequences[.overlayRedirectToggle, default: []].insert([chord], at: 0)
         }
+        // and for `new_session_in_workspace` (fork only): the three palette launchers escape this block only
+        // because Navigate carries their chords; this one has no menu item.
+        if let chord = keymap.equivalent(for: .newSessionInWorkspace) {
+            sequences[.newSessionInWorkspace, default: []].insert([chord], at: 0)
+        }
         commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences)
         normalMode.rebuild(binds: keymap.normalModeBinds)
         cancelLeaderTimer()

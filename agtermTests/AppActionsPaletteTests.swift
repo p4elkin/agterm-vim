@@ -121,6 +121,111 @@ final class AppActionsPaletteTests: XCTestCase {
         XCTAssertEqual(viaPalette.union(paletteLess), Set(BuiltinAction.allCases))
     }
 
+    // MARK: - the new-session workspace picker
+
+    func testTheWorkspacePickerListsEveryWorkspaceInStoreOrder() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let first = try XCTUnwrap(store.currentWorkspaceID)
+        let second = store.addWorkspace(name: "second")
+        let third = store.addWorkspace(name: "third")
+
+        let rows = actions.paletteNewSessionWorkspaces()
+
+        XCTAssertEqual(rows.map(\.id), [first, second.id, third.id].map(\.uuidString))
+        XCTAssertEqual(rows.map(\.title), store.workspaces.map(\.name))
+    }
+
+    func testTheWorkspaceRowSubtitleCountsThatWorkspacesSessions() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = store.addWorkspace(name: "counted")
+        func subtitle() -> String? {
+            actions.paletteNewSessionWorkspaces().first { $0.id == workspace.id.uuidString }?.subtitle
+        }
+        XCTAssertEqual(subtitle(), "0 sessions")
+
+        store.addSession(toWorkspace: workspace.id, cwd: NSHomeDirectory())
+        XCTAssertEqual(subtitle(), "1 session")
+
+        store.addSession(toWorkspace: workspace.id, cwd: NSHomeDirectory())
+        XCTAssertEqual(subtitle(), "2 sessions")
+    }
+
+    // the destination is the picked workspace, not `currentWorkspaceID` — which is what ⌘N reads and the whole
+    // reason this action exists.
+    func testRunningAWorkspaceRowCreatesTheSessionThereAndSelectsIt() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let current = try XCTUnwrap(store.currentWorkspaceID)
+        let other = store.addWorkspace(name: "other")
+        let anchor = try XCTUnwrap(store.addSession(toWorkspace: current, cwd: NSHomeDirectory()))
+        store.selectSession(anchor.id)
+        XCTAssertEqual(store.currentWorkspaceID, current)
+        let untouched = try XCTUnwrap(store.workspaces.first { $0.id == current }?.sessions.map(\.id))
+
+        let row = try XCTUnwrap(actions.paletteNewSessionWorkspaces().first { $0.id == other.id.uuidString })
+        row.run()
+
+        let created = try XCTUnwrap(store.workspaces.first { $0.id == other.id }?.sessions.last)
+        XCTAssertEqual(store.selectedSessionID, created.id)
+        XCTAssertEqual(store.currentWorkspaceID, other.id, "the current workspace follows the selection")
+        XCTAssertEqual(store.workspaces.first { $0.id == current }?.sessions.map(\.id), untouched,
+                       "the workspace ⌘N would have used is left alone")
+    }
+
+    func testCreatingAWorkspaceByNameMakesItAndPutsTheSessionInIt() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        XCTAssertNil(store.workspaces.first { $0.name == "release" })
+
+        actions.newSessionInNewWorkspace(named: "release")
+
+        let created = try XCTUnwrap(store.workspaces.first { $0.name == "release" })
+        XCTAssertEqual(created.sessions.count, 1)
+        XCTAssertEqual(store.selectedSessionID, created.sessions.first?.id)
+    }
+
+    // the same `ensureWorkspace` behind `session.new --workspace-name --create-workspace`: an existing name
+    // is reused rather than appended a second time.
+    func testAnExistingNameReusesThatWorkspaceInsteadOfAddingATwin() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let existing = store.addWorkspace(name: "release")
+
+        actions.newSessionInNewWorkspace(named: "release")
+
+        XCTAssertEqual(store.workspaces.filter { $0.name == "release" }.count, 1)
+        XCTAssertEqual(store.workspaces.first { $0.id == existing.id }?.sessions.count, 1)
+    }
+
+    func testABlankNameCreatesNothing() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let before = store.workspaces.count
+
+        actions.newSessionInNewWorkspace(named: "   ")
+
+        XCTAssertEqual(store.workspaces.count, before)
+    }
+
+    func testTheLauncherTogglesTheWorkspacePaletteMode() throws {
+        let palette = PaletteController()
+        actions.palette = palette
+
+        actions.toggleNewSessionWorkspacePalette()
+        XCTAssertEqual(palette.mode, .newSessionWorkspace)
+
+        actions.toggleNewSessionWorkspacePalette()
+        XCTAssertNil(palette.mode)
+    }
+
+    // a keyless action reaches the launcher only through `paletteLessHandler(for:)`, the path
+    // `CustomCommandRunner` dispatches a bound chord down.
+    func testTheKeylessActionDispatchesToTheLauncher() throws {
+        let palette = PaletteController()
+        actions.palette = palette
+
+        let handler = try XCTUnwrap(actions.paletteLessHandler(for: .newSessionInWorkspace))
+        handler()
+
+        XCTAssertEqual(palette.mode, .newSessionWorkspace)
+    }
+
     // MARK: - the overlay-redirect chord
 
     /// ⚠️ `settingsModel` is wired in a scene `.task`, so a chord pressed before that lands has none. It must

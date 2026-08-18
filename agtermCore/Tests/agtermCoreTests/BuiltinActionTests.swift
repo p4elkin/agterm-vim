@@ -32,7 +32,8 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.duplicateSession.rawValue == "duplicate_session")
         #expect(BuiltinAction.normalMode.rawValue == "normal_mode")
         #expect(BuiltinAction.overlayRedirectToggle.rawValue == "overlay_redirect_toggle")
-        #expect(BuiltinAction.allCases.count == 45)
+        #expect(BuiltinAction.newSessionInWorkspace.rawValue == "new_session_in_workspace")
+        #expect(BuiltinAction.allCases.count == 46)
     }
 
     @Test func rejectsUnknownName() {
@@ -121,6 +122,7 @@ struct BuiltinActionTests {
             .dashboard: Chord(mods: [.command, .shift], key: "g"),
             .normalMode: nil,
             .overlayRedirectToggle: nil,
+            .newSessionInWorkspace: nil,
         ]
         #expect(expected.count == BuiltinAction.allCases.count)
         for action in BuiltinAction.allCases {
@@ -177,7 +179,7 @@ struct BuiltinActionTests {
         let keyless: Set<BuiltinAction> = [
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-            .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle,
+            .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle, .newSessionInWorkspace,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")
@@ -187,6 +189,17 @@ struct BuiltinActionTests {
 
     @Test func normalModeHasNoDefaultChordSoItIsUnreachableUntilBound() {
         #expect(BuiltinAction.normalMode.defaultChord == nil)
+    }
+
+    @Test func newSessionInWorkspaceIsKeylessAndRoundTrips() {
+        #expect(BuiltinAction.newSessionInWorkspace.defaultChord == nil)
+        #expect(BuiltinAction(rawValue: "new_session_in_workspace") == .newSessionInWorkspace)
+    }
+
+    // the picker's own search field ends the mode and takes the key, so the action must not ALSO leave it —
+    // the three existing palette launchers rely on the same thing.
+    @Test func theWorkspacePickerLeavesNormalModeToItsSearchField() {
+        #expect(!BuiltinAction.newSessionInWorkspace.leavesNormalMode)
     }
 
     @Test func onlyPaneCreatingActionsLeaveNormalMode() {

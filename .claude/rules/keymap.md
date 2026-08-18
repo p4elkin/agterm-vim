@@ -48,7 +48,7 @@ paths:
   alternative, `alternative skipped`/`alternative dropped` with more), pinned by
   `KeymapTests.pipeFreeKeymapParsesExactlyAsItDidBeforeAlternatives`.
 - Pure types live in `Keybind.swift`, `KeybindMatcher`, `CustomCommand`/`CommandContext`,
-  `BuiltinAction` (44 cases, pinned by `BuiltinActionTests`), `Keymap`, and `ConfigPaths`.
+  `BuiltinAction` (46 cases, pinned by `BuiltinActionTests`), `Keymap`, and `ConfigPaths`.
   `CommandContext` owns the shared expansion/environment token table.
 - Built-ins use AppKit menu key equivalents from `keymap.equivalent(for:)`; apply only non-nil
   `KeyboardShortcut`s. SwiftUI rebuilds menu shortcuts on the next activation, not immediately after
@@ -275,8 +275,9 @@ paths:
   `builtinSequences` — or a bound chord parses, resolves, and fires nothing. A single-chord `map` line to a
   keyless action lands in `builtinOverrides` (a would-be menu equivalent) and never in `builtinSequences`,
   which is the monitor's only table; only a 2+-chord leader lands there by itself. This is now a PATTERN,
-  not a one-off: `normal_mode` and `overlay_redirect_toggle` (fork only, [[overlay-redirect]]) each needed
-  the identical line for the identical reason. Grep that block before adding a third keyless action, and
+  not a one-off: the block holds THREE entries, `normal_mode`, `overlay_redirect_toggle` (fork only,
+  [[overlay-redirect]]) and `new_session_in_workspace` (fork only, [[menu-actions]]), each needing the
+  identical line for the identical reason. Grep that block before adding a fourth keyless action, and
   pin it with a runner-level test, not a keymap-level one — a keymap-level test passes either way.
 - Write shifted symbols as `shift+<base>`: `shift+/` for `?`, `shift+=` for `+`, `shift+5` for `%`, and
   `shift+.` for `>`. `CustomCommandRunner` uses `characters(byApplyingModifiers: [])` to recover that

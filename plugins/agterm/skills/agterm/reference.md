@@ -1106,6 +1106,7 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 - Plus the other `$AGT_*` context vars the runner exports.
 
 Built-in action names for `map` include: `new_window`, `new_workspace`, `new_session`,
+`new_session_in_workspace`,
 `open_directory`, `rename_session`, `duplicate_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_horizontal_split`, `toggle_scratch`, `toggle_sidebar`,
 `focus_workspace`, `toggle_workspace_filter`, `quick_terminal`,
@@ -1113,6 +1114,14 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
 `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
 `keymap.conf` in `$EDITOR`, then `agtermctl keymap reload`.
+
+`new_session_in_workspace` ships no default chord and no menu item, so it only exists once you bind it —
+`nmap space>n>w new_session_in_workspace`, or a `map` line for a global chord. It opens a picker listing
+the workspaces; pick one and the new session is created there, selected and focused. Type a name no
+workspace has and a `Create workspace "<name>"` row appears below any workspaces still matching; choosing
+it performs the same create as `session new --workspace-name --create-workspace`. Return runs the
+highlighted row, which is the best match, so reaching the create row takes one Down press per workspace
+still matching.
 
 ## config
 

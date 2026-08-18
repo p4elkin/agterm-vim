@@ -205,6 +205,23 @@ paths:
 - An empty query skips ranking in two cases: attention mode and a caller-supplied picker. Both keep their
   source order, because every row scores 0 and the tie-break would re-sort A→Z and replace the row Return
   runs. Every other palette lists everything A→Z.
+- `PaletteMode.newSessionWorkspace` (fork only) is the workspace picker for `new_session_in_workspace`.
+  It reuses the caller-supplied-items seam rather than adding a picker: `WindowContentView` mounts
+  `CommandPalette` with `items: paletteNewSessionWorkspaces()`, `allowCustom: true`,
+  `customVerb: "Create workspace"` and its own `accessibilityID`, so the mode's `allItems` arm returns `[]`
+  and exists only to keep the switch exhaustive. `onDismiss` is mandatory on that path: explicit items make
+  `dismiss()` skip `controller.close()`. Free text runs `ensureWorkspace(named:)`, the same create the
+  control API's `session.new --workspace-name --create-workspace` uses.
+  It is the one picker on `PickCustomRowRule.whenNoExactTitle`: ranking is subsequence-based, so `rl`
+  keeps `release` and the control API's `whenNothingMatched` would hide the create row for that name at
+  every query length. The row is appended below the matches, which stay pickable, so Return still runs the
+  best match and reaching the create row takes one Down press per surviving match — `move` clamps rather
+  than wrapping, so it is never one press unless exactly one workspace matched.
+- That action carries no menu item, no palette row and no default chord — it is reached only from a bind
+  the user writes, single-chord `map`, `map` leader or `nmap` alike. It is a visual-only exemption from the
+  shared-seam rule: the headless equivalent is `session.new --workspace`. Being keyless, it also owes the
+  `rebuild()` merge line, which serves the single-chord `map` alone — `equivalent(for:)` is nil for a
+  leader and for every `nmap` — see [[keymap]].
 - Attention mode lists every non-idle session, ordered blocked, active, completed and then newest
   `statusChangedAt`, with nil last. Palette items carry status plus per-call color/shape, resolved by the
   same helpers as sidebar glyphs. Typed queries use fuzzy score.

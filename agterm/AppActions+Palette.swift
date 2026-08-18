@@ -135,8 +135,8 @@ extension AppActions {
         paletteLessHandler(for: action)?()
     }
 
-    /// The entry point for a built-in that no `PaletteCommand` row owns — window management and the three
-    /// palette launchers, each already gated where it needs to be — and nil for every action the palette
+    /// The entry point for a built-in that no `PaletteCommand` row owns — window management and the palette
+    /// launchers, each already gated where it needs to be — and nil for every action the palette
     /// covers. The SINGLE listing of those actions: `perform(_:)` dispatches through it and
     /// `AppActionsPaletteTests` partitions `BuiltinAction.allCases` across it and `PaletteCommand`, so a new
     /// action reaching neither fails a test instead of binding a key that swallows itself and does nothing.
@@ -150,6 +150,7 @@ extension AppActions {
         case .customCommandPalette: return toggleCustomCommandPalette
         case .normalMode: return { self.enterNormalMode() }
         case .overlayRedirectToggle: return { self.toggleOverlayRedirect() }
+        case .newSessionInWorkspace: return { self.toggleNewSessionWorkspacePalette() }
         default: return nil
         }
     }
@@ -244,6 +245,41 @@ extension AppActions {
         return store.navigableSessions.map { paletteItem(for: $0, in: store) }
     }
 
+    /// The workspaces as rows for the `.newSessionWorkspace` picker, in sidebar order; choosing one puts a new
+    /// session there. The subtitle's session count is display only — the explicit-items path filters on the
+    /// label alone, so the name is what a query matches.
+    func paletteNewSessionWorkspaces() -> [PaletteItem] {
+        guard let store else { return [] }
+        return store.workspaces.map { workspace in
+            let id = workspace.id
+            let count = workspace.sessions.count
+            return PaletteItem(id: id.uuidString, title: workspace.name,
+                               subtitle: count == 1 ? "1 session" : "\(count) sessions") { [weak self] in
+                self?.newSession(inWorkspace: id)
+            }
+        }
+    }
+
+    /// Create a session in a NAMED workspace and hand it over — the picker's ending, mirroring `newSession()`
+    /// with the destination chosen instead of read from `currentWorkspaceID`. No `selectWorkspace` call is
+    /// needed: `currentWorkspaceID` follows the selection, and `addSession` already reveals a workspace the
+    /// sidebar filter hides.
+    func newSession(inWorkspace workspaceID: UUID) {
+        guard uiActionsEnabled else { return }
+        guard let store, let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd())
+        else { return }
+        store.noteUserActivity()
+        store.selectSession(session.id)
+        focusActiveSession()
+    }
+
+    /// The picker's free-text ending. `ensureWorkspace` is what backs `session.new --workspace-name
+    /// --create-workspace`, so a name typed here and one passed to the CLI create the same workspace.
+    func newSessionInNewWorkspace(named name: String) {
+        guard uiActionsEnabled, let store, let workspace = store.ensureWorkspace(named: name) else { return }
+        newSession(inWorkspace: workspace.id)
+    }
+
     /// The window's non-idle sessions as palette items (`.attention` mode), each row carrying the session's
     /// agent-status glyph. `store.attentionSessions` orders blocked→active→completed, newest status-change
     /// first, so the empty-query order matches; choosing one selects it. Subtitle as in `paletteSessions()`.
@@ -301,6 +337,11 @@ extension AppActions {
     func toggleCustomCommandPalette() {
         guard uiActionsEnabled else { return }
         palette?.toggle(.customCommands)
+    }
+
+    func toggleNewSessionWorkspacePalette() {
+        guard uiActionsEnabled else { return }
+        palette?.toggle(.newSessionWorkspace)
     }
 
     /// Open `.attention` from the action-palette "Show Attention" launcher on the next runloop tick, like

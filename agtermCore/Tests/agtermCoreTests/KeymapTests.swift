@@ -523,6 +523,16 @@ struct KeymapTests {
                                                           target: .builtin(.toggleSplit))])
     }
 
+    @Test func nmapLeaderSequenceParsesTheKeylessWorkspacePicker() {
+        let (keymap, diagnostics) = parseKeymap("nmap space>n>w new_session_in_workspace")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "space"),
+                                                                    Chord(mods: [], key: "n"),
+                                                                    Chord(mods: [], key: "w")],
+                                                          target: .builtin(.newSessionInWorkspace))])
+        #expect(keymap.equivalent(for: .newSessionInWorkspace) == nil)
+    }
+
     @Test func nmapModifiedChordParses() {
         let (keymap, diagnostics) = parseKeymap("nmap ctrl+g dashboard")
         #expect(diagnostics.isEmpty)

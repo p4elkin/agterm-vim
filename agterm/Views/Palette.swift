@@ -62,13 +62,15 @@ struct PaletteItem: Identifiable {
 
 /// Which palette is open. Each fuzzy-searches its own source: `actions` the app's commands, `sessions` the
 /// open sessions to jump between, `themes` the bundled themes with a live preview on navigation (Enter
-/// commits, Esc reverts), `customCommands` the `custom` subset of `actions` shown without the badge.
+/// commits, Esc reverts), `customCommands` the `custom` subset of `actions` shown without the badge,
+/// `newSessionWorkspace` the workspaces to put a new session in — its rows come from the mount site.
 enum PaletteMode {
     case actions
     case sessions
     case themes
     case customCommands
     case attention
+    case newSessionWorkspace
 }
 
 /// Drives the command palettes: `mode` is nil when closed, else the open palette. App-global, set
@@ -108,6 +110,14 @@ struct CommandPalette: View {
     /// Whether an unmatched, non-empty explicit-picker query can be submitted as free text.
     let allowCustom: Bool
     let onCustom: ((String) -> Void)?
+    /// The verb the free-text row reads with (`Use "foo"`), so a picker can say what submitting does.
+    let customVerb: String
+    /// When the free-text row is offered. A picker whose free text creates something needs
+    /// `whenNoExactTitle`; see `PickCustomRowRule`.
+    let customRowRule: PickCustomRowRule
+    /// Accessibility identifiers for the panel and the scrim; nil picks them from `explicitItems`, which
+    /// would otherwise report every caller-supplied picker as the control-API one.
+    let accessibilityID: (panel: String, scrim: String)?
     /// Called when an explicit picker is dismissed or completes. Built-in palettes leave this nil and
     /// continue to close through `PaletteController`; a pick uses it to resolve cancellation.
     let onDismiss: (() -> Void)?
@@ -135,6 +145,8 @@ struct CommandPalette: View {
     init(controller: PaletteController, actions: AppActions, terminalAreaInset: Double,
          items: [PaletteItem]? = nil,
          prompt: String? = nil, initialQuery: String? = nil, allowCustom: Bool = false,
+         customVerb: String = "Use", customRowRule: PickCustomRowRule = .whenNothingMatched,
+         accessibilityID: (panel: String, scrim: String)? = nil,
          onCustom: ((String) -> Void)? = nil, onDismiss: (() -> Void)? = nil) {
         self.controller = controller
         self.actions = actions
@@ -143,6 +155,9 @@ struct CommandPalette: View {
         self.prompt = prompt
         _query = State(initialValue: initialQuery ?? "")
         self.allowCustom = allowCustom
+        self.customVerb = customVerb
+        self.customRowRule = customRowRule
+        self.accessibilityID = accessibilityID
         self.onCustom = onCustom
         self.onDismiss = onDismiss
     }
@@ -159,6 +174,8 @@ struct CommandPalette: View {
         case .themes: return actions.paletteThemes()
         case .customCommands: return actions.paletteCustomCommands()
         case .attention: return actions.paletteAttention()
+        // unreachable: the mount site passes `items:`, so `explicitItems` returns above.
+        case .newSessionWorkspace: return []
         case .none: return []
         }
     }
@@ -181,9 +198,12 @@ struct CommandPalette: View {
         filtered = fuzzyRank(query: q, items: allItems) { item in
             paletteSearchKeys(title: item.title, subtitle: item.subtitle, callerSupplied: explicitItems != nil)
         }
+        // appended, not substituted: under `whenNoExactTitle` the matches stay pickable beside the create
+        // row, and under `whenNothingMatched` there are none to keep, so the two rules need no branch here.
         if explicitItems != nil,
-           let label = pickCustomRowLabel(query: q, filteredCount: filtered.count, allowCustom: allowCustom) {
-            filtered = [PaletteItem(id: "pick-custom", title: label) { onCustom?(q) }]
+           let label = pickCustomRowLabel(query: q, titles: filtered.map(\.title), allowCustom: allowCustom,
+                                          verb: customVerb, rule: customRowRule) {
+            filtered.append(PaletteItem(id: "pick-custom", title: label) { onCustom?(q) })
         }
         selection = filtered.isEmpty ? 0 : min(selection, filtered.count - 1)
     }
@@ -221,7 +241,8 @@ struct CommandPalette: View {
                     .contentShape(Rectangle())
                     .onTapGesture { dismiss() }
                     .accessibilityElement()
-                    .accessibilityIdentifier(explicitItems == nil ? "palette-scrim" : "pick-scrim")
+                    .accessibilityIdentifier(accessibilityID?.scrim
+                                             ?? (explicitItems == nil ? "palette-scrim" : "pick-scrim"))
                 panel
                     .frame(width: width)
                     // `.top`, or the panel centers inside a frame taller than itself and drops down the
@@ -264,7 +285,8 @@ struct CommandPalette: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
         .shadow(radius: 24)
-        .accessibilityIdentifier(explicitItems == nil ? "command-palette" : "pick-palette")
+        .accessibilityIdentifier(accessibilityID?.panel
+                                 ?? (explicitItems == nil ? "command-palette" : "pick-palette"))
         .onAppear {
             fieldFocused = true
             updateFiltered()
