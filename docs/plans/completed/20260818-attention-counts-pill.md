@@ -303,8 +303,12 @@ nothing here touched needs Sasha's approval per CLAUDE.md, so they are left alon
 
 ### Task 6: [Final] Update documentation
 
-- [ ] update `CLAUDE.md` only if a genuinely new pattern was discovered; do not restate the plan
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update `CLAUDE.md` only if a genuinely new pattern was discovered; do not restate the plan
+      (no change made: the pill reused `chromePills`, `overlayRedirectPill`'s static-state-function test
+      shape and the host-free rule split, so no new pattern came out of it. Everything durable went to
+      `.claude/rules/notifications.md`, which CLAUDE.md's path-scoped list already routes to under
+      "badges, status".)
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
