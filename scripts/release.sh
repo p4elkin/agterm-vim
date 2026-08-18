@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Build, sign, notarize, and package a release DMG locally, and (with --publish)
-# upload it to a GitHub release and bump the Homebrew cask.
+# upload it to a GitHub release.
 #
 # Usage:
 #   scripts/release.sh <version>            # build + sign + notarize + DMG (no publish)
-#   scripts/release.sh <version> --publish  # also: gh release + cask bump/push
+#   scripts/release.sh <version> --publish  # also: gh release upload
+#
+# Homebrew: the cask bump is OFF on this fork — TAP_REPO is empty and the step is
+# skipped. Set AGTERM_TAP_REPO=<owner>/homebrew-<name> to turn it back on.
 #
 # Signing identity: auto-detected from the keychain ("Developer ID Application"),
 # or override with AGTERM_SIGN_IDENTITY. With no identity it produces an AD-HOC
@@ -34,8 +37,9 @@ DMG="$BUILD_DIR/agterm-$VERSION.dmg"
 # managers key their install cache on the manifest "version" — an unbumped
 # manifest means an existing install never picks up the new skill, silently.
 # `gh release create` below runs with no --target, so the tag lands on whatever
-# origin/master points at: the bump must be both COMMITTED and PUSHED, and both
-# are checked here. This applies the bump and stops so the diff can be reviewed
+# origin/main points at — this fork's trunk, and gh resolves to the fork only because
+# remote.origin.gh-resolved pins it (see .claude/rules/release.md). The bump must be both
+# COMMITTED and PUSHED, and both are checked here. This applies the bump and stops so the diff is reviewed
 # and committed, rather than rewriting git history from inside a release script.
 PLUGIN_MANIFESTS=(
   "$ROOT/plugins/agterm/.claude-plugin/plugin.json"
@@ -55,18 +59,19 @@ fi
 # committed is not enough: the tag is cut from the remote, so verify the pushed
 # manifests carry this version too.
 if [ "$PUBLISH" = "1" ]; then
-  git fetch -q origin master
+  git fetch -q origin main
   for manifest in "${PLUGIN_MANIFESTS[@]}"; do
     rel="${manifest#"$ROOT"/}"
-    if ! git show "origin/master:$rel" 2>/dev/null | grep -q "\"version\"[[:space:]]*:[[:space:]]*\"$VERSION\""; then
-      echo "==> $rel on origin/master is not at $VERSION — push master first" >&2
+    if ! git show "origin/main:$rel" 2>/dev/null | grep -q "\"version\"[[:space:]]*:[[:space:]]*\"$VERSION\""; then
+      echo "==> $rel on origin/main is not at $VERSION — push main first" >&2
       exit 1
     fi
   done
 fi
 APP="$BUILD_DIR/DerivedData/Build/Products/Release/agterm.app"
 NOTARY_PROFILE="${AGTERM_NOTARY_PROFILE:-agterm-notary}"
-TAP_REPO="umputun/homebrew-apps"
+# empty on this fork: there is no cask to bump. Set AGTERM_TAP_REPO to re-enable the step.
+TAP_REPO="${AGTERM_TAP_REPO:-}"
 
 # resolve the signing identity: explicit override, else the first Developer ID
 # Application identity in the keychain, else ad-hoc dry-run.
@@ -102,8 +107,8 @@ notarize() {
   fi
 }
 
-# build the GitHub release body: the matching CHANGELOG.md section followed by a
-# short install note (signed + notarized; Apple Silicon only, macOS 14+).
+# build the GitHub release body: the matching CHANGELOG-vim.md section (fork notes; CHANGELOG.md is
+# upstream's and is overwritten by every rebase) followed by an install note matching what was built.
 release_notes() {
   local section
   section="$(awk -v ver="v$VERSION" '
@@ -115,17 +120,28 @@ release_notes() {
       while (n>=s && body[n] ~ /^[[:space:]]*$/) n--
       for (i=s; i<=n; i++) print body[i]
     }
-  ' "$ROOT/CHANGELOG.md")"
-  [ -n "$section" ] || echo "WARNING: no CHANGELOG.md section for v$VERSION — release body will be the install note only" >&2
+  ' "$ROOT/CHANGELOG-vim.md")"
+  [ -n "$section" ] || echo "WARNING: no CHANGELOG-vim.md section for v$VERSION — release body will be the install note only" >&2
   [ -n "$section" ] && printf '%s\n\n' "$section"
-  cat <<EOF
----
+  printf -- '---\n\n'
+  # the note must match what was actually produced: telling a user Gatekeeper opens it with no extra
+  # steps, over a DMG that was never signed, sends them to an app macOS reports as damaged.
+  if [ "$SIGNED" = "1" ]; then
+    printf '%s\n\n' "Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later."
+  else
+    cat <<'EOF'
+Unsigned build — not signed with a Developer ID certificate and not notarized, so macOS quarantines it on download and reports it as damaged. Apple Silicon (arm64) only, macOS 14 or later.
 
-Signed with a Developer ID certificate and notarized by Apple, so macOS Gatekeeper opens it with no extra steps. Apple Silicon (arm64) only, macOS 14 or later.
+To open it, drag `agterm.app` into `/Applications`, then clear the quarantine flag:
 
-- **Homebrew:** \`brew install --cask umputun/apps/agterm\`
-- **Direct download:** open the \`.dmg\` and drag \`agterm.app\` into \`/Applications\`.
+```
+xattr -dr com.apple.quarantine /Applications/agterm.app
+```
+
 EOF
+  fi
+  [ -n "$TAP_REPO" ] && printf '%s\n' "- **Homebrew:** \`brew install --cask ${TAP_REPO%%/*}/${TAP_REPO#*homebrew-}/agterm\`"
+  printf '%s\n' "- **Direct download:** open the \`.dmg\` and drag \`agterm.app\` into \`/Applications\`."
 }
 
 # ── build ────────────────────────────────────────────────────────────────────
@@ -211,23 +227,25 @@ fi
 rm -f "$NOTES_FILE"
 gh release upload "$TAG" "$DMG" --clobber
 
-SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
-TAP_DIR="$(mktemp -d)"
-gh repo clone "$TAP_REPO" "$TAP_DIR" -- --depth=1 >/dev/null
-CASK="$TAP_DIR/Casks/agterm.rb"
-if [ ! -f "$CASK" ]; then
-  mkdir -p "$TAP_DIR/Casks"
-  cp "$ROOT/packaging/agterm.rb" "$CASK" # first publish: seed from the in-repo source of truth
+if [ -n "$TAP_REPO" ]; then
+  SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+  TAP_DIR="$(mktemp -d)"
+  gh repo clone "$TAP_REPO" "$TAP_DIR" -- --depth=1 >/dev/null
+  CASK="$TAP_DIR/Casks/agterm.rb"
+  if [ ! -f "$CASK" ]; then
+    mkdir -p "$TAP_DIR/Casks"
+    cp "$ROOT/packaging/agterm.rb" "$CASK" # first publish: seed from the in-repo source of truth
+  fi
+  sed -i '' -E "s/^( *version )\".*\"/\1\"$VERSION\"/" "$CASK"
+  sed -i '' -E "s/^( *sha256 )\".*\"/\1\"$SHA\"/" "$CASK"
+  git -C "$TAP_DIR" add Casks/agterm.rb
+  if git -C "$TAP_DIR" diff --cached --quiet; then
+    echo "==> cask already at $VERSION, nothing to push"
+  else
+    git -C "$TAP_DIR" commit -m "agterm $VERSION"
+    git -C "$TAP_DIR" push
+    echo "==> cask bumped to $VERSION"
+  fi
+  rm -rf "$TAP_DIR"
 fi
-sed -i '' -E "s/^( *version )\".*\"/\1\"$VERSION\"/" "$CASK"
-sed -i '' -E "s/^( *sha256 )\".*\"/\1\"$SHA\"/" "$CASK"
-git -C "$TAP_DIR" add Casks/agterm.rb
-if git -C "$TAP_DIR" diff --cached --quiet; then
-  echo "==> cask already at $VERSION, nothing to push"
-else
-  git -C "$TAP_DIR" commit -m "agterm $VERSION"
-  git -C "$TAP_DIR" push
-  echo "==> cask bumped to $VERSION"
-fi
-rm -rf "$TAP_DIR"
 echo "==> done"

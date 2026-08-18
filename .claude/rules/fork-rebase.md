@@ -1,11 +1,13 @@
 ## Rebasing the fork onto upstream
 
-This fork adds vim-style keys on top of `umputun/agterm` and is rebased onto `origin/master`, never merged.
-`vimfork` is the publishing remote (`p4elkin/agterm-vim`, branch `main`); `origin` is upstream and is never
-pushed to.
+This fork adds vim-style keys on top of `umputun/agterm` and is rebased onto `upstream/master`, never merged.
+`origin` is the publishing remote (`p4elkin/agterm-vim`, branch `main`); `upstream` is `umputun/agterm`,
+whose push URL is set to the literal `DISABLED_never_push_to_upstream` so a push there fails rather than
+lands. "Merge to main" always means this fork's own `main`, never anything toward upstream.
 
 - Tag the tip before starting (`git tag pre-rebase-<date>`) and say the tag name in the report.
-  Publishing is `git push --force-with-lease vimfork HEAD:main`, and only after every gate below is green.
+  Publishing is `git push --force-with-lease origin HEAD:main`, and only after every gate below is green.
+  That is the line `daily-rebase.sh` itself runs, so keep the two spelled the same.
 - Never resolve a conflict by deleting fork behavior, and never drop an upstream fix. When both sides
   changed a line, keep upstream's change and re-apply the fork's intent on top of it.
 
@@ -30,13 +32,14 @@ git had nothing to flag. So run the full gate set on a zero-conflict rebase exac
   grammar (`nmap`, leader sequences, `KeybindTarget`), so an upstream keymap fix usually needs re-applying
   onto a wider type rather than taking one side.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
-- `CHANGELOG.md` — upstream release notes only. Take upstream's version whole.
+- `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
+  `CHANGELOG-vim.md`, which upstream does not have and which therefore never conflicts; see [[release]].
 
 ### Delegating it
 
 A subagent can do the mechanical replay, but its report is not evidence: the 2026-08-10 agent traced the
 merged control flow correctly, then recorded the full screen dispatch sitting behind the normal-mode filter
-as matching the fork's intent. Verify the result yourself — `git merge-base --is-ancestor origin/master HEAD`,
+as matching the fork's intent. Verify the result yourself — `git merge-base --is-ancestor upstream/master HEAD`,
 the fork commit count, and the gates, including `make test-app`.
 
 ### The daily job, and the paused rebase you may find
