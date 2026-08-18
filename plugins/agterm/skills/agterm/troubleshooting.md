@@ -34,7 +34,8 @@ You are inside agterm (`AGTERM_ENABLED=1`). Use:
   ```bash
   log show --predicate 'subsystem == "com.umputun.agterm"' --info --last 30m
   ```
-  Categories: `CustomCommandRunner`, `SettingsModel`, `GhosttyApp`, `NotificationManager`, `ControlServer`.
+  Categories: `GhosttyApp`, `GhosttySurfaceView`, `WatermarkRenderer`, `NotificationManager`,
+  `SettingsView`, `SettingsModel`, `CustomCommandRunner`, `ControlServer`.
 - **Files** — keymap `~/.config/agterm/keymap.conf`; agterm-scoped ghostty config
   `~/.config/agterm/ghostty.conf`; settings `~/Library/Application Support/agterm/settings.json`;
   socket path in `$AGTERM_SOCKET`.
@@ -138,13 +139,13 @@ posted and the suppressed case under the `NotificationManager` category.
 
 ### "a tool cannot get a macOS permission"
 
-Programs run in a session request Automation, Camera, Contacts, Calendars, Reminders, Photos, Location,
-Bluetooth, local network and speech recognition THROUGH agterm: macOS treats agterm as the responsible app,
-so the prompt names agterm and the answer is recorded against agterm, not the tool. One grant then covers
-every program in every session with no further prompt, and a dismissed prompt is never re-offered
-(`osascript` keeps returning "Not authorized to send Apple events"). The user changes the answer in
-System Settings ▸ Privacy & Security under the matching service, e.g. Automation ▸ agterm. This is macOS
-policy, not an agterm bug: do not file it.
+Programs run in a session request Automation, Camera, Microphone, Contacts, Calendars, Reminders, Photos,
+Location, Bluetooth, local network, speech recognition, system administration and system audio recording
+THROUGH agterm: macOS treats agterm as the responsible app, so the prompt names agterm and the answer is
+recorded against agterm, not the tool. One grant then covers every program in every session with no
+further prompt, and a dismissed prompt is never re-offered (`osascript` keeps returning "Not authorized
+to send Apple events"). The user changes the answer in System Settings ▸ Privacy & Security under the
+matching service, e.g. Automation ▸ agterm. This is macOS policy, not an agterm bug: do not file it.
 
 ### "The agent-status glyph does not update"
 

@@ -30,10 +30,13 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.toggleFullscreen.rawValue == "toggle_fullscreen")
         #expect(BuiltinAction.dashboard.rawValue == "dashboard")
         #expect(BuiltinAction.duplicateSession.rawValue == "duplicate_session")
+        #expect(BuiltinAction.previousWorkspace.rawValue == "previous_workspace")
+        #expect(BuiltinAction.nextWorkspace.rawValue == "next_workspace")
+        #expect(BuiltinAction.toggleWorkspaceCollapse.rawValue == "toggle_workspace_collapse")
         #expect(BuiltinAction.normalMode.rawValue == "normal_mode")
         #expect(BuiltinAction.overlayRedirectToggle.rawValue == "overlay_redirect_toggle")
         #expect(BuiltinAction.newSessionInWorkspace.rawValue == "new_session_in_workspace")
-        #expect(BuiltinAction.allCases.count == 46)
+        #expect(BuiltinAction.allCases.count == 49)
     }
 
     @Test func rejectsUnknownName() {
@@ -106,6 +109,9 @@ struct BuiltinActionTests {
             .toggleWorkspaceFilter: nil,
             .toggleFlag: Chord(mods: [.command, .shift], key: "f"),
             .focusWorkspace: nil,
+            .previousWorkspace: nil,
+            .nextWorkspace: nil,
+            .toggleWorkspaceCollapse: nil,
             .focusLeftPane: Chord(mods: [.command, .option], key: "left"),
             .focusRightPane: Chord(mods: [.command, .option], key: "right"),
             .previousSession: Chord(mods: [.command, .option], key: "up"),
@@ -179,7 +185,8 @@ struct BuiltinActionTests {
         let keyless: Set<BuiltinAction> = [
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-            .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle, .newSessionInWorkspace,
+            .toggleWorkspaceFilter, .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
+            .normalMode, .overlayRedirectToggle, .newSessionInWorkspace,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")

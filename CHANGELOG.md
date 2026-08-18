@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.24.0 - 2026-08-17
+
+### New Features
+
+- the quick terminal is a floating panel with a system-wide hotkey, so it can be summoned over any application and dismissed straight back to it. `keymap.conf` gains a `global-hotkey` verb for the chord #441 @umputun
+- keyboard navigation between workspaces: `previous_workspace` and `next_workspace` builtins, `workspace.go --to next|prev`, and `toggle_workspace_collapse` to fold the workspace you are in. All three ship keyless #436 @umputun
+- `session.overlay.copy` and `session.overlay.text` read an overlay's own surface. Both `session copy` and `session text` address the pane underneath, so a selection made inside an overlay used to read as `no selection` #437 @umputun
+- `surface.cursor` reports a surface's cursor column, printed as a bare number so it drops into a command substitution #451 @umputun
+
+### Improved
+
+- libghostty advances to upstream main, fixing a crash on surface teardown and lifting the pin held since April. Building now needs Zig 0.16 #449 @umputun
+- the shipped app drops three hardened-runtime exceptions it never used. The TCC entitlements are untouched #450 @umputun
+- `ControlServer` logs through `os.Logger`, so the control socket is queryable under the subsystem `docs/troubleshooting.md` tells you to filter on #442 @umputun
+- a cookbook recipe reporting a hook-driven agent's status onto its sidebar row when the agent runs inside a container #428 @nquo
+
+### Bug Fixes
+
+- an unattended restart lost every captured running command. The quit confirmation went up even for a quit the system asked for, and with nobody there to answer it the app was killed before it could save. Shutdown, restart and logout skip the prompt now, while a scripted quit still gets it. Reported by @ssgreg, who also sent the follow-up #446 #447 @umputun @ssgreg
+- two `keymap.conf` lines colliding on one chord were settled by file order, so reordering unrelated lines could silently take a custom command's shortcut away #444 @umputun
+
+## v0.23.0 - 2026-08-13
+
+### New Features
+
+- splits can run top and bottom, not only side by side. `⌘⇧D` splits horizontally and `⌘D` keeps the vertical one, each action creating, revealing, hiding or transposing as needed, so a live split changes orientation without recreating either terminal. `session.split` and `agtermctl` take an optional `vertical`/`horizontal` axis, `top`/`bottom` join `left`/`right` as pane aliases, and the axis survives restore. Dashboard moves to `⌘⇧G` #427 @umputun
+- Close Split tears a split pane down, from the palette and as `session.split.close`. ⌘D only hid one: `hasSplit` stayed set and the shell behind it stayed alive, so the only teardown was typing `exit` in the pane, which does nothing for a shell inside docker, an ssh or an agent sitting past a prompt. The palette row shows whenever a split exists, so a hidden pane is reachable #421 @umputun
+- a `map` or `command` line in `keymap.conf` can carry several alternative keybinds separated by `|`, so a mac-native chord and a tmux-style leader sequence can both reach one action instead of forcing a choice. It also gives built-in actions their first leader sequence: they dispatch as menu key equivalents and `NSMenuItem` holds exactly one character, so the parser used to reject one outright #420 @umputun
+
+### Improved
+
+- a cookbook recipe listing the SQLite databases in the session's repo in the native picker, newest first with size and age, opening the pick in tabiew. Files are matched on the SQLite magic header rather than the extension, and dependency directories are pruned as a rule #426 @umputun
+- a cookbook recipe listing the repo's `docs/backlog` items in the picker and handing the pick to Claude Code as `/backlog <slug>`, each row carrying the item's triage call, age and location #422 @umputun
+- a cookbook recipe opening the pane's selection, or its last 50 lines when nothing is selected, in revdiff inside an overlay, pasting the notes back at the prompt with each one quoting the line it hangs on. Where annotate-claude-replies reads Claude's own transcript, this reads the terminal, so it works on any agent, a stack trace or a `terraform plan` #419 @umputun
+- README is a product synopsis again rather than the full reference, with the depth it carried moved onto the site's docs page #424 @umputun
+
+### Bug Fixes
+
+- a session created while the display was asleep never started, so a scheduled job's `--command` never ran although `session new` had already answered `ok`. `ghostty_surface_new` returns NULL for as long as the display sleeps, measured at 21 consecutive failures over 40s with a valid backing size, and nothing re-attempted, because the deck's retries ride SwiftUI layout and that does not run for an off-display window. Creation retries on display wake now, and `tree` reports `realized` per session #417 @umputun
+- `session.paste`, `session.selectall` and `session.copy` answered as though they had acted when the target pane had no terminal behind it, the state a session sits in while the display sleeps. All three checked only that the surface slot was filled, which a parked view passes, so a script branching on the error text took the wrong branch or believed a paste that never happened. All three report `session not realized` now #425 @umputun
+- a second instance resolving the same socket path took the running app's control socket for good, and only a restart recovered it. Ownership is an exclusive `flock` now rather than the unconditional unlink before `bind`, and a refused instance advertises `<socket>.unavailable`, so the shells it spawns cannot reach the owner's terminal #418 @umputun
+- a tool capturing system audio inside a session got silence and no permission prompt. Core Audio process taps go through TCC's audio-capture service, macOS holds agterm responsible for whatever it spawns, and the Info.plist carried no `NSAudioCaptureUsageDescription`, so `tccd` refused to prompt and left nothing to grant by hand in System Settings either #432 @umputun
+- the Install Agent Status Hooks alert could grow past the bottom of the screen, taking its OK button with it, `NSAlert` sizing itself to fit text it will not scroll. The two Codex manual-merge cases embedded the full 29-line hooks block; every outcome is one short sentence now, with an Open Docs button where the printed steps used to be #430 @umputun
+
 ## v0.22.0 - 2026-08-09
 
 ### New Features

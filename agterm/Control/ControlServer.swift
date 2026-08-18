@@ -2,6 +2,9 @@ import AppKit
 import agtermCore
 import Darwin
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.umputun.agterm", category: "ControlServer")
 
 /// The programmatic control channel: a POSIX unix-domain-socket listener turning newline-delimited JSON
 /// `ControlRequest`s into calls on the `AppActions`/`AppStore` seam the toolbar, menu bar and palettes
@@ -420,16 +423,19 @@ final class ControlServer {
         switch request.cmd {
         case .tree, .eventsRead, .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove,
-                .workspaceNew, .workspaceSelect, .workspaceRename, .workspaceDelete, .workspaceMove, .workspaceFocus,
+                .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
+                .workspaceFocus,
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand,
                 .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFocus, .sessionResize, .surfaceZoom,
+                .surfaceCursor,
                 .sessionStatus, .sessionFlag, .sessionSeen, .sessionRestore, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload, .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarExpand, .sidebarCollapse, .normalMode, .sessionPairing,
                 .overlayRedirectToggle, .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
-                .sessionOverlayResult, .sessionBackground, .sessionText, .quick, .quickType, .quickText,
+                .sessionOverlayResult, .sessionOverlayCopy, .sessionOverlayText,
+                .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
@@ -581,7 +587,8 @@ final class ControlServer {
     }
 
     /// Project a window's workspace tree into the wire `ControlTree`, marking the active session and the
-    /// active workspace (the one owning the selected session).
+    /// active workspace (`currentWorkspaceID`, what `--target active` resolves to — not necessarily the
+    /// selected session's owner, since an empty or foreground-created workspace becomes current on its own).
     func buildTree(in store: AppStore) -> ControlTree {
         let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
         // the projected window owns its quick terminal; find its id by store identity to read the live
@@ -609,8 +616,13 @@ final class ControlServer {
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },
             splitFontSize: { ($0.splitSurface as? GhosttySurfaceView)?.currentFontSize() },
             scratchFontSize: { ($0.scratchSurface as? GhosttySurfaceView)?.currentFontSize() },
-            quickVisible: { windowID.flatMap { QuickTerminalRegistry.shared.controller(for: $0)?.isVisible } ?? false },
-            zoomedSurface: { windowID.flatMap { TerminalZoomRegistry.shared.controller(for: $0)?.target?.controlID } },
+            // both are app-level facts now that the quick terminal is one detached panel, so every projected
+            // window reports the same value for them rather than one of its own.
+            quickVisible: { QuickTerminalController.shared.isVisible },
+            zoomedSurface: {
+                if QuickTerminalController.shared.isZoomed { return TerminalZoomTarget.quick.controlID }
+                return windowID.flatMap { TerminalZoomRegistry.shared.controller(for: $0)?.target?.controlID }
+            },
             // resolved through the projected window's registry entry on every tree build, and tree-only:
             // window.list is cache-backed, so mirroring a GUI-resolved pick there would go stale.
             pickPending: { windowID.flatMap { PickRegistry.shared.controller(for: $0)?.pending?.id } },
@@ -665,8 +677,9 @@ final class ControlServer {
     }
 
     /// Internal, not private: the `ControlServer+*.swift` extensions holding the command arms cannot reach a
-    /// private member declared here.
-    func log(_ message: @autoclosure () -> String) {
-        NSLog("agterm: %@", message())
+    /// private member declared here. `.public` because a redacted path or errno says nothing about why the
+    /// socket is missing, which is what these are read for.
+    func log(_ message: String) {
+        logger.notice("\(message, privacy: .public)")
     }
 }

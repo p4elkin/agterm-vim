@@ -93,6 +93,18 @@ public enum ConfigPaths {
         #           command "Lazygit"      ctrl+a>g     agtermctl session overlay open 'zsh -lc lazygit' --socket "$AGT_SOCKET"
         #           command "Deploy"                    ./deploy.sh
         #
+        #   global-hotkey <chord>
+        #       Bind ONE system-wide chord that summons the quick terminal while any application is
+        #       frontmost — the only binding here that fires when agterm does not have the keyboard.
+        #       Exactly one chord: no `|` alternatives, no leader sequence, and it must carry a
+        #       modifier. A second global-hotkey line replaces the first. macOS registers it by
+        #       physical key position, so it keeps working on a non-Latin layout. Because the system
+        #       owns it rather than agterm, it takes no part in the collision rules above. Note the
+        #       precedence: the system hotkey WINS, agterm frontmost included, so a chord shared with a
+        #       menu action fires this and the menu binding never sees it. Example:
+        #
+        #           global-hotkey ctrl+opt+space
+        #
         # Built-in actions (raw name → shipped default chord):
         #
         \(actionLines)
@@ -109,6 +121,7 @@ public enum ConfigPaths {
         #
         # Uncomment and edit a line below to start.
         # map cmd+shift+l toggle_split
+        # global-hotkey ctrl+opt+space
 
         """
     }
