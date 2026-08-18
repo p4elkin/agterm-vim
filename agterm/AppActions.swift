@@ -86,11 +86,13 @@ final class AppActions {
 
     /// The `.agtermAutoFollowed` observer token, installed once in `init` so an idle auto-follow in the key
     /// window moves first responder into the newly selected session.
-    private var autoFollowObserver: NSObjectProtocol?
+    /// `nonisolated(unsafe)`: main actor only, plus the nonisolated `deinit` that removes it.
+    private nonisolated(unsafe) var autoFollowObserver: NSObjectProtocol?
 
     /// Cancels every window-scoped picker on the synchronous `willTerminate`, never on
     /// `applicationShouldTerminate`: a waiting pick caller gets `cancelled` without delaying quit.
-    private var terminationObserver: NSObjectProtocol?
+    /// `nonisolated(unsafe)` for the same reason as `autoFollowObserver`.
+    private nonisolated(unsafe) var terminationObserver: NSObjectProtocol?
 
     init(library: WindowLibrary) {
         self.library = library
@@ -109,8 +111,9 @@ final class AppActions {
         }
     }
 
-    // isolated to read init's `@MainActor` non-Sendable tokens; rare (app-lifetime) but an unbalanced leak.
-    isolated deinit {
+    // never `isolated deinit`: released inside a synchronous task-local scope, its runtime path aborts the
+    // process on a bad free, and an XCTest test body is one. See [[ui-tests]]; three other classes match.
+    deinit {
         if let autoFollowObserver { NotificationCenter.default.removeObserver(autoFollowObserver) }
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
     }

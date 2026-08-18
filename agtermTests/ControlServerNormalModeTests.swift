@@ -51,8 +51,6 @@ final class ControlServerNormalModeTests: XCTestCase {
             window.orderOut(nil)
             window = nil
             server = nil
-            // a property, not a local: `AppActions` has an `isolated deinit`, and releasing one inside a test
-            // body over-releases and takes the host down.
             actions = nil
             library = nil
             try? FileManager.default.removeItem(at: stateDir)

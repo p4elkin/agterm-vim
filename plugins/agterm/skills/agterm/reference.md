@@ -192,7 +192,7 @@ members), and `collapsed` (whether this workspace is COLLAPSED in the sidebar tr
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
 when expanded, so an all-expanded tree carries no `collapsed` keys).
 
-The tree object itself carries twelve top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries thirteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
@@ -212,13 +212,18 @@ no dashboard is open): `dashboardMembers` (the pane refs the open dashboard show
 as both), `dashboardHighlighted` (the highlighted cell's pane ref — the one Enter jumps into, focusing
 that exact pane), `dashboardFontSize` (the absolute font size in points applied to the cells, omitted when
 the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fixed` for `--font-size`, or
-`untouched`), plus `pickPending` (the id of the native picker currently awaiting an answer in this
+`untouched`), plus `sessionRecency` (the window's jump-back targets, session ids as strings, most recent
+first — the currently ACTIVE session is dropped and the visible navigation scope applies, so this is the
+title-bar recent popover's filtering but uncapped, where that popover shows at most ten, not the raw stack;
+a session that was never selected has no entry, so the
+array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
+and `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `sidebarMode`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four `dashboard*` fields, and
-`pickPending`
+both; `sidebarMode`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four `dashboard*` fields,
+`sessionRecency`, and `pickPending`
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale).
-All twelve are read-only projections of GUI state.
+All thirteen are read-only projections of GUI state.
 
 ## workspace
 

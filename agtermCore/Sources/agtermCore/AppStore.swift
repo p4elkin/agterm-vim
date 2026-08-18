@@ -319,6 +319,7 @@ public final class AppStore {
                            dashboardHighlighted: dashboardHighlighted(),
                            dashboardFontSize: dashboardFontSize(),
                            dashboardFontMode: dashboardFontMode(),
+                           sessionRecency: controlSessionRecency(),
                            pickPending: pickPending())
     }
 
