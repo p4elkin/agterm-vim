@@ -257,19 +257,25 @@ View notes:
 ### Task 4: Document the pill as fork-only chrome
 
 **Files:**
-- Modify: `.claude/rules/libghostty.md` (add the pill to the section covering overlays and chrome;
-  if it fits `menu-actions.md` better, put it there instead and say which in the commit message)
+- Modify: `.claude/rules/notifications.md` (the `Titlebar attention` section)
 
 **Model:** haiku
 
-- [ ] add a short entry: what the pill shows, that it is informational and not clickable, that it
+⚠️ Scope change: the entry went to `.claude/rules/notifications.md`, not `libghostty.md` or
+`menu-actions.md`. `notifications.md` already owns `attentionSessions`, the bell and the sentence
+`There is no count or pulse`, so the pill belongs beside the thing it answers. Both of the traps the
+plan asked to record are already stated in `libghostty.md`; per the own-a-contract-once rule the new
+entry cross-references `[[libghostty]]` for them rather than restating them.
+
+- [x] add a short entry: what the pill shows, that it is informational and not clickable, that it
       rides `chromePills` and therefore `sidebarOnScreen`, and that it deliberately does not follow
       the `StatusShape` setting
-- [ ] record the two traps for a future reader: `allowsHitTesting(false)` on `floatingPillsLayer` is
+- [x] record the two traps for a future reader: `allowsHitTesting(false)` on `floatingPillsLayer` is
       load-bearing, and `sidebarVisible` is the wrong predicate
-- [ ] record that the message count is deferred and why
-- [ ] confirm nothing was added to `plugins/agterm/skills/agterm/`, `site/commands.html`,
-      `README.md` or `CHANGELOG.md`
+      (cross-referenced to `[[libghostty]]`, which already states both, instead of a second copy)
+- [x] record that the message count is deferred and why
+- [x] confirm nothing was added to `plugins/agterm/skills/agterm/`, `site/commands.html`,
+      `README.md` or `CHANGELOG.md` (`git diff --name-only main...HEAD` lists none of them)
 
 ### Task 5: Verify acceptance criteria
 

@@ -135,3 +135,29 @@ paths:
   `WindowContentView` mirrors `GhosttyApp.attentionButtonEnabled` into state and refreshes on
   `.agtermAppearanceChanged`, not `model.settings`. This mouse form of controllable attention selection is
   keep-in-sync exempt.
+- The attention-counts pill answers what the bell cannot: how much, and of what kind. Fork-only chrome.
+  `AttentionCounts.make(statuses:activeUnseen:)` counts `attentionSessions` into blocked/active/completed.
+  `AppStore.attentionCounts` is its only caller and reuses that list rather than re-deriving the filter,
+  so the pill, the bell and the palette cannot disagree.
+  `unseen` is the ACTIVE session's `unseenCount` alone, not `WindowLibrary.totalUnseenCount`, which
+  answers the Dock's different question.
+- `WindowContentView+AttentionPill.swift` draws one capsule with a segment per non-zero category,
+  ordered blocked, active, completed, unseen.
+  A zero category renders no segment; an entirely quiet window renders no pill.
+  It joins `chromePills`, so the footer site, the floating bottom-right site, `sidebarOnScreen` and the
+  frontmost-window gate all come for free, and it needs no second gate of its own.
+  See [[libghostty]] for the two traps it rides on: the full-window layer's mandatory
+  `allowsHitTesting(false)`, and why `store.sidebarVisible` is the wrong predicate.
+- ⚠️ Each category has its OWN SF Symbol, so the pill does NOT follow the configured `StatusShape` the
+  sidebar glyphs use. A lone number has to say which category it is without depending on color.
+  Do not "fix" this to match the sidebar.
+- Informational and never clickable, which is what keeps `floatingPillsLayer` hit testing off.
+  Navigation stays on Ctrl-Shift-I and Ctrl-Opt-Up/Down.
+  ID `attention-counts-pill`, value `"<category> <count>"` joined by commas, since neither glyph nor
+  tint is accessibility-observable.
+  It only arranges facts `tree --json` already reports on `ControlSessionNode`, so it is keep-in-sync
+  exempt and owns no control command.
+- A fifth segment for peer messages is deferred, not forgotten: its count would arrive over a generic
+  control command whose contract depends on a peer-messaging design that is still unsettled.
+  When it lands the whole addition is one `AttentionPillCategory` case plus one `AttentionCounts`
+  field, which is why the categories are a table rather than four inline branches.
