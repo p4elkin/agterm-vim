@@ -182,6 +182,24 @@ public final class Session: Identifiable {
     /// only with `initialCommand`. Persisted, so a restored session that re-runs its command holds again.
     @ObservationIgnored public var commandWait: Bool = false
 
+    /// Whether a `--command` session runs its command INSIDE a shell that outlives it, so the row lands at a
+    /// prompt instead of losing its only process; set via `session.new --keep-shell-open`. Only the zmx
+    /// wrapper (`ZmxWrap`) builds that shell, so the flag is meaningless without `initialCommand` and cannot
+    /// combine with `commandWait`, which instead holds a finished surface at a press-any-key prompt and then
+    /// closes it. Persisted, so a restored row keeps the behaviour.
+    @ObservationIgnored public var keepShellOpen: Bool = false
+
+    /// The zmx session the MAIN pane's process is a client of, recorded by the surface factory when it wraps
+    /// the pane and read back at close and rename. Persisted, so a row whose surface was never built this
+    /// launch still knows which daemon it owns.
+    ///
+    /// ⚠️ Never re-derive this from the pane's role. `closePrimaryPane` promotes the split survivor, which
+    /// stays a client of the `-right` session while the model calls it the main pane: a derived key would
+    /// end the wrong daemon, label the wrong one, and let a later ⌘D attach a second pane to the live one.
+    @ObservationIgnored public var zmxPrimaryKey: String?
+    /// The zmx session the SPLIT pane's process is a client of, the split analogue of `zmxPrimaryKey`.
+    @ObservationIgnored public var zmxSplitKey: String?
+
     /// True when the session was rebuilt by `AppStore.restore(from:)` rather than freshly created; gates the
     /// `initialCommand` re-run on `restoreRunningCommand` (a fresh session always runs it, a restored one gets
     /// a plain shell when off). Never persisted.

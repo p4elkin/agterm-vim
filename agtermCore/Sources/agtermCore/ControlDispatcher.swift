@@ -258,26 +258,43 @@ public struct ControlDispatcher {
         return actions.readEvents(ControlEventReadOptions(cursor: cursor, kinds: kinds, limit: limit))
     }
 
+    /// The `session.new` argument guards, as the error text or nil when the combination is accepted. Separate
+    /// from the command arm so the mutually exclusive pairs do not push `dispatchSessionCommand` over the
+    /// cyclomatic-complexity limit.
+    private func sessionNewGuardError(_ args: ControlArgs?) -> String? {
+        if args?.after != nil, args?.before != nil {
+            return "use either --after or --before, not both"
+        }
+        // The anchor sid carries its own workspace, so placement can't also name one.
+        if args?.after != nil || args?.before != nil, args?.workspace != nil || args?.workspaceName != nil {
+            return "session.new takes --after/--before or a workspace, not both"
+        }
+        if args?.workspace != nil, args?.workspaceName != nil {
+            return "use either --workspace or --workspace-name, not both"
+        }
+        if args?.createWorkspace == true, args?.workspaceName == nil {
+            return "--create-workspace requires --workspace-name"
+        }
+        // --wait holds the surface after the command exits, so it is meaningless without a command.
+        if args?.wait == true, args?.command == nil {
+            return "--wait requires --command"
+        }
+        if args?.keepShellOpen == true, args?.command == nil {
+            return "--keep-shell-open requires --command"
+        }
+        // both answer "the command exited" — one with a prompt that closes, one with a live shell.
+        if args?.keepShellOpen == true, args?.wait == true {
+            return "--keep-shell-open cannot be combined with --wait"
+        }
+        return nil
+    }
+
     private func dispatchSessionCommand(_ request: ControlRequest) -> ControlResponse {
         switch request.cmd {
         case .sessionNew:
             let args = request.args
-            if args?.after != nil, args?.before != nil {
-                return ControlResponse(ok: false, error: "use either --after or --before, not both")
-            }
-            // The anchor sid carries its own workspace, so placement can't also name one.
-            if args?.after != nil || args?.before != nil, args?.workspace != nil || args?.workspaceName != nil {
-                return ControlResponse(ok: false, error: "session.new takes --after/--before or a workspace, not both")
-            }
-            if args?.workspace != nil, args?.workspaceName != nil {
-                return ControlResponse(ok: false, error: "use either --workspace or --workspace-name, not both")
-            }
-            if args?.createWorkspace == true, args?.workspaceName == nil {
-                return ControlResponse(ok: false, error: "--create-workspace requires --workspace-name")
-            }
-            // --wait holds the surface after the command exits, so it is meaningless without a command.
-            if args?.wait == true, args?.command == nil {
-                return ControlResponse(ok: false, error: "--wait requires --command")
+            if let error = sessionNewGuardError(args) {
+                return ControlResponse(ok: false, error: error)
             }
             return actions.createSession(ControlSessionCreateOptions(
                 window: args?.window,
@@ -287,6 +304,7 @@ public struct ControlDispatcher {
                 createWorkspace: args?.createWorkspace,
                 command: args?.command,
                 wait: args?.wait,
+                keepShellOpen: args?.keepShellOpen,
                 name: args?.name,
                 after: args?.after,
                 before: args?.before,

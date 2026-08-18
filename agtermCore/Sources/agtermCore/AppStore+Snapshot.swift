@@ -36,6 +36,8 @@ extension AppStore {
                         foregroundCommand: session.foregroundCommand,
                         splitForegroundCommand: session.splitForegroundCommand,
                         initialCommand: session.initialCommand, commandWait: session.commandWait ? true : nil,
+                        keepShellOpen: session.keepShellOpen ? true : nil,
+                        zmxPrimaryKey: session.zmxPrimaryKey, zmxSplitKey: session.zmxSplitKey,
                         backgroundWatermark: session.backgroundWatermark,
                         restoreCommand: session.restoreCommand,
                         splitRestoreCommand: session.splitRestoreCommand)
@@ -71,6 +73,11 @@ extension AppStore {
         session.flagged = snapshot.flagged ?? false
         session.initialCommand = snapshot.initialCommand
         session.commandWait = snapshot.commandWait ?? false
+        session.keepShellOpen = snapshot.keepShellOpen ?? false
+        // both keys come back even for a split the snapshot does not rebuild: the daemon behind the key is
+        // still running, so the row must keep owning it — a fresh ⌘D re-attaches to it rather than a new one.
+        session.zmxPrimaryKey = snapshot.zmxPrimaryKey
+        session.zmxSplitKey = snapshot.zmxSplitKey
         session.wasRestored = true
         session.backgroundWatermark = snapshot.backgroundWatermark
         session.restoreCommand = snapshot.restoreCommand

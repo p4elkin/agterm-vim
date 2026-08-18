@@ -76,8 +76,13 @@ extension AppStore {
     /// Closes the split pane: hides it AND tears down its surface, so a later split starts a fresh shell.
     /// Reached by the split shell's own exit, by the palette's Close Split and by `session.split.close`;
     /// resets `splitFocused`, else it points the collapsed view at the gone pane.
-    public func closeSplit(_ sessionID: UUID) {
+    ///
+    /// `endingZmx` is false when the caller is the split pane's own EXIT — see `ZmxLifecycle.Close.clientExit`
+    /// for why a client that went away may not take its zmx session with it.
+    public func closeSplit(_ sessionID: UUID, endingZmx: Bool = true) {
         guard let session = session(withID: sessionID) else { return }
+        endZmxSessions(session, close: endingZmx ? .split : .clientExit)
+        session.zmxSplitKey = nil // the right pane is gone; a fresh ⌘D records whatever key it attaches to
         session.isSplit = false
         session.hasSplit = false
         session.splitFocused = false
@@ -113,7 +118,7 @@ extension AppStore {
     public func closePrimaryPane(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
         guard let survivor = session.splitSurface else {
-            closeSession(sessionID)
+            closeSession(sessionID, endingZmx: false) // the pane's own exit, see `ZmxLifecycle.Close.clientExit`
             return
         }
         let priorPrimary = session.surface // the exiting pane, torn down below; scopes the search reset
@@ -130,6 +135,13 @@ extension AppStore {
         // or a restart resurrects the exited command and a snapshot persists commandWait with no initialCommand.
         session.initialCommand = nil
         session.commandWait = false
+        session.keepShellOpen = false
+        // ⚠️ the zmx session FOLLOWS the survivor, it is not re-derived: the promoted pane is still the client
+        // of the `-right` session it attached to, however the model addresses it from here on. The exited
+        // primary's own key is dropped rather than ended — its client is what went away, see
+        // `ZmxLifecycle.Close.clientExit`.
+        session.zmxPrimaryKey = session.zmxSplitKey
+        session.zmxSplitKey = nil
         // migrate the split's metadata up, then clear the split fields so nothing describes a gone pane. cwd
         // prefers the split's live PWD, then `initialSplitCwd` (a restored split whose shell hasn't emitted
         // OSC yet), falling back to the exited primary's only when the split has none. title is replaced
@@ -182,10 +194,10 @@ extension AppStore {
     public func closeSplitPane(_ sessionID: UUID) {
         guard let session = session(withID: sessionID) else { return }
         guard session.surface != nil, session.splitSurface != nil else {
-            closeSession(sessionID)
+            closeSession(sessionID, endingZmx: false)
             return
         }
-        closeSplit(sessionID)
+        closeSplit(sessionID, endingZmx: false)
     }
 
     /// Opens an ephemeral overlay terminal on a session running `command` (e.g. a TUI). The surface is

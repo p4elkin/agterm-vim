@@ -166,6 +166,21 @@ struct CommandsTests {
         #expect(validationMessage(["session", "new", "--wait"]) == "--wait requires --command")
     }
 
+    @Test func sessionNewWithKeepShellOpen() throws {
+        let expected = ControlRequest(cmd: .sessionNew,
+                                      args: ControlArgs(command: "claude", keepShellOpen: true))
+        #expect(try request(["session", "new", "--command", "claude", "--keep-shell-open"]) == expected)
+    }
+
+    @Test func sessionNewRejectsKeepShellOpenWithoutCommand() {
+        #expect(validationMessage(["session", "new", "--keep-shell-open"]) == "--keep-shell-open requires --command")
+    }
+
+    @Test func sessionNewRejectsKeepShellOpenWithWait() {
+        #expect(validationMessage(["session", "new", "--command", "claude", "--keep-shell-open", "--wait"])
+            == "--keep-shell-open cannot be combined with --wait")
+    }
+
     @Test func sessionNewRejectsWorkspaceAndWorkspaceName() {
         #expect(validationMessage(["session", "new", "--workspace", "active", "--workspace-name", "servers"])
             == "use either --workspace or --workspace-name, not both")

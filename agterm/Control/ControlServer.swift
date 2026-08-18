@@ -589,15 +589,20 @@ final class ControlServer {
         // the window's dashboard controller (nil until WindowContentView registers it), read LIVE for the four
         // dashboard read-backs: the keyboard-driven dashboard bypasses the command path, so a cache goes stale.
         let dashboard = DashboardControllerRegistry.shared.controller(for: windowID)
+        // one resolver for the whole build: it caches the `zmx list` subprocess both foreground closures
+        // need, so a window of wrapped panes spawns zmx once instead of once per pane.
+        let zmx = ZmxForegroundResolver()
         return store.controlTree(
             foreground: { session in
                 (session.surface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx,
+                                              ownedKey: session.zmxPrimaryKey)
                 }
             },
             splitForeground: { session in
                 (session.splitSurface as? GhosttySurfaceView).flatMap {
-                    ForegroundProcess.running(for: $0, shellBasename: shellBasename)
+                    ForegroundProcess.running(for: $0, shellBasename: shellBasename, zmx: zmx,
+                                              ownedKey: session.zmxSplitKey)
                 }
             },
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },
@@ -642,7 +647,9 @@ final class ControlServer {
         let cwd = options.cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
-                                             wait: options.wait ?? false, at: index, select: !options.noSelect) else {
+                                             wait: options.wait ?? false,
+                                             keepShellOpen: options.keepShellOpen ?? false,
+                                             at: index, select: !options.noSelect) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
         if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }

@@ -108,6 +108,9 @@ public final class AppStore {
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
     @ObservationIgnored var recentClosedDidChange: (() -> Void)?
     @ObservationIgnored let controlEventSink: ((ControlEventDraft) -> Void)?
+    /// The zmx effects a close or a rename performs; nil leaves every one undone, which is what a test and an
+    /// instance that wrapped nothing both want. What it is asked to do is decided by `ZmxLifecycle`.
+    @ObservationIgnored let zmx: ZmxSessionSink?
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp writes once after the
     /// burst settles instead of hitting disk per event.
     @ObservationIgnored private let saveDebouncer = Debouncer()
@@ -150,13 +153,15 @@ public final class AppStore {
                 persistence: PersistenceStore = PersistenceStore(),
                 recentClosedStore: RecentClosedStore? = nil,
                 recentClosedDidChange: (() -> Void)? = nil,
-                controlEventSink: ((ControlEventDraft) -> Void)? = nil) {
+                controlEventSink: ((ControlEventDraft) -> Void)? = nil,
+                zmx: ZmxSessionSink? = nil) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
         self.recentClosedStore = recentClosedStore
         self.recentClosedDidChange = recentClosedDidChange
         self.controlEventSink = controlEventSink
+        self.zmx = zmx
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -271,6 +276,8 @@ public final class AppStore {
                                           hud: hudNode(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
+                                          keepShellOpen: (session.initialCommand != nil && session.keepShellOpen)
+                                              ? true : nil,
                                           foreground: foreground(session),
                                           splitForeground: splitForeground(session),
                                           // the PERSISTED overrides, not the transient pending payloads, so
@@ -373,7 +380,8 @@ public final class AppStore {
     /// workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
-                           name: String? = nil, wait: Bool = false, at index: Int? = nil, select: Bool = true) -> Session? {
+                           name: String? = nil, wait: Bool = false, keepShellOpen: Bool = false,
+                           at index: Int? = nil, select: Bool = true) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // cwd feeds {AGT_SESSION_PWD} through initialCwd → effectiveCwd until OSC 7 reports; name feeds
         // {AGT_SESSION_NAME}. See TerminalText.
@@ -381,6 +389,7 @@ public final class AppStore {
                               customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
         session.initialCommand = command
         session.commandWait = wait
+        session.keepShellOpen = keepShellOpen
         if let index {
             let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
             workspaces[wsIndex].sessions.insert(session, at: destination)
@@ -445,12 +454,16 @@ public final class AppStore {
 
     /// Removes a session, tears down its surface, and — if it was active — reselects the most-recently-active
     /// surviving session in scope (`closeReselectionTarget(after:)`), falling back to the positional neighbor.
-    public func closeSession(_ sessionID: UUID) {
+    ///
+    /// `endingZmx` is false when the caller is a pane's own EXIT rather than a deliberate close — see
+    /// `ZmxLifecycle.Close.clientExit` for why a zmx client that went away may not take its session with it.
+    public func closeSession(_ sessionID: UUID, endingZmx: Bool = true) {
         guard let location = location(ofSession: sessionID) else { return }
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
+        endZmxSessions(removed, close: endingZmx ? .row : .clientExit)
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
         removed.surface?.teardown()
@@ -489,6 +502,7 @@ public final class AppStore {
         for session in workspace.sessions { emitSessionClosed(session, workspace: workspace.id) }
         if workspace.sessions.isEmpty { scheduleTreeChanged() }
         for session in workspace.sessions {
+            endZmxSessions(session, close: .row)
             session.surface?.teardown()
             session.splitSurface?.teardown()
             session.overlaySurface?.teardown()

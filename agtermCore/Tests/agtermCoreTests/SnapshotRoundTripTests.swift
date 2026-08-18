@@ -108,6 +108,76 @@ struct SnapshotRoundTripTests {
         #expect(snap.commandWait == nil)
     }
 
+    @Test func keepShellOpenRoundTripsThroughSnapshot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
+        session.keepShellOpen = true
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].keepShellOpen == true)
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].keepShellOpen == true)
+    }
+
+    @Test func keepShellOpenFalseIsOmittedFromTheJSONAndRestoresFalse() throws {
+        // a tree with no keep-shell-open row must serialize exactly as it did before the field existed.
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
+        #expect(session.keepShellOpen == false)
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].keepShellOpen == nil)
+        let json = try String(decoding: JSONEncoder().encode(snap), as: UTF8.self)
+        #expect(!json.contains("keepShellOpen"), "an unset flag must write no key; got \(json)")
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].keepShellOpen == false)
+    }
+
+    /// A promoted survivor's key is what makes this worth persisting: the row is addressed as the main pane
+    /// but attaches to `-right`, and only the snapshot carries that across a restart.
+    @Test func theZmxKeysRoundTripThroughSnapshot() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.zmxPrimaryKey = "\(session.id.uuidString)-right"
+        session.zmxSplitKey = "\(session.id.uuidString)-left"
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
+        #expect(restored.workspaces[0].sessions[0].zmxSplitKey == "\(session.id.uuidString)-left")
+    }
+
+    @Test func anUnwrappedRowWritesNoZmxKeys() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let json = try String(decoding: JSONEncoder().encode(store.snapshot()), as: UTF8.self)
+        #expect(!json.contains("zmxPrimaryKey"), "an unwrapped row must write no key; got \(json)")
+        #expect(!json.contains("zmxSplitKey"))
+    }
+
+    @Test func legacySnapshotWithoutZmxKeysDecodesNil() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","zmxPrimaryKey":7}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.zmxPrimaryKey == nil)
+        #expect(snap.zmxSplitKey == nil)
+    }
+
+    @Test func legacySnapshotWithoutKeepShellOpenDecodesNil() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","initialCommand":"claude","commandWait":true}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.keepShellOpen == nil)
+        #expect(snap.commandWait == true)
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        store.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws.id, name: "work", sessions: [snap])]))
+        #expect(store.workspaces[0].sessions[0].keepShellOpen == false)
+    }
+
     @Test func sidebarWidthAndVisibilityRoundTripThroughSnapshot() {
         let store = makeStore()
         _ = store.addWorkspace(name: "work")

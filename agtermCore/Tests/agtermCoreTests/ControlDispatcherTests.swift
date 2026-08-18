@@ -218,6 +218,49 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func sessionNewThreadsKeepShellOpenWithCommand() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionNewResponse = ControlResponse(ok: true, result: ControlResult(id: "held-open"))
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew,
+            args: ControlArgs(command: "claude", keepShellOpen: true)
+        ))
+
+        let options = ControlSessionCreateOptions(window: nil, cwd: nil, workspace: nil, workspaceName: nil,
+                                                  createWorkspace: nil, command: "claude",
+                                                  keepShellOpen: true, name: nil)
+        #expect(response == ControlResponse(ok: true, result: ControlResult(id: "held-open")))
+        #expect(actions.calls == [.sessionNew(options)])
+    }
+
+    @Test func sessionNewRejectsKeepShellOpenWithoutCommand() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew,
+            args: ControlArgs(keepShellOpen: true)
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "--keep-shell-open requires --command"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func sessionNewRejectsKeepShellOpenWithWait() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionNew,
+            args: ControlArgs(command: "claude", wait: true, keepShellOpen: true)
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "--keep-shell-open cannot be combined with --wait"))
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func sessionNewRejectsCreateWorkspaceWithoutName() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

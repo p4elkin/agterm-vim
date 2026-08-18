@@ -61,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // then re-side the config to the launch appearance, while NSApp exists and no scene has mounted —
         // a dark launch otherwise strips the env, restore replay and command off every restored surface.
         GhosttyApp.shared.syncLaunchColorScheme()
+        // before any window restores, so the claim is read from what is PERSISTED: a restored pane is
+        // zero-client until its client attaches, and reaping off live windows would kill the agents of every
+        // window that had not come back yet.
+        ZmxWrapping.live.reapOrphanedSessions()
         scheduleRestoredWindowReconciliation(reason: "did-finish-launching")
         NotificationCenter.default.addObserver(self, selector: #selector(menuBeganTracking),
                                                name: NSMenu.didBeginTrackingNotification, object: nil)
@@ -342,12 +346,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shellBasename = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
         for session in sessions {
             if let view = session.surface as? GhosttySurfaceView {
-                session.foregroundCommand = ForegroundProcess.command(for: view, shellBasename: shellBasename)
+                session.foregroundCommand = ForegroundProcess.command(for: view, shellBasename: shellBasename,
+                                                                      ownedKey: session.zmxPrimaryKey)
             }
             // only a SHOWN split is recreated on restore, so gate on isSplit — a hidden split's captured
             // command would sit stale until the next ⌘D fires it.
             if session.isSplit, let split = session.splitSurface as? GhosttySurfaceView {
-                session.splitForegroundCommand = ForegroundProcess.command(for: split, shellBasename: shellBasename)
+                session.splitForegroundCommand = ForegroundProcess.command(for: split, shellBasename: shellBasename,
+                                                                           ownedKey: session.zmxSplitKey)
             }
         }
     }

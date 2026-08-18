@@ -167,6 +167,16 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     /// Whether a `--command` session holds its surface after the command exits (`--wait`), so a restored
     /// command session holds again instead of vanishing. nil (missing key) decodes as false.
     public var commandWait: Bool?
+    /// Whether a `--command` session runs its command inside a shell that outlives it
+    /// (`--keep-shell-open`), so a restored row keeps the behaviour. nil (missing key) decodes as false, and
+    /// false is omitted on write so a tree with no such row serializes as it did before the field existed.
+    public var keepShellOpen: Bool?
+    /// The zmx session name the main pane's process attached to, so a restored row re-attaches to the daemon
+    /// it already owns instead of one derived from its current pane role — which differs after a split
+    /// promotion. nil (missing key) means the pane was never wrapped.
+    public var zmxPrimaryKey: String?
+    /// The zmx session name the split pane's process attached to, the split analogue of `zmxPrimaryKey`.
+    public var zmxSplitKey: String?
     /// The session's background watermark (image or rasterized text); nil = none. `.text` re-renders its PNG.
     public var backgroundWatermark: BackgroundWatermark?
     /// The main pane's restore-command override (`session.restore`), winning over `foregroundCommand` and
@@ -180,7 +190,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
                 splitAxis: SplitAxis? = nil, fontSize: Double? = nil,
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
                 foregroundCommand: [String]? = nil, splitForegroundCommand: [String]? = nil,
-                initialCommand: String? = nil, commandWait: Bool? = nil,
+                initialCommand: String? = nil, commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
+                zmxPrimaryKey: String? = nil, zmxSplitKey: String? = nil,
                 backgroundWatermark: BackgroundWatermark? = nil,
                 restoreCommand: String? = nil, splitRestoreCommand: String? = nil) {
         self.id = id
@@ -196,6 +207,9 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.splitForegroundCommand = splitForegroundCommand
         self.initialCommand = initialCommand
         self.commandWait = commandWait
+        self.keepShellOpen = keepShellOpen
+        self.zmxPrimaryKey = zmxPrimaryKey
+        self.zmxSplitKey = zmxSplitKey
         self.backgroundWatermark = backgroundWatermark
         self.restoreCommand = restoreCommand
         self.splitRestoreCommand = splitRestoreCommand
@@ -203,8 +217,9 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, customName, cwd, isSplit, splitAxis, fontSize, splitCwd, splitRatio, flagged
-        case foregroundCommand, splitForegroundCommand, initialCommand, commandWait, backgroundWatermark
-        case restoreCommand, splitRestoreCommand
+        case foregroundCommand, splitForegroundCommand, initialCommand, commandWait, keepShellOpen
+        case zmxPrimaryKey, zmxSplitKey
+        case backgroundWatermark, restoreCommand, splitRestoreCommand
     }
 
     /// Custom decode so every optional is LOSSY, matching `Snapshot.init(from:)`: an unknown
@@ -229,6 +244,9 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         splitForegroundCommand = (try? c.decodeIfPresent([String].self, forKey: .splitForegroundCommand)) ?? nil
         initialCommand = (try? c.decodeIfPresent(String.self, forKey: .initialCommand)) ?? nil
         commandWait = (try? c.decodeIfPresent(Bool.self, forKey: .commandWait)) ?? nil
+        keepShellOpen = (try? c.decodeIfPresent(Bool.self, forKey: .keepShellOpen)) ?? nil
+        zmxPrimaryKey = (try? c.decodeIfPresent(String.self, forKey: .zmxPrimaryKey)) ?? nil
+        zmxSplitKey = (try? c.decodeIfPresent(String.self, forKey: .zmxSplitKey)) ?? nil
         backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
         restoreCommand = (try? c.decodeIfPresent(String.self, forKey: .restoreCommand)) ?? nil
         splitRestoreCommand = (try? c.decodeIfPresent(String.self, forKey: .splitRestoreCommand)) ?? nil
