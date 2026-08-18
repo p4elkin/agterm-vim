@@ -238,20 +238,20 @@ View notes:
 - Modify: `agterm/Views/WindowContentView+Titlebar.swift` (add the pill inside the `HStack` in
   `chromePills`, after `overlayRedirectPill` — one line, nothing else in this file)
 
-- [ ] write failing tests in `AttentionPillTests`, modelled on
+- [x] write failing tests in `AttentionPillTests`, modelled on
       `agtermTests/OverlayRedirectPillTests.swift`: drive the static state function directly,
       covering the all-zero case (no segments), exactly one non-zero category, and all four
-- [ ] create `WindowContentView+AttentionPill.swift` with the segment table (category → symbol →
+- [x] create `WindowContentView+AttentionPill.swift` with the segment table (category → symbol →
       color → count), the static state function taking `AttentionCounts`, and the capsule view
       following `overlayRedirectPill`'s shape and caption sizing
-- [ ] render nothing at all when `counts.isEmpty`; omit any segment whose count is zero
-- [ ] add the accessibility identifier `attention-counts-pill` and expose the counts through
+- [x] render nothing at all when `counts.isEmpty`; omit any segment whose count is zero
+- [x] add the accessibility identifier `attention-counts-pill` and expose the counts through
       `.accessibilityValue`
-- [ ] add the one line to `chromePills`; do NOT modify `floatingPillsLayer`, its
+- [x] add the one line to `chromePills`; do NOT modify `floatingPillsLayer`, its
       `allowsHitTesting(false)`, or either `sidebarOnScreen` gate
-- [ ] verify each SF Symbol resolves at the deployment target; substitute a near neighbour if one
+- [x] verify each SF Symbol resolves at the deployment target; substitute a near neighbour if one
       does not, and note the substitution in this plan
-- [ ] run `./scripts/test-app.sh -only-testing:agtermTests/AttentionPillTests` — must pass before
+- [x] run `./scripts/test-app.sh -only-testing:agtermTests/AttentionPillTests` — must pass before
       task 4
 
 ### Task 4: Document the pill as fork-only chrome

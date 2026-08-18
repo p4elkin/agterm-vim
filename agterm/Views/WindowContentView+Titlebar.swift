@@ -167,6 +167,7 @@ extension WindowContentView {
             HStack(spacing: 8) {
                 if NormalModeController.shared.isActive { normalModePill }
                 overlayRedirectPill
+                attentionCountsPill
             }
         }
     }
