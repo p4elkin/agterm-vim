@@ -70,4 +70,13 @@ extension AppStore {
                 }
             }
     }
+
+    /// What the attention pill draws. Built from `attentionSessions` rather than a second filter of its own,
+    /// so the pill can never disagree with the palette and the titlebar bell about what counts as needing
+    /// attention. `unseen` is the SELECTED session's unread count alone — the different question of whether
+    /// the session in front of you has something unread, not `WindowLibrary.totalUnseenCount`'s window-wide sum.
+    public var attentionCounts: AttentionCounts {
+        AttentionCounts.make(statuses: attentionSessions.map(\.agentIndicator.status),
+                             activeUnseen: activeSession?.unseenCount ?? 0)
+    }
 }

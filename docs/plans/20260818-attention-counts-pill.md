@@ -221,13 +221,14 @@ View notes:
 - Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTests.swift` (add cases beside the existing
   `controlTreeReportsStatusPaneForNonIdleSession` status tests)
 
-- [ ] write a failing test: a store with non-idle sessions spread across two workspaces counts all
+- [x] write a failing test: a store with non-idle sessions spread across two workspaces counts all
       of them, proving the accessor inherits `attentionSessions`' cross-workspace reach
-- [ ] write a failing test: `activeUnseen` is the selected session's `unseenCount` alone, not a sum
+- [x] write a failing test: `activeUnseen` is the selected session's `unseenCount` alone, not a sum
       across sessions
-- [ ] write a failing test: no selected session reads as zero unseen rather than crashing
-- [ ] add the `attentionCounts` computed property built from `attentionSessions` and `activeSession`
-- [ ] run `cd agtermCore && swift test --filter AttentionCounts` — must pass before task 3
+- [x] write a failing test: no selected session reads as zero unseen rather than crashing
+- [x] add the `attentionCounts` computed property built from `attentionSessions` and `activeSession`
+- [x] run `cd agtermCore && swift test --filter AttentionCounts` — must pass before task 3
+      (the new AppStore cases are named lowercase, so `--filter attentionCounts` runs them; both ran green)
 
 ### Task 3: The pill view
 
