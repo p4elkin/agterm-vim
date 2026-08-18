@@ -107,7 +107,7 @@ paths:
 
 ## Public catalog
 
-There are 76 public commands:
+There are 78 public commands:
 
 - `tree`, `events.read`
 - `workspace.new`, `.rename`, `.delete`, `.select`, `.move`, `.focus`, `.filter`, `.collapse`, `.expand`
@@ -115,7 +115,7 @@ There are 76 public commands:
   `.split.close`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
   `.flag`, `.seen`, `.restore`, `.background`, `.overlay.open`, `.overlay.close`, `.overlay.resize`,
-  `.overlay.result`, `.hud.open`, `.hud.update`, `.hud.close`
+  `.overlay.result`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
 - `surface.zoom`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`
 - `quick`, `quick.type`, `quick.text`
 - `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
@@ -123,8 +123,14 @@ There are 76 public commands:
 - `window.new`, `.list`, `.select`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
 - `keymap.reload`, `keymap.list`, `config.reload`, `theme.set`, `theme.list`, `restore.clear`
+- `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
 
-`debug.appearance` is a private 77th `Command` case used only by `AppearanceFlipUITests`.
+`debug.appearance` is a private 79th `Command` case used only by `AppearanceFlipUITests`.
+
+⚠️ Fork-only commands are counted here and NOWHERE else. `session.pairing` and `overlay-redirect.toggle`
+exist only on this fork, so the bundled skill, `site/commands.html` and `README.md` keep their upstream
+count on purpose — see "Left out on purpose" in [[overlay-redirect]]. The synchronization contract below
+applies to upstream commands.
 It accepts light/dark, sets `NSApp.appearance`, posts `.agtermSystemAppearanceChanged`, echoes the effective
 side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provide no CLI or skill entry.
 
@@ -512,7 +518,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 ## Tree and window read-back
 
 - Session nodes include foreground/split foreground argv, background spec, overlay size, pane overlays,
-  split axis, split ratio, split focus, status fields, flag, unseen, restore pins, surfaces, and `realized`.
+  split axis, split ratio, split focus, status fields, flag, unseen, restore pins, the two overlay-redirect
+  pairing fields (`mirrorsSession`, `viewer` — fork only, both omitted when unset, see [[overlay-redirect]];
+  the surface node's `cwd` is fork-only too, present only on `right` and only when the split pane sits
+  somewhere other than the session's own `cwd`), surfaces, and `realized`.
 - `realized` reports the MAIN pane's `TerminalSurface.isRealized`, populated host-free in
   `AppStore.controlTree` (no app closure — `isRealized` is on the protocol) and false for an empty slot, so
   only a server predating the field omits it. It exists because `session.new` answers `ok` for a model

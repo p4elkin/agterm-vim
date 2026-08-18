@@ -90,7 +90,7 @@ public struct Agtermctl: ParsableCommand {
         abstract: "Drive agterm over its control socket.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self,
-                      Pick.self, Restore.self]
+                      Pick.self, Restore.self, OverlayRedirect.self]
     )
 
     public init() {}
@@ -113,12 +113,16 @@ extension RequestCommand {
     var echoesResultID: Bool { false }
     public func run() throws { try defaultRun() }
 
-    /// The default behavior: send the request once and print the response. Named separately so a command
-    /// that overrides `run()` (the `--block` overlay path) can still reach the single-round-trip path.
+    /// The default behavior: send the request once and print the response. Named separately so a command that
+    /// overrides `run()` can still reach the single-round-trip path.
     func defaultRun() throws {
-        let request = try makeRequest()
         let client = SocketClient(path: options.socketPath())
-        let response = try client.send(request)
+        try printAndCheck(client.send(try makeRequest()))
+    }
+
+    /// What every command does with an answer it is not going to act on further: print it, and make a failure
+    /// the process's own exit status. The overlay redirect's own tail ends here too.
+    func printAndCheck(_ response: ControlResponse) throws {
         SocketClient.printResponse(response, json: options.json, echoID: echoesResultID)
         if !response.ok { throw ExitCode.failure }
     }

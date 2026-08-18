@@ -1483,6 +1483,26 @@ struct AppStoreTests {
         ])
     }
 
+    /// ⚠️ The session node's `cwd` is `effectiveCwd`, always the PRIMARY pane's. Only the surface node can
+    /// say where the RIGHT pane is sitting, and `agterm-zmx-mirror` needs it: a mirrored `-right` row was
+    /// otherwise given the left pane's directory, so its redirected overlays opened in the wrong repository
+    /// whenever the two panes were not in the same one.
+    @Test func controlTreeGivesTheSplitPaneItsOwnCwd() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo/left"))
+        session.isSplit = true
+        session.hasSplit = true
+        session.splitSurface = SpySurface()
+        session.splitCwd = "/repo/right"
+
+        let surfaces = try #require(store.controlTree().workspaces[0].sessions.first?.surfaces)
+        #expect(store.controlTree().workspaces[0].sessions.first?.cwd == "/repo/left")
+        #expect(surfaces.first { $0.kind == "right" }?.cwd == "/repo/right")
+        // nil everywhere else means "the session's own", so nothing changed for a reader that only knew that.
+        #expect(surfaces.first { $0.kind == "left" }?.cwd == nil)
+    }
+
     @Test func controlTreeReportsSidebarVisibility() {
         let store = makeStore()
         #expect(store.controlTree().sidebarVisible == true)

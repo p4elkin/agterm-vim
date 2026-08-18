@@ -28,6 +28,13 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            // phase one of the two-phase protocol: a redirect answer opens NOTHING here, not even --follow,
+            // because the overlay is about to open on the other machine. `resolved` is agtermctl's already
+            // wrapped re-send, which must never re-enter the decision.
+            if !options.resolved, let redirect = self.overlayRedirect(for: id, store: store) {
+                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString,
+                                                                       overlayRedirect: redirect))
+            }
             if let pane = options.pane {
                 if let failure = store.openPaneOverlay(id, pane: pane, command: options.command,
                                                        cwd: options.cwd, wait: options.wait,
@@ -50,11 +57,69 @@ extension ControlServer: ControlActions {
         }
     }
 
+    /// The redirect decision for one session, nil when the overlay stays here. The rule itself is
+    /// `OverlayRedirect.outcome` in agtermCore — this reads the toggle and the session's two pairing fields
+    /// and does nothing else, so the pill and the redirect can never disagree.
+    private func overlayRedirect(for id: UUID, store: AppStore) -> ControlOverlayRedirect? {
+        let session = store.session(withID: id)
+        return OverlayRedirect.outcome(enabled: OverlayRedirectController.shared.isEnabled,
+                                       mirrors: session?.mirrorsSession,
+                                       viewer: session?.viewer,
+                                       now: Date().timeIntervalSince1970).redirect
+    }
+
     private func paneOverlayFailure(_ failure: PaneOverlayOpenFailure, target: String?) -> ControlResponse {
         switch failure {
         case .unknownSession: return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
         case .alreadyOpen: return ControlResponse(ok: false, error: PaneOverlayError.alreadyOpen)
         case .paneNotVisible: return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+        }
+    }
+
+    /// Set or clear the target session's overlay-redirect pairing (`session.pairing`, already validated in
+    /// the host-free dispatcher). `setViewer` stamps the confirmation time HERE, on receipt, so the laptop
+    /// and workstation clocks never need to agree — see `OverlayRedirect.stalenessWindow`.
+    func setOverlayPairing(_ target: String?, window: String?,
+                           update: ControlOverlayPairingUpdate) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            switch update {
+            case .setMirrors(let source):
+                // the mirror job re-asserts this every pass to backfill rows that never got one, so an
+                // unchanged value must not cost a full snapshot write, the same as a viewer heartbeat below.
+                // It must not even be ASSIGNED: the field is observed, and an equal value still invalidates
+                // every SwiftUI body reading it, once per mirrored row every 20 seconds.
+                let previous = session.mirrorsSession
+                guard previous != source else {
+                    return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+                }
+                session.mirrorsSession = source
+                // ⚠️ A move of the CWD ALONE is not saved either. It changes every time the human cd's on the
+                // far side, and `store.save()` is the undebounced full-tree snapshot write; the mirror job
+                // re-asserts the directory every pass, so a restored one is stale exactly like `confirmedAt`.
+                if previous?.host == source.host, previous?.session == source.session {
+                    return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+                }
+            case .clearMirrors:
+                session.mirrorsSession = nil
+            case .setViewer(let host, let row):
+                let heartbeat = session.viewer.map { $0.host == host && $0.row == row } ?? false
+                session.viewer = OverlayViewer(host: host, row: row, confirmedAt: Date().timeIntervalSince1970)
+                // ⚠️ A refresh that moves only `confirmedAt` is NOT saved. The mirror job sends one per
+                // mirrored row every 20 seconds, forever; `store.save()` is the undebounced full-snapshot
+                // write, so persisting each would be up to `MIRROR_MAX` tree serializations plus disk writes
+                // every pass on the main actor — to store a liveness stamp whose restored value is stale by
+                // definition. The in-memory field is what the decision and the pill read.
+                if heartbeat {
+                    return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+                }
+            case .clearViewer:
+                session.viewer = nil
+            }
+            store.save()
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }
 

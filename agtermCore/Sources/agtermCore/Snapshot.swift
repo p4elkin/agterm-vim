@@ -185,6 +185,12 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public var restoreCommand: String?
     /// The split (right) pane's restore-command override, the split analogue of `restoreCommand`.
     public var splitRestoreCommand: String?
+    /// The workstation session this row mirrors; nil for a session that mirrors nothing.
+    /// See `Session.mirrorsSession`.
+    public var mirrorsSession: OverlayMirrorSource?
+    /// The remote agterm currently watching this session; nil when nothing is watching.
+    /// See `Session.viewer`.
+    public var viewer: OverlayViewer?
 
     public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil,
                 splitAxis: SplitAxis? = nil, fontSize: Double? = nil,
@@ -193,7 +199,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
                 initialCommand: String? = nil, commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
                 zmxPrimaryKey: String? = nil, zmxSplitKey: String? = nil,
                 backgroundWatermark: BackgroundWatermark? = nil,
-                restoreCommand: String? = nil, splitRestoreCommand: String? = nil) {
+                restoreCommand: String? = nil, splitRestoreCommand: String? = nil,
+                mirrorsSession: OverlayMirrorSource? = nil, viewer: OverlayViewer? = nil) {
         self.id = id
         self.customName = customName
         self.cwd = cwd
@@ -213,6 +220,8 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.backgroundWatermark = backgroundWatermark
         self.restoreCommand = restoreCommand
         self.splitRestoreCommand = splitRestoreCommand
+        self.mirrorsSession = mirrorsSession
+        self.viewer = viewer
     }
 
     enum CodingKeys: String, CodingKey {
@@ -220,6 +229,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         case foregroundCommand, splitForegroundCommand, initialCommand, commandWait, keepShellOpen
         case zmxPrimaryKey, zmxSplitKey
         case backgroundWatermark, restoreCommand, splitRestoreCommand
+        case mirrorsSession, viewer
     }
 
     /// Custom decode so every optional is LOSSY, matching `Snapshot.init(from:)`: an unknown
@@ -250,5 +260,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         backgroundWatermark = (try? c.decodeIfPresent(BackgroundWatermark.self, forKey: .backgroundWatermark)) ?? nil
         restoreCommand = (try? c.decodeIfPresent(String.self, forKey: .restoreCommand)) ?? nil
         splitRestoreCommand = (try? c.decodeIfPresent(String.self, forKey: .splitRestoreCommand)) ?? nil
+        mirrorsSession = (try? c.decodeIfPresent(OverlayMirrorSource.self, forKey: .mirrorsSession)) ?? nil
+        viewer = (try? c.decodeIfPresent(OverlayViewer.self, forKey: .viewer)) ?? nil
     }
 }

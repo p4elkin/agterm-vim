@@ -193,5 +193,11 @@ paths:
   settings predate the flag never sees it. Decide it in `agtermApp.init()`: the first launch saves its own
   window within a second of the scene appearing, which would read back as prior state.
   `WelcomeAlert` suppresses itself under XCUITest unless `AGTERM_UITEST_SHOW_WELCOME` is set.
+- `overlayRedirectEnabled` (fork only, see [[overlay-redirect]]) arms the overlay redirect. `false` is
+  persisted as an absent key. `SettingsModel` is its only writer: it saves, then pushes the value into
+  `OverlayRedirectController.shared`, and `SettingsModel.init` seeds the controller from the loaded value,
+  which is what makes the toggle survive a relaunch. It has NO Settings UI and no menu item — the keymap
+  chord (`map <chord> overlay_redirect_toggle`), the palette action, and `agtermctl overlay-redirect
+  toggle` are the three ways in.
 - These settings are GUI-only unless the control catalog explicitly says otherwise. Do not add settings
   commands merely to mirror chrome; user actions already have control coverage.

@@ -55,6 +55,12 @@ public enum Command: String, Codable, Sendable {
     /// Normal mode on/off/toggle. Spelled `mode` rather than `normal.mode` because the app has exactly one
     /// modal keyboard state; `sidebar.mode` is a VIEW mode and shares nothing with it.
     case normalMode = "mode"
+    /// Set or clear a session's overlay-redirect pairing: which workstation session this row mirrors, or
+    /// which remote agterm is watching it. See `OverlayRedirect.swift`.
+    case sessionPairing = "session.pairing"
+    /// The overlay-redirect toggle on/off/toggle — the control half of the `overlay_redirect_toggle`
+    /// built-in. App-wide and persisted, unlike `mode` (normal mode). See `OverlayRedirectController`.
+    case overlayRedirectToggle = "overlay-redirect.toggle"
     case notify
     case fontInc = "font.inc"
     case fontDec = "font.dec"
@@ -91,7 +97,9 @@ public enum Command: String, Codable, Sendable {
 public struct ControlArgs: Codable, Sendable, Equatable {
     /// New name for `workspace.new`/`workspace.rename`/`session.rename`; the initial `session.new` name
     /// (blank/omitted leaves the auto basename); the `theme.set` theme (omitted/empty = ghostty's built-in
-    /// colors / "default ghostty", NOT the seeded `agterm` app default).
+    /// colors / "default ghostty", NOT the seeded `agterm` app default). Also `session.pairing`'s far-side
+    /// key alongside `host`: the mirrored session's key (`mode == "mirrors"`) or the watching row's session
+    /// key (`mode == "viewer"`); ignored when `host` is empty (a clear).
     public var name: String?
     /// Working directory for `session.new`.
     public var cwd: String?
@@ -127,8 +135,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` (`on|off|toggle`), `quick`/`surface.zoom` (`show|hide|toggle`),
     /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
     /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
-    /// `session.background` (`image|text|color|clear`), and `session.restore` (`set|none|clear` — pin
-    /// `command`, pin nothing, or drop the pin).
+    /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
+    /// `command`, pin nothing, or drop the pin), and `session.pairing` (`mirrors|viewer` — which of the
+    /// two pairings `host`/`name` describe).
     public var mode: String?
     /// Optional divider direction for `session.split`: `vertical` (left/right) or `horizontal` (top/bottom).
     /// Omitted preserves the original axis-agnostic show/hide behavior.
@@ -220,6 +229,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// The program the overlay terminal runs for `session.overlay.open` (e.g. `revdiff`); also the shell
     /// line `session.restore` pins for the next launch (mode `set` only, typed verbatim — never re-quoted).
     public var command: String?
+    /// The far-side host for `session.pairing`: with `mode == "mirrors"`, the workstation this row mirrors;
+    /// with `mode == "viewer"`, the host now watching this session. Missing is a usage error (there is
+    /// nothing to pair or clear); an EMPTY string clears the field named by `mode` instead of setting it —
+    /// `name` is then ignored.
+    public var host: String?
     /// Whether a command surface keeps its "press any key to close" prompt after the command exits instead of
     /// closing: `session.overlay.open --wait`, and `session.new --command … --wait` (the primary session
     /// surface, held via `Session.commandWait`).
@@ -240,6 +254,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// For `session.overlay.open`, whether to select the target after opening; omitted/false opens in the
     /// background without changing the active session (the default for full and floating overlays alike).
     public var follow: Bool?
+    /// `session.overlay.open`'s two-phase resolved re-send: `agtermctl` sets this ONLY on the second
+    /// request it sends after wrapping the program in ssh per the redirect decision. The app then skips the
+    /// decision and opens exactly as the desk path would, so the wrapped re-send cannot loop back into a
+    /// fresh decision. Not user-facing: never exposed as a CLI flag with visible help. See
+    /// `OverlayRedirect.swift` and "the two-phase protocol" in `.claude/rules/overlay-redirect.md`.
+    public var resolved: Bool?
     /// The HUD panel's headline for `session.hud.open`/`.update` — required and non-empty on both, since an
     /// update with nothing to say is a close. Wrapped app-side; control characters are rejected.
     ///
@@ -309,9 +329,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
                 noSelect: Bool? = nil,
                 text: String? = nil, select: Bool? = nil, mode: String? = nil, axis: String? = nil,
-                command: String? = nil, wait: Bool? = nil, keepShellOpen: Bool? = nil,
+                command: String? = nil, host: String? = nil, wait: Bool? = nil, keepShellOpen: Bool? = nil,
                 sizePercent: Int? = nil, full: Bool? = nil,
-                follow: Bool? = nil, message: String? = nil, detail: String? = nil, spinner: String? = nil,
+                follow: Bool? = nil, resolved: Bool? = nil,
+                message: String? = nil, detail: String? = nil, spinner: String? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, window: String? = nil,
                 pane: String? = nil, paneID: String? = nil, to: String? = nil,
@@ -340,11 +361,13 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.mode = mode
         self.axis = axis
         self.command = command
+        self.host = host
         self.wait = wait
         self.keepShellOpen = keepShellOpen
         self.sizePercent = sizePercent
         self.full = full
         self.follow = follow
+        self.resolved = resolved
         self.message = message
         self.detail = detail
         self.spinner = spinner
@@ -425,12 +448,19 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     public let kind: String
     public let active: Bool
     public let visible: Bool
+    /// This PANE's own working directory, omitted when it is the session node's `cwd`. Only the `right` pane
+    /// can have one: the session's `cwd` is `effectiveCwd`, always the PRIMARY pane's, so a reader that wants
+    /// the directory a given pane is sitting in must prefer this and fall back to the session's. Fork only —
+    /// `agterm-zmx-mirror` puts it on a mirrored row's pairing, and without it a mirrored `right` row
+    /// redirected its overlays into the LEFT pane's repository.
+    public let cwd: String?
 
-    public init(id: String, kind: String, active: Bool, visible: Bool) {
+    public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil) {
         self.id = id
         self.kind = kind
         self.active = active
         self.visible = visible
+        self.cwd = cwd
     }
 }
 
@@ -548,6 +578,12 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// The split (right) pane's persisted restore-command override, the split analogue of `restoreCommand`
     /// (the read side of `session.restore --pane right`).
     public let splitRestoreCommand: String?
+    /// The workstation session this row mirrors; nil/omitted for a session that mirrors nothing.
+    /// See `Session.mirrorsSession`.
+    public let mirrorsSession: OverlayMirrorSource?
+    /// The remote agterm currently watching this session; nil/omitted when nothing is watching.
+    /// See `Session.viewer`.
+    public let viewer: OverlayViewer?
     /// The session's agent status (`active`/`completed`/`blocked`) as the `AgentStatus` raw value;
     /// nil/omitted when idle. The read side of `session.status`.
     public let status: String?
@@ -604,7 +640,9 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 hud: ControlHudNode? = nil, scratch: Bool = false, flagged: Bool = false,
                 commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
-                restoreCommand: String? = nil, splitRestoreCommand: String? = nil, status: String? = nil,
+                restoreCommand: String? = nil, splitRestoreCommand: String? = nil,
+                mirrorsSession: OverlayMirrorSource? = nil, viewer: OverlayViewer? = nil,
+                status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
                 statusShape: String? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil,
@@ -632,6 +670,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.splitForeground = splitForeground
         self.restoreCommand = restoreCommand
         self.splitRestoreCommand = splitRestoreCommand
+        self.mirrorsSession = mirrorsSession
+        self.viewer = viewer
         self.status = status
         self.statusPane = statusPane
         self.statusBlink = statusBlink
@@ -873,6 +913,9 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var keymap: ControlKeymap?
     /// The current or terminal picker outcome for `pick.result`.
     public var pick: ControlPickResult?
+    /// `session.overlay.open`'s redirect answer. Present ONLY when the app decided the overlay belongs on
+    /// another machine, and then nothing was opened here; absent on the desk path, which opens as today.
+    public var overlayRedirect: ControlOverlayRedirect?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -880,7 +923,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 theme: String? = nil, themes: [String]? = nil, ratio: Double? = nil,
                 sync: Bool? = nil, light: String? = nil, dark: String? = nil,
                 events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil,
-                pick: ControlPickResult? = nil) {
+                pick: ControlPickResult? = nil, overlayRedirect: ControlOverlayRedirect? = nil) {
         self.id = id
         self.tree = tree
         self.text = text
@@ -897,6 +940,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.events = events
         self.keymap = keymap
         self.pick = pick
+        self.overlayRedirect = overlayRedirect
     }
 }
 

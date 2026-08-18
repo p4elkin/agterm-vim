@@ -631,4 +631,20 @@ final class NormalModeKeyRoutingTests: XCTestCase {
                       "the same chord pressed once arms it")
         XCTAssertTrue(fired.isEmpty, "arming fires nothing on its own")
     }
+
+    /// ⚠️ The regression for `CustomCommandRunner.rebuild()`'s keyless-action merge, driven through the REAL
+    /// runner. `overlay_redirect_toggle` is keyless like `normal_mode`: no default chord and no menu item, so
+    /// a single-chord `map` line lands in `builtinOverrides` (a would-be menu equivalent) and never in the
+    /// `builtinSequences` table the monitor matches against. Only the runner's own
+    /// `keymap.binding(for: .overlayRedirectToggle)` fold makes the chord reach anything. Delete that line
+    /// and this test fails; the host-free `OverlayRedirectToggleTests` mirror of it does not.
+    func testABareMapToTheKeylessOverlayRedirectToggleFiresThroughTheRunner() throws {
+        let seeded = try seededRunner(keymap: "map ctrl+s overlay_redirect_toggle\n")
+        seeded.start()
+        defer { seeded.stop() }
+
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("s", keyCode: 1, flags: .control), in: window),
+                      "a bound keyless action must consume its chord")
+        XCTAssertEqual(fired, [.overlayRedirectToggle])
+    }
 }

@@ -113,6 +113,7 @@ extension WindowContentView {
             if NormalModeController.shared.isActive, library.activeWindowID == windowID {
                 normalModePill.padding(.leading, 8)
             }
+            overlayRedirectPill
             Spacer(minLength: 12)
             titlebarTrailingActions
         }
@@ -176,6 +177,54 @@ extension WindowContentView {
         .padding(.vertical, 3)
         .background(chromeText, in: Capsule())
         .accessibilityIdentifier("normal-mode-pill")
+    }
+
+    /// Overlay-redirect indicator: which machine the next `session overlay open` opens on. Present for as
+    /// long as the toggle is ARMED — grey is a real state there (armed, nothing paired, so the overlay stays
+    /// put), while with the toggle off the answer is always "here" and a permanent grey capsule would be
+    /// chrome nobody asked for. This is why the pill needs no `InterfaceElement` toggle of its own: it is
+    /// already gated on the one setting that makes it mean anything. Solid-colour capsule rather than
+    /// NORMAL's inverted style, so the three colours read clearly against any terminal theme.
+    ///
+    /// ⚠️ `TimelineView` is the pill's only clock. A `viewer` going stale is the passage of time, not a
+    /// state change, so nothing would invalidate the body and red would never turn back to grey on its own.
+    @ViewBuilder private var overlayRedirectPill: some View {
+        if OverlayRedirectController.shared.isEnabled {
+            TimelineView(.periodic(from: .now, by: Self.overlayRedirectPillTick)) { context in
+                Text("OVERLAY")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Self.overlayRedirectPillColor(
+                        Self.overlayRedirectPillState(session: store.activeSession,
+                                                      now: context.date.timeIntervalSince1970)), in: Capsule())
+                    .accessibilityIdentifier("overlay-redirect-pill")
+                    .padding(.leading, 8)
+            }
+        }
+    }
+
+    /// How often the pill re-reads the clock. Well under `OverlayRedirect.stalenessWindow`, the age it is
+    /// watching for: a viewer that goes stale must turn the pill grey within a few seconds of doing so.
+    static let overlayRedirectPillTick: TimeInterval = 5
+
+    /// The decision half of the pill, factored out of the view body so a test can drive it without
+    /// instantiating `WindowContentView`: reads the active session's pairing fields and calls the one place
+    /// the rule lives, `OverlayRedirect.outcome` (`OverlayRedirect.swift`). Never re-derive the
+    /// grey/green/red rule here — if the view and the behaviour can disagree, they eventually will.
+    /// `enabled` is always true: the pill is not rendered at all while the toggle is off.
+    static func overlayRedirectPillState(session: Session?, now: Double) -> OverlayRedirectPill {
+        OverlayRedirect.outcome(enabled: true, mirrors: session?.mirrorsSession, viewer: session?.viewer,
+                                now: now).pill
+    }
+
+    private static func overlayRedirectPillColor(_ pill: OverlayRedirectPill) -> Color {
+        switch pill {
+        case .grey: return Color(nsColor: .systemGray)
+        case .green: return Color(nsColor: .systemGreen)
+        case .red: return Color(nsColor: .systemRed)
+        }
     }
 
     /// The 1px themed separator between two title-bar button groups.

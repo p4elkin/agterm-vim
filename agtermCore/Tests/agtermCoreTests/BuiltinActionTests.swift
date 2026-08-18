@@ -31,7 +31,8 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.dashboard.rawValue == "dashboard")
         #expect(BuiltinAction.duplicateSession.rawValue == "duplicate_session")
         #expect(BuiltinAction.normalMode.rawValue == "normal_mode")
-        #expect(BuiltinAction.allCases.count == 44)
+        #expect(BuiltinAction.overlayRedirectToggle.rawValue == "overlay_redirect_toggle")
+        #expect(BuiltinAction.allCases.count == 45)
     }
 
     @Test func rejectsUnknownName() {
@@ -119,6 +120,7 @@ struct BuiltinActionTests {
             .showAttention: Chord(mods: [.control, .shift], key: "i"),
             .dashboard: Chord(mods: [.command, .shift], key: "g"),
             .normalMode: nil,
+            .overlayRedirectToggle: nil,
         ]
         #expect(expected.count == BuiltinAction.allCases.count)
         for action in BuiltinAction.allCases {
@@ -175,7 +177,7 @@ struct BuiltinActionTests {
         let keyless: Set<BuiltinAction> = [
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-            .toggleWorkspaceFilter, .normalMode,
+            .toggleWorkspaceFilter, .normalMode, .overlayRedirectToggle,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")

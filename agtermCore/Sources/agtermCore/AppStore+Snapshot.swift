@@ -40,7 +40,8 @@ extension AppStore {
                         zmxPrimaryKey: session.zmxPrimaryKey, zmxSplitKey: session.zmxSplitKey,
                         backgroundWatermark: session.backgroundWatermark,
                         restoreCommand: session.restoreCommand,
-                        splitRestoreCommand: session.splitRestoreCommand)
+                        splitRestoreCommand: session.splitRestoreCommand,
+                        mirrorsSession: session.mirrorsSession, viewer: session.viewer)
     }
 
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
@@ -82,6 +83,8 @@ extension AppStore {
         session.backgroundWatermark = snapshot.backgroundWatermark
         session.restoreCommand = snapshot.restoreCommand
         session.splitRestoreCommand = session.isSplit ? snapshot.splitRestoreCommand : nil
+        session.mirrorsSession = snapshot.mirrorsSession
+        session.viewer = snapshot.viewer
         if launchRestore {
             // into the TRANSIENT slots, leaving the persisted fields nil: `snapshot()` serializes those, so
             // arming them would let any save before the surface spawns rewrite the argv the launch strip
