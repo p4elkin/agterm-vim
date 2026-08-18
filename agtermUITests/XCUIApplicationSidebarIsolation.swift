@@ -1,3 +1,4 @@
+import Carbon
 import XCTest
 
 extension XCUIApplication {
@@ -19,8 +20,31 @@ extension XCUIApplication {
     /// FB11763863), then launches and brings the app to the foreground. Caller sets `AGTERM_STATE_DIR`
     /// (and any test-specific env) before calling.
     func launchForUITest(file: StaticString = #filePath, line: UInt = #line) {
+        assertLetterChordsCanBeTyped(file: file, line: line)
         launchEnvironment["AGTERM_UITEST_FORCE_SIDEBAR_VISIBLE"] = "1"
+        // a developer's login shell may hand every agterm pane to a multiplexer and exit when that detaches
+        // (`zmx attach "$AGTERM_SESSION_ID-left" && exit` in ~/.zprofile), which closes the seeded session
+        // mid-test — measured at about 7 seconds, so only a test that idles longer than that sees it. The
+        // skip flag rides the app's own environment because the pane's shell inherits it from there.
+        launchEnvironment["AGTERM_ZMX_SKIP"] = "1"
         launchForeground(file: file, line: line)
+    }
+
+    /// Refuse to run on a non-ASCII input source, where `typeKey("s")` cannot carry the physical key the
+    /// app resolves a chord by (issue #306 policy, see [[keymap]]) and every letter-driven assertion dies
+    /// six silent retries later. NAMED keys keep working, so the mode still enters on ⌃␣ while `nmap s`
+    /// never fires, which reads as a broken keymap. A copy of `KeyboardLayout.isASCIICapable` because a
+    /// UI-test bundle cannot import the app target: it must read the same source, the same way, including
+    /// the unreadable-means-true fallback, or it predicts a branch the app does not take.
+    private func assertLetterChordsCanBeTyped(file: StaticString, line: UInt) {
+        var asciiCapable = true
+        if let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+           let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable) {
+            asciiCapable = CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue())
+        }
+        XCTAssertTrue(asciiCapable, "the machine's keyboard input source is not ASCII-capable, so XCUITest "
+            + "cannot type letter chords; switch to a Latin layout before running the UI suite",
+            file: file, line: line)
     }
 
     /// A palette or picker row by item id, shared by every palette test. `PaletteRow` carries its

@@ -451,7 +451,14 @@ and the reserved ⌃Tab / ⌃1 / ⌃2, still work). The titlebar shows a `NORMAL
 there is no `--window`. Turning it on fails while terminal zoom, the dashboard or a picker owns the
 keyboard, and while agterm is not frontmost — with no key window the mode's key monitor sees nothing, so
 the pill would advertise a mode no keystroke can reach. Opening one of those three while the mode is
-already on leaves the mode, so the surface gets the arrows and Return it needs.
+already on leaves the mode, so the surface gets the arrows and Return it needs. A program overlay
+(`session.overlay.open`, or an editor an `nmap` bind opens) that appears on the active session while the
+mode is on holds the keys: the mode stays on underneath and `window list` still reports it. Three things
+give the keys back — the overlay closing, the active session or focused pane changing, and the
+`map … normal_mode` chord, which re-enters the mode. Other chords the mode does not own (⌘⌃F, a
+Command-chord custom command) reach their binding as if the mode were off but leave the keys with the
+overlay. Selecting a session whose overlay was ALREADY running never takes the keys away in the first
+place, and neither does turning the mode on over one.
 
 **notify** — `notify <body> [--title T]` — post a desktop notification attributed to a session. To signal that you need the user, prefer `session status` (`blocked`/`completed`), a persistent typed attention state rather than a one-shot banner; keep `notify` for a one-off nudge.
 

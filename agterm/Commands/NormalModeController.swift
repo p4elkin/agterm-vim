@@ -20,6 +20,9 @@ final class NormalModeController {
     private(set) var armedGlyphs = ""
 
     @ObservationIgnored private var state = NormalModeState(binds: [])
+    /// Whether an overlay has taken the keyboard from under the user. Not observable: it is derived per
+    /// keystroke and never on the overlay's own timeline, so the pill cannot show it honestly.
+    @ObservationIgnored private var overlayHandover = NormalModeOverlayHandover()
 
     /// Whether a sequence is half-typed. The monitor reads it to decide whether focus leaving the terminal
     /// has a leader to drop.
@@ -29,17 +32,28 @@ final class NormalModeController {
     /// rebound mode would keep swallowing keys against a map the user no longer has.
     func rebuild(binds: [NormalModeBind]) {
         state = NormalModeState(binds: binds)
+        overlayHandover.reset()
         publish()
     }
 
     func enter() {
         state.enter()
+        // forgetting the remembered target makes the first key after entry an arrival, which is what lets
+        // the mode take the keyboard back from an overlay that was already running when it was entered.
+        overlayHandover.reset()
         publish()
     }
 
     func exit() {
         state.exit()
+        overlayHandover.reset()
         publish()
+    }
+
+    /// Advance the overlay handover by one key event and report whether the mode has yielded the keyboard to
+    /// the program.
+    func stepOverlayHandover(session: UUID?, pane: OverlayPane, ownsKeyboard: Bool) -> Bool {
+        overlayHandover.step(session: session, pane: pane, ownsKeyboard: ownsKeyboard)
     }
 
     /// Abandon a half-typed sequence without leaving the mode (the leader timeout).

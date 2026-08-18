@@ -62,8 +62,10 @@ final class CustomCommandRunner {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.normalMode.isActive else { return }
+                // both matchers, not just the timer: a yielded key arms the GLOBAL one while the mode is on,
+                // and cancelling the timer alone would leave that prefix armed with nothing to time it out.
+                self.abandonLeader()
                 self.normalMode.exit()
-                self.cancelLeaderTimer()
             }
         }
     }
@@ -107,10 +109,11 @@ final class CustomCommandRunner {
     var escapeSender: @MainActor (GhosttySurfaceView) -> Void = { $0.sendEscapeKey() }
 
     /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Normal
-    /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while
-    /// armed resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
-    /// timer, and `toggle_fullscreen`'s chord toggles full screen without reaching the matcher at all — all
-    /// consumed; `.unmatched` passes through.
+    /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while armed
+    /// resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
+    /// timer unless normal mode still owns the bare keys, and `toggle_fullscreen`'s chord toggles full
+    /// screen without reaching the matcher at all — all consumed but that un-armed case; `.unmatched`
+    /// passes through.
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard let keyWindow = NSApp.keyWindow else { return false }
         return handleKeyDown(event, in: keyWindow)
@@ -133,8 +136,8 @@ final class CustomCommandRunner {
         // field would eat the typing — and a field is focused only because the user asked to type into it,
         // including through a mode bind that opened a palette.
         if responder is NSText {
-            if normalMode.isActive { normalMode.exit() }
             abandonLeader()
+            if normalMode.isActive { normalMode.exit() }
             return false
         }
         let focusedSurface = responder as? GhosttySurfaceView
@@ -144,36 +147,44 @@ final class CustomCommandRunner {
             return false
         }
         // normal mode takes the key ahead of the global matcher: its binds are bare keys that would otherwise
-        // fall through to whatever the global map holds.
+        // fall through to whatever the global map holds. The flag carries the one key that reaches the
+        // matcher below with the mode still holding every bare key — the `.armed` case is what that costs.
+        var modeOwnsBareKeys = false
         if normalMode.isActive {
             // terminal zoom, the dashboard grid or a pending picker owns the keyboard for the same reason a
             // focused text field does, and needs the arrows and Return the mode would swallow. Entry is
             // gated on this predicate already; this is the re-check for a modal opened WHILE the mode was
             // on — an `nmap dashboard` bind, or a control command.
             guard AppActions.uiActionsEnabled(for: library.activeWindowID) else {
+                abandonLeader()
                 normalMode.exit()
-                abandonLeader()
                 return false
             }
-            // a caller's program in an overlay owns the keyboard until it exits, and the mode's bare keys
-            // would eat every keystroke it needs. This SUSPENDS rather than exits: the mode is still on when
-            // the overlay closes, so opening an editor from it and quitting lands back in it.
-            if library.activeStore?.activeSession?.programOverlayOwnsKeyboard == true {
-                abandonLeader()
-                return false
+            // a caller's program in an overlay owns the keyboard until it exits, and the mode yields to it
+            // for as long as it does — an event rather than a state, and not an exit either.
+            // `NormalModeOverlayHandover` owns that rule; [[keymap]] says where this call has to sit.
+            let active = library.activeStore?.activeSession
+            let yielded = normalMode.stepOverlayHandover(session: active?.id,
+                                                         pane: active?.focusedPane ?? .left,
+                                                         ownsKeyboard: active?.programOverlayOwnsKeyboard == true)
+            if yielded, normalMode.isArmed {
+                // the MODE's half-typed leader only, never `abandonLeader()`: the chord that would have
+                // completed it went to the program, while the GLOBAL prefix is armed BY yielded keys and has
+                // to survive. Cancelling the shared timer is safe because arming the mode's leader resets
+                // the global matcher, so only one of the two is ever armed.
+                normalMode.reset()
+                cancelLeaderTimer()
             }
-            // `toggle_fullscreen` is dispatched below, PAST this branch, because it is the one built-in with
-            // no menu item (see there). Every other Command chord passing through here reaches
-            // `performKeyEquivalent` and its menu item; this one would reach nothing, so the mode has to
-            // dispatch it itself or ⌘⌃F silently dies for as long as the mode is on. Command-carrying only:
-            // a fullscreen chord rebound to a bare key stays the mode's to swallow, like any other `map`
-            // bind, and an armed normal-mode leader still outranks it.
-            if event.modifierFlags.contains(.command), !normalMode.isArmed, let chord = chord(from: event),
-               chord == settings.keymap.equivalent(for: .toggleFullscreen) {
-                keyWindow.toggleFullScreen(nil)
-                return true
+            // two kinds of key are not the mode's and fall through to the global matcher below: a YIELDED
+            // one, because yielded means what the mode being OFF means, and a COMMAND chord with no mode
+            // leader armed, because the built-ins and custom commands bound to one have no menu item behind
+            // the monitor and would otherwise reach nothing at all. See [[keymap]].
+            let fallsThroughToMatcher = yielded
+                || (event.modifierFlags.contains(.command) && !normalMode.isArmed)
+            guard fallsThroughToMatcher else {
+                return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
             }
-            return handleNormalModeKey(event, in: keyWindow, focusedSurface: focusedSurface)
+            modeOwnsBareKeys = !yielded
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
         // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding
@@ -221,6 +232,13 @@ final class CustomCommandRunner {
             actions.perform(action, in: keyWindow)
             return true
         case .armed:
+            // only a Command chord reaches here with the mode still owning the bare keys, and the sequence
+            // it would start can never finish: the next chord is bare and the mode swallows it. So hand the
+            // chord back like an unmatched one rather than eat it for a sequence that cannot fire.
+            guard !modeOwnsBareKeys else {
+                dropGlobalLeader()
+                return false
+            }
             startLeaderTimer()
             return true
         case .unmatched:
@@ -233,7 +251,8 @@ final class CustomCommandRunner {
     /// thing between the mode and the terminal — nothing holds first responder for it — so every outcome but
     /// `.inactive` is CONSUMED, an unmatched key included.
     ///
-    /// Two exceptions are handed straight back. A Command chord: the monitor runs ahead of
+    /// Two exceptions are handed straight back. A Command chord, which reaches here only with a normal-mode
+    /// leader armed (the caller routes every other one to the global matcher): the monitor runs ahead of
     /// `performKeyEquivalent`, so consuming one would swallow ⌘Q and leave no way out of the mode. And a
     /// reserved monitor chord (`isReservedMonitorChord` — ctrl+tab, ctrl+1/2): those live in the switcher
     /// and pane-shortcut monitors, which run whatever the mode is, and nothing orders the four `.keyDown`
@@ -262,16 +281,17 @@ final class CustomCommandRunner {
         }
         switch outcome {
         case .fired(let action):
-            cancelLeaderTimer()
+            dropGlobalLeader()
             // the same seam a `.firedBuiltin` chord takes, so an `nmap` bind does exactly what the palette row
             // behind its action does, gate included.
             actions.perform(action, in: keyWindow)
             return true
         case .armed:
+            commandEngine.reset()
             startLeaderTimer()
             return true
         case .firedCommand(let id):
-            cancelLeaderTimer()
+            dropGlobalLeader()
             // the mode honors OS key repeats so a held bare key can skim sessions; a command target must NOT
             // inherit that, or holding the key spawns one process per repeat. The key stays consumed either way.
             guard !event.isARepeat else { return true }
@@ -283,11 +303,19 @@ final class CustomCommandRunner {
             }
             return true
         case .exited, .swallowed:
-            cancelLeaderTimer()
+            dropGlobalLeader()
             return true
         case .inactive:
             return false
         }
+    }
+
+    /// End any half-typed GLOBAL leader. Both matchers CAN be armed at once — a yielded key arms the global
+    /// one while the mode is on — and cancelling the shared timer without resetting it strands that prefix
+    /// with no timeout, in front of the `isArmed`-guarded `toggle_fullscreen` dispatch above.
+    private func dropGlobalLeader() {
+        commandEngine.reset()
+        cancelLeaderTimer()
     }
 
     /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base
@@ -333,8 +361,8 @@ final class CustomCommandRunner {
         leaderTimer = nil
     }
 
-    /// Drop a half-typed leader and its timer when focus leaves the terminal. Only one matcher can be armed,
-    /// so resetting the other is a no-op.
+    /// Drop both matchers and the shared timer. Every caller that also leaves normal mode calls this FIRST:
+    /// the guard reads the mode's leader, which `normalMode.exit()` has already cleared.
     private func abandonLeader() {
         guard commandEngine.isArmed || normalMode.isArmed else { return }
         commandEngine.reset()

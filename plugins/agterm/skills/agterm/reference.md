@@ -934,6 +934,27 @@ selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mod
 window errors, and `no open window` when none is open. The GUI half (frontmost only) is View ▸ Collapse
 Workspaces and the ⌃⇧P palette "Collapse Workspaces".
 
+## mode
+
+`agtermctl mode [on|off|toggle]` — normal mode, where the keys bound with `nmap` in `keymap.conf` run
+built-in actions or custom commands and every other key is swallowed instead of reaching the shell.
+Defaults to `toggle`. The same state the `normal_mode` built-in enters and Esc leaves.
+
+It is ONE app-wide state held by the frontmost window, so there is no `--window` selector. Read it back as
+true-only `normalMode` on that window's `window list` node (omitted, never `false`, when the mode is off);
+`window list` human output tags the row `[normal mode]`, and the titlebar shows a `NORMAL` pill. The binds
+themselves are visible only in `keymap list`'s `normalMode` section.
+
+Turning it on goes through the same gate the keymap chord has, and a gate that swallows the entry is an
+ERROR rather than a silent no-op — a caller that believes the mode is on would send bare keys straight to
+the shell. It fails while terminal zoom, the dashboard or a picker owns the keyboard, and while agterm is
+not frontmost: the mode is a filter in agterm's key monitor, so with no key window the pill would advertise
+a mode no keystroke can reach. Opening any of those three while the mode is already on LEAVES the mode, so
+the surface gets the arrows and Return it needs.
+
+`mode off` is not a user pressing Esc: it hands no Escape keypress down to the pane, so a program running
+in vi-mode there stays where it was. Leaving is idempotent and never errors.
+
 ## notify
 
 `agtermctl notify <body> [--title T] [--target] [--window W]` — post a macOS desktop notification
@@ -1016,7 +1037,9 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
 - `map <chord|sequence> <action>` — rebind a built-in menu action to a single chord or a leader
   sequence. A sequence (chords joined by `>`, e.g. `ctrl+space>s`) carries a modifier on its first chord
   only. When a built-in's only binding is a sequence, its menu key equivalent is removed, but the action
-  palette and tooltips show the joined glyphs (e.g. `⌃␣>S`).
+  palette and tooltips show the joined glyphs (e.g. `⌃␣>S`). A sequence is inert while normal mode is on:
+  its tail chords are bare keys, and the mode swallows those. A Command-leading first chord is handed back
+  rather than eaten; any other first chord the mode swallows like the bare key it is.
 - `command "<name>" [chord] <shell...>` — define a custom shell command, listed in the action palette
   marked `custom`. The quoted name may contain spaces. The post-name token is the chord only if it
   parses AND carries a modifier (a bare modifier-less key is rejected). A custom chord may be a leader
@@ -1027,7 +1050,8 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   (names are resolved after the whole file is read) — a target matching no command is dropped with an
   `unknown command '<name>'` diagnostic on that line. `map` and `nmap` are separate namespaces, so the
   same chord may appear in both. Holding a key bound to an action repeats it; a command target runs once
-  and swallows the repeats.
+  and swallows the repeats. A chord carrying `cmd`, `ctrl+tab` or `ctrl+1`/`ctrl+2` is rejected at any
+  position: the mode never takes those, so the bind could not fire.
 
 Either verb's chord token may hold **alternatives** joined by `|`, with no spaces around it (everything
 after the first token is the shell line): `map cmd+t|ctrl+space>s toggle_split` fires the action from
@@ -1164,6 +1188,11 @@ here is app-global and touches only the captured commands, not those overrides.
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar),
+`invalid mode: <value>` (normal mode over the raw socket; the `agtermctl` CLI rejects the same value
+locally with `mode must be on, off, or toggle`) /
+`cannot enter normal mode: zoom, the dashboard or a picker owns the keyboard, or agterm is not frontmost`
+(the one you will actually hit — `mode on` while another app is frontmost) /
+`no open window` (mode on with nothing open),
 `invalid focus mode: <value> (on|off|toggle|add)` (workspace focus over the raw socket; the `agtermctl`
 CLI rejects the same value locally with `mode must be one of: on, off, toggle, add`),
 `invalid workspace filter mode: <value>` (workspace filter over the raw socket; the CLI rejects it

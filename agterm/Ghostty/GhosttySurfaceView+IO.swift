@@ -112,13 +112,10 @@ extension GhosttySurfaceView {
 
     /// Synthesizes an Escape keypress, the handoff normal mode makes when Esc leaves it: whatever runs in the
     /// pane (vim, shell vi-mode, Claude Code's vim mode) enters ITS normal mode from the same keystroke. A
-    /// keypress, not `inject(text:)`, because an in-app key press is what the user made. `false` when the
-    /// libghostty surface isn't realized, so a caller can tell "nothing to send to" from a delivered key.
-    @discardableResult
-    func sendEscapeKey() -> Bool {
-        guard let surface else { return false }
+    /// keypress, not `inject(text:)`, because an in-app key press is what the user made.
+    func sendEscapeKey() {
+        guard let surface else { return }
         sendKeyPress(keyCode: UInt32(InterruptKeystroke.escapeKeyCode), to: surface)
-        return true
     }
 
     /// Press + release of one virtual keycode with no modifiers and no text, so the program on the other end

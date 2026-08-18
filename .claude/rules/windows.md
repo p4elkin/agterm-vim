@@ -147,8 +147,10 @@ session drag are out of scope.
 - `window.list` is served from `cachedWindowNodes`. Registration and unregistration post
   `.agtermWindowAttachmentChanged`; observe it on `.main`, not synchronously, because unregister precedes
   `closeWindow` and an immediate refresh captures `open: true` without geometry.
-- Refresh on every command, frontmost change, sidebar visibility change, attachment, and NSWindow
-  move/resize/fullscreen/minimize transitions. Ignore notification payloads: carrying non-Sendable
+- Refresh on every command, frontmost change, sidebar visibility change, attachment, NSWindow
+  move/resize/fullscreen/minimize transitions, and `.agtermNormalModeChanged`. That last observer alone is
+  synchronous (a nil queue), because a keystroke enters normal mode with no command behind it to refresh
+  the cache, and `mode on` must read its own result back. Ignore notification payloads: carrying non-Sendable
   `Notification` into a main-actor region fails Swift 6 Release WMO even when Debug passes.
 
 ## Control catalog
@@ -158,7 +160,8 @@ session drag are out of scope.
   `window.minimize`. Keep their protocol cases, dispatch/actions, CLI mappings, and tests synchronized
   per the repository-wide control contract.
 - `window.list` returns ID/name/open/active plus open-store auto-follow/sidebar state and live
-  geometry/fullscreen/zoom/minimize. Closed-window live fields are omitted. Geometry is top-left,
+  geometry/fullscreen/zoom/minimize, and true-only `normalMode` on the window holding the mode.
+  Closed-window live fields are omitted. Geometry is top-left,
   display-relative, y-down, matching move/resize.
 - Delete enforces at least one library entry without GUI confirmation. `window.select` raises or opens.
   Window ID resolution accepts active, exact ID, unique prefix, ambiguity, and not found; most library

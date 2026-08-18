@@ -78,6 +78,11 @@ paths:
   auto-sized grid unless terminal zoom is active. Share `dashboardMembers` with control.
 - The View menu carries no fullscreen item of agterm's own, and `toggle_fullscreen` rides the key monitor
   rather than a menu shortcut; see [[windows]]. It remains rebindable and control-drivable.
+- `normal_mode` is the second such action: no menu item and no palette row, because it is entered from a
+  `map` chord or `agtermctl mode` and a menu click would arm a mode over whatever took focus next. It is a
+  genuine exemption from the shared-seam rule, and the control side carries it — see [[keymap]].
+  Its NORMAL pill is likewise NOT a hideable `InterfaceElement`: a mode that swallows every bare key must
+  never be invisible. Do not re-open either question without asking the maintainer.
 - Font shortcuts call libghostty binding actions on the key window's first-responder surface, falling back
   to the active session. Persistence still flows from cell-size callbacks.
 - `shortcutGlyph` delegates to host-free `Keymap.glyphHint`. Use it for palette hints and the ten built-in

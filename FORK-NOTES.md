@@ -83,12 +83,14 @@ then opening a palette left its text field unable to type — and was deleted.
 
 Consequences worth knowing:
 
-- Command chords always pass through, so ⌘Q can never be swallowed and you cannot be trapped.
+- A Command chord goes to the global matcher, so ⌘⌃F and a Command-bound custom command still fire; one
+  that matches nothing passes through, so ⌘Q can never be swallowed and you cannot be trapped.
 - A focused text field passes keys through and ends the mode.
 - The mode ends on a click in a pane, on a modal taking the keyboard, and on the window resigning key.
-- A program overlay (an editor, vifm, `session.overlay.open`) SUSPENDS the mode instead of ending it:
-  every key passes through to the overlay, and the mode is still on when the overlay closes. A HUD is
-  passive and suspends nothing.
+- A program overlay (an editor, vifm, `session.overlay.open`) that APPEARS where you already were yields
+  the keyboard instead of ending the mode — keys pass to the overlay and the mode is still on when it
+  closes — while walking onto an overlay already running, or entering the mode over one, keeps the keys,
+  and a yielded key still reaches `map` binds, ⌘⌃F and `ctrl+space`. A HUD is passive and yields nothing.
 
 ## Control API
 
