@@ -167,11 +167,12 @@ paths:
   triggers cannot fire on non-Latin layouts. agterm matches Ghostty.app and cannot fix this app-side.
   Use `key_`, as `ghostty-defaults.conf` does for `super+key_c/key_v/key_a` (issue #30).
   The `ghostty` section of `site/docs.html` documents the distinction.
-- A built-in reaches a leader only as an alternative, never as its menu equivalent: an `NSMenuItem` holds
-  exactly one key-equivalent character. Literal `+`/`>` are separators and not
-  bare tokens, but bind as `shift+=`/`shift+.`. `increase_font_size`'s stored `Chord(key:"+")` cannot
-  round-trip and prints `(not expressible)` in the starter file. Ctrl-Tab and Ctrl-1/2 are reserved,
-  monitor-driven, and not rebindable. Palette custom hints use raw kitty syntax, not macOS glyphs.
+- A built-in reaches a leader only as an alternative, such as `map ctrl+space>s toggle_split`, never as
+  its menu equivalent: an `NSMenuItem` holds exactly one key-equivalent character. Literal `+`/`>` are
+  separators and not bare tokens, but bind as `shift+=`/`shift+.`. `increase_font_size`'s stored
+  `Chord(key:"+")` cannot round-trip and prints `(not expressible)` in the starter file. Ctrl-Tab and
+  Ctrl-1/2 are reserved, monitor-driven, and not rebindable. Palette custom hints use raw kitty syntax,
+  not macOS glyphs.
 - `shortcutGlyph(for:)` over `glyphHint(for:)` is the single resolver behind built-in palette hints and
   the toolbar/sidebar tooltips. It space-joins the menu chord's glyphs and each alternative's, a sequence's
   own chords joined by `>` so a run cannot read as one chord (`⌘T ⌃␣>S`),

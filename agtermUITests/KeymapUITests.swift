@@ -99,6 +99,39 @@ final class KeymapUITests: XCTestCase {
         XCTAssertTrue(poll { self.sessionRowCount() == 3 }, "the still-bound override ⌘⇧Y should keep creating sessions")
     }
 
+    // a built-in bound to a leader has no menu key equivalent left, so `CustomCommandRunner`'s monitor is
+    // its only dispatch path — the seam this whole feature turns on.
+    func testBuiltinSequenceFiresAction() throws {
+        seedKeymap("map ctrl+a>s new_session\n")
+        app.launchForUITest()
+        focusTerminal()
+        XCTAssertTrue(poll { self.sessionRowCount() == 1 }, "should start with the one seeded session")
+
+        XCTAssertTrue(pressUntil({ self.sessionRowCount() >= 2 }, press: {
+            app.typeKey("a", modifierFlags: .control)
+            app.typeKey("s", modifierFlags: [])
+        }), "the leader sequence ⌃A S should fire new_session")
+    }
+
+    // the other half of the sequence contract: `equivalent(for:)` returns nil for a sequence-bound action,
+    // so its menu item must lose the shipped chord rather than keep firing beside the sequence.
+    func testBuiltinSequenceClearsMenuKeyEquivalent() throws {
+        seedKeymap("map ctrl+a>s new_session\n")
+        app.launchForUITest()
+        focusTerminal()
+        XCTAssertTrue(poll { self.sessionRowCount() == 1 }, "should start with the one seeded session")
+
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertFalse(poll { self.sessionRowCount() == 2 }, "the shipped default ⌘N must no longer create a session")
+        XCTAssertEqual(sessionRowCount(), 1, "no session should have been created by the cleared key equivalent")
+
+        // positive control: the sequence is live, so the negative above cannot pass on a dead keymap.
+        XCTAssertTrue(pressUntil({ self.sessionRowCount() >= 2 }, press: {
+            app.typeKey("a", modifierFlags: .control)
+            app.typeKey("s", modifierFlags: [])
+        }), "the sequence that took the action over should still fire it")
+    }
+
     func testCustomCommandSingleChordFires() throws {
         let marker = markerDir.appendingPathComponent("single")
         seedKeymap("command \"Touch A\" cmd+shift+e touch '\(marker.path)'\n")
@@ -347,6 +380,17 @@ final class KeymapUITests: XCTestCase {
         for _ in 0..<attempts {
             press()
             if poll({ FileManager.default.fileExists(atPath: marker.path) }, timeout: perAttempt) { return true }
+        }
+        return false
+    }
+
+    /// `chordFiresMarker` for an effect observed in the UI rather than through a marker file: run `press`,
+    /// poll `condition`, retry a few times. The condition must tolerate a retried press landing twice.
+    private func pressUntil(_ condition: () -> Bool, attempts: Int = 6, perAttempt: TimeInterval = 2.5,
+                            press: () -> Void) -> Bool {
+        for _ in 0..<attempts {
+            press()
+            if poll(condition, timeout: perAttempt) { return true }
         }
         return false
     }

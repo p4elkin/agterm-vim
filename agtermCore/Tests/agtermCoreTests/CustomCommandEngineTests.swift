@@ -118,4 +118,21 @@ struct CustomCommandEngineTests {
         #expect(engine.advance(ctrlA) == .armed)
         #expect(engine.advance(x) == .firedBuiltin(.toggleSplit))
     }
+
+    @Test func builtinSequenceRearmsOnFreshLeader() {
+        var engine = CustomCommandEngine(commands: [], builtinSequences: [.toggleSplit: [[ctrlA, g]]])
+
+        #expect(engine.advance(ctrlA) == .armed)
+        #expect(engine.advance(ctrlA) == .armed)
+        #expect(engine.advance(g) == .firedBuiltin(.toggleSplit))
+    }
+
+    @Test func resetAbandonsBuiltinSequence() {
+        var engine = CustomCommandEngine(commands: [], builtinSequences: [.toggleSplit: [[ctrlA, g]]])
+
+        #expect(engine.advance(ctrlA) == .armed)
+        engine.reset()
+        #expect(!engine.isArmed)
+        #expect(engine.advance(g) == .unmatched)
+    }
 }

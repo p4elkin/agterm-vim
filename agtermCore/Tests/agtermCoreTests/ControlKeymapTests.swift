@@ -66,6 +66,45 @@ import Testing
         #expect(row.overridden == true)
     }
 
+    // the opt-in guarantee the whole feature rests on: an untouched keymap.conf must project exactly what
+    // `BuiltinAction.defaultChord` gives, for every case, so nothing changes for a caller who never used `map`.
+    @Test func untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction() throws {
+        let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
+                                            diagnostics: [], path: "/tmp/keymap.conf")
+
+        for action in BuiltinAction.allCases {
+            let row = try #require(payload.actions.first { $0.action == action.rawValue })
+            #expect(row.chord == action.defaultChord?.displayString)
+            #expect(row.overridden == nil)
+        }
+    }
+
+    @Test func sequenceBoundActionReportsItsSequenceAndIsOverridden() throws {
+        let sequence: Keybind = [Chord(mods: [.control], key: "space"), Chord(mods: [], key: "s")]
+        let keymap = Keymap(builtinOverrides: [:], commands: [],
+                            builtinSequences: [.closeSession: [sequence]], builtinUnbound: [.closeSession])
+        let payload = ControlKeymap.project(keymap: keymap, diagnostics: [], path: "/tmp/keymap.conf")
+        let close = try #require(payload.actions.first { $0.action == "close_session" })
+
+        #expect(close.chord == nil, "the sequence took the action over, so no menu chord is left")
+        #expect(close.alternates == ["ctrl+space>s"])
+        #expect(close.overridden == true)
+    }
+
+    // a keyless action given a sequence has no single-chord default to compare against, but it is an
+    // override all the same.
+    @Test func sequenceOnAKeylessActionIsAnOverride() throws {
+        let keyless = try #require(BuiltinAction.allCases.first { $0.defaultChord == nil })
+        let sequence: Keybind = [Chord(mods: [.control], key: "space"), Chord(mods: [], key: "s")]
+        let keymap = Keymap(builtinOverrides: [:], commands: [], builtinSequences: [keyless: [sequence]])
+        let payload = ControlKeymap.project(keymap: keymap, diagnostics: [], path: "/tmp/keymap.conf")
+        let row = try #require(payload.actions.first { $0.action == keyless.rawValue })
+
+        #expect(row.chord == nil)
+        #expect(row.alternates == ["ctrl+space>s"])
+        #expect(row.overridden == true)
+    }
+
     @Test func carriesCustomCommandsAndDistinguishesPaletteOnlyOnes() throws {
         let text = """
         command "Bound" cmd+shift+e echo hi

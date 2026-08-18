@@ -98,7 +98,10 @@ struct WindowContentView: View {
         }
     }
 
-    var body: some View {
+    /// The window's stacked layers, named apart from `body` only so each expression stays inside the
+    /// type-checker's budget; `body`'s modifier chain alone exhausts it. The stack is unchanged, so view
+    /// identity is too.
+    private var windowLayers: some View {
         ZStack(alignment: .top) {
             // the AppKit HSplitView overruns into the titlebar and steals header clicks, so the deck stays
             // inset below it; kept mounted while zoomed so background sessions and overlays still realize.
@@ -130,6 +133,12 @@ struct WindowContentView: View {
                 .padding(.top, titlebarHeight)
                 .zIndex(20)
         }
+    }
+
+    /// `windowLayers` plus the model observers. Split off `body` for the same budget reason as `windowLayers`;
+    /// the modifiers stay in their original order, so behavior is unchanged.
+    private var observedWindowLayers: some View {
+        windowLayers
         // with the title bar hidden (.hiddenTitleBar), pull our header to the very top so the traffic
         // lights overlay it as one row; no system title bar is left to clip the content.
         .ignoresSafeArea(.container, edges: .top)
@@ -199,6 +208,10 @@ struct WindowContentView: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        observedWindowLayers
         // `GhosttyApp` isn't observable, so re-read every mirror when a settings appearance change posts.
         .onReceive(NotificationCenter.default.publisher(for: .agtermAppearanceChanged)) { _ in
             terminalColor = WindowContentView.resolvedTerminalColor()

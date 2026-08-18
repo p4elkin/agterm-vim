@@ -109,4 +109,19 @@ struct KeybindMatcherTests {
         #expect(matcher.advance(ctrlA) == .unmatched)
         #expect(!matcher.isArmed)
     }
+
+    @Test func matcherFiresCustomAndBuiltinTargets() {
+        let id = UUID()
+        var matcher = KeybindMatcher([([cmdShiftU], .command(id)), ([ctrlA, b], .builtin(.toggleSplit))])
+        #expect(matcher.advance(cmdShiftU) == .fired(.command(id)))
+        #expect(matcher.advance(ctrlA) == .armed)
+        #expect(matcher.advance(b) == .fired(.builtin(.toggleSplit)))
+    }
+
+    @Test func exactCustomMatchWinsOverBuiltinSequencePrefix() {
+        let id = UUID()
+        var matcher = KeybindMatcher([([ctrlA], .command(id)), ([ctrlA, b], .builtin(.toggleSplit))])
+        #expect(matcher.advance(ctrlA) == .fired(.command(id)))
+        #expect(!matcher.isArmed)
+    }
 }

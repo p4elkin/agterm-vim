@@ -2,7 +2,8 @@
 public struct ControlKeymapAction: Codable, Sendable, Equatable {
     /// The action's `keymap.conf` name, e.g. `close_session`.
     public var action: String
-    /// The resolved chord in kitty syntax (`cmd+shift+e`), omitted when the action is keyless.
+    /// The resolved binding in kitty syntax (`cmd+shift+e`), or chords joined by `>` for a leader sequence
+    /// (`ctrl+space>s`); omitted when the action is keyless and unconfigured.
     ///
     /// One shipped default cannot be typed back into `keymap.conf`: `increase_font_size` is ⌘+, rendering
     /// `cmd++`, which does not re-parse (`+` is the chord joiner). Reported verbatim anyway — the live `menu`
@@ -119,10 +120,13 @@ public extension ControlKeymap {
         let actions = BuiltinAction.allCases.map { action in
             let resolved = keymap.equivalent(for: action)
             let alternates = keymap.sequences(for: action).map(\.displayString)
+            // alternatives only ever come from a `map` line, so any of them is an override on their own. The
+            // chord comparison alone misses that for the keyless actions, where it reads nil against nil.
+            let overridden = resolved != action.defaultChord || !alternates.isEmpty
             return ControlKeymapAction(action: action.rawValue,
                                        chord: resolved?.displayString,
                                        alternates: alternates.isEmpty ? nil : alternates,
-                                       overridden: resolved != action.defaultChord ? true : nil)
+                                       overridden: overridden ? true : nil)
         }
         let commands = keymap.commands.map {
             ControlKeymapCommand(name: $0.name, shortcut: $0.shortcut.isEmpty ? nil : $0.shortcut)

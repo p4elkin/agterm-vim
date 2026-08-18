@@ -395,7 +395,8 @@ private func isPrefix(_ a: Keybind, of b: Keybind) -> Bool {
 
 /// Whether `prefix` is a STRICT (shorter, leading) prefix of `keybind` — the relation that decides which of
 /// two binds can never fire: `KeybindMatcher` fires the exact shorter match rather than waiting out the
-/// longer one.
+/// longer one. Shared with `Keymap.swift`, which applies the same wait-or-fire rule to built-in leader
+/// sequences.
 func isStrictKeybindPrefix(_ prefix: Keybind, of keybind: Keybind) -> Bool {
     guard prefix.count < keybind.count else { return false }
     return Array(keybind.prefix(prefix.count)) == prefix
