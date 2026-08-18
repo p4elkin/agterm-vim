@@ -1,0 +1,192 @@
+diff --git a/include/ghostty.h b/include/ghostty.h
+index b099741..07c8233 100644
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1112,6 +1112,7 @@ GHOSTTY_API void ghostty_surface_draw(ghostty_surface_t);
+ GHOSTTY_API void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+ GHOSTTY_API void ghostty_surface_set_focus(ghostty_surface_t, bool);
+ GHOSTTY_API void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
++GHOSTTY_API void ghostty_surface_set_realized(ghostty_surface_t, bool);
+ GHOSTTY_API void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
+ GHOSTTY_API ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
+ GHOSTTY_API uint64_t ghostty_surface_foreground_pid(ghostty_surface_t);
+diff --git a/src/Surface.zig b/src/Surface.zig
+index 5d16f33..a879fa2 100644
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -3279,6 +3279,24 @@ pub fn occlusionCallback(self: *Surface, visible: bool) !void {
+     try self.queueRender();
+ }
+ 
++/// Callback for whether this surface should hold GPU resources at all.
++///
++/// Stronger than `occlusionCallback`: that one pauses drawing, this one
++/// releases the swap chain and shaders so a surface hidden indefinitely
++/// costs no GPU memory. The terminal state and the shell are untouched, so
++/// output keeps being processed while unrealized and the first frame after
++/// realizing shows it. See the `realized` message for the pairing rule.
++pub fn realizedCallback(self: *Surface, realized: bool) !void {
++    // Crash metadata in case we crash in here
++    crash.sentry.thread_state = self.crashThreadState();
++    defer crash.sentry.thread_state = null;
++
++    _ = self.renderer_thread.mailbox.push(.{
++        .realized = realized,
++    }, .{ .forever = {} });
++    try self.queueRender();
++}
++
+ pub fn focusCallback(self: *Surface, focused: bool) !void {
+     // Crash metadata in case we crash in here
+     crash.sentry.thread_state = self.crashThreadState();
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index 730913e..9a5b9d5 100644
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -918,6 +918,13 @@ pub const Surface = struct {
+         };
+     }
+ 
++    pub fn realizedCallback(self: *Surface, realized: bool) void {
++        self.core_surface.realizedCallback(realized) catch |err| {
++            log.err("error in realized callback err={}", .{err});
++            return;
++        };
++    }
++
+     fn queueInspectorRender(self: *Surface) void {
+         _ = self.app.performAction(
+             .{ .surface = &self.core_surface },
+@@ -1755,6 +1762,24 @@ pub const CAPI = struct {
+         surface.occlusionCallback(visible);
+     }
+ 
++    /// Set whether a surface holds GPU resources.
++    ///
++    /// Unrealizing frees the surface's swap chain, per-frame render targets
++    /// and font atlas textures; realizing rebuilds them. Intended for surfaces
++    /// an embedder keeps alive but hidden indefinitely (background tabs,
++    /// stacked panes), where the per-surface GPU cost dominates. Both calls
++    /// are asynchronous and land on the renderer thread.
++    ///
++    /// The shell and terminal state are unaffected: an unrealized surface
++    /// still reads its pty, and the first frame after realizing reflects
++    /// everything that arrived meanwhile.
++    ///
++    /// The embedder must alternate the two. A repeated call in either
++    /// direction is ignored rather than treated as an error.
++    export fn ghostty_surface_set_realized(surface: *Surface, realized: bool) void {
++        surface.realizedCallback(realized);
++    }
++
+     /// Filter the mods if necessary. This handles settings such as
+     /// `macos-option-as-alt`. The filtered mods should be used for
+     /// key translation but should NOT be sent back via the `_key`
+diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
+index 5087213..0c5f281 100644
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -107,6 +107,12 @@ flags: packed struct {
+     /// This is true when the view is focused. This defaults to true
+     /// and it is up to the apprt to set the correct value.
+     focused: bool = true,
++
++    /// Whether the renderer currently holds its GPU resources. False only
++    /// between an unrealize and the matching realize. Drawing is skipped
++    /// while false: the swap chain is defunct and would reject the frame
++    /// anyway, this just avoids the error round trip on every draw request.
++    realized: bool = true,
+ } = .{},
+ 
+ pub const DerivedConfig = struct {
+@@ -376,6 +382,35 @@ fn drainMailbox(self: *Thread) !void {
+                 // check the visible state themselves to control their behavior.
+             },
+ 
++            .realized => |v| realized: {
++                // If our state didn't change we do nothing. This also makes
++                // an unpaired message harmless rather than tripping the
++                // defunct assert in displayRealized.
++                if (self.flags.realized == v) break :realized;
++
++                if (v) {
++                    self.renderer.displayRealized() catch |err| {
++                        // We keep the flag false so a later realize can retry.
++                        // Leaving it true would let draws through to a swap
++                        // chain that was never rebuilt.
++                        log.warn("error realizing renderer err={}", .{err});
++                        break :realized;
++                    };
++                    self.flags.realized = true;
++                    // The rebuilt swap chain's targets hold nothing, so the
++                    // next frame must repaint everything rather than the cells
++                    // the terminal happens to consider dirty. A quiet surface
++                    // dirties nothing at all, and one resized while unrealized
++                    // dirties only part, which paints the new target at the old
++                    // geometry and leaves the rest blank until a keystroke.
++                    self.renderer.markDirty();
++                    self.drawFrame(false);
++                } else {
++                    self.flags.realized = false;
++                    self.renderer.displayUnrealized();
++                }
++            },
++
+             .focus => |v| focus: {
+                 // If our state didn't change we do nothing.
+                 if (self.flags.focused == v) break :focus;
+@@ -495,6 +530,9 @@ fn drawFrame(self: *Thread, now: bool) void {
+     // If we're invisible, we do not draw.
+     if (!self.flags.visible) return;
+ 
++    // If we hold no GPU resources there is nothing to draw into.
++    if (!self.flags.realized) return;
++
+     // If the renderer is managing a vsync on its own, we only draw
+     // when we're forced to via `now`.
+     if (!now and self.renderer.hasVsync()) return;
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index 0f4a294..5c627db 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -959,6 +959,16 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             );
+             self.reinitialize_shaders = false;
+             self.target_config_modified = 1;
++
++            // Forget the screen size so the next frame reconciles it from
++            // scratch. Every frame state we just built has an UNINITIALIZED
++            // uniform buffer (see `FrameState.init`), and the only writer,
++            // `updateScreenSizeUniforms`, runs behind the draw path's
++            // `size_changed` check. A surface resized while unrealized already
++            // took `setScreenSize`, so that check would be false and the new
++            // buffers would never be written — the frame then draws at
++            // whatever projection the undefined memory happens to hold.
++            self.size.screen = .{ .width = 0, .height = 0 };
+         }
+ 
+         /// This is called by the GTK apprt when the surface is being destroyed.
+diff --git a/src/renderer/message.zig b/src/renderer/message.zig
+index a47b960..d7a7439 100644
+--- a/src/renderer/message.zig
++++ b/src/renderer/message.zig
+@@ -22,6 +22,19 @@ pub const Message = union(enum) {
+     /// and still have focus.
+     visible: bool,
+ 
++    /// Whether the surface should hold GPU resources at all.
++    ///
++    /// `visible` only pauses drawing; the swap chain, its per-frame render
++    /// targets and the font atlas textures stay allocated for the life of the
++    /// surface. Unrealizing releases them, so a surface that stays hidden for
++    /// a long time costs no GPU memory, at the price of rebuilding on the way
++    /// back. Reserve it for surfaces hidden indefinitely, not for every
++    /// occlusion change.
++    ///
++    /// The apprt must alternate these strictly: realizing an already-realized
++    /// surface, or unrealizing an unrealized one, is ignored.
++    realized: bool,
++
+     /// Reset the cursor blink by immediately showing the cursor then
+     /// restarting the timer.
+     reset_cursor_blink,
