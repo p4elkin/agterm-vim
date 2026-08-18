@@ -5,7 +5,9 @@ navigation added. Everything upstream does, it still does. The additions are opt
 untouched `keymap.conf` the key path is byte-for-byte what upstream ships, and a test pins that
 (`ControlKeymapTests.untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction`).
 
-Forked at `82e4253`. Two separable features.
+Forked at `82e4253`, and kept current by MERGING `upstream/master` in, never by rebasing onto it.
+The fork's history is therefore permanent: no force-push, stable hashes. `git log` shows merge
+commits, so this file, not the log, is the answer to "what does the fork add".
 
 ## 1. Leader sequences for built-in actions
 
@@ -104,6 +106,107 @@ Consequences worth knowing:
   closes — while walking onto an overlay already running, or entering the mode over one, keeps the keys,
   and a yielded key still reaches `map` binds, ⌘⌃F and `ctrl+space`. A HUD is passive and yields nothing.
 
+## 3. Panes wrapped through zmx
+
+Every plain interactive pane is spawned as `zmx attach <key>` instead of a bare login shell, so the
+zmx session outlives the app and the app knows which session owns which pane. This replaces a
+zprofile hook that used to do the wrapping from outside.
+
+What it buys:
+
+- A pane's foreground process is resolved PAST the zmx client, so `tree --json` reports what you are
+  actually running rather than `zmx`.
+- Closing or renaming a row ends or relabels its zmx session, and orphaned daemons are reaped at
+  launch.
+- `session new --command` gained `--keep-shell-open`, which runs the command inside the session's
+  shell so the row lands at a prompt when it exits. It excludes `--wait`.
+
+`AGTERM_ZMX_SKIP` (non-empty) leaves a pane unwrapped, and is honoured by the wrapper itself, not
+only by the old hook. The UI test launcher sets it, which is not optional.
+
+⚠️ Caveats that are deliberate and will not be fixed by accident — a promoted split survivor is never
+zmx-backed again, a runtime attach failure closes the row rather than falling back to a plain shell,
+and a detached session whose row left the snapshot is reaped at the next launch. `.claude/rules/zmx.md`
+argues each one.
+
+## 4. Overlays open on the machine you are watching from
+
+Every overlay goes through one choke point, `agtermctl session overlay open`. When a laptop is
+mirroring a workstation session (or the other way round), that choke point now decides which machine
+the overlay draws on, instead of always opening wherever the triggering `agtermctl` happened to run.
+
+- Two optional `Session` fields carry the pairing: `mirrorsSession` (which host and session this one
+  mirrors) and its counterpart on the other side. Both are absent on every session that predates this.
+- `agtermctl session pairing` sets or clears them; `agtermctl overlay-redirect toggle [on|off|toggle]`
+  turns the whole behaviour on and off.
+- A redirected open answers with `overlayRedirect` in the response and opens nothing locally, so the
+  caller knows the overlay went elsewhere.
+- The status HUD is a separate command family and deliberately does NOT redirect.
+
+`overlay_redirect_toggle` is a keyless built-in for the same switch. `.claude/rules/overlay-redirect.md`
+owns the design.
+
+## 5. The window's jump-back order, readable
+
+`tree --json` gained `sessionRecency`: the window's jump-back targets, session ids most recent first,
+with the active session dropped and the visible navigation scope applied. Before this a script had to
+infer the order from what it had itself selected.
+
+⚠️ It is NOT the Ctrl-Tab switcher's list and not `dashboard --mru`. The switcher keeps the active
+session at index 0; `dashboard --mru` reads the raw list, every workspace and the active session
+included. Do not cite the three as matching.
+
+## 6. A dwell before a session joins the recency order
+
+A session used to enter the recency order the moment it was selected, so walking `j`/`k` through the
+sidebar reordered the jump-back list into the order you had just walked. A new **Recency dwell**
+setting makes a session wait before it counts: `immediate`, 5, 10, 20, 30 or 60 seconds, defaulting to
+20 — not to the zero-wait case, because an existing `settings.json` has no key and a threshold that
+only worked once configured would never reach anyone.
+
+- Typing into a session promotes it immediately, without waiting the dwell out.
+- ⚠️ `session select` also records immediately, and it is the ONLY command that does. It names one
+  session, which is the request to visit it. Everything that STEPS (`session go`, `workspace select`)
+  or moves the selection as a side effect stays dwell-gated.
+- Read it back as `recencyDwellMs` on the tree and on each `window list` node, omitted when the
+  setting is Immediately. Like `autoFollowMs` it is settings-only: no command sets it, deliberately.
+
+## 7. Hidden surfaces release their GPU resources
+
+A hidden pane used to keep its swap chain, per-frame render targets and font atlas textures for the
+life of the surface. This fork carries a libghostty patch (`patches/ghostty/`) adding
+`ghostty_surface_set_realized`, and unrealizes a surface that stays hidden, freeing all of it. The
+shell and terminal state are untouched: an unrealized surface still reads its pty, and the first frame
+after realizing shows everything that arrived meanwhile.
+
+- Debounced, and it covers surfaces born hidden.
+- On by default; opt OUT with `AGTERM_SURFACE_UNREALIZE=0`.
+- `agtermctl tree` tags an unrealized row `(not realized)`, beside `(split hidden)`.
+
+⚠️ The patch is the fork's own and lives in `patches/ghostty/`, applied by `scripts/setup.sh` on top of
+the pinned upstream ghostty. When `GHOSTTY_REV` moves it may need rebasing — it applying cleanly is not
+proof it still compiles, which is exactly what the 2026-08-18 merge hit.
+
+## 8. The mode pills moved to the sidebar footer
+
+NORMAL and OVERLAY left the title bar. They render at the leading edge of the sidebar footer, and float
+in the bottom right corner over the terminal whenever the sidebar is not on screen — including while
+terminal zoom is hiding it.
+
+No new setting: the pills moved, they were not made configurable. NORMAL shows the armed leader glyphs
+while a sequence is half typed; OVERLAY says which machine the next `session overlay open` targets and
+appears only while the overlay redirect is on.
+
+## 9. Open a new session in a chosen workspace
+
+A new keyless built-in `new_session_in_workspace` opens a workspace picker and puts the new session in
+whichever workspace you choose, instead of always in the current one.
+
+- The picker is a palette mode of its own, listing workspaces in sidebar order.
+- Its free-text row creates a workspace and opens the session in it, so a name that matches nothing is
+  a create rather than a dead end. The row is offered even when a title matches partially.
+- Bound as a single chord, and reachable from `nmap` like any other built-in.
+
 ## Control API
 
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
@@ -117,13 +220,17 @@ Consequences worth knowing:
 
 ## Also here
 
-- `cookbook/vim-keys/` — a ready-to-copy preset.
-- `.claude/rules/keymap.md` and `control-api.md` document the design.
+- `cookbook/vim-keys/` and `cookbook/vim-keys-cheatsheet/` — ready-to-copy presets.
+- `patches/ghostty/` — the fork's own libghostty patches, applied by `scripts/setup.sh` on top of the
+  pinned upstream rev.
+- `CHANGELOG-vim.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
+- `.claude/rules/keymap.md`, `control-api.md`, `zmx.md`, `overlay-redirect.md` and `fork-rebase.md`
+  document the design and how the fork is kept current.
 
 ## Not done
 
 - README and `site/` upstream docs are not updated. They churn hard upstream, and touching them makes
-  every rebase a conflict.
+  every merge a conflict.
 - The two features should be two pull requests if this ever goes upstream. Leader sequences alone are
   a small, self-contained diff; the mode roughly doubles it.
 
