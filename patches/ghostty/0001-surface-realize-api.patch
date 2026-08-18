@@ -30,7 +30,7 @@ index 5d16f33..a879fa2 100644
 +    crash.sentry.thread_state = self.crashThreadState();
 +    defer crash.sentry.thread_state = null;
 +
-+    _ = self.renderer_thread.mailbox.push(.{
++    _ = self.renderer_thread.mailbox.push(global.io(), .{
 +        .realized = realized,
 +    }, .{ .forever = {} });
 +    try self.queueRender();
