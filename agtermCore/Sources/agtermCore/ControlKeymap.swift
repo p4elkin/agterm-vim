@@ -43,6 +43,27 @@ public struct ControlKeymapCommand: Codable, Sendable, Equatable {
     }
 }
 
+/// One `nmap` line: a normal-mode bind and what it runs, a built-in or a custom command.
+///
+/// Its own section rather than a flag on `ControlKeymapAction` because normal mode is a separate namespace —
+/// the same action can carry a global chord AND a bare normal-mode key, and one row cannot say both.
+public struct ControlKeymapNormalBind: Codable, Sendable, Equatable {
+    /// The bind in kitty syntax, chords joined by `>` (`s`, `space>s`) — spelled exactly like
+    /// `ControlKeymapAction.chord`, so the two sections compare directly.
+    public var bind: String
+    /// The action's `keymap.conf` name, e.g. `toggle_split`. Exactly one of `action` and `command` is set;
+    /// the other is omitted, so a built-in bind's JSON is what it was before command targets existed.
+    public var action: String?
+    /// The custom command's name, as its `command` line quotes it.
+    public var command: String?
+
+    public init(bind: String, action: String? = nil, command: String? = nil) {
+        self.bind = bind
+        self.action = action
+        self.command = command
+    }
+}
+
 /// A `keymap.conf` parse problem, the same pair the Key Mapping settings tab shows.
 public struct ControlKeymapDiagnostic: Codable, Sendable, Equatable {
     /// 1-based. `0` is the sentinel for a whole-file or cross-section problem (a chord collision between
@@ -95,15 +116,20 @@ public struct ControlKeymap: Codable, Sendable, Equatable {
     public var actions: [ControlKeymapAction]
     public var commands: [ControlKeymapCommand]
     public var diagnostics: [ControlKeymapDiagnostic]
+    /// The `nmap` binds, in file order; omitted when the keymap declares none. Omitted rather than empty so a
+    /// keymap that never mentions normal mode reports byte-identically to one parsed before the mode existed.
+    public var normalMode: [ControlKeymapNormalBind]?
     /// Live menu key equivalents; omitted when the caller could not read the menu bar.
     public var menu: [ControlKeymapMenuItem]?
 
     public init(path: String, actions: [ControlKeymapAction], commands: [ControlKeymapCommand],
-                diagnostics: [ControlKeymapDiagnostic], menu: [ControlKeymapMenuItem]? = nil) {
+                diagnostics: [ControlKeymapDiagnostic], normalMode: [ControlKeymapNormalBind]? = nil,
+                menu: [ControlKeymapMenuItem]? = nil) {
         self.path = path
         self.actions = actions
         self.commands = commands
         self.diagnostics = diagnostics
+        self.normalMode = normalMode
         self.menu = menu
     }
 }
@@ -131,8 +157,20 @@ public extension ControlKeymap {
         let commands = keymap.commands.map {
             ControlKeymapCommand(name: $0.name, shortcut: $0.shortcut.isEmpty ? nil : $0.shortcut)
         }
+        let normalMode = keymap.normalModeBinds.map { bind -> ControlKeymapNormalBind in
+            let spelling = bind.keybind.map(\.displayString).joined(separator: ">")
+            switch bind.target {
+            case .builtin(let action):
+                return ControlKeymapNormalBind(bind: spelling, action: action.rawValue)
+            case .command(let id):
+                // an unresolvable id can only be a bug; report the raw id rather than leave the row empty.
+                let name = keymap.commands.first { $0.id == id }?.name ?? id.uuidString
+                return ControlKeymapNormalBind(bind: spelling, command: name)
+            }
+        }
         return ControlKeymap(path: path, actions: actions, commands: commands,
                              diagnostics: diagnostics.map { ControlKeymapDiagnostic(line: $0.line, message: $0.message) },
+                             normalMode: normalMode.isEmpty ? nil : normalMode,
                              menu: menu)
     }
 }

@@ -22,6 +22,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     case quickTerminal = "quick_terminal", sessionPalette = "session_palette", commandPalette = "command_palette"
     case customCommandPalette = "custom_command_palette", showAttention = "show_attention"
     case dashboard = "dashboard"
+    case normalMode = "normal_mode"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
     /// `map`s one. Every action that ships with a key returns it here, including the six arrow-bound ones —
@@ -61,8 +62,22 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .nextAttentionSession: return Chord(mods: [.control, .option], key: "down")
         case .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
              .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
-             .toggleWorkspaceFilter:
+             .toggleWorkspaceFilter, .normalMode:
             return nil
+        }
+    }
+
+    /// Whether firing this from normal mode also leaves the mode, so the thing it just created is ready to
+    /// type into. Only the actions that hand over a brand-new pane qualify: the user asked for a place to
+    /// type, and a mode still swallowing bare keys would eat the first words into a shell that just started.
+    /// Vim's `o` is the same bargain — it opens the line AND enters insert.
+    ///
+    /// Deliberately excludes the toggles that also show a pane (`toggle_split`, `toggle_scratch`,
+    /// `quick_terminal`): leaving the mode there would cost the second press that closes them again.
+    public var leavesNormalMode: Bool {
+        switch self {
+        case .newSession, .newWindow, .newWorkspace, .duplicateSession: return true
+        default: return false
         }
     }
 }

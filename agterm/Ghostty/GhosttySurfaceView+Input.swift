@@ -151,6 +151,11 @@ extension GhosttySurfaceView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // a click in a pane means "I want to type here", so it ends normal mode. The mode filters keys in the
+        // app-wide monitor and holds no first responder, so nothing else would notice the user leaving it.
+        // Above the surface guard: an unrealized pane is still a pane the user just clicked into, and this is
+        // the only spelling a hosted test can reach without spawning a real libghostty surface.
+        NormalModeController.shared.exit()
         guard let surface else { return }
         window?.makeFirstResponder(self)
         updateGhosttyFocus()

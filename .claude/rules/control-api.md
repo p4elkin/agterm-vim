@@ -118,7 +118,7 @@ There are 75 public commands:
   `.overlay.result`, `.hud.open`, `.hud.update`, `.hud.close`
 - `surface.zoom`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`
 - `quick`, `quick.type`, `quick.text`
-- `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `notify`
+- `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
@@ -476,6 +476,16 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `sidebar show|hide|toggle` is per-frontmost-window, persisted and animated from one root value.
   It shares titlebar, View, palette, and Control-Shift-Command-S behavior.
 - `sidebar.mode tree|flagged|toggle` is frontmost and reads live `sidebarMode`.
+- `mode on|off|toggle` turns NORMAL MODE on for the frontmost window — one app-wide state, so no `--window`.
+  Entering routes through `AppActions.enterNormalMode()`, inheriting the zoom/dashboard/picker gate AND its
+  key-window requirement, and a gate that swallowed the entry is an ERROR: a caller believing the mode is on
+  would send bare keys to the shell. `mode on` from a script while another app is frontmost therefore fails
+  rather than arming a pill no keystroke can reach. Read back as true-only `normalMode` on the `window.list` node; `.agtermNormalModeChanged` refreshes
+  the window cache synchronously, since a keystroke enters the mode with no command at all.
+  `keymap.list` reports the `nmap` binds in its own `normalMode` section, omitted when the keymap has none.
+  A bind carries `bind` plus exactly one of `action` and `command`, the second being a quoted `nmap` target
+  naming a custom command; the human section prints that one as `command "<name>"` so a bare name always
+  reads as a built-in action.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
   no-op in flagged mode. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `workspace.focus on` replaces/enables; off removes and disables on empty; toggle clears sole applied

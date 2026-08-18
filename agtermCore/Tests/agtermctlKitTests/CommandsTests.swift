@@ -1394,6 +1394,19 @@ struct CommandsTests {
             ControlRequest(cmd: .sidebarCollapse, args: ControlArgs(window: "abc")))
     }
 
+    @Test func modeDefaultsToggle() throws {
+        #expect(try request(["mode"]) == ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "toggle")))
+    }
+
+    @Test func modeOnAndOff() throws {
+        #expect(try request(["mode", "on"]) == ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "on")))
+        #expect(try request(["mode", "off"]) == ControlRequest(cmd: .normalMode, args: ControlArgs(mode: "off")))
+    }
+
+    @Test func modeRejectsBadMode() {
+        #expect(validationMessage(["mode", "normal"]) == "mode must be on, off, or toggle")
+    }
+
     @Test func sessionFlagDefaultsToggle() throws {
         #expect(try request(["session", "flag"]) == ControlRequest(cmd: .sessionFlag, target: "active", args: ControlArgs(mode: "toggle")))
     }

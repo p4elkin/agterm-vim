@@ -497,6 +497,258 @@ struct KeymapTests {
         #expect(keymap.commands[0].shortcut == "ctrl+a>k")
     }
 
+    // MARK: `nmap` — normal-mode binds
+
+    @Test func nmapBareLetterParses() {
+        let (keymap, diagnostics) = parseKeymap("nmap j next_session")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "j")],
+                                                          target: .builtin(.nextSession))])
+        #expect(keymap.builtinOverrides.isEmpty)
+        #expect(keymap.equivalent(for: .nextSession) == BuiltinAction.nextSession.defaultChord)
+    }
+
+    @Test func nmapBareArrowParses() {
+        let (keymap, diagnostics) = parseKeymap("nmap left focus_left_pane")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "left")],
+                                                          target: .builtin(.focusLeftPane))])
+    }
+
+    @Test func nmapBareSequenceParses() {
+        let (keymap, diagnostics) = parseKeymap("nmap space>s toggle_split")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "space"),
+                                                                    Chord(mods: [], key: "s")],
+                                                          target: .builtin(.toggleSplit))])
+    }
+
+    @Test func nmapModifiedChordParses() {
+        let (keymap, diagnostics) = parseKeymap("nmap ctrl+g dashboard")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: .control, key: "g")],
+                                                          target: .builtin(.dashboard))])
+    }
+
+    @Test func nmapMayRepeatALiveBuiltinMenuChord() {
+        let (keymap, diagnostics) = parseKeymap("nmap cmd+d new_session")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds.count == 1)
+        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.command], key: "d"))
+    }
+
+    @Test func nmapMayRepeatAGlobalMapChordForTheSameAction() {
+        let text = """
+        map cmd+shift+e toggle_split
+        nmap cmd+shift+e toggle_split
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.command, .shift], key: "e"))
+        #expect(keymap.normalModeBinds.count == 1)
+    }
+
+    @Test func nmapMayRepeatABuiltinLeaderSequence() {
+        let text = """
+        map ctrl+a>g toggle_split
+        nmap ctrl+a>g new_session
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.sequences(for: .toggleSplit) == [[Chord(mods: .control, key: "a"),
+                                                        Chord(mods: [], key: "g")]])
+        #expect(keymap.normalModeBinds.first?.target == .builtin(.newSession))
+    }
+
+    @Test func nmapMayRepeatACustomCommandShortcut() {
+        let text = """
+        command "Lazygit" ctrl+a>k lazygit
+        nmap ctrl+a>k toggle_split
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.commands[0].shortcut == "ctrl+a>k")
+        #expect(keymap.normalModeBinds.count == 1)
+    }
+
+    @Test func nmapWithReservedChordIsRejected() {
+        let (keymap, diagnostics) = parseKeymap("nmap ctrl+1 toggle_split")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 1)
+        #expect(diagnostics[0].message.contains("reserved"))
+    }
+
+    @Test func nmapWithReservedChordInTheTailIsRejected() {
+        let (keymap, diagnostics) = parseKeymap("nmap space>ctrl+tab toggle_split")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("reserved"))
+    }
+
+    @Test func nmapOnTheExitKeyIsRejected() {
+        let (keymap, diagnostics) = parseKeymap("nmap i toggle_split")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("leaves normal mode"))
+    }
+
+    @Test func nmapOnTheExitKeyWithAModifierIsAccepted() {
+        let (keymap, diagnostics) = parseKeymap("nmap ctrl+i show_attention")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds.first?.keybind == [Chord(mods: .control, key: "i")])
+    }
+
+    @Test func nmapOnTheExitKeyAsASequenceTailIsAccepted() {
+        let (keymap, diagnostics) = parseKeymap("nmap space>i toggle_split")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds.first?.keybind == [Chord(mods: [], key: "space"),
+                                                          Chord(mods: [], key: "i")])
+    }
+
+    @Test func nmapOnEscIsRejectedAsAnInvalidChord() {
+        let (keymap, diagnostics) = parseKeymap("nmap esc toggle_split")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("invalid chord"))
+    }
+
+    @Test func nmapWithUnknownActionIsRejected() {
+        let (keymap, diagnostics) = parseKeymap("nmap j teleport")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("unknown action 'teleport'"))
+    }
+
+    @Test func nmapMissingActionIsRejected() {
+        let (_, diagnostics) = parseKeymap("nmap j")
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].message.contains("nmap requires"))
+    }
+
+    @Test func nmapPrefixConflictDropsTheLaterLine() {
+        let text = """
+        nmap space toggle_split
+        nmap space>s new_session
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "space")],
+                                                          target: .builtin(.toggleSplit))])
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 2)
+        #expect(diagnostics[0].message.contains("'toggle_split'"))
+    }
+
+    @Test func nmapDuplicateKeybindDropsTheLaterLine() {
+        let text = """
+        nmap j next_session
+        nmap j previous_session
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds.map(\.target) == [.builtin(.nextSession)])
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 2)
+    }
+
+    @Test func nmapDisjointBindsAllSurviveInFileOrder() {
+        let text = """
+        nmap j next_session
+        nmap k previous_session
+        nmap space>s toggle_split
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds.map(\.target)
+            == [.builtin(.nextSession), .builtin(.previousSession), .builtin(.toggleSplit)])
+    }
+
+    @Test func nmapCommandTargetResolvesWhenTheCommandIsDeclaredAbove() {
+        let text = """
+        command "Annotate last response" echo hi
+        nmap e "Annotate last response"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "e")],
+                                                          target: .command(keymap.commands[0].id))])
+    }
+
+    @Test func nmapCommandTargetResolvesWhenTheCommandIsDeclaredBelow() {
+        let text = """
+        nmap e "Annotate last response"
+        command "Annotate last response" echo hi
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "e")],
+                                                          target: .command(keymap.commands[0].id))])
+    }
+
+    @Test func nmapCommandTargetMayBeASequence() {
+        let text = """
+        command "Lazygit" echo hi
+        nmap space>g "Lazygit"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "space"),
+                                                                    Chord(mods: [], key: "g")],
+                                                          target: .command(keymap.commands[0].id))])
+    }
+
+    @Test func nmapUnknownCommandNameDropsOnlyThatBind() {
+        let text = """
+        command "Lazygit" echo hi
+        nmap e "Annotate last response"
+        nmap g "Lazygit"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds == [NormalModeBind(keybind: [Chord(mods: [], key: "g")],
+                                                          target: .command(keymap.commands[0].id))])
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 2)
+        #expect(diagnostics[0].message.contains("unknown command 'Annotate last response'"))
+    }
+
+    @Test func nmapUnterminatedCommandNameIsNotReadAsAnAction() {
+        let (keymap, diagnostics) = parseKeymap("nmap e \"Annotate last response")
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 1)
+        #expect(diagnostics[0].line == 1)
+        #expect(diagnostics[0].message.contains("unterminated command name"))
+    }
+
+    @Test func nmapCommandTargetStillObeysTheChordRules() {
+        let text = """
+        command "Lazygit" echo hi
+        nmap ctrl+1 "Lazygit"
+        nmap i "Lazygit"
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(keymap.normalModeBinds.isEmpty)
+        #expect(diagnostics.count == 2)
+        #expect(diagnostics[0].message.contains("reserved"))
+        #expect(diagnostics[1].message.contains("leaves normal mode"))
+    }
+
+    @Test func keymapWithNoQuotedNmapTargetParsesUnchanged() {
+        let text = """
+        map cmd+shift+e toggle_split
+        command "Lazygit" ctrl+a>k lazygit
+        nmap j next_session
+        nmap space>s toggle_sidebar
+        """
+        let (keymap, diagnostics) = parseKeymap(text)
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.equivalent(for: .toggleSplit) == Chord(mods: [.command, .shift], key: "e"))
+        #expect(keymap.commands[0].shortcut == "ctrl+a>k")
+        #expect(keymap.normalModeBinds == [
+            NormalModeBind(keybind: [Chord(mods: [], key: "j")], target: .builtin(.nextSession)),
+            NormalModeBind(keybind: [Chord(mods: [], key: "space"), Chord(mods: [], key: "s")],
+                           target: .builtin(.toggleSidebar))
+        ])
+    }
+
     @Test func parseInvalidChordDiagnostic() {
         let (keymap, diagnostics) = parseKeymap("map cmd+f1 toggle_split")
         #expect(keymap.builtinOverrides.isEmpty)

@@ -40,8 +40,11 @@ extension ControlServer {
 
     /// Project the window library into `window.list`: every window with its open + frontmost (active) flags.
     func buildWindowList() -> [ControlWindowNode] {
+        // normal mode is ONE app-wide state that leaves on window resign-key, so the window holding it is
+        // whichever is frontmost while it is on.
         library.controlWindowNodes(geometry: { WindowRegistry.shared.geometry(for: $0) },
-                                   flags: { WindowRegistry.shared.windowFlags(for: $0) })
+                                   flags: { WindowRegistry.shared.windowFlags(for: $0) },
+                                   normalModeWindow: NormalModeController.shared.isActive ? library.activeWindowID : nil)
     }
 
     func windowList() -> ControlResponse {

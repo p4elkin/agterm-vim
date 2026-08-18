@@ -29,6 +29,10 @@ public struct KeybindMatcher: Sendable {
     /// timer and the on-screen hint.
     public var isArmed: Bool { !pending.isEmpty }
 
+    /// The chords typed so far in a half-typed sequence. Read by on-screen leader hints; re-arming rewrites
+    /// it, so a caller must not track the prefix itself.
+    public var pendingPrefix: [Chord] { pending }
+
     /// Feed one chord: an exact match fires and resets, a strict prefix arms (keeping the pending prefix for
     /// the next chord), anything else is unmatched and resets. When armed, a chord completing no bind resets
     /// so the caller can pass it through to the terminal — UNLESS the chord is itself a fresh leader, in

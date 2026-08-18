@@ -61,6 +61,11 @@ public protocol ControlActions {
     func setSidebarViewMode(_ mode: ControlSidebarViewMode) -> ControlResponse
     func expandSidebar(window: String?) -> ControlResponse
     func collapseSidebar(window: String?) -> ControlResponse
+    /// Turn normal mode on/off for the frontmost window. The host owns the entry gate (the mode cannot arm
+    /// behind terminal zoom, the dashboard or a picker, each of which already owns the keyboard, nor with no
+    /// key window for the key monitor to act in) and reports a blocked entry as an error rather than a
+    /// silent ok.
+    func setNormalMode(_ mode: ControlToggleMode) -> ControlResponse
     func setQuickTerminal(mode: String?) -> ControlResponse
     func typeQuick(text: String) async -> ControlResponse
     func readQuickText(all: Bool, lines: Int?) async -> ControlResponse
@@ -197,7 +202,7 @@ public struct ControlDispatcher {
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
-                .sidebarCollapse, .restoreClear:
+                .sidebarCollapse, .normalMode, .restoreClear:
             return dispatchAppCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
@@ -680,6 +685,11 @@ public struct ControlDispatcher {
             return actions.expandSidebar(window: request.args?.window)
         case .sidebarCollapse:
             return actions.collapseSidebar(window: request.args?.window)
+        case .normalMode:
+            guard let mode = ControlToggleMode.parse(request.args?.mode) else {
+                return ControlResponse(ok: false, error: "invalid mode: \(request.args?.mode ?? "toggle")")
+            }
+            return actions.setNormalMode(mode)
         case .restoreClear:
             return actions.clearRestoreCommands()
         default:

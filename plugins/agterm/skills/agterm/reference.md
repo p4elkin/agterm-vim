@@ -706,7 +706,10 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   the cache is refreshed when a window moves/resizes/zooms/enters or exits full screen/minimizes or
   restores, so a hand-drag or GUI toggle is reflected without needing another command. (`autoFollowMs`
   still reflects the last cache refresh, since a settings change is rare; and unlike `tree`, `window.list`
-  does NOT carry `idleMs` — the live idle metric would freeze in the cache.)
+  does NOT carry `idleMs` — the live idle metric would freeze in the cache.) A window holding NORMAL MODE
+  also carries `normalMode: true` — the read side of `mode`, true-only and omitted everywhere else, since the
+  mode is one app-wide state that leaves when its window stops being frontmost. It is cache-refreshed on
+  every mode change, so a keystroke that entered the mode shows up too.
 - `window select <id>` — raise it if open, else open it.
 - `window close <id>` — close the on-screen window (the bundle is kept; reopen with select).
 - `window rename <id> <name>`.
@@ -978,6 +981,9 @@ parse diagnostics (0 = clean). App-global (no `--window`).
   listed, bound or not, so you can also see which chords are free.
 - `commands[]` — the custom commands: `name`, and `shortcut` omitted for a palette-only one. A shortcut
   holding alternatives is one `|`-joined string, in the file's own spelling.
+- `normalMode[]` — the `nmap` binds, omitted when there are none: `bind` (the key or sequence, spelled
+  like `actions[].chord`) plus exactly one of `action` and `command`, the second being a bind whose
+  `nmap` target was a quoted command name. This is the only place normal-mode binds are visible.
 - `diagnostics[]` — `line` + `message` per parse problem (`keymap.reload` returns only the count).
 - `menu[]` — the key equivalents the menu bar carries: `chord`, the owning `menu`, the item `title`, its
   `selector`, and `enabled: false` when the item is disabled. agterm's own items report `menuAction:`;
@@ -1005,7 +1011,7 @@ line can express — such an item is AppKit's own and never matches an action.
 ### keymap.conf format
 
 The file lives at `<config dir>/keymap.conf` (default `~/.config/agterm`; the dir is set in Settings ▸
-Key Mapping). Two verbs, line-based; blank lines and `#` comments ignored:
+Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
 
 - `map <chord|sequence> <action>` — rebind a built-in menu action to a single chord or a leader
   sequence. A sequence (chords joined by `>`, e.g. `ctrl+space>s`) carries a modifier on its first chord
@@ -1015,6 +1021,13 @@ Key Mapping). Two verbs, line-based; blank lines and `#` comments ignored:
   marked `custom`. The quoted name may contain spaces. The post-name token is the chord only if it
   parses AND carries a modifier (a bare modifier-less key is rejected). A custom chord may be a leader
   sequence (chords joined by `>`, e.g. `ctrl+a>g`). No chord → palette-only.
+- `nmap <key|sequence> <action|"<command name>">` — bind a key that is live ONLY while normal mode is on
+  (`agtermctl mode on`). Bare keys are legal here, since nothing reaches the shell. A bare token is a
+  built-in action; a QUOTED target is the name of a `command` line, which may sit anywhere in the file
+  (names are resolved after the whole file is read) — a target matching no command is dropped with an
+  `unknown command '<name>'` diagnostic on that line. `map` and `nmap` are separate namespaces, so the
+  same chord may appear in both. Holding a key bound to an action repeats it; a command target runs once
+  and swallows the repeats.
 
 Either verb's chord token may hold **alternatives** joined by `|`, with no spaces around it (everything
 after the first token is the shell line): `map cmd+t|ctrl+space>s toggle_split` fires the action from

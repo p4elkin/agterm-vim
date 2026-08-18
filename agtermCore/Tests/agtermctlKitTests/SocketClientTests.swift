@@ -207,6 +207,19 @@ struct SocketClientTests {
         #expect(binds("first_session") == "-", "an action with no binding at all still prints a dash")
     }
 
+    // an `nmap` bind shows in no other section, so the listing is the only place the mode is diagnosable.
+    @Test func formatsKeymapWithTheNormalModeSection() {
+        let parsed = parseKeymap("nmap s toggle_split\nnmap space>n new_session\n")
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        let out = SocketClient.formatKeymap(payload)
+
+        #expect(out.contains("normal mode:"))
+        #expect(out.contains("    s  toggle_split"))
+        #expect(out.contains("    space>n  new_session"))
+    }
+
     // the compatibility invariant: the same `|`-free fixture agtermCoreTests pins, rendered exactly as the
     // pre-alternatives formatter rendered it — every expected byte below came from that formatter.
     @Test func formatsAPipeFreeKeymapByteIdenticallyToThePreAlternativesOutput() {
@@ -274,6 +287,7 @@ struct SocketClientTests {
             custom_command_palette      ctrl+shift+o
             show_attention              ctrl+shift+i
             dashboard                   cmd+shift+g
+            normal_mode                 -
 
         commands:
             Deploy  cmd+shift+y
@@ -290,6 +304,22 @@ struct SocketClientTests {
         """)
     }
 
+    // a bare name is a built-in; a command target must not read as one.
+    @Test func formatsANormalModeCommandBindWithItsQuotedName() {
+        let parsed = parseKeymap("""
+        command "Annotate" cmd+shift+e echo hi
+        nmap e "Annotate"
+        nmap s toggle_split
+        """)
+        let payload = ControlKeymap.project(keymap: parsed.keymap, diagnostics: parsed.diagnostics,
+                                            path: "/tmp/keymap.conf")
+
+        let out = SocketClient.formatKeymap(payload)
+
+        #expect(out.contains("    e  command \"Annotate\""))
+        #expect(out.contains("    s  toggle_split"))
+    }
+
     @Test func formatsKeymapWithoutOptionalSectionsWhenEmpty() {
         let payload = ControlKeymap.project(keymap: Keymap(builtinOverrides: [:], commands: []),
                                             diagnostics: [], path: "/tmp/keymap.conf")
@@ -297,6 +327,7 @@ struct SocketClientTests {
         let out = SocketClient.formatKeymap(payload)
 
         #expect(!out.contains("commands:"))
+        #expect(!out.contains("normal mode:"))
         #expect(!out.contains("diagnostics:"))
         #expect(!out.contains("menu:"), "menu is omitted, not printed empty, when the caller supplied none")
         #expect(out.contains("close_session"))
@@ -869,6 +900,18 @@ struct SocketClientTests {
         #expect(lines[1] == "w2  personal [open]")
         #expect(lines[2] == "w3  archive")
         #expect(lines[3] == "w4  pending [active]")
+    }
+
+    // the mode swallows every unbound key, so the default human listing has to say which window holds it.
+    @Test func formatResponseWindowsTagsNormalMode() {
+        let windows = [
+            ControlWindowNode(id: "w1", name: "work", open: true, active: true, normalMode: true),
+            ControlWindowNode(id: "w2", name: "personal", open: true, active: false),
+        ]
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(windows: windows)), json: false)
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[0] == "w1  work [open] [active] [normal mode]")
+        #expect(lines[1] == "w2  personal [open]")
     }
 
     @Test func formatResponseEmptyWindows() {

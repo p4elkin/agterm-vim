@@ -36,6 +36,16 @@ These run inside the app, so a mistake can kill the host instead of failing an a
 
 - `agtermUITests/` launches the real app and drives UI behavior unavailable to host-free tests.
   Run with `xcodebuild test -project agterm.xcodeproj -scheme agterm -destination 'platform=macOS'`.
+- **Run a UI test from the driver session, never from a delegated subagent.** macOS gates XCUITest on an
+  Authorization Services right ("XCTest is trying to Enable UI Automation"), and the granted credential is
+  scoped to the process tree that answered the prompt. Measured on 2026-08-09: six green runs from the
+  driver, two `Failed to initialize for UI testing: Timed out while enabling automation mode` from a
+  subagent, same command and machine. That timeout is a permission state, never a code defect, and it kills
+  the runner before any test body executes — so it can never distinguish one change from another.
+  `sudo DevToolsSecurity -enable` does not help; the successful runs predate it.
+- **`xcodebuild` piped through `grep`/`tail` reports the PIPELINE's exit status, not its own.** Check for
+  the literal `** TEST SUCCEEDED **` marker or read `${PIPESTATUS[0]}`. A failing run has been reported as
+  a pass this way.
 - Pass a temporary `AGTERM_STATE_DIR` in the launch environment; `agtermApp.restoredStore()` honors it.
   Verify the native `Open Directory...` panel manually.
 - **Use `app.launchForUITest()`, never `app.launch()`.** FB11763863 on macOS 15+/Xcode 16+, including

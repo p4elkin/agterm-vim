@@ -51,6 +51,7 @@ final class MockControlActions: ControlActions {
         case sidebarViewMode(ControlSidebarViewMode)
         case expand(window: String?)
         case collapse(window: String?)
+        case normalMode(ControlToggleMode)
         case quick(String?)
         case quickType(text: String)
         case quickText(all: Bool, lines: Int?)
@@ -103,6 +104,7 @@ final class MockControlActions: ControlActions {
     var unresolvedFocusTargets: [String] = []
     var nextSidebarVisibilityResponse = ControlResponse(ok: true)
     var nextSidebarViewModeResponse = ControlResponse(ok: true)
+    var nextNormalModeResponse = ControlResponse(ok: true)
     var nextExpandResponse = ControlResponse(ok: true)
     var nextCollapseResponse = ControlResponse(ok: true)
     var nextFontResponse = ControlResponse(ok: true)
@@ -374,6 +376,11 @@ final class MockControlActions: ControlActions {
     func collapseSidebar(window: String?) -> ControlResponse {
         calls.append(.collapse(window: window))
         return nextCollapseResponse
+    }
+
+    func setNormalMode(_ mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.normalMode(mode))
+        return nextNormalModeResponse
     }
 
     func setQuickTerminal(mode: String?) -> ControlResponse {

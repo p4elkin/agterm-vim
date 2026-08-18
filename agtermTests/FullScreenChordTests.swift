@@ -92,6 +92,17 @@ final class FullScreenChordTests: XCTestCase {
         XCTAssertEqual(window.toggleCount, 1)
     }
 
+    // Normal mode returns before the dispatch below it, and a Command chord it passes through reaches
+    // `performKeyEquivalent`, where this one built-in has no menu item waiting. So the mode dispatches it
+    // itself; without that, ⌘⌃F does nothing for as long as the mode is on.
+    func testShippedChordStillTogglesWhileNormalModeIsOn() throws {
+        NormalModeController.shared.enter()
+        defer { NormalModeController.shared.exit() }
+        XCTAssertTrue(runner.handleKeyDown(controlCommandF, in: window))
+        XCTAssertEqual(window.toggleCount, 1)
+        XCTAssertTrue(NormalModeController.shared.isActive, "full screen is not a way out of the mode")
+    }
+
     func testUnboundChordIsIgnored() throws {
         XCTAssertFalse(runner.handleKeyDown(keyDown("g", keyCode: 5, mods: [.control, .command]), in: window))
         XCTAssertEqual(window.toggleCount, 0)

@@ -132,6 +132,26 @@ final class KeymapUITests: XCTestCase {
         }), "the sequence that took the action over should still fire it")
     }
 
+    // the whole normal-mode contract end to end: `normal_mode` owns no menu item, so the entry chord fires
+    // only through the monitor; inside the mode a BARE key runs an action; Esc puts the keyboard back.
+    func testNormalModeEntersFiresAndExits() throws {
+        seedKeymap("map ctrl+space normal_mode\nnmap s new_session\n")
+        app.launchForUITest()
+        focusTerminal()
+        XCTAssertTrue(poll { self.sessionRowCount() == 1 }, "should start with the one seeded session")
+
+        XCTAssertTrue(pressUntil({ self.sessionRowCount() >= 2 }, press: {
+            app.typeKey(.space, modifierFlags: .control)
+            app.typeKey("s", modifierFlags: [])
+        }), "⌃␣ should enter normal mode, where the bare key `s` fires new_session")
+
+        let afterFire = sessionRowCount()
+        app.typeKey(.escape, modifierFlags: [])
+        for _ in 0..<3 { app.typeKey("s", modifierFlags: []) }
+        XCTAssertFalse(poll({ self.sessionRowCount() > afterFire }, timeout: 3),
+                       "after Esc leaves the mode a bare `s` must go to the terminal, not fire the action")
+    }
+
     func testCustomCommandSingleChordFires() throws {
         let marker = markerDir.appendingPathComponent("single")
         seedKeymap("command \"Touch A\" cmd+shift+e touch '\(marker.path)'\n")
