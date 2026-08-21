@@ -16,6 +16,10 @@ long after there were nine.
 
 ## What's here
 
+One or two lines per feature. Where a section below goes deeper, the entry says so; otherwise the pointer
+is the `.claude/rules` file that owns the design.
+
+
 **Keyboard**
 
 - **Leader sequences for built-in actions** — `map ctrl+space>s toggle_split`. Upstream allows one chord
@@ -24,21 +28,22 @@ long after there were nine.
   line, and a pill in the titlebar. Detail below. Ready-to-copy preset in `cookbook/vim-keys/`.
 - **`new_session_in_workspace`** — a picker of the workspaces, creating the session in the one you choose,
   with a `Create workspace "<name>"` row for a name none of them has. Ships keyless.
-  `.claude/rules/menu-actions.md`.
+  Section below; design in `.claude/rules/menu-actions.md`.
 
 **Panes and sessions**
 
 - **Panes wrapped through zmx** — a pane's shell outlives the app and can be reattached. Session keys per
   pane, orphaned daemons reaped at launch, the foreground process resolved past the zmx client, and
   `session new --keep-shell-open` leaving the row at a prompt after its command exits.
-  `.claude/rules/zmx.md`.
+  Section below; design in `.claude/rules/zmx.md`.
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
-  the workstation appears on the laptop mirroring it. `.claude/rules/overlay-redirect.md`.
+  the workstation appears on the laptop mirroring it.
+  Section below; design in `.claude/rules/overlay-redirect.md`.
 - **A recency dwell threshold** — a session only joins the Ctrl-Tab order once you have stayed on it past
   the threshold, or typed in it, so walking past rows no longer buries the real work.
-  `.claude/rules/settings.md`.
+  Section below; design in `.claude/rules/settings.md`.
 - **The chrome pills in the sidebar footer** rather than the title bar, staying visible while terminal
-  zoom hides the sidebar.
+  zoom hides the sidebar. Section below.
 
 **libghostty**
 
@@ -156,7 +161,7 @@ Consequences worth knowing:
   closes — while walking onto an overlay already running, or entering the mode over one, keeps the keys,
   and a yielded key still reaches `map` binds, ⌘⌃F and `ctrl+space`. A HUD is passive and yields nothing.
 
-## 3. Panes wrapped through zmx
+## Panes wrapped through zmx
 
 Every plain interactive pane is spawned as `zmx attach <key>` instead of a bare login shell, so the
 zmx session outlives the app and the app knows which session owns which pane. This replaces a
@@ -179,7 +184,7 @@ zmx-backed again, a runtime attach failure closes the row rather than falling ba
 and a detached session whose row left the snapshot is reaped at the next launch. `.claude/rules/zmx.md`
 argues each one.
 
-## 4. Overlays open on the machine you are watching from
+## Overlays open on the machine you are watching from
 
 Every overlay goes through one choke point, `agtermctl session overlay open`. When a laptop is
 mirroring a workstation session (or the other way round), that choke point now decides which machine
@@ -196,7 +201,7 @@ the overlay draws on, instead of always opening wherever the triggering `agtermc
 `overlay_redirect_toggle` is a keyless built-in for the same switch. `.claude/rules/overlay-redirect.md`
 owns the design.
 
-## 5. The window's jump-back order, readable
+## The window's jump-back order, readable
 
 `tree --json` gained `sessionRecency`: the window's jump-back targets, session ids most recent first,
 with the active session dropped and the visible navigation scope applied. Before this a script had to
@@ -206,7 +211,7 @@ infer the order from what it had itself selected.
 session at index 0; `dashboard --mru` reads the raw list, every workspace and the active session
 included. Do not cite the three as matching.
 
-## 6. A dwell before a session joins the recency order
+## A dwell before a session joins the recency order
 
 A session used to enter the recency order the moment it was selected, so walking `j`/`k` through the
 sidebar reordered the jump-back list into the order you had just walked. A new **Recency dwell**
@@ -221,7 +226,7 @@ only worked once configured would never reach anyone.
 - Read it back as `recencyDwellMs` on the tree and on each `window list` node, omitted when the
   setting is Immediately. Like `autoFollowMs` it is settings-only: no command sets it, deliberately.
 
-## 7. Hidden surfaces release their GPU resources
+## Hidden surfaces release their GPU resources
 
 A hidden pane used to keep its swap chain, per-frame render targets and font atlas textures for the
 life of the surface. This fork carries a libghostty patch (`patches/ghostty/`) adding
@@ -237,7 +242,7 @@ after realizing shows everything that arrived meanwhile.
 the pinned upstream ghostty. When `GHOSTTY_REV` moves it may need rebasing — it applying cleanly is not
 proof it still compiles, which is exactly what the 2026-08-18 merge hit.
 
-## 8. The mode pills moved to the sidebar footer
+## The mode pills moved to the sidebar footer
 
 NORMAL and OVERLAY left the title bar. They render at the leading edge of the sidebar footer, and float
 in the bottom right corner over the terminal whenever the sidebar is not on screen — including while
@@ -247,7 +252,7 @@ No new setting: the pills moved, they were not made configurable. NORMAL shows t
 while a sequence is half typed; OVERLAY says which machine the next `session overlay open` targets and
 appears only while the overlay redirect is on.
 
-## 9. Open a new session in a chosen workspace
+## Open a new session in a chosen workspace
 
 A new keyless built-in `new_session_in_workspace` opens a workspace picker and puts the new session in
 whichever workspace you choose, instead of always in the current one.
@@ -273,15 +278,17 @@ whichever workspace you choose, instead of always in the current one.
 - `cookbook/vim-keys/` and `cookbook/vim-keys-cheatsheet/` — ready-to-copy presets.
 - `patches/ghostty/` — the fork's own libghostty patches, applied by `scripts/setup.sh` on top of the
   pinned upstream rev.
-- `CHANGELOG-vim.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
-- `.claude/rules/keymap.md`, `control-api.md`, `zmx.md`, `overlay-redirect.md` and `fork-rebase.md`
+- `CHANGELOG-fork.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
+- `.claude/rules/keymap.md`, `control-api.md`, `zmx.md`, `overlay-redirect.md` and `fork-merge.md`
   document the design and how the fork is kept current.
 
 ## Not done
 
 - README and `site/` upstream docs are not updated. They churn hard upstream, and touching them makes
   every merge a conflict.
-- The two features should be two pull requests if this ever goes upstream. Leader sequences alone are
-  a small, self-contained diff; the mode roughly doubles it.
+- Nothing here has gone upstream. The two keyboard features would be two pull requests if they ever did:
+  leader sequences alone are a small, self-contained diff, and the mode roughly doubles it. The two
+  libghostty patches are additive and upstreamable on their own terms — `patches/ghostty/README.md`
+  records the status of each, including why 0001 was never submitted.
 
 Running the UI tests has a constraint of its own; `.claude/rules/ui-tests.md` owns it.
