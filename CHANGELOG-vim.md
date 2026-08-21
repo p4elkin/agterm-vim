@@ -40,6 +40,10 @@ publishes an empty body with only a warning on stderr.
   exits instead of losing its only process
 - an overlay opens on the machine the user is actually watching from, so an overlay fired on the
   workstation appears on the laptop that is mirroring it
+- a recency dwell threshold: a session joins the Ctrl-Tab jump-back order only once you have stayed on it
+  past the threshold, or typed in it, so walking through the sidebar no longer buries the session you were
+  actually working in. An absent setting means 20 seconds, not zero, and `immediate` restores the old
+  behaviour for anyone who dislikes it
 - hidden surfaces release their GPU resources, opt-in, with unrealize debounced and surfaces born hidden
   covered
 

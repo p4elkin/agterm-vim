@@ -1,15 +1,65 @@
 # What this build adds over upstream agterm
 
-This is a build of [umputun/agterm](https://github.com/umputun/agterm) with vim-style keyboard
-navigation added. Everything upstream does, it still does. The additions are opt-in: with an
-untouched `keymap.conf` the key path is byte-for-byte what upstream ships, and a test pins that
+This is a build of [umputun/agterm](https://github.com/umputun/agterm). Everything upstream does, it
+still does, and every addition is opt-in — with an untouched `keymap.conf` the key path is byte-for-byte
+what upstream ships, and a test pins that
 (`ControlKeymapTests.untouchedKeymapProjectsExactlyTheShippedDefaultForEveryAction`).
 
-Forked at `82e4253`, and kept current by MERGING `upstream/master` in, never by rebasing onto it.
-The fork's history is therefore permanent: no force-push, stable hashes. `git log` shows merge
-commits, so this file, not the log, is the answer to "what does the fork add".
+Forked at `eb29d55`, and kept current by MERGING `upstream/master` in, never by rebasing onto it.
+`git log` shows merge commits, so this file, not the log, is the answer to "what does the fork add".
 
-## 1. Leader sequences for built-in actions
+This file is the CATALOG: what the fork has, and where each piece is written up properly. It is not a
+changelog — `CHANGELOG-vim.md` holds the release notes, ordered by release and describing deltas. This one
+is ordered by feature and describes the current state. ⚠️ When you add a feature to the fork, add a line
+here as well as an entry there. The catalog went stale once already: the file said "two separable features"
+long after there were nine.
+
+## What's here
+
+**Keyboard**
+
+- **Leader sequences for built-in actions** — `map ctrl+space>s toggle_split`. Upstream allows one chord
+  per action; this allows a sequence. Detail below, design in `.claude/rules/keymap.md`.
+- **A modal normal mode** — the `normal_mode` action and the `nmap` verb, with bare keys, a mode word per
+  line, and a pill in the titlebar. Detail below. Ready-to-copy preset in `cookbook/vim-keys/`.
+- **`new_session_in_workspace`** — a picker of the workspaces, creating the session in the one you choose,
+  with a `Create workspace "<name>"` row for a name none of them has. Ships keyless.
+  `.claude/rules/menu-actions.md`.
+
+**Panes and sessions**
+
+- **Panes wrapped through zmx** — a pane's shell outlives the app and can be reattached. Session keys per
+  pane, orphaned daemons reaped at launch, the foreground process resolved past the zmx client, and
+  `session new --keep-shell-open` leaving the row at a prompt after its command exits.
+  `.claude/rules/zmx.md`.
+- **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
+  the workstation appears on the laptop mirroring it. `.claude/rules/overlay-redirect.md`.
+- **A recency dwell threshold** — a session only joins the Ctrl-Tab order once you have stayed on it past
+  the threshold, or typed in it, so walking past rows no longer buries the real work.
+  `.claude/rules/settings.md`.
+- **The chrome pills in the sidebar footer** rather than the title bar, staying visible while terminal
+  zoom hides the sidebar.
+
+**libghostty**
+
+Both of these need a patch under `patches/ghostty/`, applied by `scripts/setup.sh` at `GHOSTTY_REV`.
+Read `patches/ghostty/README.md` before touching either; when the pin moves, `git apply` fails loudly.
+
+- **Hidden surfaces release their GPU resources**, opt-in, with unrealize debounced and surfaces born
+  hidden covered. `0001-surface-realize-api.patch`. Measured before it: 129 surfaces holding 6.9 GB.
+- **Clickable cross-agent message ids** — Shift+Cmd+click a `msg-…` id in any pane and the parked message
+  opens in an overlay over it. Needs `0002-link-config.patch`, which implements the `link` config key
+  upstream declares but cannot parse. ⚠️ Shift is required and not optional, for plain URLs too — the
+  terminal links section of `.claude/rules/libghostty.md` says why.
+
+**Control API and tooling**
+
+- `tree` reports `sessionRecency`; `keymap list` reports the `nmap` binds in their own section;
+  `agtermctl mode on|off|toggle`; `window.list` reports `normalMode`. `.claude/rules/control-api.md`.
+- `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
+  `CHANGELOG-vim.md` as the release body. `.claude/rules/release.md`.
+
+## Leader sequences for built-in actions
 
 Upstream dispatches built-in actions as AppKit menu key equivalents, so each takes exactly one chord
 and `map` rejects a sequence. Here `map` also accepts one:
@@ -27,7 +77,7 @@ map ctrl+opt+a>n new_session
 - Reserved monitor chords (`ctrl+tab`, `ctrl+1`, `ctrl+2`) are rejected anywhere in a sequence.
 - A bare arrow is allowed after the first chord.
 
-## 2. A modal normal mode
+## A modal normal mode
 
 A new keyless built-in action `normal_mode`, and a new verb `nmap` for binds that are live only
 while the mode is on. Bare keys are legal there, because nothing reaches the terminal.
