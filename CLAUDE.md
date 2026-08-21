@@ -129,6 +129,15 @@ C-boundary concurrency before changing the bridge.
   `agtermCore`.
 - CI and release mechanics live in `.claude/rules/ci.md` and `release.md`. `CHANGELOG.md` is release-only;
   feature PRs update relevant product, skill, or engineering docs instead.
+- ⚠️ **A feature landing in the fork updates BOTH fork docs, in the commit that lands the feature.**
+  `FORK-NOTES.md` gets one or two lines under the right group in `What's here`: what it is, and the
+  `.claude/rules` file holding the detail. `CHANGELOG-fork.md` gets a user-facing entry under
+  `## Unreleased`. The two are not interchangeable — the catalog is ordered by feature and describes the
+  current state, the changelog is ordered by release and describes deltas — and neither is upstream's
+  `CHANGELOG.md`, which every rebase overwrites. Nothing enforces this: `ci.yml` triggers only on `master`
+  and the fork lives on `main`, so no CI runs here at all. It has already failed once, in both directions:
+  nine features shipped while `FORK-NOTES.md` still said "two separable features", and the recency dwell
+  shipped with no changelog entry at all. `.claude/rules/release.md` has the rest.
 
 ## GhosttyKit
 
@@ -237,7 +246,7 @@ spans intact, and format long catalogs as lists.
 - `libghostty.md`: surfaces, rendering, AppKit, theme, overlays, cursor.
 - `app-icon.md`: adaptive Icon Composer build.
 - `ci.md`: jobs, filters, coverage, badge.
-- `release.md`: local signing, notarization, release, Homebrew, changelog.
+- `release.md`: local signing, notarization, release, Homebrew, changelog, the two fork docs a feature must update.
 - `zmx.md`: native zmx wrapping, session keys, wrap decisions, lifecycle traps, foreground resolution.
 - `overlay-redirect.md`: which machine an overlay opens on, the two pairing fields, the two-phase open.
 - `fork-rebase.md`: rebasing this fork onto upstream, the gate set, the files that keep colliding.

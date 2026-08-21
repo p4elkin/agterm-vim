@@ -50,6 +50,28 @@ Fork release notes live in `CHANGELOG-fork.md`, never `CHANGELOG.md`: [[fork-reb
 copy whole on every rebase, so a note written there is erased by the next daily run. Upstream has no such
 file, so it never conflicts. `release.sh` publishes a section from it as the release body via
 `--notes-file`; the `draft-approval` review above applies to that text.
+
+### The two fork docs, and why a feature touches both
+
+`CHANGELOG-fork.md` and `FORK-NOTES.md` describe the same fork and are not substitutes for each other.
+The changelog is ordered by release and records deltas, which is what `release.sh` publishes.
+`FORK-NOTES.md` is ordered by feature and records the current state, which is what someone reads to find
+out what this build is.
+A delta list answers "what changed in v0.23"; it cannot answer "does this fork wrap panes in zmx".
+
+⚠️ So a landing feature writes to both, in the commit that lands it, and neither entry is a copy of the
+other.
+The catalog line is one or two lines naming the feature and pointing at the `.claude/rules` file, patch
+README or cookbook preset with the real detail — it must not grow into a second changelog.
+The changelog entry is user-facing prose about what you now get, including any trap a user would
+otherwise read as a bug.
+
+Nothing checks this.
+`ci.yml` triggers on `master` and the fork lives on `main`, so no CI job runs on the fork at all, and
+adding one means editing a workflow file that already collides on every rebase ([[fork-rebase]]).
+The rule has failed in both directions already: `FORK-NOTES.md` said "two separable features" until nine
+had shipped, and the recency dwell reached users with no changelog entry.
+Both were found by writing the catalog, not by any tooling.
 - Manually set `site/index.html`'s `SoftwareApplication.softwareVersion` in that same pre-release push;
   `release.sh` does not edit it. Cloudflare Pages deploys `site/` on push, and the DMG links already use
   GitHub's latest release.
