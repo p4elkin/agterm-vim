@@ -98,7 +98,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // reload; a touch inside viewFor wouldn't register it. The badge-visibility toggle
         // (GhosttyApp.notificationBadgeEnabled) is NOT observable and drives a re-reconcile via
         // .agtermAppearanceChanged, like toolbarMode.
-        _ = store.workspaces.map { ($0.id, $0.name, $0.unseenCount, $0.sessions.map { ($0.id, $0.displayName, $0.hasSplit, $0.splitAxis, $0.unseenCount, $0.agentIndicator, $0.flagged) }) }
+        _ = store.workspaces.map { workspace in
+            (workspace.id, workspace.name, workspace.unseenCount, workspace.sessions.map {
+                ($0.id, $0.displayName, $0.hasSplit, $0.splitAxis, $0.unseenCount, $0.agentIndicator,
+                 $0.flagged, $0.parked)
+            })
+        }
         _ = store.selectedSessionID
         _ = store.sidebarSelectionIDs
         // sidebarMode flips the whole data source (tree ↔ flat flagged list), so a mode change must rebuild.
@@ -107,6 +112,10 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // a membership change or a filter flip takes the rebuild branch.
         _ = store.focusedWorkspaceIDs
         _ = store.focusEnabled
+        // parked hiding changes which session rows are drawn (`AppStore.isRowVisible`); both the window
+        // flag and the exception set must re-run reconcile.
+        _ = store.hideParked
+        _ = store.parkedRevealedWorkspaceIDs
         context.coordinator.reconcile()
         context.coordinator.syncSelection()
     }
@@ -132,6 +141,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
         private var lastRevealedSelection: UUID?
         /// Last-seen `TreeShape`; a change is structural and forces a full rebuild.
         private var lastShape: [TreeShape] = []
+        /// Last-seen VISIBLE projection of the shape (session lists filtered through `AppStore.isRowVisible`).
+        /// A change here with `lastShape` unchanged means only row visibility moved — a park/unpark under
+        /// `hideParked`, a reveal-set edit, or the selection leaving a parked row — and takes the targeted
+        /// per-workspace children reload instead of a full rebuild.
+        private var lastVisibleShape: [TreeShape] = []
         /// Last-seen sidebar mode; a flip forces a full `rebuildAndReload` independent of the shape diff.
         private var lastMode: SidebarMode = .tree
         /// Workspace ids the user has expanded, tracked via the expand/collapse callbacks. The source of
@@ -362,10 +376,16 @@ struct WorkspaceSidebar: NSViewRepresentable {
             /// Whether the session is flagged (tree-mode filled-icon variant). A change re-badges just this
             /// row via `reloadItem`. Always false for workspace rows.
             let flagged: Bool
+            /// Whether the session is parked (the dimmed row). A change re-tints just this row via
+            /// `reloadItem`. Always false for workspace rows.
+            let parked: Bool
             /// Whether the workspace is in the focus set (the black-weight grid icon). MEMBERSHIP only,
             /// independent of `focusEnabled`, so marking re-renders just that row even while the filter is
             /// off (with it on the shape changes too and the rebuild branch takes over). False for sessions.
             let focusMember: Bool
+            /// How many of the workspace's rows are parked (the dim "⏸ N" suffix), drawn or hidden alike —
+            /// with hiding OFF a park moves no row, so only this delta re-renders the count. 0 for sessions.
+            let parkedCount: Int
         }
 
         /// The session's own agent-status indicator (`.idle` for an unknown id / workspace row). Shown
@@ -388,10 +408,26 @@ struct WorkspaceSidebar: NSViewRepresentable {
         func reconcile() {
             // a mode flip swaps the whole data source, so rebuild regardless of the shape diff.
             let shape = currentShape()
+            let visible = visibleShape()
             if store.sidebarMode != lastMode || shape != lastShape {
                 lastMode = store.sidebarMode
                 lastShape = shape
+                lastVisibleShape = visible
                 rebuildAndReload()
+                snapshotRowContent()
+                return
+            }
+            if visible != lastVisibleShape {
+                // the underlying tree is unchanged, only which rows are DRAWN moved: reload the affected
+                // workspaces' children in place. Flagged mode is one flat group with no workspace nodes to
+                // narrow to, so a visibility change there rebuilds like a flag change does.
+                let previous = lastVisibleShape
+                lastVisibleShape = visible
+                if store.sidebarMode == .flagged {
+                    rebuildAndReload()
+                } else {
+                    reloadWorkspacesWithChangedVisibility(from: previous, to: visible)
+                }
                 snapshotRowContent()
                 return
             }
@@ -409,6 +445,39 @@ struct WorkspaceSidebar: NSViewRepresentable {
             case .flagged:
                 return [TreeShape(workspaceID: Self.flaggedShapeID, sessionIDs: store.flaggedSessions.map(\.id))]
             }
+        }
+
+        /// The DRAWN projection of `currentShape()`: the same workspaces with each session list filtered
+        /// through `AppStore.isRowVisible`, the one parked-hiding predicate. This is what the outline
+        /// actually renders; `currentShape()` stays unfiltered so reconcile can tell a structural change
+        /// from a visibility-only one.
+        private func visibleShape() -> [TreeShape] {
+            switch store.sidebarMode {
+            case .tree:
+                return store.visibleWorkspaces.map { workspace in
+                    TreeShape(workspaceID: workspace.id,
+                              sessionIDs: workspace.sessions.filter(store.isRowVisible).map(\.id))
+                }
+            case .flagged:
+                return [TreeShape(workspaceID: Self.flaggedShapeID,
+                                  sessionIDs: store.flaggedSessions.filter(store.isRowVisible).map(\.id))]
+            }
+        }
+
+        /// Reloads only the workspaces whose drawn session list changed, swapping each node's children and
+        /// re-rendering that subtree in place — no `reloadData`, so expansion, scroll position and the other
+        /// workspaces' rows are untouched. Hidden sessions leave the node cache so a later content diff
+        /// cannot `reloadItem` a row the outline no longer draws.
+        private func reloadWorkspacesWithChangedVisibility(from old: [TreeShape], to new: [TreeShape]) {
+            guard let outline = outlineView else { return }
+            let previous = Dictionary(uniqueKeysWithValues: old.map { ($0.workspaceID, $0.sessionIDs) })
+            for entry in new where previous[entry.workspaceID] != entry.sessionIDs {
+                guard let wsNode = nodeCache[entry.workspaceID] else { continue }
+                wsNode.children = entry.sessionIDs.map { node(for: $0, kind: .session) }
+                outline.reloadItem(wsNode, reloadChildren: true)
+            }
+            let drawn = Set(new.flatMap(\.sessionIDs))
+            nodeCache = nodeCache.filter { $0.value.kind == .workspace || drawn.contains($0.key) }
         }
 
         /// Reloads only the rows whose visible content changed — the session row and, for a badge roll-up,
@@ -446,8 +515,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
         private func rowContent(forWorkspace workspace: Workspace) -> RowContent {
             RowContent(label: workspace.name, hasSplit: false, splitAxis: .leftRight,
                        unseen: effectiveUnseen(workspace.unseenCount),
-                       indicator: AgentIndicator(), flagged: false,
-                       focusMember: store.focusedWorkspaceIDs.contains(workspace.id))
+                       indicator: AgentIndicator(), flagged: false, parked: false,
+                       focusMember: store.focusedWorkspaceIDs.contains(workspace.id),
+                       parkedCount: store.parkedCount(in: workspace) ?? 0)
         }
 
         /// The visible content of a session row. One builder shared by `reloadChangedContentRows` and
@@ -458,7 +528,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        splitAxis: session.splitAxis,
                        unseen: effectiveUnseen(session.unseenCount),
                        indicator: effectiveIndicator(forSession: session.id), flagged: session.flagged,
-                       focusMember: false)
+                       parked: session.parked, focusMember: false, parkedCount: 0)
         }
 
         /// Rebuilds `roots` from the store, reusing cached node instances by id so NSOutlineView item
@@ -467,9 +537,10 @@ struct WorkspaceSidebar: NSViewRepresentable {
             guard let outline = outlineView else { return }
 
             // flagged mode: flat, non-expandable session rows; no workspace nodes, so they leave the cache.
+            // Rows come through `isRowVisible`, so a hidden parked row is filtered here like in the tree.
             if store.sidebarMode == .flagged {
                 var seen = Set<UUID>()
-                roots = store.flaggedSessions.map { session in
+                roots = store.flaggedSessions.filter(store.isRowVisible).map { session in
                     seen.insert(session.id)
                     return node(for: session.id, kind: .session)
                 }
@@ -485,7 +556,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
             for workspace in store.visibleWorkspaces {
                 let wsNode = node(for: workspace.id, kind: .workspace)
                 seen.insert(workspace.id)
-                wsNode.children = workspace.sessions.map { session in
+                // session rows come from the one parked-hiding predicate; a hidden row's node leaves the
+                // cache with the row, so no stale content diff can reload it.
+                wsNode.children = workspace.sessions.filter(store.isRowVisible).map { session in
                     seen.insert(session.id)
                     return node(for: session.id, kind: .session)
                 }
@@ -773,7 +846,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
 }
 
 /// `NSOutlineView` subclass routing the per-row context menu and double-click rename to the coordinator.
-final class SidebarOutlineView: NSOutlineView {
+/// Non-final so `SidebarParkedRowTests` can count `reloadData` calls through a subclass.
+class SidebarOutlineView: NSOutlineView {
     // never become first responder: focus lives in the terminal, and a mouse click still selects the row
     // (selection is independent of first responder). Otherwise the responder bounce (terminal → outline →
     // terminal, via mouseDown's focusActiveTerminal) makes AppKit re-set `isEmphasized` on the rows — an

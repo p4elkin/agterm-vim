@@ -20,10 +20,13 @@ extension AppStore {
         // TREE order keeps the on-disk list deterministic (not the Set's hash order); an unmarked store omits
         // both focus keys, matching a file written before the set existed. `focusedWorkspaceID` stays unused.
         let focusIDs = workspaces.map(\.id).filter(focusedWorkspaceIDs.contains)
+        let revealedIDs = workspaces.map(\.id).filter(parkedRevealedWorkspaceIDs.contains)
         return Snapshot(selectedSessionID: selectedSessionID, workspaces: workspaceSnapshots,
                         sidebarWidth: sidebarWidth, sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
                         focusedWorkspaceIDs: focusIDs.isEmpty ? nil : focusIDs,
                         focusEnabled: focusEnabled ? true : nil,
+                        hideParked: hideParked ? true : nil,
+                        parkedRevealedWorkspaceIDs: revealedIDs.isEmpty ? nil : revealedIDs,
                         sessionRecency: sessionRecency.items)
     }
 
@@ -33,6 +36,7 @@ extension AppStore {
                         fontSize: session.fontSize,
                         splitCwd: session.splitCwd ?? session.initialSplitCwd, splitRatio: session.splitRatio,
                         flagged: session.flagged,
+                        parked: session.parked ? true : nil,
                         foregroundCommand: session.foregroundCommand,
                         splitForegroundCommand: session.splitForegroundCommand,
                         initialCommand: session.initialCommand, commandWait: session.commandWait ? true : nil,
@@ -72,6 +76,7 @@ extension AppStore {
         session.initialSplitCwd = snapshot.splitCwd
         session.splitRatio = snapshot.splitRatio.map { min(AppStore.splitRatioMax, max(AppStore.splitRatioMin, $0)) }
         session.flagged = snapshot.flagged ?? false
+        session.parked = snapshot.parked ?? false
         session.initialCommand = snapshot.initialCommand
         session.commandWait = snapshot.commandWait ?? false
         session.keepShellOpen = snapshot.keepShellOpen ?? false

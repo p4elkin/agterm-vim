@@ -17,7 +17,7 @@ struct Session: ParsableCommand {
         abstract: "Session commands.",
         subcommands: [New.self, Duplicate.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self, SelectAll.self,
-                      Text.self, Status.self, Restore.self, FlagCommand.self,
+                      Text.self, Status.self, Restore.self, FlagCommand.self, Park.self,
                       Seen.self, Search.self, Background.self, Overlay.self, Hud.self]
     )
 
@@ -501,6 +501,23 @@ struct Session: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionFlag, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    struct Park: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Mark a session parked: the row is kept, its agent is not (on|off|toggle).")
+        @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard ["on", "off", "toggle"].contains(mode) else {
+                throw ValidationError("mode must be on, off, or toggle")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionPark, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
         }
     }
 

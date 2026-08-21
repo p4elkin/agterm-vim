@@ -117,6 +117,27 @@ struct ControlProtocolTests {
         }
     }
 
+    @Test func sidebarParkedCommandRoundTrips() throws {
+        let cases: [ControlRequest] = [
+            ControlRequest(cmd: .sidebarParked),
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(mode: "hide")),
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(workspace: "9f3c", mode: "show")),
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(workspace: "all", mode: "toggle", window: "win")),
+        ]
+        for request in cases {
+            #expect(try roundTrip(request) == request)
+        }
+    }
+
+    @Test func sidebarParkedRawStringMapsToTheCommand() throws {
+        let json = #"{"cmd":"sidebar.parked","args":{"mode":"hide","workspace":"active"}}"#
+        let request = try JSONDecoder().decode(ControlRequest.self, from: Data(json.utf8))
+
+        #expect(request.cmd == .sidebarParked)
+        #expect(request.args?.mode == "hide")
+        #expect(request.args?.workspace == "active")
+    }
+
     @Test func sessionCommandsRoundTrip() throws {
         let cases: [ControlRequest] = [
             ControlRequest(cmd: .sessionNew, args: ControlArgs(cwd: "/tmp", workspace: "active")),
@@ -442,6 +463,9 @@ struct ControlProtocolTests {
             ControlRequest(cmd: .sessionFlag, target: "active", args: ControlArgs(mode: "toggle")),
             ControlRequest(cmd: .sessionFlag, target: "9f3c", args: ControlArgs(mode: "on")),
             ControlRequest(cmd: .sessionFlag, args: ControlArgs(mode: "clear")),
+            ControlRequest(cmd: .sessionPark, target: "active", args: ControlArgs(mode: "toggle")),
+            ControlRequest(cmd: .sessionPark, target: "9f3c", args: ControlArgs(mode: "on")),
+            ControlRequest(cmd: .sessionPark, target: "9f3c", args: ControlArgs(mode: "off")),
             ControlRequest(cmd: .sidebarMode, args: ControlArgs(mode: "flagged")),
             ControlRequest(cmd: .sidebarMode, args: ControlArgs(mode: "toggle")),
             ControlRequest(cmd: .workspaceFocus, target: "active", args: ControlArgs(mode: "on")),
@@ -507,6 +531,13 @@ struct ControlProtocolTests {
         let raw = #"{"cmd":"session.flag","target":"active","args":{"mode":"on"}}"#
         let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(raw.utf8))
         #expect(decoded.cmd == .sessionFlag)
+        #expect(decoded.args?.mode == "on")
+    }
+
+    @Test func sessionParkRawStringMapsToCommandAndMode() throws {
+        let raw = #"{"cmd":"session.park","target":"active","args":{"mode":"on"}}"#
+        let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(raw.utf8))
+        #expect(decoded.cmd == .sessionPark)
         #expect(decoded.args?.mode == "on")
     }
 
@@ -583,6 +614,65 @@ struct ControlProtocolTests {
         let decoded = try roundTrip(response)
         #expect(decoded == response)
         #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.flagged == true)
+    }
+
+    @Test func treeSessionNodeRoundTripsWithParked() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         parked: true)
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(
+            workspaces: [ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.sessions.first?.parked == true)
+    }
+
+    @Test func treeSessionNodeOmitsParkedWhenNotParked() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
+        let json = String(data: try JSONEncoder().encode(session), encoding: .utf8) ?? ""
+        #expect(!json.contains("parked"), "an unparked row must not grow the field; got \(json)")
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8)).parked == nil)
+    }
+
+    @MainActor @Test func controlTreeReportsParkedTrueOnly() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/a"))
+        func node() throws -> ControlSessionNode { try #require(store.controlTree().workspaces[0].sessions.first) }
+        #expect(try node().parked == nil)
+        store.setParked(true, forSession: session.id)
+        #expect(try node().parked == true)
+        store.setParked(false, forSession: session.id)
+        #expect(try node().parked == nil)
+    }
+
+    @MainActor @Test func controlTreeCountsParkedRowsDrawnOrHidden() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let one = try #require(store.addSession(toWorkspace: ws.id, cwd: "/a"))
+        let two = try #require(store.addSession(toWorkspace: ws.id, cwd: "/b"))
+        func node() throws -> ControlWorkspaceNode { try #require(store.controlTree().workspaces.first) }
+        #expect(try node().parkedCount == nil)
+        store.setParked(true, forSession: one.id)
+        #expect(try node().parkedCount == 1)
+        store.setParked(true, forSession: two.id)
+        // hiding must not change the count: it reports the fact, not the drawing.
+        store.applyParkedVisibility(.hide)
+        #expect(try node().parkedCount == 2)
+        store.setParked(false, forSession: one.id)
+        store.setParked(false, forSession: two.id)
+        #expect(try node().parkedCount == nil)
+    }
+
+    @MainActor @Test func controlTreeReportsRevealsParkedTrueOnly() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = try #require(store.addSession(toWorkspace: ws.id, cwd: "/a"))
+        func node() throws -> ControlWorkspaceNode { try #require(store.controlTree().workspaces.first) }
+        #expect(try node().revealsParked == nil)
+        store.applyParkedVisibility(.show, toWorkspace: ws.id)
+        #expect(try node().revealsParked == true)
+        store.applyParkedVisibility(.hide, toWorkspace: ws.id)
+        #expect(try node().revealsParked == nil)
     }
 
     @Test func treeSessionNodeRoundTripsWithTitle() throws {
@@ -1125,6 +1215,22 @@ struct ControlProtocolTests {
         #expect(decoded.minimized == nil)
     }
 
+    @Test func windowNodeRoundTripsWithParkedHidden() throws {
+        let node = ControlWindowNode(id: "w1", name: "work", open: true, active: true, parkedHidden: true)
+        let response = ControlResponse(ok: true, result: ControlResult(windows: [node]))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.windows?.first?.parkedHidden == true)
+    }
+
+    @Test func windowNodeOmitsParkedHiddenWhenNil() throws {
+        let node = ControlWindowNode(id: "w1", name: "work", open: false, active: false)
+        let json = String(data: try JSONEncoder().encode(node), encoding: .utf8) ?? ""
+        #expect(!json.contains("parkedHidden"), "a nil parkedHidden must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWindowNode.self, from: Data(json.utf8))
+        #expect(decoded.parkedHidden == nil)
+    }
+
     @Test func workspaceNodeRoundTripsWithFocused() throws {
         // `focused` (a member of the sidebar focus set) is distinct from `active` (the selected one).
         let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, focused: true, sessions: [])
@@ -1156,6 +1262,26 @@ struct ControlProtocolTests {
         #expect(!json.contains("collapsed"), "a nil collapsed must be omitted from the JSON; got \(json)")
         let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
         #expect(decoded.collapsed == nil)
+    }
+
+    @Test func workspaceNodeRoundTripsWithParkedCountAndRevealsParked() throws {
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, parkedCount: 3,
+                                      revealsParked: true, sessions: [])
+        let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(workspaces: [ws])))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.tree?.workspaces.first?.parkedCount == 3)
+        #expect(decoded.result?.tree?.workspaces.first?.revealsParked == true)
+    }
+
+    @Test func workspaceNodeOmitsParkedCountAndRevealsParkedWhenNil() throws {
+        let ws = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [])
+        let json = String(data: try JSONEncoder().encode(ws), encoding: .utf8) ?? ""
+        #expect(!json.contains("parkedCount"), "a nil parkedCount must be omitted from the JSON; got \(json)")
+        #expect(!json.contains("revealsParked"), "a nil revealsParked must be omitted from the JSON; got \(json)")
+        let decoded = try JSONDecoder().decode(ControlWorkspaceNode.self, from: Data(json.utf8))
+        #expect(decoded.parkedCount == nil)
+        #expect(decoded.revealsParked == nil)
     }
 
     @Test func workspaceCollapseExpandRawStringsMapToCommands() throws {

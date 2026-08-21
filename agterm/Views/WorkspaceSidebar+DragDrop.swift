@@ -125,25 +125,31 @@ extension WorkspaceSidebar.Coordinator {
         let sessionIDs = draggedSessionIDs(from: info)
         guard !sessionIDs.isEmpty, let node = item as? SidebarNode else { return nil }
 
+        // ⚠️ DRAWN space throughout. `index` is NSOutlineView's, and the outline is given the rows that
+        // survive `isRowVisible`, so a model index mixed into the same arithmetic moves the wrong row —
+        // the two spaces were identical until parked rows could be hidden. `move.destination` comes back
+        // drawn and is translated once, below.
         let target: SidebarDrop.SessionDropTarget
         switch node.kind {
         case .workspace:
-            let count = store.workspaces.first(where: { $0.id == node.id })?.sessions.count ?? 0
-            target = .workspaceRow(id: node.id, sessionCount: count)
+            target = .workspaceRow(id: node.id, sessionCount: store.visibleSessionCount(inWorkspace: node.id))
         case .session:
-            guard let drop = store.sessionLocation(ofSession: node.id) else { return nil }
+            guard let drop = store.visibleSessionLocation(ofSession: node.id) else { return nil }
             target = .sessionRow(workspace: drop.workspace, sessionIndex: drop.index, sessionCount: drop.count)
         }
 
         let sources = sessionIDs.compactMap { id -> SidebarDrop.SessionSource? in
-            guard let source = store.sessionLocation(ofSession: id) else { return nil }
+            guard let source = store.visibleSessionLocation(ofSession: id) else { return nil }
             return SidebarDrop.SessionSource(workspace: source.workspace, index: source.index)
         }
         guard sources.count == sessionIDs.count,
               let move = SidebarDrop.resolveSessions(sources: sources, target: target, childIndex: index)
         else { return nil }
+        let destination = store.modelInsertionIndex(drawnDestination: move.destination,
+                                                    inWorkspace: move.workspace,
+                                                    excluding: Set(sessionIDs))
         return SessionMove(sessionIDs: sessionIDs, workspace: move.workspace,
-                           dropChildIndex: move.dropChildIndex, destination: move.destination)
+                           dropChildIndex: move.dropChildIndex, destination: destination)
     }
 
     /// Resolves a Finder drop to existing directory URLs and a destination workspace: a workspace row adds

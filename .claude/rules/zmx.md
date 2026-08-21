@@ -38,8 +38,8 @@ is implemented; this list exists so nobody has to read the whole file to find ou
   failed `zmx attach`; the wrapper cannot, because the fall-through shell would become the pane's
   foreground group leader and break every wrapper detection. See "Wrapper form".
 - **Detach, close the row, come back after a relaunch, and the session is gone.** Nothing claims a daemon
-  whose row left the snapshot, so the launch reap ends it. Accepted 2026-08-11; the parked-session idea in
-  "Lifecycle traps" is the way out if it ever matters.
+  whose row left the snapshot, so the launch reap ends it. Accepted 2026-08-11; the unrowed-daemon-claim
+  idea in "Lifecycle traps" is the way out if it ever matters.
 - **A row with an automatic name keeps the label from its last surface build.** Only an explicit rename
   relabels; following the cwd would spawn a `zmx set` per OSC report.
 - **Unknown: whether a restored keep-shell-open row re-runs its command.** A second
@@ -171,8 +171,10 @@ That reap ends a detached session whose row was then closed, because the row is 
 and nothing claims the daemon any more. This is ACCEPTED, decided 2026-08-11: within one launch a detach
 is safe, and losing the session on the next launch is the price of never killing a live agent on exit.
 Do not add a workaround for it in the reaper.
-The idea it leaves open, if it ever becomes annoying: a PARKED session — an explicit "keep this daemon
-without a row" claim the reaper honours, which is a claim-side feature and not a change to any close path.
+The idea it leaves open, if it ever becomes annoying: an UNROWED DAEMON CLAIM — an explicit "keep this
+daemon without a row" claim the reaper honours, which is a claim-side feature and not a change to any close
+path. This is not `session.park`, which is the opposite shape: a ROW whose agent is gone. Nothing in
+`ZmxReaper` reads `Session.parked`.
 
 A closed WINDOW keeps its session ids persisted under `~/Library/Application Support/agterm/windows/`
 and does not end any zmx session, because the window reopens with them. A closed window is not

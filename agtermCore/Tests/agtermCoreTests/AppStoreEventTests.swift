@@ -135,6 +135,27 @@ final class AppStoreEventTests {
         #expect(batch.items.first?.payload.shape == "star")
     }
 
+    @Test func parkedEdgesEmitBothDirectionsAndIdempotentWritesStaySilent() throws {
+        let library = WindowLibrary(directory: directory, controlEventRing: ControlEventRing(runID: run))
+        let store = try #require(library.activeStore)
+        let session = try #require(store.activeSession)
+        let workspace = try #require(store.workspace(forSession: session.id))
+        let anchor = try eventBatch(library.readEvents(ControlEventReadOptions(cursor: nil, kinds: nil, limit: 100)))
+
+        store.setParked(true, forSession: session.id)
+        store.setParked(true, forSession: session.id)
+        store.setParked(false, forSession: session.id)
+        store.setParked(true, forSession: UUID())
+
+        let batch = try eventBatch(library.readEvents(ControlEventReadOptions(
+            cursor: ControlEventCursor(run: anchor.run, after: anchor.next), kinds: [.sessionParked], limit: 100
+        )))
+        #expect(batch.items.map { $0.payload.parked } == [true, false])
+        #expect(batch.items.allSatisfy { $0.session == session.id.uuidString })
+        #expect(batch.items.allSatisfy { $0.workspace == workspace.id.uuidString })
+        #expect(batch.items.allSatisfy { $0.payload.name == session.displayName })
+    }
+
     @Test func sameNormalizedStatusAndUnknownSessionDoNotEmit() throws {
         let library = WindowLibrary(directory: directory, controlEventRing: ControlEventRing(runID: run))
         let store = try #require(library.activeStore)

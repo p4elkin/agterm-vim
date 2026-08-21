@@ -6,6 +6,9 @@ public enum ControlEventKind: String, Codable, CaseIterable, Sendable, Equatable
     case notify
     case sessionCreated = "session.created"
     case sessionClosed = "session.closed"
+    /// A `Session.parked` edge. It is its own kind rather than a payload on `tree.changed`, whose drafts
+    /// `WindowLibrary` coalesces per window and re-emits empty, which would drop the mark it carried.
+    case sessionParked = "session.parked"
     case treeChanged = "tree.changed"
 }
 
@@ -20,18 +23,22 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
     /// The `status` event's per-call glyph silhouette (a `StatusShape` raw value), nil when the glyph uses the
     /// Settings shape / default plain circle. A shape-only change emits a `status` event, unexplainable without it.
     public var shape: String?
+    /// The `session.parked` event's resulting mark. Both edges are events, so unlike the tree node's
+    /// true-only field this carries false as well.
+    public var parked: Bool?
     public var title: String?
     public var body: String?
 
     public init(name: String? = nil, status: String? = nil, pane: String? = nil,
                 blink: Bool? = nil, color: String? = nil, shape: String? = nil,
-                title: String? = nil, body: String? = nil) {
+                parked: Bool? = nil, title: String? = nil, body: String? = nil) {
         self.name = name
         self.status = status
         self.pane = pane
         self.blink = blink
         self.color = color
         self.shape = shape
+        self.parked = parked
         self.title = title
         self.body = body
     }

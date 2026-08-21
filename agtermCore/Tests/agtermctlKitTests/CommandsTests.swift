@@ -1440,6 +1440,36 @@ struct CommandsTests {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["sidebar", "mode", "sideways"]) }
     }
 
+    @Test func sidebarParkedDefaultsToggle() throws {
+        #expect(try request(["sidebar", "parked"]) ==
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(mode: "toggle")))
+    }
+
+    @Test func sidebarParkedHide() throws {
+        #expect(try request(["sidebar", "parked", "hide"]) ==
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(mode: "hide")))
+    }
+
+    @Test func sidebarParkedWorkspaceScope() throws {
+        #expect(try request(["sidebar", "parked", "show", "--workspace", "ws1"]) ==
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(workspace: "ws1", mode: "show")))
+    }
+
+    @Test func sidebarParkedWorkspaceAll() throws {
+        #expect(try request(["sidebar", "parked", "hide", "--workspace", "all"]) ==
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(workspace: "all", mode: "hide")))
+    }
+
+    @Test func sidebarParkedWithWindow() throws {
+        #expect(try request(["sidebar", "parked", "show", "--window", "abc"]) ==
+            ControlRequest(cmd: .sidebarParked, args: ControlArgs(mode: "show", window: "abc")))
+    }
+
+    @Test func sidebarParkedRejectsBadMode() {
+        #expect(validationMessage(["sidebar", "parked", "sideways"]) ==
+            "mode must be show, hide, or toggle")
+    }
+
     @Test func sidebarExpand() throws {
         #expect(try request(["sidebar", "expand"]) == ControlRequest(cmd: .sidebarExpand))
     }
@@ -1486,6 +1516,27 @@ struct CommandsTests {
 
     @Test func sessionFlagRejectsBadMode() {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["session", "flag", "bogus"]) }
+    }
+
+    @Test func sessionParkDefaultsToggle() throws {
+        #expect(try request(["session", "park"]) == ControlRequest(cmd: .sessionPark, target: "active", args: ControlArgs(mode: "toggle")))
+    }
+
+    @Test func sessionParkOnWithTarget() throws {
+        let expected = ControlRequest(cmd: .sessionPark, target: "9f3c", args: ControlArgs(mode: "on"))
+        #expect(try request(["session", "park", "on", "--target", "9f3c"]) == expected)
+    }
+
+    @Test func sessionParkOff() throws {
+        #expect(try request(["session", "park", "off"]) == ControlRequest(cmd: .sessionPark, target: "active", args: ControlArgs(mode: "off")))
+    }
+
+    @Test func sessionParkRejectsClear() {
+        #expect(validationMessage(["session", "park", "clear"]) == "mode must be on, off, or toggle")
+    }
+
+    @Test func sessionParkRejectsBadMode() {
+        #expect(validationMessage(["session", "park", "bogus"]) == "mode must be on, off, or toggle")
     }
 
     @Test func fontInc() throws {

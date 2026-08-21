@@ -395,6 +395,19 @@ final class WindowLibraryTests {
         #expect(library.controlWindowNodes().allSatisfy { $0.normalMode == nil })
     }
 
+    // true-only, from the open window's store: an untouched window keeps the field off the wire.
+    @Test func controlWindowNodesReportParkedHiddenTrueOnly() {
+        let library = WindowLibrary(directory: directory)
+        let first = library.windows[0]
+        let second = library.newWindow(name: "work")
+
+        library.store(for: second.id)?.applyParkedVisibility(.hide)
+        let nodes = library.controlWindowNodes()
+        #expect(nodes[0].id == first.id.uuidString)
+        #expect(nodes[0].parkedHidden == nil)
+        #expect(nodes[1].parkedHidden == true)
+    }
+
     @Test func controlWindowNodesUseActiveWindowFallback() {
         let library = WindowLibrary(directory: directory)
         let first = library.windows[0]

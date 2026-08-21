@@ -31,6 +31,7 @@ final class MockControlActions: ControlActions {
         case workspaceFilter(window: String?, ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
         case sessionFlag(target: String?, window: String?, String?)
+        case sessionPark(target: String?, window: String?, ControlToggleMode)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
@@ -51,6 +52,7 @@ final class MockControlActions: ControlActions {
         case themeList
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
+        case sidebarParked(window: String?, ControlParkedVisibilityMode, ControlParkedScope)
         case expand(window: String?)
         case collapse(window: String?)
         case normalMode(ControlToggleMode)
@@ -110,6 +112,7 @@ final class MockControlActions: ControlActions {
     var unresolvedFocusTargets: [String] = []
     var nextSidebarVisibilityResponse = ControlResponse(ok: true)
     var nextSidebarViewModeResponse = ControlResponse(ok: true)
+    var nextSidebarParkedResponse = ControlResponse(ok: true)
     var nextNormalModeResponse = ControlResponse(ok: true)
     var nextOverlayPairingResponse = ControlResponse(ok: true)
     var nextOverlayRedirectToggleResponse = ControlResponse(ok: true)
@@ -280,6 +283,11 @@ final class MockControlActions: ControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.sessionPark(target: target, window: window, mode))
+        return ControlResponse(ok: true)
+    }
+
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse {
         calls.append(.markSessionSeen(target: target, window: window))
         return ControlResponse(ok: true)
@@ -387,6 +395,25 @@ final class MockControlActions: ControlActions {
     func setSidebarViewMode(_ mode: ControlSidebarViewMode) -> ControlResponse {
         calls.append(.sidebarViewMode(mode))
         return nextSidebarViewModeResponse
+    }
+
+    func setSidebarParked(window: String?, mode: ControlParkedVisibilityMode,
+                          scope: ControlParkedScope) -> ControlResponse {
+        calls.append(.sidebarParked(window: window, mode, scope))
+        // hands the parsed pair to the SAME `applyParkedVisibility` seam the real arm calls.
+        if let store = focusStore {
+            switch scope {
+            case .window: store.applyParkedVisibility(mode)
+            case .all: store.applyParkedVisibilityEverywhere(mode)
+            case .workspace(let target):
+                if let id = UUID(uuidString: target) {
+                    store.applyParkedVisibility(mode, toWorkspace: id)
+                } else {
+                    unresolvedFocusTargets.append(target)
+                }
+            }
+        }
+        return nextSidebarParkedResponse
     }
 
     func expandSidebar(window: String?) -> ControlResponse {

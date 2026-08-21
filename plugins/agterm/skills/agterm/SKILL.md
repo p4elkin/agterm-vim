@@ -18,9 +18,9 @@ description: >
 when_to_use: >
   Trigger on: agterm, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.split.close, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, cursor column, dashboard, pick, pick.open, pick.result, pick.cancel, native picker, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
-  session.flag, session.seen, session.reveal, session.duplicate, session.background, session.overlay,
+  session.flag, session.park, parked session, session.seen, session.reveal, session.duplicate, session.background, session.overlay,
   session.hud, hud panel, show a message over a session, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
-  window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, normal mode, notify, font.inc, keymap.reload, keymap.list, config.reload,
+  window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.parked, hide parked rows, sidebar.expand, sidebar.collapse, flagged, normal mode, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap, show an image, display an image inline, show-image,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap editor won't open, custom action / custom command not working, agterm logs, file an agterm
@@ -222,7 +222,7 @@ that window, omitted when no pick is pending.
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind status|notify|session.created|session.closed|tree.changed`; resume with paired
+`--kind status|notify|session.created|session.closed|session.parked|tree.changed`; resume with paired
 `--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
 one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
 rebaselined. There is no terminal-output event stream.
@@ -319,6 +319,12 @@ omitted when expanded).
   aliases for growing the primary or split pane. Prints the applied fraction.
 - `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it and any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a Dock-menu session, a sidebar row click) reveals that pane when the status needs attention (`blocked`/`completed`); `active` preserves the existing pane selection; the pane reads back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
+- `park [on|off|toggle]` — mark a session parked: the row is kept, whatever agent it held is not. The row
+  draws dimmed and stays selectable, navigable and where it is; only the look changes, unless
+  `sidebar parked hide` is on, which takes hidden parked rows out of the tree and the navigation order.
+  agterm sets the mark, it kills nothing — the caller stops the process and restarts it later. Persisted,
+  idempotent, no `clear`. Read back as the tree node's true-only `parked`; both edges emit a
+  `session.parked` event.
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a
   no-op when already zero. Read the current count from the tree node's `unseen` field. Use it so an
@@ -473,10 +479,17 @@ per app, so none of them take `--target`/`--window`/`--pane`; all three still ne
 
 **sidebar** — `[show|hide|toggle]` (visibility; read back from the tree's `sidebarVisible`) ·
 `mode [tree|flagged|toggle]` (flip between the workspace tree and the flat flagged working-set list; read
-back from the tree's top-level `sidebarMode`) · `expand [--window W]` (expand every workspace) ·
+back from the tree's top-level `sidebarMode`) ·
+`parked [show|hide|toggle] [--workspace <id|active|all>] [--window W]` (whether PARKED rows are drawn:
+bare, it sets the window-wide hide flag; `--workspace id/active` marks one workspace as an exception that
+shows its parked rows anyway; `all` clears the exceptions and applies the mode everywhere. A hidden row
+also leaves the navigation order; the selected row stays drawn until the selection moves off it, and the
+workspace row shows a dim `⏸ N` count either way. Read back from the window node's true-only
+`parkedHidden` and the workspace node's `parkedCount`/`revealsParked`) ·
+`expand [--window W]` (expand every workspace) ·
 `collapse [--window W]` (collapse all workspaces except the active one, which stays expanded).
-Visibility/mode act on the frontmost window; `expand`/`collapse` default to the frontmost but take a
-`--window` selector to target any open window.
+Visibility/mode act on the frontmost window; `parked`/`expand`/`collapse` default to the frontmost but
+take a `--window` selector to target any open window.
 
 **mode** — `mode [on|off|toggle]` — normal mode, where the keys bound with `nmap` in `keymap.conf` run
 built-in actions or custom commands and every other key is swallowed instead of reaching the shell (menu chords such as ⌘Q,

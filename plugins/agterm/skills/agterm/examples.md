@@ -390,6 +390,24 @@ agtermctl sidebar mode tree                               # back to the full tre
 agtermctl session flag clear                              # unflag everything in the window
 ```
 
+## Park an idle agent's row after killing its process
+
+A long-lived agent process costs hundreds of MB. Stop the idle ones, keep their rows, and mark the rows
+so the dim says which ones hold nothing. agterm kills nothing itself — the script owns the process, the
+mark is all the app owns — so park AFTER the kill and unpark AFTER the resume, or the row lies.
+
+```bash
+kill "$AGENT_PID"                                         # your script stops the process
+agtermctl session park on --target a1b2                   # the row stays, drawn dimmed
+agtermctl tree --json | jq '.result.tree.workspaces[].sessions[]
+  | select(.parked) | .id'                                # true-only: unparked rows carry no field
+agtermctl session type "claude --resume" --target a1b2    # resume it, then clear the mark
+agtermctl session park off --target a1b2
+```
+
+`park` takes `on|off|toggle` and defaults to `toggle`; there is no `clear` mode. Both edges emit a
+`session.parked` event, so `agtermctl events --kind session.parked` follows the marks live.
+
 ## Acknowledge a driven session's notifications without stealing focus
 
 An orchestrator relaying a session's output elsewhere (Telegram, another agent) fires `notify` to signal

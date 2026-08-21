@@ -17,6 +17,8 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 4, ts: 4.5, kind: .sessionClosed, window: "win", workspace: "work",
                          session: "closed", payload: ControlEventPayload(name: "old")),
             ControlEvent(seq: 5, ts: 5.5, kind: .treeChanged, window: "win"),
+            ControlEvent(seq: 6, ts: 6.5, kind: .sessionParked, window: "win", workspace: "work",
+                         session: "parked", payload: ControlEventPayload(name: "api", parked: true)),
         ]
 
         let data = try JSONEncoder().encode(events)
@@ -41,6 +43,8 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 4, ts: 4.5, kind: .sessionClosed, window: "win", workspace: "work",
                          session: "closed", payload: ControlEventPayload(name: "old")),
             ControlEvent(seq: 5, ts: 5.5, kind: .treeChanged, window: "win"),
+            ControlEvent(seq: 6, ts: 6.5, kind: .sessionParked, window: "win", workspace: "work",
+                         session: "parked", payload: ControlEventPayload(name: "api", parked: true)),
         ]
         let expected = [
             ##"{"kind":"status","payload":{"blink":true,"color":"#aabbcc","name":"api","pane":"right","##
@@ -49,6 +53,8 @@ struct ControlEventProtocolTests {
             ##"{"kind":"session.created","payload":{"name":"new"},"seq":3,"session":"created","ts":3.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"session.closed","payload":{"name":"old"},"seq":4,"session":"closed","ts":4.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"tree.changed","payload":{},"seq":5,"ts":5.5,"window":"win"}"##,
+            ##"{"kind":"session.parked","payload":{"name":"api","parked":true},"seq":6,"session":"parked","##
+                + ##""ts":6.5,"window":"win","workspace":"work"}"##,
         ]
 
         #expect(try events.map(canonicalJSON) == expected)
@@ -66,6 +72,22 @@ struct ControlEventProtocolTests {
 
         let plainJSON = String(decoding: try JSONEncoder().encode(plain), as: UTF8.self)
         #expect(!plainJSON.contains("shape"), "a nil shape must be omitted from the payload; got \(plainJSON)")
+    }
+
+    // the unpark edge is an event of its own, so `false` must reach the wire; the tree node's true-only
+    // field is the one that drops it
+    @Test func parkedPayloadKeepsFalseAndIsOmittedWhenNil() throws {
+        let unparked = ControlEvent(seq: 1, ts: 1.5, kind: .sessionParked, window: "win", session: "sess",
+                                    payload: ControlEventPayload(name: "api", parked: false))
+        let unparkedData = try JSONEncoder().encode(unparked)
+        #expect(try JSONDecoder().decode(ControlEvent.self, from: unparkedData) == unparked)
+        #expect(try JSONDecoder().decode(ControlEvent.self, from: unparkedData).payload.parked == false)
+
+        let statusJSON = String(decoding: try JSONEncoder().encode(
+            ControlEvent(seq: 2, ts: 2.5, kind: .status, window: "win",
+                         payload: ControlEventPayload(status: "active"))
+        ), as: UTF8.self)
+        #expect(!statusJSON.contains("parked"), "a nil mark must be omitted from the payload; got \(statusJSON)")
     }
 
     @Test func optionalEventAndPayloadFieldsAreOmitted() throws {

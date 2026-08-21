@@ -124,11 +124,12 @@ renumbering. Do not reintroduce a count anywhere.
 - `session.new`, `.duplicate`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
   `.split.close`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
-  `.flag`, `.seen`, `.restore`, `.background`, `.overlay.open`, `.overlay.close`, `.overlay.resize`,
-  `.overlay.result`, `.overlay.copy`, `.overlay.text`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
+  `.flag`, `.park`, `.seen`, `.restore`, `.background`, `.overlay.open`, `.overlay.close`,
+  `.overlay.resize`, `.overlay.result`, `.overlay.copy`, `.overlay.text`, `.hud.open`, `.hud.update`,
+  `.hud.close`, `.pairing`
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`
 - `quick`, `quick.type`, `quick.text`
-- `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
+- `sidebar`, `sidebar.mode`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
@@ -529,6 +530,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - Auto-reset clears both session entered and session left. Status renders on selected sessions too.
 - `session.flag on|off|toggle|clear` is idempotent; clear ignores target and clears the store.
   Read `flagged`.
+- `session.park on|off|toggle` is idempotent and has no `clear` twin: unparking every row at once would
+  leave a screen of rows that look live and hold nothing. The dispatcher parses the mode before the host
+  runs, so an unknown one errors instead of half-applying. Read true-only `parked`; both edges emit a
+  `session.parked` event carrying the resulting mark. The mark is all agterm owns — killing and restarting
+  whatever the row held belongs to the caller. It is control-native: no menu item, chord or palette entry, a
+  deliberate exemption from [[menu-actions]]'s shared-seam rule, because a chord that dimmed a row without
+  killing the process the dim describes would be false on screen. The useful toggle does both and lives in
+  the caller's script.
 - `session.seen` clears unseen without selection/focus/status or persistence. Read nonzero `unseen`.
 
 ## Keymap, config, theme, and sidebar
@@ -567,6 +576,20 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   omitting it when the bind is on its action's default. So `nmap space>n new_session insert` reports nothing,
   and a caller must not read an absent field as a line that carried no word or got dropped. The human
   section prints it as a third column. See [[keymap]] for the grammar and the single resolver.
+- ⚠️ `sidebar.parked` is control-only ON PURPOSE, with no menu item, chord or footer control. Hiding is
+  useful when a script has just parked a batch; reaching for it by hand means hiding rows you are looking
+  at, one at a time, which is what the parked mark already shows you. `session.park` carries the same
+  exemption for the same reason, argued below.
+- `sidebar.parked show|hide|toggle [--workspace <id|active|all>]` drives whether parked rows are drawn;
+  the predicate and its state pair are owned by [[sidebar]]. Bare, it sets the window's `hideParked` flag; `--workspace id/active`
+  edits that workspace's membership in the revealed exception set; `all` clears the set and applies the
+  mode everywhere. The dispatcher parses the mode and decides the `all` scope BEFORE the host runs, so an
+  unknown mode errors instead of half-applying, and revealing an id naming no workspace is refused — a
+  phantom member is what broke the focus read-back. Read back as true-only `parkedHidden` on the window
+  node (open windows only, like `sidebarVisible`), true-only `revealsParked` on a workspace in the
+  exception set — reported independently of the flag, like `focused` beside `workspaceFilter` — and
+  `parkedCount` on the workspace node, omitted when zero, counting parked rows drawn or hidden alike so
+  nothing disappears without trace.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
   no-op in flagged mode. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `workspace.focus on` replaces/enables; off removes and disables on empty; toggle clears sole applied
@@ -586,10 +609,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 ## Tree and window read-back
 
 - Session nodes include foreground/split foreground argv, background spec, overlay size, pane overlays,
-  split axis, split ratio, split focus, status fields, flag, unseen, restore pins, the two overlay-redirect
-  pairing fields (`mirrorsSession`, `viewer` — fork only, both omitted when unset, see [[overlay-redirect]];
-  the surface node's `cwd` is fork-only too, present only on `right` and only when the split pane sits
-  somewhere other than the session's own `cwd`), surfaces, and `realized`.
+  split axis, split ratio, split focus, status fields, flag, `parked`, unseen, restore pins, the two
+  overlay-redirect pairing fields (`mirrorsSession`, `viewer` — fork only, both omitted when unset, see
+  [[overlay-redirect]]; the surface node's `cwd` is fork-only too, present only on `right` and only when
+  the split pane sits somewhere other than the session's own `cwd`), surfaces, and `realized`.
 - `realized` reports the MAIN pane's `TerminalSurface.isRealized`, populated host-free in
   `AppStore.controlTree` (no app closure — `isRealized` is on the protocol) and false for an empty slot, so
   only a server predating the field omits it. It exists because `session.new` answers `ok` for a model
@@ -644,7 +667,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   where a documented command upstream lacks breaks a call the skill told them to make.
   `site/commands.html` still says seven and lists seven, and is left alone on this fork for upstream.
 - Window nodes include open/active, open-store sidebar/auto-follow/recency dwell, geometry, fullscreen,
-  zoomed, minimized.
+  zoomed, minimized, and true-only `parkedHidden`.
   Closed live fields are omitted. Geometry is top-left display-relative y-down and round-trips move/resize.
 - Window list is cached. Refresh after commands and frontmost/sidebar/attachment/move/resize/fullscreen/
   minimize changes. Ignore `Notification` payloads rather than carrying non-Sendable values into main actor.

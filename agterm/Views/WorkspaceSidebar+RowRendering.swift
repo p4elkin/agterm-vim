@@ -40,6 +40,7 @@ extension WorkspaceSidebar.Coordinator {
         // glyph: each branch assigns it in full, and an idle round-trip restarts the blink on reload.
         applyBadge(toCell: cell, count: 0)
         cell.setAddButtonVisible(false)
+        cell.parked = false
         switch node.kind {
         case .workspace:
             let workspace = store.workspaces.first(where: { $0.id == node.id })
@@ -53,6 +54,11 @@ extension WorkspaceSidebar.Coordinator {
             // roll-up badge so an unseen notification stays visible when the workspace is collapsed
             // (gated by the Settings badge toggle, like the session badge below)
             applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
+            // the parked count is keyed on the FACT that parked rows exist, not on `hideParked` — like the
+            // focus-membership icon below, so what a hide would remove stays legible while hiding is off.
+            let parkedCount = workspace.flatMap { store.parkedCount(in: $0) } ?? 0
+            cell.parkedSuffix?.stringValue = parkedCount > 0 ? "⏸ \(parkedCount)" : ""
+            cell.parkedSuffix?.font = .systemFont(ofSize: GhosttyApp.shared.sidebarFontSize)
             // a workspace in the focus set draws the SAME grid glyph at BLACK weight, keyed on MEMBERSHIP
             // alone and NOT on `focusEnabled` — so the marked set stays legible with the filter off, while
             // looking at the whole tree.
@@ -72,6 +78,9 @@ extension WorkspaceSidebar.Coordinator {
             // so the fill would be noise.
             let showSplitIcon = session?.hasSplit == true
             let flagged = store.sidebarMode == .tree && session?.flagged == true
+            // both modes render sessions through this one branch, so the dim resolves here beside `flagged`
+            // rather than in either caller; `setColors` below turns it into the actual colors.
+            cell.parked = session?.parked == true
             cell.imageView?.image = iconForSession(split: showSplitIcon, axis: session?.splitAxis ?? .leftRight,
                                                    flagged: flagged)
             cell.imageView?.setAccessibilityIdentifier("session-icon")
@@ -180,8 +189,16 @@ extension WorkspaceSidebar.Coordinator {
             let width = addBtn.widthAnchor.constraint(equalToConstant: 0)
             cell.addButtonWidthConstraint = width
             addBtn.isHidden = true
+            let suffix = makeParkedSuffix()
+            cell.addSubview(suffix)
+            cell.parkedSuffix = suffix
+            // the suffix hugs one notch below the name, so IT absorbs the row's slack and its left-aligned
+            // text sits right after the name instead of drifting to the trailing edge; when tight the name
+            // truncates first (the suffix resists compression), and an empty suffix costs zero width.
             constraints += [
-                field.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -6),
+                field.trailingAnchor.constraint(equalTo: suffix.leadingAnchor, constant: -6),
+                suffix.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor),
+                suffix.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 addBtn.trailingAnchor.constraint(equalTo: statusIcon.leadingAnchor),
                 addBtn.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 width,
@@ -193,6 +210,16 @@ extension WorkspaceSidebar.Coordinator {
 
         NSLayoutConstraint.activate(constraints)
         return cell
+    }
+
+    private func makeParkedSuffix() -> NSTextField {
+        let suffix = NSTextField(labelWithString: "")
+        suffix.translatesAutoresizingMaskIntoConstraints = false
+        suffix.lineBreakMode = .byClipping
+        suffix.setContentHuggingPriority(NSLayoutConstraint.Priority(rawValue: 249), for: .horizontal)
+        suffix.setContentCompressionResistancePriority(.required, for: .horizontal)
+        suffix.setAccessibilityIdentifier("workspace-parked-count")
+        return suffix
     }
 
     private func makeAddSessionButton() -> NSButton {

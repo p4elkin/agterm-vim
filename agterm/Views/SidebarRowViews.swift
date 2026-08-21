@@ -19,7 +19,23 @@ final class SidebarCellView: NSTableCellView {
     /// collapse-the-slot convention of `StatusIconView.widthConstraint`, so an idle row's name reclaims it.
     var addButtonWidthConstraint: NSLayoutConstraint?
 
+    /// Dim "⏸ N" after a workspace name counting its parked rows, drawn or hidden alike — the fact that they
+    /// exist, independent of `hideParked`, so nothing disappears without trace. NOT the badge: that slot
+    /// carries the unseen roll-up, and two numbers in one slot would lie about at least one of them.
+    /// Empty when no row is parked. Nil for session cells.
+    var parkedSuffix: NSTextField?
+
+    /// Whether the row's session carries the parked mark. Held on the cell rather than read at tint time so
+    /// every re-tint path (`SidebarRowView` on attach and on a selection flip, the coordinator on a theme
+    /// change) applies the same dim; a branch in the cell builder alone would be wiped by the next one.
+    /// Always false on a workspace cell.
+    var parked = false
+
     private static let addButtonWidth: CGFloat = 16
+    /// Contrast of a parked row, unselected only. Low enough to read as switched off next to a live row,
+    /// high enough to keep the name legible.
+    private static let parkedLabelAlpha: CGFloat = 0.45
+    private static let parkedIconAlpha: CGFloat = 0.4
     private var hoverTrackingArea: NSTrackingArea?
 
     /// Reveals or collapses the inline "+": the Finder/Xcode hover convention, so an idle row shows no button
@@ -64,13 +80,20 @@ final class SidebarCellView: NSTableCellView {
     /// selection color; an unselected row takes the theme foreground, icons dimmed. Driven from the real
     /// selection state, not `backgroundStyle` (AppKit flips that only while the table is first responder) —
     /// `SidebarRowView` re-asserts it on attach and on every selection flip, the coordinator on theme changes.
+    ///
+    /// A parked row draws at reduced contrast. Selection wins over that dim: the selection pill already
+    /// recolors the row, and dimming on top of it would make the active row the hardest one to read.
     func setColors(selected: Bool) {
         let app = GhosttyApp.shared
         let color = selected
             ? (app.terminalSelectionForegroundColor ?? .white)
             : (app.terminalForegroundColor ?? .labelColor)
-        textField?.textColor = color
-        let iconAlpha: CGFloat = selected ? 0.85 : 0.6
+        let dimmed = parked && !selected
+        textField?.textColor = dimmed ? color.withAlphaComponent(Self.parkedLabelAlpha) : color
+        // the parked count is an annotation, always dim: workspace rows are never selectable, so the
+        // selection exemption the parked row dim has cannot apply here.
+        parkedSuffix?.textColor = color.withAlphaComponent(Self.parkedLabelAlpha)
+        let iconAlpha: CGFloat = dimmed ? Self.parkedIconAlpha : (selected ? 0.85 : 0.6)
         imageView?.contentTintColor = color.withAlphaComponent(iconAlpha)
         addButton?.contentTintColor = color.withAlphaComponent(iconAlpha)
     }

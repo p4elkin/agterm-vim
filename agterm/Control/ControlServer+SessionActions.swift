@@ -563,6 +563,20 @@ extension ControlServer: ControlActions {
         }
     }
 
+    /// Set or clear the target's parked mark (`Session.parked`): the row stays, whatever agent it held is
+    /// gone. The mode arrives parsed, so this only resolves the session and computes `toggle` against the
+    /// current value; the store write is idempotent and touches nothing else. agterm kills no process —
+    /// whoever killed it sets the mark.
+    func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            store.setParked(mode.desiredValue(current: session.parked), forSession: id)
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
     /// Clear a session's unseen-notification badge without touching selection, focus, or agent status — the
     /// counterpart to `notify`, whose badge nothing else lowers without visiting. Idempotent, and the count
     /// is ephemeral so it triggers no save.

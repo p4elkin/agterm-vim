@@ -118,6 +118,11 @@ public final class Session: Identifiable {
     /// flagged view with a filled row icon. Persisted, surviving a relaunch and a workspace move.
     public var flagged: Bool = false
 
+    /// User-set parked mark: the row is kept, whatever agent it held is not. Set by whoever killed the
+    /// process (`agterm-park`), never by the app — agterm marks the row and dims it, and stops nothing
+    /// itself. Persisted, so a parked row comes back parked.
+    public var parked: Bool = false
+
     /// Changes only when one live primary-slot surface replaces another; SwiftUI hosts fold it into their
     /// identity, so lazy nil→first creation stays at zero while split-survivor promotion remounts the view.
     @ObservationIgnored public private(set) var primarySurfaceHostRevision = 0

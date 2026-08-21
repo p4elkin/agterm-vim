@@ -94,6 +94,11 @@ public final class AppStore {
     /// `BuiltinAction.toggleWorkspaceFilter`, and `workspace.filter`.
     public internal(set) var focusEnabled = false
 
+    /// The parked-hiding pair, mirroring `focusEnabled`/`focusedWorkspaceIDs`. Stored here only because an
+    /// extension cannot declare stored properties; the logic is in `AppStore+ParkedHiding.swift`.
+    public internal(set) var hideParked = false
+    public internal(set) var parkedRevealedWorkspaceIDs: Set<UUID> = []
+
     /// This window's sidebar width in points, persisted in `Snapshot`; drag-driven, clamped to the bounds below.
     public var sidebarWidth: Double = AppStore.sidebarWidthDefault
 
@@ -315,6 +320,7 @@ public final class AppStore {
                                           paneOverlays: paneOverlays(session),
                                           hud: hudNode(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
+                                          parked: session.parked ? true : nil,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
                                           keepShellOpen: (session.initialCommand != nil && session.keepShellOpen)
                                               ? true : nil,
@@ -345,6 +351,8 @@ public final class AppStore {
                                         active: workspace.id == activeWorkspaceID,
                                         focused: focusedWorkspaceIDs.contains(workspace.id) ? true : nil,
                                         collapsed: workspace.isExpanded ? nil : true,
+                                        parkedCount: parkedCount(in: workspace),
+                                        revealsParked: revealsParked(workspace),
                                         sessions: sessions)
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
@@ -960,6 +968,7 @@ public final class AppStore {
         sidebarVisible = snapshot.sidebarVisible ?? true
         sidebarMode = snapshot.sidebarMode ?? .tree
         restoreFocus(from: snapshot)
+        restoreParkedHiding(from: snapshot)
         if let id = snapshot.selectedSessionID, session(withID: id) == nil {
             selectedSessionID = nil
         } else {

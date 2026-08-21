@@ -182,6 +182,36 @@ final class PersistenceTests {
         #expect(app.workspaces[0].sessions[0].flagged == false)
     }
 
+    @Test func sessionParkedStatePersistsAndRestores() throws {
+        let app = AppStore(persistence: store)
+        let work = app.addWorkspace(name: "work")
+        let parked = try #require(app.addSession(toWorkspace: work.id, cwd: "/a"))
+        _ = try #require(app.addSession(toWorkspace: work.id, cwd: "/b"))
+        parked.parked = true
+        app.save()
+        #expect(store.load().workspaces[0].sessions[0].parked == true)
+        // false is omitted, so a tree with no parked row serializes as it did before the field existed.
+        #expect(store.load().workspaces[0].sessions[1].parked == nil)
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.workspaces[0].sessions[0].parked == true)
+        #expect(restored.workspaces[0].sessions[1].parked == false)
+    }
+
+    @Test func legacySnapshotWithoutParkedDecodesUnparked() throws {
+        let ws = UUID()
+        let sid = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(sid.uuidString)", "customName": null, "cwd": "/a" } ] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.workspaces[0].sessions[0].parked == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(app.workspaces[0].sessions[0].parked == false)
+    }
+
     @Test func sidebarModePersistsAndRestores() {
         let app = AppStore(persistence: store)
         _ = app.addWorkspace(name: "work")
@@ -308,6 +338,82 @@ final class PersistenceTests {
         #expect(store.load().focusedWorkspaceIDs == [work.id, personal.id])
     }
 
+    @Test func parkedHidingPersistsAndRestores() {
+        let app = AppStore(persistence: store)
+        let work = app.addWorkspace(name: "work")
+        #expect(store.load().hideParked == nil && store.load().parkedRevealedWorkspaceIDs == nil)
+        app.hideParked = true
+        app.parkedRevealedWorkspaceIDs = [work.id]
+        app.save()
+        #expect(store.load().hideParked == true)
+        #expect(store.load().parkedRevealedWorkspaceIDs == [work.id])
+
+        let restored = AppStore(persistence: store)
+        restored.restore(from: store.load())
+        #expect(restored.hideParked && restored.parkedRevealedWorkspaceIDs == [work.id])
+    }
+
+    @Test func legacySnapshotWithoutParkedHidingDecodesOff() throws {
+        let ws = UUID()
+        let json = #"{ "version": 1, "workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [] } ] }"#
+        try Data(json.utf8).write(to: fileURL)
+        let loaded = store.load()
+        #expect(loaded.hideParked == nil && loaded.parkedRevealedWorkspaceIDs == nil)
+
+        let app = AppStore(persistence: store)
+        app.restore(from: loaded)
+        #expect(!app.hideParked && app.parkedRevealedWorkspaceIDs.isEmpty)
+    }
+
+    @Test func restorePrunesStaleParkedRevealedIDsKeepingSurvivors() {
+        let present = UUID()
+        let stale = UUID()
+        let snapshot = Snapshot(workspaces: [WorkspaceSnapshot(id: present, name: "work", sessions: [])],
+                                hideParked: true, parkedRevealedWorkspaceIDs: [present, stale])
+        let app = AppStore(persistence: store)
+        app.restore(from: snapshot)
+        #expect(app.parkedRevealedWorkspaceIDs == [present])
+        #expect(app.hideParked)
+    }
+
+    @Test func restoreAllStaleParkedRevealedSetLeavesHideParkedOn() {
+        // unlike focus, an empty exception set is a normal state (hide everywhere), so pruning
+        // to empty must not switch hiding off.
+        let stale = UUID()
+        let snapshot = Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [])],
+                                hideParked: true, parkedRevealedWorkspaceIDs: [stale])
+        let app = AppStore(persistence: store)
+        app.restore(from: snapshot)
+        #expect(app.parkedRevealedWorkspaceIDs.isEmpty)
+        #expect(app.hideParked)
+    }
+
+    @Test func offParkedHidingWritesNeitherKey() throws {
+        let app = AppStore(persistence: store)
+        _ = app.addWorkspace(name: "work")
+        let written = try String(contentsOf: fileURL, encoding: .utf8)
+        #expect(!written.contains("\"hideParked\""))
+        #expect(!written.contains("\"parkedRevealedWorkspaceIDs\""))
+    }
+
+    @Test func malformedParkedHidingDropsToNilKeepingTree() throws {
+        let ws = UUID()
+        let session = UUID()
+        let tree = #""workspaces": "# +
+            #"[ { "id": "\#(ws.uuidString)", "name": "work", "sessions": [ { "id": "\#(session.uuidString)", "cwd": "/a" } ] } ]"#
+        let cases: [(bad: String, nilled: (Snapshot) -> Bool)] = [
+            (#""hideParked": 42"#, { $0.hideParked == nil }),
+            (#""parkedRevealedWorkspaceIDs": ["not-a-uuid"]"#, { $0.parkedRevealedWorkspaceIDs == nil }),
+            (#""parkedRevealedWorkspaceIDs": 42"#, { $0.parkedRevealedWorkspaceIDs == nil }),
+        ]
+        for (bad, nilled) in cases {
+            try Data(#"{ "version": 1, \#(bad), \#(tree) }"#.utf8).write(to: fileURL)
+            let loaded = store.load()
+            #expect(loaded.workspaces.map(\.id) == [ws], "\(bad) wiped the tree")
+            #expect(nilled(loaded), "\(bad) did not drop its field to nil")
+        }
+    }
+
     @Test func sessionRecencyPersistsAndRestores() {
         let app = AppStore(persistence: store)
         let work = app.addWorkspace(name: "work")
@@ -412,7 +518,7 @@ final class PersistenceTests {
                     #""foregroundCommand": "vim""#, #""commandWait": "no""#, #""customName": 7"#,
                     #""restoreCommand": []"#, #""splitCwd": 3"#, #""splitForegroundCommand": "vim""#,
                     #""initialCommand": ["vim"]"#, #""splitRestoreCommand": 0"#,
-                    #""keepShellOpen": "yes""#,
+                    #""keepShellOpen": "yes""#, #""parked": "true""#,
                     #""backgroundWatermark": "none""#] {
             let tree = #""workspaces": [ { "id": "\#(ws.uuidString)", "name": "work", "sessions": "# +
                 #"[ { "id": "\#(session.uuidString)", "cwd": "/a", \#(bad) } ] } ]"#

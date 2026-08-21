@@ -24,6 +24,10 @@ public struct Snapshot: Codable, Equatable, Sendable {
     public var focusedWorkspaceIDs: [UUID]?
     /// Whether the focus filter applies to the marked set; nil = off. Persisted apart so it keeps members.
     public var focusEnabled: Bool?
+    /// Whether the window hides parked rows from the sidebar; nil = off.
+    public var hideParked: Bool?
+    /// Workspaces whose parked rows stay drawn while hiding is on, in tree order; nil = no exceptions.
+    public var parkedRevealedWorkspaceIDs: [UUID]?
     /// Most-recently-selected session ids, front = current, so the Ctrl-Tab switcher's order survives a
     /// relaunch. Restore drops ids no longer in the tree; nil = selection only.
     public var sessionRecency: [UUID]?
@@ -31,6 +35,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
     public init(version: Int = Snapshot.currentVersion, selectedSessionID: UUID? = nil,
                 workspaces: [WorkspaceSnapshot] = [], sidebarWidth: Double? = nil, sidebarVisible: Bool? = nil,
                 sidebarMode: SidebarMode? = nil, focusedWorkspaceIDs: [UUID]? = nil, focusEnabled: Bool? = nil,
+                hideParked: Bool? = nil, parkedRevealedWorkspaceIDs: [UUID]? = nil,
                 sessionRecency: [UUID]? = nil) {
         self.version = version
         self.selectedSessionID = selectedSessionID
@@ -40,12 +45,14 @@ public struct Snapshot: Codable, Equatable, Sendable {
         self.sidebarMode = sidebarMode
         self.focusedWorkspaceIDs = focusedWorkspaceIDs
         self.focusEnabled = focusEnabled
+        self.hideParked = hideParked
+        self.parkedRevealedWorkspaceIDs = parkedRevealedWorkspaceIDs
         self.sessionRecency = sessionRecency
     }
 
     enum CodingKeys: String, CodingKey {
         case version, selectedSessionID, workspaces, sidebarWidth, sidebarVisible, sidebarMode
-        case focusedWorkspaceIDs, focusEnabled, sessionRecency
+        case focusedWorkspaceIDs, focusEnabled, hideParked, parkedRevealedWorkspaceIDs, sessionRecency
     }
 
     /// The legacy single-workspace focus key from before the focus SET existed. Its own key type with no
@@ -97,6 +104,8 @@ public struct Snapshot: Codable, Equatable, Sendable {
             focusedWorkspaceIDs = ids
             focusEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .focusEnabled)) ?? nil
         }
+        hideParked = (try? c.decodeIfPresent(Bool.self, forKey: .hideParked)) ?? nil
+        parkedRevealedWorkspaceIDs = (try? c.decodeIfPresent([UUID].self, forKey: .parkedRevealedWorkspaceIDs)) ?? nil
         sessionRecency = (try? c.decodeIfPresent([UUID].self, forKey: .sessionRecency)) ?? nil
     }
 }
@@ -154,6 +163,9 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public var splitRatio: Double?
     /// Whether the session is in the flagged working-set; nil = not flagged.
     public var flagged: Bool?
+    /// Whether the session is parked — kept as a row with its agent killed; nil (missing key) = not parked,
+    /// and false is omitted on write so a tree with no parked row serializes as it did before the field.
+    public var parked: Bool?
     /// The main pane's foreground command (full argv) at the last clean quit, re-run on restore when
     /// `AppSettings.restoreRunningCommand` is on. nil at a shell prompt, or with the feature off.
     public var foregroundCommand: [String]?
@@ -195,6 +207,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     public init(id: UUID, customName: String?, cwd: String, isSplit: Bool? = nil,
                 splitAxis: SplitAxis? = nil, fontSize: Double? = nil,
                 splitCwd: String? = nil, splitRatio: Double? = nil, flagged: Bool? = nil,
+                parked: Bool? = nil,
                 foregroundCommand: [String]? = nil, splitForegroundCommand: [String]? = nil,
                 initialCommand: String? = nil, commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
                 zmxPrimaryKey: String? = nil, zmxSplitKey: String? = nil,
@@ -210,6 +223,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         self.splitCwd = splitCwd
         self.splitRatio = splitRatio
         self.flagged = flagged
+        self.parked = parked
         self.foregroundCommand = foregroundCommand
         self.splitForegroundCommand = splitForegroundCommand
         self.initialCommand = initialCommand
@@ -225,7 +239,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, customName, cwd, isSplit, splitAxis, fontSize, splitCwd, splitRatio, flagged
+        case id, customName, cwd, isSplit, splitAxis, fontSize, splitCwd, splitRatio, flagged, parked
         case foregroundCommand, splitForegroundCommand, initialCommand, commandWait, keepShellOpen
         case zmxPrimaryKey, zmxSplitKey
         case backgroundWatermark, restoreCommand, splitRestoreCommand
@@ -250,6 +264,7 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
         splitCwd = (try? c.decodeIfPresent(String.self, forKey: .splitCwd)) ?? nil
         splitRatio = (try? c.decodeIfPresent(Double.self, forKey: .splitRatio)) ?? nil
         flagged = (try? c.decodeIfPresent(Bool.self, forKey: .flagged)) ?? nil
+        parked = (try? c.decodeIfPresent(Bool.self, forKey: .parked)) ?? nil
         foregroundCommand = (try? c.decodeIfPresent([String].self, forKey: .foregroundCommand)) ?? nil
         splitForegroundCommand = (try? c.decodeIfPresent([String].self, forKey: .splitForegroundCommand)) ?? nil
         initialCommand = (try? c.decodeIfPresent(String.self, forKey: .initialCommand)) ?? nil

@@ -511,7 +511,7 @@ struct Pick: ParsableCommand {
 struct Sidebar: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Sidebar visibility and view mode.",
-        subcommands: [Visibility.self, Mode.self, Expand.self, Collapse.self],
+        subcommands: [Visibility.self, Mode.self, Parked.self, Expand.self, Collapse.self],
         defaultSubcommand: Visibility.self
     )
 
@@ -541,6 +541,27 @@ struct Sidebar: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sidebarMode, args: ControlArgs(mode: mode))
+        }
+    }
+
+    /// `agtermctl sidebar parked [show|hide|toggle] [--workspace <id|active|all>] [--window W]` — whether
+    /// parked rows are drawn. Bare, it drives the window's `hideParked` flag; `--workspace id/active` edits
+    /// that workspace's revealed exception; `--workspace all` clears the set and applies the mode everywhere.
+    struct Parked: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Show or hide parked rows (show|hide|toggle).")
+        @Argument(help: "Mode: show, hide, or toggle (default).") var mode: String = "toggle"
+        @Option(name: .long, help: "Scope: workspace id/prefix, 'active', or 'all' (default: the whole window).")
+        var workspace: String?
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard ControlParkedVisibilityMode(rawValue: mode) != nil else {
+                throw ValidationError("mode must be show, hide, or toggle")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sidebarParked, args: options.withWindow(ControlArgs(workspace: workspace, mode: mode)))
         }
     }
 

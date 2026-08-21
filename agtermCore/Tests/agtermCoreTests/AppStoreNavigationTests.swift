@@ -338,6 +338,91 @@ struct AppStoreNavigationTests {
         #expect(store.selectedSessionID == ids[2])
     }
 
+    // MARK: - navigation scoping (hidden parked rows)
+
+    @Test func navigableSessionsLeaveOutHiddenParkedRowsInTreeMode() {
+        let (store, ids) = Self.makeNavTree()
+        store.setParked(true, forSession: ids[1])
+        #expect(store.navigableSessions.map(\.id) == ids, "hiding off: a parked row stays navigable")
+        store.hideParked = true
+        store.selectSession(ids[0])
+        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[2], ids[3]])
+    }
+
+    @Test func navigableSessionsLeaveOutHiddenParkedRowsUnderTheFocusFilter() {
+        let (store, ids) = Self.makeNavTree()
+        let work = store.workspace(forSession: ids[0])!
+        store.setFocusedWorkspace(work.id)
+        store.selectSession(ids[0])
+        store.setParked(true, forSession: ids[1])
+        store.hideParked = true
+        #expect(store.navigableSessions.map(\.id) == [ids[0]])
+    }
+
+    @Test func navigableSessionsLeaveOutHiddenParkedRowsInFlaggedMode() {
+        let (store, ids) = Self.makeNavTree()
+        store.setFlag(true, forSession: ids[1])
+        store.setFlag(true, forSession: ids[2])
+        store.selectSession(ids[2])
+        store.setSidebarMode(.flagged)
+        store.setParked(true, forSession: ids[1])
+        store.hideParked = true
+        #expect(store.navigableSessions.map(\.id) == [ids[2]])
+    }
+
+    @Test func aRevealedWorkspaceKeepsItsParkedRowsNavigable() {
+        let (store, ids) = Self.makeNavTree()
+        let work = store.workspace(forSession: ids[0])!
+        store.setParked(true, forSession: ids[1])
+        store.setParked(true, forSession: ids[3])
+        store.hideParked = true
+        store.parkedRevealedWorkspaceIDs = [work.id]
+        store.selectSession(ids[0])
+        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[1], ids[2]])
+    }
+
+    @Test func navigateWrapsWithinTheVisibleSetSkippingHiddenParkedRows() {
+        let (store, ids) = Self.makeNavTree()
+        store.setParked(true, forSession: ids[1])
+        store.setParked(true, forSession: ids[3])
+        store.hideParked = true
+        store.selectSession(ids[0])
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[2])
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[0], "next at the visible end wraps past the hidden tail")
+        store.navigateSession(.previous)
+        #expect(store.selectedSessionID == ids[2])
+        store.navigateSession(.last)
+        #expect(store.selectedSessionID == ids[2])
+        store.navigateSession(.first)
+        #expect(store.selectedSessionID == ids[0])
+    }
+
+    @Test func theSelectedParkedRowStaysNavigableUntilTheSelectionMovesOff() {
+        let (store, ids) = Self.makeNavTree()
+        store.selectSession(ids[1])
+        store.setParked(true, forSession: ids[1])
+        store.hideParked = true
+        #expect(store.navigableSessions.map(\.id) == ids)
+        store.navigateSession(.next)
+        #expect(store.selectedSessionID == ids[2])
+        #expect(store.navigableSessions.map(\.id) == [ids[0], ids[2], ids[3]])
+    }
+
+    @Test func navigateAttentionSkipsHiddenParkedRows() {
+        let (store, ids) = Self.makeNavTree()
+        store.session(withID: ids[1])?.agentIndicator = AgentIndicator(status: .blocked)
+        store.session(withID: ids[3])?.agentIndicator = AgentIndicator(status: .completed)
+        store.setParked(true, forSession: ids[1])
+        store.hideParked = true
+        store.selectSession(ids[0])
+        store.navigateSession(.nextAttention)
+        #expect(store.selectedSessionID == ids[3], "a hidden blocked row cannot pull focus into hidden territory")
+        store.navigateSession(.nextAttention)
+        #expect(store.selectedSessionID == ids[3])
+    }
+
     // MARK: - attentionSessions
 
     @Test func attentionSessionsFiltersOutIdle() {

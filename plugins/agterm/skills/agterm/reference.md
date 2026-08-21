@@ -29,7 +29,7 @@ With no cursor, the first read subscribes from now: it returns an empty batch an
 tail, and the CLI prints only later events. The app keeps a non-destructive ring of the latest 4,096
 events for its current process run. Independent readers do not consume one another's events.
 
-The five event kinds and payloads are:
+The six event kinds and payloads are:
 
 - `status`: `name`, normalized `status` (`idle`|`active`|`blocked`|`completed`), a `blink` boolean,
   and optional `pane`, `color` and `shape` (the last two being the per-call `--color`/`--shape`
@@ -41,6 +41,9 @@ The five event kinds and payloads are:
 - `session.created` / `session.closed`: session `name`, emitted when the session enters or leaves a
   visible window tree. Undo emits a new `session.created`; grace-period finalization does not emit a
   second close.
+- `session.parked`: session `name` and the resulting `parked` boolean. Both edges fire, so unlike the
+  tree node's true-only field the payload carries `false` too. It is its own kind rather than a
+  `tree.changed` payload, which is coalesced per window and re-emitted empty.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
   are coalesced for 100 ms per window. Read `tree --json` for the current snapshot.
 
@@ -148,7 +151,8 @@ tracks the latest update. `spinner` names the STYLE, a string, so a static panel
 FALSE with `overlaySizePercent` omitted, so a poll for "is a program covering this session" cannot mistake
 a message for one. No event announces a HUD; poll `tree` for it),
 `scratch` (scratch shown), `flagged` (in the
-flagged working-set), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
+flagged working-set), `parked` (the row is kept, its agent is not — true-only, so an unparked session
+carries no field; the read side of `session park`), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
 as `status`, so it is never reported without a `status`), `statusBlink` (`true` when the status glyph is
@@ -188,9 +192,13 @@ sidebar iff `sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || foc
 same tree response — the sidebar hidden renders nothing, `flagged` mode renders a flat flagged-session
 list with NO workspace rows whatever the filter says, `tree` mode with the filter OFF renders the whole
 tree regardless of membership, and only `tree` mode with the filter ON narrows visibility to the
-members), and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
+members), `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
-when expanded, so an all-expanded tree carries no `collapsed` keys).
+when expanded, so an all-expanded tree carries no `collapsed` keys), `parkedCount` (how many of this
+workspace's rows are PARKED, drawn or hidden alike — what the sidebar's dim `⏸ N` suffix shows; omitted
+when zero), and `revealsParked` (whether this workspace is in the window's parked-reveal exception set —
+the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
+flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
 The tree object itself carries fourteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
@@ -528,6 +536,17 @@ error keeps those names for compatibility.
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
   Pair with `sidebar mode flagged` to see just the flagged sessions as a flat `session : workspace`
   list. Unknown mode errors. The tree's `flagged` flag tracks membership.
+- `session park [on|off|toggle] [--target] [--window W]` — mark a session parked: the row is kept,
+  whatever agent it held is not. Persisted and idempotent, defaulting to `toggle`, acting on `--target`
+  (default `active`). A parked row draws dimmed in the sidebar and nothing else changes: it stays
+  selectable, stays in the navigation order, keeps its place in the tree, and selecting it does NOT clear
+  the mark — the caller has to restart what it held first. (`sidebar parked hide` is the opt-in that goes
+  further and takes hidden parked rows out of the tree and the navigation order; parking alone never
+  hides.) agterm sets the mark and kills nothing, so the
+  process management is yours; the intended caller is a script that stops an idle agent to free memory and
+  resumes it later. There is no `clear` mode, unlike `session flag`: unparking every row at once would
+  leave a screen of rows that look live and hold nothing. Unknown mode errors. Read back as the tree
+  node's true-only `parked`; both edges emit a `session.parked` event.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge without changing
   the selection, focus, or agent status. It is the focus-free counterpart to `notify`: `notify` (and a
   terminal's own OSC 9/777) raise the red badge, and until now the only way to clear it was visiting the
@@ -758,7 +777,9 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   does NOT carry `idleMs` — the live idle metric would freeze in the cache.) A window holding NORMAL MODE
   also carries `normalMode: true` — the read side of `mode`, true-only and omitted everywhere else, since the
   mode is one app-wide state that leaves when its window stops being frontmost. It is cache-refreshed on
-  every mode change, so a keystroke that entered the mode shows up too.
+  every mode change, so a keystroke that entered the mode shows up too. A window HIDING its parked rows
+  carries `parkedHidden: true` — the read side of `sidebar parked`, true-only, read from the open
+  window's store like `sidebarVisible` and omitted for a closed window.
 - `window select <id>` — raise it if open, else open it.
 - `window close <id>` — close the on-screen window (the bundle is kept; reopen with select).
 - `window rename <id> <name>`.
@@ -991,6 +1012,20 @@ per-window. While in `flagged` mode, `session go` navigation (and the Ctrl-Tab M
 to the flagged sessions only; back in `tree` it spans the marked workspaces' sessions (while the focus
 filter is applied) or all sessions. The GUI half is the bottom-bar flag button, View ▸ Show Flagged / Show All, and the
 ⌃⇧P palette. Use with `session flag` to build and view a cross-workspace working set.
+
+`agtermctl sidebar parked [show|hide|toggle] [--workspace <id|active|all>] [--window W]` — whether a
+window draws its PARKED rows (`session park`). `toggle` is the default; an unknown mode or an id naming
+no workspace errors before anything mutates. Bare, it drives the window-wide hide flag; `--workspace`
+with an id or `active` edits that one workspace's membership in a revealed EXCEPTION set, whose members
+keep showing their parked rows while the window hides them; `--workspace all` clears the exceptions and
+applies the mode everywhere in one call. Persisted per window; defaults to the frontmost window and takes
+the same `--window` selector as `expand`/`collapse`. A hidden row also leaves the navigation order
+(`session go`, Ctrl-Tab, the session palette), so nothing steps onto a row the sidebar is not drawing.
+Two softenings: the SELECTED row is never hidden — parking the row you are sitting in keeps it drawn
+until the selection moves off it — and a workspace holding parked rows shows a dim `⏸ N` count after its
+name whether they are drawn or not, so nothing disappears without trace. Hiding is a view choice, not a
+second mark: unparking (`session park off`) is what brings a row back. Read back from the `window list`
+node's true-only `parkedHidden` and the tree workspace node's `parkedCount`/`revealsParked`.
 
 `agtermctl sidebar expand [--window W]` — expand every workspace row in a window's sidebar tree.
 Defaults to the frontmost window; `--window` (id / prefix / `active`) targets any OPEN window, so a
@@ -1273,6 +1308,8 @@ here is app-global and touches only the captured commands, not those overrides.
 `invalid spinner: <value> (bar|braille|circle|blocks|dot|none)` (same split: the CLI rejects it locally with
 `spinner style must be one of: bar, braille, circle, blocks, dot, none`),
 `invalid flag mode` (session flag),
+`invalid park mode: <value>` (session park over the raw socket, `clear` included; the `agtermctl` CLI
+rejects the same value locally with `mode must be on, off, or toggle`),
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar),

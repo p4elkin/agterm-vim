@@ -46,6 +46,32 @@ extension ControlServer {
         return ControlResponse(ok: true)
     }
 
+    /// `sidebar.parked`: show / hide / toggle the drawing of PARKED rows. No scope drives the window's
+    /// `hideParked` flag; `--workspace <id|active>` edits one workspace's revealed exception; `--workspace
+    /// all` clears the exceptions and drives the flag. The mode-to-state mapping is host-free in
+    /// `AppStore.applyParkedVisibility`, leaving this arm resolution — `resolveWorkspace` errors on an id
+    /// naming no workspace, so a phantom exception is never persisted.
+    func setSidebarParked(window: String?, mode: ControlParkedVisibilityMode,
+                          scope: ControlParkedScope) -> ControlResponse {
+        switch scope {
+        case .window:
+            return resolver.resolveOpenPlacementStore(window) { store in
+                store.applyParkedVisibility(mode)
+                return ControlResponse(ok: true)
+            }
+        case .workspace(let target):
+            return resolver.resolveWorkspace(target, window: window) { store, id in
+                store.applyParkedVisibility(mode, toWorkspace: id)
+                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+            }
+        case .all:
+            return resolver.resolveOpenPlacementStore(window) { store in
+                store.applyParkedVisibilityEverywhere(mode)
+                return ControlResponse(ok: true)
+            }
+        }
+    }
+
     /// Expand every workspace in a window's sidebar tree; `--window` picks the OPEN target, default frontmost.
     /// Idempotent, and a graceful no-op in flagged mode (no workspace rows); a closed or absent window errors.
     /// Drives the same `AppActions.expandAllWorkspaces(in:)` the View menu / palette drive.

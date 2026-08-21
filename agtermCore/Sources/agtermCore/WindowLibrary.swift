@@ -188,7 +188,8 @@ public final class WindowLibrary {
                                      geometry: geometry($0.id),
                                      fullscreen: live?.fullscreen, zoomed: live?.zoomed,
                                      minimized: live?.minimized,
-                                     normalMode: $0.id == normalModeWindow ? true : nil)
+                                     normalMode: $0.id == normalModeWindow ? true : nil,
+                                     parkedHidden: stores[$0.id]?.hideParked == true ? true : nil)
         }
     }
 

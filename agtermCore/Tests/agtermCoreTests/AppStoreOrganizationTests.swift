@@ -147,6 +147,52 @@ struct AppStoreOrganizationTests {
         #expect(!a.flagged)
     }
 
+    @Test func setParkedPersistsTrueAndOmitsFalse() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        let persistence = PersistenceStore(directory: dir)
+        let store = AppStore(persistence: persistence)
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        #expect(!a.parked)
+        store.setParked(true, forSession: a.id)
+        #expect(a.parked)
+        #expect(persistence.load().workspaces[0].sessions[0].parked == true)
+        store.setParked(false, forSession: a.id)
+        #expect(!a.parked)
+        #expect(persistence.load().workspaces[0].sessions[0].parked == nil) // false is omitted on write
+    }
+
+    @Test func setParkedUnknownIdIsNoOp() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.setParked(true, forSession: UUID()) // unknown id
+        #expect(!a.parked)
+    }
+
+    @Test func setParkedUnchangedValueWritesNothingAndTouchesNothingElse() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        let persistence = PersistenceStore(directory: dir)
+        let store = AppStore(persistence: persistence)
+        let ws = store.addWorkspace(name: "work")
+        let a = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let b = store.addSession(toWorkspace: ws.id, cwd: "/b")!
+        store.setFlag(true, forSession: b.id)
+        store.setSidebarMode(.flagged)
+        store.selectSession(b.id)
+        store.setParked(true, forSession: a.id)
+        let file = dir.appendingPathComponent("workspaces.json")
+        try? FileManager.default.removeItem(at: file) // a no-op setter must NOT recreate the file
+        store.setParked(true, forSession: a.id)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(a.parked)
+        // parking is a mark: it moves no selection, changes no flag and does not leave the flagged view
+        #expect(store.selectedSessionID == b.id)
+        #expect(store.flaggedSessions.map(\.id) == [b.id])
+        #expect(store.sidebarMode == .flagged)
+        #expect(store.workspaces[0].sessions.map(\.id) == [a.id, b.id])
+    }
+
     @Test func clearFlagsEmptiesTheSet() {
         let store = makeStore()
         let work = store.addWorkspace(name: "work")

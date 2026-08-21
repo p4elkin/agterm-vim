@@ -32,6 +32,9 @@ public protocol ControlActions {
     func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse
     func setWorkspaceExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
+    /// Set the target's parked mark — the row is kept, whatever agent it held is not. The mode arrives
+    /// PARSED, unlike `setSessionFlag`; the host resolves the session and reads `Session.parked` for `toggle`.
+    func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
     /// Write a pane's PERSISTED restore-command override (consumed on the NEXT launch, never this run).
@@ -66,6 +69,11 @@ public protocol ControlActions {
     func listThemes() -> ControlResponse
     func setSidebarVisibility(_ mode: ControlToggleMode) -> ControlResponse
     func setSidebarViewMode(_ mode: ControlSidebarViewMode) -> ControlResponse
+    /// Apply one `sidebar.parked` mode: `.window` drives `hideParked`, `.workspace` edits the revealed
+    /// exception set, `.all` clears it and drives the flag. The host errors on an id naming no workspace —
+    /// a phantom member is what broke the focus read-back.
+    func setSidebarParked(window: String?, mode: ControlParkedVisibilityMode,
+                          scope: ControlParkedScope) -> ControlResponse
     func expandSidebar(window: String?) -> ControlResponse
     func collapseSidebar(window: String?) -> ControlResponse
     /// Turn normal mode on/off for the frontmost window. The host owns the entry gate (the mode cannot arm
@@ -246,7 +254,8 @@ public struct ControlDispatcher {
         case .eventsRead:
             return dispatchEventsRead(request)
         case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
-                .sessionReveal, .sessionMove, .sessionFlag, .sessionSeen, .sessionStatus, .sessionRestore:
+                .sessionReveal, .sessionMove, .sessionFlag, .sessionPark, .sessionSeen, .sessionStatus,
+                .sessionRestore:
             return dispatchSessionCommand(request)
         case .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFocus, .sessionResize,
                 .surfaceZoom, .surfaceCursor, .sessionType,
@@ -260,7 +269,8 @@ public struct ControlDispatcher {
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
-                .sidebarCollapse, .normalMode, .restoreClear, .sessionPairing, .overlayRedirectToggle:
+                .sidebarCollapse, .sidebarParked, .normalMode, .restoreClear, .sessionPairing,
+                .overlayRedirectToggle:
             return dispatchAppCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
@@ -436,6 +446,8 @@ public struct ControlDispatcher {
             return actions.moveSession(request.target, window: args?.window, move: move)
         case .sessionFlag:
             return actions.setSessionFlag(request.target, window: request.args?.window, mode: request.args?.mode)
+        case .sessionPark:
+            return dispatchSessionParked(request)
         case .sessionSeen:
             return actions.markSessionSeen(request.target, window: request.args?.window)
         case .sessionStatus:
@@ -774,6 +786,8 @@ public struct ControlDispatcher {
                 return ControlResponse(ok: false, error: "invalid sidebar mode: \(request.args?.mode ?? "toggle")")
             }
             return actions.setSidebarViewMode(mode)
+        case .sidebarParked:
+            return dispatchSidebarParked(request)
         case .sidebarExpand:
             return actions.expandSidebar(window: request.args?.window)
         case .sidebarCollapse:

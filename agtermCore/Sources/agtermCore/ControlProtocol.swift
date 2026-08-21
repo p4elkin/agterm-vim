@@ -24,6 +24,7 @@ public enum Command: String, Codable, Sendable {
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
+    case sessionPark = "session.park"
     case sessionSeen = "session.seen"
     case sessionRestore = "session.restore"
     case sessionBackground = "session.background"
@@ -56,6 +57,9 @@ public enum Command: String, Codable, Sendable {
     case sidebarMode = "sidebar.mode"
     case sidebarExpand = "sidebar.expand"
     case sidebarCollapse = "sidebar.collapse"
+    /// Show/hide/toggle the DRAWING of parked rows: bare drives the window's `hideParked` flag,
+    /// `args.workspace` an id/`active` exception or `all` (clear exceptions and drive the flag).
+    case sidebarParked = "sidebar.parked"
     /// Normal mode on/off/toggle. Spelled `mode` rather than `normal.mode` because the app has exactly one
     /// modal keyboard state; `sidebar.mode` is a VIEW mode and shares nothing with it.
     case normalMode = "mode"
@@ -112,6 +116,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var targets: [String]?
     /// Target workspace for `session.new` (the workspace to add to) and `session.move` (the destination).
     /// Resolved by id / unique prefix / `active`, never by name — use `workspaceName` for name targeting.
+    /// For `sidebar.parked` it is the SCOPE: id/`active` edits that workspace's revealed exception,
+    /// `all` clears the exception set and applies the mode everywhere, absent drives the window flag.
     public var workspace: String?
     /// Target workspace BY NAME for `session.new` (mutually exclusive with `workspace`). Reuses the first
     /// workspace with this exact name; an absent name is an error unless `createWorkspace` is set.
@@ -137,7 +143,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Realization itself no longer depends on it: the main pane polls with or without `select`.
     public var select: Bool?
     /// Mode for `session.split` (`on|off|toggle`), `quick`/`surface.zoom` (`show|hide|toggle`),
-    /// `session.flag` (`on|off|toggle|clear`), `sidebar.mode` (`tree|flagged|toggle`),
+    /// `session.flag` (`on|off|toggle|clear`), `session.park` (`on|off|toggle`, no `clear` — unparking
+    /// every row at once would leave a screen of rows that look live and hold nothing),
+    /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.parked` (`show|hide|toggle`),
     /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
     /// `command`, pin nothing, or drop the pin), and `session.pairing` (`mirrors|viewer` — which of the
@@ -563,6 +571,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let hud: ControlHudNode?
     public let scratch: Bool
     public let flagged: Bool
+    /// Whether the row is PARKED — kept in the sidebar with whatever agent it held killed; nil/omitted when
+    /// not, so an unparked row adds no field. The read side of `session.park`. agterm sets the mark and
+    /// dims the row; killing and restarting the process belongs to whoever asked for the mark.
+    public let parked: Bool?
     /// For a `--command` session, whether it HOLDS its surface after the command exits (`session.new
     /// --command … --wait`) instead of closing; nil/omitted for a plain or non-holding session. The read
     /// side of `session.new --wait`; it persists across restart, unlike an overlay's live-only wait.
@@ -644,6 +656,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 splitRatio: Double? = nil, splitFocused: Bool? = nil,
                 overlay: Bool = false, overlaySizePercent: Int? = nil, paneOverlays: [String]? = nil,
                 hud: ControlHudNode? = nil, scratch: Bool = false, flagged: Bool = false,
+                parked: Bool? = nil,
                 commandWait: Bool? = nil, keepShellOpen: Bool? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
                 restoreCommand: String? = nil, splitRestoreCommand: String? = nil,
@@ -670,6 +683,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.hud = hud
         self.scratch = scratch
         self.flagged = flagged
+        self.parked = parked
         self.commandWait = commandWait
         self.keepShellOpen = keepShellOpen
         self.foreground = foreground
@@ -719,15 +733,26 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     /// `workspace.collapse`/`workspace.expand` and `workspace.new --collapsed`. Reports the persisted
     /// `!isExpanded`, independent of a transient focus force-reveal.
     public let collapsed: Bool?
+    /// How many of this workspace's rows are PARKED, drawn or hidden alike — hiding is a projection over
+    /// the mark, and this count is what keeps a hidden row from vanishing without trace; nil/omitted when
+    /// zero. What the sidebar's parked suffix draws.
+    public let parkedCount: Int?
+    /// Whether this workspace is in the window's parked-reveal EXCEPTION set (`sidebar.parked --workspace`),
+    /// so its parked rows stay drawn while `parkedHidden` is on; true-only. Reported independently of the
+    /// window flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off.
+    public let revealsParked: Bool?
     public let sessions: [ControlSessionNode]
 
     public init(id: String, name: String, active: Bool, focused: Bool? = nil,
-                collapsed: Bool? = nil, sessions: [ControlSessionNode]) {
+                collapsed: Bool? = nil, parkedCount: Int? = nil, revealsParked: Bool? = nil,
+                sessions: [ControlSessionNode]) {
         self.id = id
         self.name = name
         self.active = active
         self.focused = focused
         self.collapsed = collapsed
+        self.parkedCount = parkedCount
+        self.revealsParked = revealsParked
         self.sessions = sessions
     }
 }

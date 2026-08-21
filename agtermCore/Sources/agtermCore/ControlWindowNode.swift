@@ -58,12 +58,16 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
     /// leaves on window resign-key: at most one window can hold it, and an untouched install then reports
     /// exactly what it reported before this command existed.
     public let normalMode: Bool?
+    /// Whether this window HIDES its parked rows (`hideParked`, set by `sidebar.parked hide`); true-only,
+    /// so a window that never hid one reports exactly what it reported before this command existed. The
+    /// per-workspace exceptions are on the workspace nodes as `revealsParked`.
+    public let parkedHidden: Bool?
 
     public init(id: String, name: String, open: Bool, active: Bool, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
                 sidebarVisible: Bool? = nil, geometry: ControlWindowFrame? = nil,
                 fullscreen: Bool? = nil, zoomed: Bool? = nil, minimized: Bool? = nil,
-                normalMode: Bool? = nil) {
+                normalMode: Bool? = nil, parkedHidden: Bool? = nil) {
         self.id = id
         self.name = name
         self.open = open
@@ -76,5 +80,6 @@ public struct ControlWindowNode: Codable, Sendable, Equatable {
         self.zoomed = zoomed
         self.minimized = minimized
         self.normalMode = normalMode
+        self.parkedHidden = parkedHidden
     }
 }

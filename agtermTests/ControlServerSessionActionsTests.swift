@@ -671,6 +671,60 @@ final class ControlServerSessionActionsTests: XCTestCase {
         XCTAssertFalse(response.ok)
     }
 
+    // toggle is the CLI default and the mode the intended caller uses, and it is the only place the mark's
+    // CURRENT value is read. This action was copied from setSessionFlag beside it, so a `session.flagged`
+    // left in the copy would pass every host-free suite: the dispatcher stops at a mock and the store setter
+    // takes a literal.
+    func testParkToggleReadsTheSessionsOwnMarkAndNotTheFlag() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        store.setFlag(true, forSession: session.id)
+
+        XCTAssertTrue(server.setSessionParked(session.id.uuidString, window: nil, mode: .toggle).ok)
+        XCTAssertTrue(session.parked, "toggle off a flagged-but-unparked session must park it")
+        XCTAssertTrue(server.setSessionParked(session.id.uuidString, window: nil, mode: .toggle).ok)
+        XCTAssertFalse(session.parked)
+        XCTAssertTrue(session.flagged, "parking must leave the flag alone")
+    }
+
+    func testParkOnAndOffAreIdempotentAndReturnTheResolvedID() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+
+        let response = server.setSessionParked(session.id.uuidString, window: nil, mode: .on)
+
+        XCTAssertEqual(response.result?.id, session.id.uuidString)
+        XCTAssertTrue(server.setSessionParked(session.id.uuidString, window: nil, mode: .on).ok)
+        XCTAssertTrue(session.parked)
+        XCTAssertTrue(server.setSessionParked(session.id.uuidString, window: nil, mode: .off).ok)
+        XCTAssertTrue(server.setSessionParked(session.id.uuidString, window: nil, mode: .off).ok)
+        XCTAssertFalse(session.parked)
+    }
+
+    func testParkOnAnUnknownSessionErrorsAndParksNothing() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        let missing = UUID().uuidString
+
+        let response = server.setSessionParked(missing, window: nil, mode: .on)
+
+        XCTAssertFalse(response.ok)
+        XCTAssertFalse(session.parked)
+    }
+
+    // the target defaults to the active session, which is what an unaddressed `agtermctl session park` sends
+    func testParkWithNoTargetMarksTheActiveSession() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let active = try XCTUnwrap(store.activeSession)
+
+        XCTAssertTrue(server.setSessionParked(nil, window: nil, mode: .on).ok)
+
+        XCTAssertTrue(active.parked)
+    }
+
     // the helper centers on the grid in the body's header, so a resize that changes the panel must rewrite
     // that file rather than wait for the next `hud.update` to re-center the message.
     func testOverlayResizeRewritesTheHudBody() throws {

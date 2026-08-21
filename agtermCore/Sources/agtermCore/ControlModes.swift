@@ -75,6 +75,32 @@ public enum ControlSidebarViewMode: Equatable, Sendable {
     }
 }
 
+/// The three modes `sidebar.parked` accepts, naming what the PARKED ROWS do (`show` draws them), not what
+/// the `hideParked` flag reads — the wire follows `sidebar show|hide`, where show is the visible state.
+public enum ControlParkedVisibilityMode: String, CaseIterable, Equatable, Sendable {
+    case show, hide, toggle
+
+    /// Pipe-joined (`show|hide|toggle`) for the dispatcher's rejection message; derived from `allCases`.
+    public static var validNamesList: String { allCases.map(\.rawValue).joined(separator: "|") }
+
+    /// The `hideParked` value this mode asks for — the polarity flip (`show` = flag off) spelled once.
+    public func desiredHidden(current: Bool) -> Bool {
+        switch self {
+        case .hide: return true
+        case .show: return false
+        case .toggle: return !current
+        }
+    }
+}
+
+/// The parsed `--workspace` scope of `sidebar.parked`. `.workspace` carries the raw id/prefix/`active`
+/// spelling: the dispatcher has no tree, so the host resolves it and errors on an id naming no workspace.
+public enum ControlParkedScope: Equatable, Sendable {
+    case window
+    case workspace(String)
+    case all
+}
+
 /// The four modes `workspace.focus` accepts; raw values are the wire tokens and `helpSummary` states each
 /// one's effect. `add` leaves the filter flag alone so a set is built member by member with the whole tree on
 /// screen — an add that enabled the filter would hide the rows the next add needs. There is no

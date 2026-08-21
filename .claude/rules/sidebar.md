@@ -85,6 +85,45 @@ paths:
   unfilled base icons because every row is flagged. This same-size symbol swap avoids layout shift.
   `RowContent.flagged` limits reload to the changed row.
 
+## Parked rows
+
+- A parked session's row draws at reduced contrast, label alpha 0.45 and icon alpha 0.4, and nothing else
+  about the row changes. Selection wins over the dim: the selection pill already recolors the row, so
+  dimming on top of it would make the active row the hardest one to read. The consequence is that the
+  SELECTED row cannot show the mark; the mark is only visible once the selection moves away.
+- The mark lives on `SidebarCellView.parked`, not read from the store at tint time, because `setColors` runs
+  from four places — the cell builder, `SidebarRowView.didAddSubview`, its `isSelected` didSet, and
+  `refreshSelectionAppearance` on a theme change — and only a value held on the cell makes all four agree.
+  A branch in the cell builder alone would be wiped by the next re-tint.
+- Both sidebar modes render sessions through the one session branch in `viewFor`, so the dim resolves there
+  beside `flagged` rather than in either caller. `RowContent.parked` limits reload to the changed row.
+- Parked is color-only: no icon variant, no accessibility value, no `agtermctl tree` human tag. So a hosted
+  test has to read `NSColor.alphaComponent` off the cell, and no XCUITest can observe it.
+- The mark alone changes no behavior. While hiding is off, a parked row stays selectable, stays in
+  `navigableSessions`, keeps its place in the tree, and selecting it does not clear the mark.
+  `AppStore.setParked` deliberately calls neither `pruneSidebarSelection` nor `reselectIfSelectionHidden`,
+  unlike both flag setters.
+- Hiding is a separate per-window pair mirroring `focusEnabled`/`focusedWorkspaceIDs`:
+  `hideParked: Bool` plus `parkedRevealedWorkspaceIDs: Set<UUID>`, the per-workspace exception set.
+  Mutations live in `AppStore+ParkedHiding.swift` and funnel through private `commitParkedHiding`, which
+  skips unchanged writes. Parking never turns hiding on; unparking is what brings a hidden row back.
+- `AppStore.isRowVisible(_:)` is THE row-visibility predicate: false only when the session is parked,
+  `hideParked` is on, its workspace is not in the revealed set, and it is not the selected session.
+  Pure and read-only; no other code may spell the rule inline. The outline's session rows in both modes
+  and `navigableSessions` filter through it.
+- The selected-row exemption keeps the row under a visible pane from vanishing when parked; it leaves the
+  tree on the next selection change. Because of it, hiding can never move the selection outside the visible
+  set, so `commitParkedHiding` does no selection repair, unlike `commitFocus`.
+- Revealing an id naming no workspace is refused — a phantom member is what broke the focus read-back —
+  while removal is ungated, so a stale id stays removable. The `all` scope clears the exception set and
+  applies the mode through the flag. A park or unpark reloads the affected workspace's children, not the
+  whole outline.
+- A workspace holding parked rows draws a dim `⏸ N` suffix right after its name:
+  `SidebarCellView.parkedSuffix`, tinted at the parked label alpha in `setColors`, between the name field
+  and the hover add button. It is keyed on the parked count alone, never on `hideParked` — like the focus
+  icon keyed on membership — so the set stays legible with hiding off. It never uses the badge slot, which
+  carries the unseen roll-up. `RowContent.parkedCount` limits reload to the workspace row.
+
 ## Workspace focus
 
 - Focus state is `focusedWorkspaceIDs: Set<UUID>` plus `focusEnabled`; turning the filter off preserves
@@ -138,7 +177,8 @@ paths:
 ## Navigation and selection
 
 - `navigableSessions` is flagged sessions in flagged mode, sessions of visible workspaces in filtered
-  tree mode, otherwise all sessions. All next/previous/first/last and attention navigation use this live
+  tree mode, otherwise all sessions; both arms then drop rows `isRowVisible` hides, so navigation cannot
+  step onto a hidden parked row. All next/previous/first/last and attention navigation use this live
   set; next/previous wrap, and missing/invalid selection chooses its first item.
 - The same scope drives `session.go`, menu/palette navigation, Ctrl-Tab candidates (while preserving MRU
   order), and the Ctrl-P session palette. This supersedes global navigation that revealed hidden targets.
@@ -173,8 +213,15 @@ paths:
 ## Persistence
 
 - Optional snapshot fields preserve legacy decode without a version bump: `SessionSnapshot.flagged`
-  defaults false, `sidebarMode` tree, focus IDs empty, focus disabled, and `WorkspaceSnapshot.collapsed`
-  false/expanded.
+  defaults false, `SessionSnapshot.parked` defaults false, `sidebarMode` tree, focus IDs empty, focus
+  disabled, and `WorkspaceSnapshot.collapsed` false/expanded.
+- `parked` is also OMITTED on write when false, so a tree with no parked row serializes byte-identically to
+  before the field existed. `flagged` is written either way; do not read the two as the same shape.
+- `hideParked` and `parkedRevealedWorkspaceIDs` are optional snapshot fields too, written only when
+  on/nonempty and absent-decodes-as-off, with revealed ids encoded in tree order like the focus set.
+  `restoreParkedHiding` prunes revealed ids naming no restored workspace, like `restoreFocus`, but a set
+  pruned to empty leaves `hideParked` alone: an empty exception set means hide-everywhere, a normal state,
+  not an enabled-but-invisible filter.
 - `focusedWorkspaceID` remains decode-only. When the new IDs key is absent, migrate a legacy ID to a
   one-member enabled set; the new key wins. Encode IDs in tree order, then intersect them with restored
   workspaces through `restoreFocus`.
@@ -187,3 +234,8 @@ paths:
   every member after tree changes would undo deliberate collapses and diverge from `tree` read-back.
   Revealing a session may expand visually without changing disk state; launch still reveals the active
   session, and its row may re-collapse next launch.
+
+⚠️ The `⏸ N` reassurance is a WORKSPACE row, and the flat flagged view has none. So a parked row hidden in
+that view disappears with no counter anywhere, and phase two's "nothing disappears without trace" holds in
+tree mode only. Accepted: the flagged view is a working set you built by hand, and a flagged row that is
+also parked is rare. Revisit it if the two sets start overlapping.

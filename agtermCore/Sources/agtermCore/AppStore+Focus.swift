@@ -183,12 +183,14 @@ extension AppStore {
     }
 
     /// The session set navigation operates over — the VISIBLE/FILTERED set, not the whole tree: flagged
-    /// sessions in `.flagged` mode, the marked workspaces' sessions while the filter is on, else all. Computed
-    /// live, so clearing the flag/filter restores the full set. `navigateSession` next/prev WRAP within it,
-    /// never leaking across the filter. Backs `navigateSession` (and via it `session.go`, attention-nav), the
-    /// Ctrl-Tab MRU candidates and the ⌃P session palette (`AppActions.paletteSessions`) — all one filter.
+    /// sessions in `.flagged` mode, the marked workspaces' sessions while the filter is on, else all. Both
+    /// arms then drop rows `isRowVisible` hides (parked, under `hideParked`), so `j` cannot step onto a row
+    /// the sidebar is not drawing. Computed live, so clearing the flag/filter restores the full set.
+    /// `navigateSession` next/prev WRAP within it, never leaking across the filter. Backs `navigateSession`
+    /// (and via it `session.go`, attention-nav), the Ctrl-Tab MRU candidates and the ⌃P session palette
+    /// (`AppActions.paletteSessions`) — all one filter.
     public var navigableSessions: [Session] {
-        sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)
+        (sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)).filter(isRowVisible)
     }
 
     /// Moves the selection back inside the visible set whenever the active session is outside it — a narrowing
