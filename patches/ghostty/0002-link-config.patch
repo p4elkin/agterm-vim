@@ -1,8 +1,8 @@
 diff --git a/src/Surface.zig b/src/Surface.zig
-index 5d16f33..c1f72e9 100644
+index 7ef2038..6ee1511 100644
 --- a/src/Surface.zig
 +++ b/src/Surface.zig
-@@ -1617,6 +1617,20 @@ fn mouseRefreshLinks(
+@@ -1641,6 +1641,20 @@ fn mouseRefreshLinks(
                  };
              },
  
@@ -23,7 +23,7 @@ index 5d16f33..c1f72e9 100644
              ._open_osc8 => {
                  // Show the URL in the status bar
                  const pin = link.selection.start();
-@@ -4389,6 +4403,21 @@ fn processLinks(self: *Surface, pos: apprt.CursorPos) !bool {
+@@ -4439,6 +4453,21 @@ fn processLinks(self: *Surface, pos: apprt.CursorPos) !bool {
              try self.openUrl(.{ .kind = .unknown, .url = url_to_open });
          },
  
@@ -45,7 +45,7 @@ index 5d16f33..c1f72e9 100644
          ._open_osc8 => {
              const uri = self.osc8URI(link.selection.start()) orelse {
                  log.warn("failed to get URI for OSC8 hyperlink", .{});
-@@ -5254,6 +5283,24 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool
+@@ -5077,6 +5106,24 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool
                          };
                      },
  
@@ -71,10 +71,10 @@ index 5d16f33..c1f72e9 100644
                          // For OSC8 links, get the URI directly from hyperlink data
                          const uri = self.osc8URI(link_info.selection.start()) orelse {
 diff --git a/src/config/Config.zig b/src/config/Config.zig
-index 5b1d73d..645a531 100644
+index 993a4f6..1547303 100644
 --- a/src/config/Config.zig
 +++ b/src/config/Config.zig
-@@ -1413,7 +1413,8 @@ scrollbar: Scrollbar = .system,
+@@ -1458,7 +1458,8 @@ scrollbar: Scrollbar = .system,
  /// A default link that matches a URL and opens it in the system opener always
  /// exists. This can be disabled using `link-url`.
  ///
@@ -84,9 +84,9 @@ index 5b1d73d..645a531 100644
  link: RepeatableLink = .{},
  
  /// Enable URL matching. URLs are matched on hover with control (Linux) or
-@@ -8586,11 +8587,55 @@ pub const RepeatableLink = struct {
+@@ -8643,11 +8644,55 @@ pub const RepeatableLink = struct {
  
-     links: std.ArrayListUnmanaged(inputpkg.Link) = .{},
+     links: std.ArrayList(inputpkg.Link) = .empty,
  
 +    /// `link = <action>,<regex>`
 +    ///
@@ -144,7 +144,7 @@ index 5b1d73d..645a531 100644
      }
  
      /// Deep copy of the struct. Required by Config.
-@@ -8625,9 +8670,27 @@ pub const RepeatableLink = struct {
+@@ -8682,9 +8727,27 @@ pub const RepeatableLink = struct {
  
      /// Used by Formatter
      pub fn formatEntry(self: Self, formatter: formatterpkg.EntryFormatter) !void {
@@ -175,7 +175,7 @@ index 5b1d73d..645a531 100644
      }
  };
  
-@@ -10344,6 +10407,88 @@ const TestIterator = struct {
+@@ -10430,6 +10493,88 @@ const TestIterator = struct {
      }
  };
  
@@ -265,7 +265,7 @@ index 5b1d73d..645a531 100644
      const testing = std.testing;
      var cfg = try Config.default(testing.allocator);
 diff --git a/src/input/Link.zig b/src/input/Link.zig
-index 37b45db..3cac86c 100644
+index 37b45db..2bf3c82 100644
 --- a/src/input/Link.zig
 +++ b/src/input/Link.zig
 @@ -26,11 +26,41 @@ pub const Action = union(enum) {
@@ -292,7 +292,7 @@ index 37b45db..3cac86c 100644
 +    template: []const u8,
 +    match: []const u8,
 +) Allocator.Error![:0]u8 {
-+    var out: std.ArrayListUnmanaged(u8) = .{};
++    var out: std.ArrayList(u8) = .empty;
 +    errdefer out.deinit(alloc);
 +    var i: usize = 0;
 +    while (i < template.len) {
