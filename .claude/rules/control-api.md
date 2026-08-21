@@ -723,9 +723,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 ## Conversation bookmarks (fork only)
 
 - AGTERM writes the turn mark, never the hook. `session.mark` advances the session's turn counter and
-  writes the mark into the session's main pty; the Claude `UserPromptSubmit` hook only calls
-  `agterm-agent-status.sh mark`, which routes to `agtermctl session mark --target "$AGTERM_SESSION_ID"`.
+  writes the mark into the pty of the pane the AGENT runs in; the Claude `UserPromptSubmit` hook only
+  calls `agterm-agent-status.sh mark`, which routes to
+  `agtermctl session mark --target "$AGTERM_SESSION_ID" --pane-id "$AGTERM_PANE_ID"`.
   One counter in one place cannot drift; a hook-side counter would be a second one that has to agree.
+- ⚠️ The pane comes from `--pane-id`, resolved through `Session.paneRole(forToken:)` to the token's CURRENT
+  slot, so a promoted split survivor marks the pane it now occupies. Writing `session.surface`
+  unconditionally puts an agent's marks into the OTHER pane of a split, over whatever that shell is
+  showing, while `bookmark go` searches the focused pane and finds none. An absent or unknown token falls
+  back to the primary pane, which is right for the unsplit case the hook cannot distinguish.
+  The `go` side still resolves its own pane through `session.search`, so a jump works while you are looking
+  at the pane you bookmarked in; carrying the pane on the bookmark would close the rest of that gap.
 - Two facts proven in a live pane carry the design. A hook cannot write `/dev/tty` — it fails with
   ENXIO, `device not configured`, because Claude Code detaches its children from the pane's pty.
   Writing the pty by ABSOLUTE path works, needs no controlling terminal, and lands on its own line at
@@ -742,8 +750,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   checked. So a bookmark can never store a position. It stores the turn number and the prompt text,
   and `session.bookmark.go` routes onto the existing `session.search` action with the turn's needle.
   A bookmark whose mark left scrollback still lists and shows its stored text; only the jump is lost.
-- Dedup keys on session id plus turn number, so re-adding a turn updates the entry rather than
-  duplicating it. `list` emits JSON for the fzf overlay, `--all` spanning sessions. Closing a session
+- Dedup keys on session id, turn number AND the launch's run id, so re-adding a turn updates the entry
+  rather than duplicating it. ⚠️ The run is part of the key because turn numbers restart with the app while
+  a restored session keeps its persisted id: without it today's turn 3 overwrites yesterday's prompt, which
+  after a restart is the only thing left of that turn. A record written before runs existed carries none,
+  never matches a new add, and is kept as history. `list` emits JSON for the fzf overlay, `--all` spanning sessions. Closing a session
   drops its bookmarks. Persisted in their own `bookmarks.json`, never in the window snapshot.
 - The turn counter is per session, monotonic, ephemeral like `unseen`: a restart resets it with the
   scrollback the marks lived in. A failed pty write still returns ok with the number — the bookmark

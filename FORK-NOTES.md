@@ -44,6 +44,12 @@ is the `.claude/rules` file that owns the design.
   Section below; design in `.claude/rules/settings.md`.
 - **The chrome pills in the sidebar footer** rather than the title bar, staying visible while terminal
   zoom hides the sidebar. Section below.
+- **An attention-counts pill** — how many sessions are blocked, working and finished, plus the current
+  session's unread count, as one capsule beside the other pills. It answers what the title-bar bell
+  cannot: how much, and of what kind. `.claude/rules/notifications.md`.
+- **Conversation bookmarks** — mark a turn in an agent conversation and jump back to it. agterm writes a
+  numbered mark into the pane at each turn start; the bookmark stores the number and the prompt, and
+  revisiting searches the pane for the mark. Detail below, `.claude/rules/control-api.md`.
 
 **libghostty**
 
@@ -262,8 +268,46 @@ whichever workspace you choose, instead of always in the current one.
   a create rather than a dead end. The row is offered even when a title matches partially.
 - Bound as a single chord, and reachable from `nmap` like any other built-in.
 
+## An attention-counts pill
+
+The title-bar bell says something needs you, never how much or of what kind — and it is opt-in and off by
+default, which is why it is easy to have never seen. The pill carries the counts instead: blocked, active
+and completed across the window, plus the current session's unread count, each a distinct glyph tinted by
+the configured status colour.
+
+- A category with a count of zero draws nothing, and an entirely quiet window draws no pill at all.
+- It rides `chromePills`, so it inherits both render sites and appears bottom-right over the terminal
+  exactly when the sidebar is not on screen. Despite how the idea started, nothing goes in the top bar.
+- A distinct glyph per category, NOT the sidebar's one configurable `StatusShape`: a lone number has to
+  say which category it is without depending on colour.
+- Informational, never clickable. `floatingPillsLayer` fills the window and relies on
+  `allowsHitTesting(false)`; anything interactive there swallows every click in the window.
+- ⚠️ The unseen segment is gated on the notification-badge setting, like the sidebar and Dock badges. The
+  three status segments are not, exactly as the sidebar's status glyph is not.
+- The bell is untouched, including its default-off setting.
+
+## Conversation bookmarks
+
+Mark a turn in an agent conversation and come back to it later without scrolling.
+
+- `session.search` is the ONLY thing that moves a pane's viewport, and it matches visible text. Nothing
+  can read where the viewport sits or scroll to a coordinate, so a bookmark can never store a position —
+  only something findable. A number is unique by construction; a prompt-text search is not.
+- ⚠️ agterm writes the mark, not the hook, because a hook cannot: `/dev/tty` from a Claude Code child
+  fails with ENXIO, since Claude Code detaches its children from the pty. Writing the pty by absolute
+  path works, and the app already owns that path. So one turn counter lives in one place instead of two
+  that have to agree.
+- The mark lands in the pane the AGENT runs in, resolved from the caller's `AGTERM_PANE_ID`. Writing to
+  the primary pane unconditionally puts an agent's marks over the other pane of a split.
+- `TurnMark` owns the written line and the search needle together, so the jump cannot break by their
+  drifting apart.
+- Browsing is deliberately not in the app: `bookmark list --all` emits JSON for an overlay running fzf.
+- A bookmark whose mark has left scrollback still lists and still shows its stored prompt. Only the jump
+  is lost, and after a restart that is the normal case.
+
 ## Control API
 
+- `agtermctl session mark` and `session bookmark add|list|go|remove` — the bookmarks above.
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.
 - `window.list` reports `normalMode` on the window holding it, true-only.
@@ -279,8 +323,8 @@ whichever workspace you choose, instead of always in the current one.
 - `patches/ghostty/` — the fork's own libghostty patches, applied by `scripts/setup.sh` on top of the
   pinned upstream rev.
 - `CHANGELOG-fork.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
-- `.claude/rules/keymap.md`, `control-api.md`, `zmx.md`, `overlay-redirect.md` and `fork-merge.md`
-  document the design and how the fork is kept current.
+- `.claude/rules/keymap.md`, `control-api.md`, `notifications.md`, `zmx.md`, `overlay-redirect.md` and
+  `fork-merge.md` document the design and how the fork is kept current.
 
 ## Not done
 

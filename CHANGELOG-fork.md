@@ -22,6 +22,20 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- bookmark a turn in an agent conversation and jump back to it. agterm writes a numbered mark into the
+  pane at the start of each turn, `session bookmark add` records that number plus the prompt text, and
+  `session bookmark go` searches the pane for the mark. `session.search` is the only thing that moves a
+  pane's viewport and it matches visible text, so a bookmark stores something findable rather than a
+  position — a number being unique where a prompt-text search is not. agterm writes the mark rather than
+  the hook because a hook cannot: `/dev/tty` from a Claude Code child fails with ENXIO. Browsing is an
+  overlay running fzf over `bookmark list --all`, not app UI. A bookmark whose mark has left scrollback
+  still lists and shows its prompt; only the jump is lost
+- an attention-counts pill beside the other chrome pills: how many sessions are blocked, working and
+  finished, plus the current session's unread count, each a distinct glyph in its configured status
+  colour. It answers what the title-bar bell cannot — how much, and of what kind — and appears
+  bottom-right over the terminal exactly when the sidebar is not on screen. A zero category draws nothing
+  and a quiet window draws no pill. The unseen segment is gated on the notification-badge setting, like
+  the sidebar and Dock badges; the status segments are not. Informational, never clickable
 - a cross-agent message id printed in any pane is clickable. Shift+Cmd+click a `msg-…` id and the parked
   message opens in an overlay over that pane. It rests on a new `link = <action>,<regex>` config key, which
   upstream ghostty declares but cannot parse, so the fork carries its own parser plus an `open:<template>`
