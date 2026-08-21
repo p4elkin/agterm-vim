@@ -27,8 +27,9 @@ public enum Command: String, Codable, Sendable {
     case sessionPark = "session.park"
     case sessionSeen = "session.seen"
     case sessionRestore = "session.restore"
-    /// Advance the session's turn counter and write the visible turn mark into its pane's pty (fork only,
-    /// see `TurnMark`). Returns the new number in `result.count`; reads back as the session node's `turn`.
+    /// Advance the session's turn counter (fork only, see `TurnMark`). Returns the new number in
+    /// `result.count`; reads back as the session node's `turn`. The visible mark is echoed by the AGENT,
+    /// which the hook instructs with this number; the pty write here reaches only a pane with no TUI.
     case sessionMark = "session.mark"
     /// The `session.bookmark` family (fork only), see `ControlDispatcher+Bookmark.swift`: add bookmarks a
     /// marked turn (the current one by default; `text` carries the prompt; same session + turn updates, and

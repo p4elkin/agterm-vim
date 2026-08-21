@@ -47,9 +47,9 @@ is the `.claude/rules` file that owns the design.
 - **An attention-counts pill** — how many sessions are blocked, working and finished, plus the current
   session's unread count, as one capsule beside the other pills. It answers what the title-bar bell
   cannot: how much, and of what kind. `.claude/rules/notifications.md`.
-- **Conversation bookmarks** — mark a turn in an agent conversation and jump back to it. agterm writes a
-  numbered mark into the pane at each turn start; the bookmark stores the number and the prompt, and
-  revisiting searches the pane for the mark. Detail below, `.claude/rules/control-api.md`.
+- **Conversation bookmarks** — mark a turn in an agent conversation and jump back to it. The agent prints
+  a numbered mark at each turn start, on instruction from the hook; the bookmark stores the number and the
+  prompt, and revisiting searches the pane for the mark. Detail below, `.claude/rules/control-api.md`.
 
 **libghostty**
 
@@ -293,12 +293,21 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 - `session.search` is the ONLY thing that moves a pane's viewport, and it matches visible text. Nothing
   can read where the viewport sits or scroll to a coordinate, so a bookmark can never store a position —
   only something findable. A number is unique by construction; a prompt-text search is not.
-- ⚠️ agterm writes the mark, not the hook, because a hook cannot: `/dev/tty` from a Claude Code child
-  fails with ENXIO, since Claude Code detaches its children from the pty. Writing the pty by absolute
-  path works, and the app already owns that path. So one turn counter lives in one place instead of two
-  that have to agree.
-- The mark lands in the pane the AGENT runs in, resolved from the caller's `AGTERM_PANE_ID`. Writing to
-  the primary pane unconditionally puts an agent's marks over the other pane of a split.
+- ⚠️ The AGENT prints the mark. Nothing outside it can: every layer that owns a screen repaints it from
+  its own buffer, so bytes injected into a pty are wiped before the next frame and never enter scrollback.
+  Measured in a live pane — agterm's surface pty and the inner pty of the zmx wrapper were both invisible.
+  The agent's own reply is the only thing here that IS scrollback, which is the trick the `context-canary`
+  skill uses too.
+- So the hook does the counting and the agent does the writing. `session mark` answers the new number and
+  the hook prints `Begin your reply with this line ...` on stdout, which Claude Code injects into the
+  prompt context. One turn counter still lives in one place instead of two that have to agree.
+- ⚠️ The mark therefore depends on the agent complying each turn. A skipped one costs that turn its jump
+  target and nothing else. A deterministic mark would need the app to capture and restore a scrollback
+  offset, which no agterm command can do yet.
+- A hook cannot write `/dev/tty` at all: it fails with ENXIO, since Claude Code detaches its children from
+  the pty. An absolute pty path does work, which is why the app-side write looked right until the repaint
+  problem showed up. That write is still there and still lands in a pane with no TUI in it, so it carries
+  `AGTERM_PANE_ID` to stay out of the other pane of a split.
 - `TurnMark` owns the written line and the search needle together, so the jump cannot break by their
   drifting apart.
 - Browsing is deliberately not in the app: `bookmark list --all` emits JSON for an overlay running fzf.

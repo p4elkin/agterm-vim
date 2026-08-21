@@ -2,8 +2,12 @@ import Foundation
 import agtermCore
 
 /// `session.mark` (fork only): advance the target session's turn counter and write the visible `TurnMark`
-/// into its pane's pty by absolute path — agterm writes it because the hook cannot (`/dev/tty` from a hook
-/// fails with ENXIO).
+/// into its pane's pty by absolute path.
+///
+/// ⚠️ The pty write only reaches a pane with no full-screen TUI in it. A pane running an agent is repainted
+/// by the agent (and by the zmx client under it) from its own buffer, so these bytes are wiped before the
+/// next frame and never enter scrollback. For an agent the mark is echoed by the AGENT instead: the hook
+/// takes the number this returns and instructs it to print the line. See `.claude/rules/control-api.md`.
 extension ControlServer {
     func markSessionTurn(_ target: String?, window: String?, paneID: String?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
@@ -21,8 +25,8 @@ extension ControlServer {
     /// the focused one and finds nothing. An unknown or absent token falls back to the primary pane, which
     /// is right for the unsplit case the hook cannot distinguish.
     ///
-    /// A failed write is not an error: the number still names the turn, and a bookmark on it just loses the
-    /// jump. An unrealized pane simply has no pty yet.
+    /// A failed write is not an error: the number still names the turn, and for an agent pane the visible
+    /// mark comes from the agent's own reply anyway. An unrealized pane simply has no pty yet.
     private func writeTurnMark(_ turn: Int, to session: Session, paneID: String?) {
         guard let path = (markSurface(of: session, paneID: paneID) as? GhosttySurfaceView)?.ttyName(),
               let handle = FileHandle(forWritingAtPath: path) else { return }

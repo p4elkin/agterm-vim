@@ -722,23 +722,32 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 ## Conversation bookmarks (fork only)
 
-- AGTERM writes the turn mark, never the hook. `session.mark` advances the session's turn counter and
-  writes the mark into the pty of the pane the AGENT runs in; the Claude `UserPromptSubmit` hook only
-  calls `agterm-agent-status.sh mark`, which routes to
-  `agtermctl session mark --target "$AGTERM_SESSION_ID" --pane-id "$AGTERM_PANE_ID"`.
-  One counter in one place cannot drift; a hook-side counter would be a second one that has to agree.
-- ⚠️ The pane comes from `--pane-id`, resolved through `Session.paneRole(forToken:)` to the token's CURRENT
-  slot, so a promoted split survivor marks the pane it now occupies. Writing `session.surface`
-  unconditionally puts an agent's marks into the OTHER pane of a split, over whatever that shell is
-  showing, while `bookmark go` searches the focused pane and finds none. An absent or unknown token falls
-  back to the primary pane, which is right for the unsplit case the hook cannot distinguish.
-  The `go` side still resolves its own pane through `session.search`, so a jump works while you are looking
-  at the pane you bookmarked in; carrying the pane on the bookmark would close the rest of that gap.
-- Two facts proven in a live pane carry the design. A hook cannot write `/dev/tty` — it fails with
-  ENXIO, `device not configured`, because Claude Code detaches its children from the pane's pty.
-  Writing the pty by ABSOLUTE path works, needs no controlling terminal, and lands on its own line at
-  the turn boundary. The written line came back padded to full terminal width, so nothing may depend
-  on the mark's rendered width.
+- THE AGENT writes the turn mark, by echoing a line the hook hands it. `session.mark` advances the
+  session's turn counter and answers the new number; the Claude `UserPromptSubmit` hook calls
+  `agterm-agent-status.sh mark`, which routes to
+  `agtermctl session mark --target "$AGTERM_SESSION_ID" --pane-id "$AGTERM_PANE_ID"` and prints
+  `Begin your reply with this line ...` plus `── ⟦N⟧ ──` on stdout, which Claude Code injects into the
+  prompt context. One counter in one place cannot drift; a hook-side counter would be a second one that
+  has to agree.
+- ⚠️ Nothing outside the agent can put a durable line into an agent's pane. Measured 2026-08-21 in a live
+  pane: a write to agterm's surface pty AND a write to the inner pty of the zmx wrapper were both
+  invisible. Every layer that owns a screen repaints it from its own buffer — the zmx client, then Claude
+  Code's own TUI — so injected bytes are wiped before the next frame and never enter scrollback, and
+  `session.search` only ever finds scrollback. The agent's own reply IS scrollback. This is why the mark
+  is an instruction rather than a write, and it is the same trick the `context-canary` skill uses.
+- ⚠️ The mark therefore depends on the agent complying each turn. A skipped one costs that turn its jump
+  target and nothing else: the bookmark still lists and still shows its prompt. A deterministic mark needs
+  the app to capture and restore a scrollback offset, which no agterm command can do yet.
+- The app ALSO writes the mark into the pane's pty (`ControlServer+Mark.swift`). That write survives only
+  in a pane with no full-screen TUI in it, so for an agent pane it does nothing. It is why `--pane-id` is
+  still carried: the token resolves through `Session.paneRole(forToken:)` to its CURRENT slot, so a
+  promoted split survivor writes into the pane it now occupies rather than the other one. An absent or
+  unknown token falls back to the primary pane, which is right for the unsplit case the hook cannot
+  distinguish. The `go` side resolves its own pane through `session.search`, so a jump works while you are
+  looking at the pane you bookmarked in.
+- A hook cannot write `/dev/tty` at all — it fails with ENXIO, `device not configured`, because Claude
+  Code detaches its children from the pane's pty. An ABSOLUTE pty path does work and needs no controlling
+  terminal, which is what made the app-side write look correct until the repaint problem showed up.
 - `TurnMark` in `agtermCore` owns both strings: the rendered line `── ⟦N⟧ ──` and the search needle
   `⟦N⟧` alone. They live in one type because the jump works only while the written and searched
   strings agree; never spell either inline. The needle is never the decorated line (it reflows) and
