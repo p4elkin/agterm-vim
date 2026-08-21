@@ -12,7 +12,7 @@ paths:
   Without `--publish`, the dry run stops before upload. Upstream signs as
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
-- Before writing or committing a release section, put the exact `CHANGELOG-vim.md` text in a temp file and
+- Before writing or committing a release section, put the exact `CHANGELOG-fork.md` text in a temp file and
   pass it through the `draft-approval` skill's `draft-review.sh`; address annotations and get explicit
   chat approval. `release_notes()` publishes that section as the GitHub release body.
 - **Commit and push the changelog and website version to the trunk before `release.sh --publish`.**
@@ -46,7 +46,7 @@ in the script itself; the fifth is a standing condition, not a bug:
   the app as damaged, so the note carries the `xattr -dr com.apple.quarantine` line users need. Restoring
   the signed wording without a real certificate sends every downloader into that error.
 
-Fork release notes live in `CHANGELOG-vim.md`, never `CHANGELOG.md`: [[fork-rebase]] takes upstream's
+Fork release notes live in `CHANGELOG-fork.md`, never `CHANGELOG.md`: [[fork-rebase]] takes upstream's
 copy whole on every rebase, so a note written there is erased by the next daily run. Upstream has no such
 file, so it never conflicts. `release.sh` publishes a section from it as the release body via
 `--notes-file`; the `draft-approval` review above applies to that text.

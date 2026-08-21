@@ -107,7 +107,7 @@ notarize() {
   fi
 }
 
-# build the GitHub release body: the matching CHANGELOG-vim.md section (fork notes; CHANGELOG.md is
+# build the GitHub release body: the matching CHANGELOG-fork.md section (fork notes; CHANGELOG.md is
 # upstream's and is overwritten by every rebase) followed by an install note matching what was built.
 release_notes() {
   local section
@@ -120,8 +120,8 @@ release_notes() {
       while (n>=s && body[n] ~ /^[[:space:]]*$/) n--
       for (i=s; i<=n; i++) print body[i]
     }
-  ' "$ROOT/CHANGELOG-vim.md")"
-  [ -n "$section" ] || echo "WARNING: no CHANGELOG-vim.md section for v$VERSION — release body will be the install note only" >&2
+  ' "$ROOT/CHANGELOG-fork.md")"
+  [ -n "$section" ] || echo "WARNING: no CHANGELOG-fork.md section for v$VERSION — release body will be the install note only" >&2
   [ -n "$section" ] && printf '%s\n\n' "$section"
   printf -- '---\n\n'
   # the note must match what was actually produced: telling a user Gatekeeper opens it with no extra

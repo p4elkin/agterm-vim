@@ -9,7 +9,7 @@ Forked at `eb29d55`, and kept current by MERGING `upstream/master` in, never by 
 `git log` shows merge commits, so this file, not the log, is the answer to "what does the fork add".
 
 This file is the CATALOG: what the fork has, and where each piece is written up properly. It is not a
-changelog — `CHANGELOG-vim.md` holds the release notes, ordered by release and describing deltas. This one
+changelog — `CHANGELOG-fork.md` holds the release notes, ordered by release and describing deltas. This one
 is ordered by feature and describes the current state. ⚠️ When you add a feature to the fork, add a line
 here as well as an entry there. The catalog went stale once already: the file said "two separable features"
 long after there were nine.
@@ -57,7 +57,7 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 - `tree` reports `sessionRecency`; `keymap list` reports the `nmap` binds in their own section;
   `agtermctl mode on|off|toggle`; `window.list` reports `normalMode`. `.claude/rules/control-api.md`.
 - `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
-  `CHANGELOG-vim.md` as the release body. `.claude/rules/release.md`.
+  `CHANGELOG-fork.md` as the release body. `.claude/rules/release.md`.
 
 ## Leader sequences for built-in actions
 

@@ -33,7 +33,7 @@ git had nothing to flag. So run the full gate set on a zero-conflict rebase exac
   onto a wider type rather than taking one side.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
-  `CHANGELOG-vim.md`, which upstream does not have and which therefore never conflicts; see [[release]].
+  `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].
 
 ### Delegating it
 

@@ -1,8 +1,15 @@
-# Changelog — agterm-vim
+# Changelog — the agterm fork
 
 Release notes for this fork only. `CHANGELOG.md` beside it belongs to upstream `umputun/agterm` and is
 taken whole on every rebase, so nothing written there survives; fork notes live here. `scripts/release.sh`
 publishes a section from this file as the GitHub release body through `--notes-file`.
+
+Was `CHANGELOG-vim.md` until 2026-08-21. The fork started as vim keybindings and has not been only that
+for a long time, so the name was doing the same thing the old `FORK-NOTES.md` was — describing a fork that
+no longer existed.
+
+`FORK-NOTES.md` is the other half: this file is ordered by release and describes deltas, that one is
+ordered by feature and describes the current state. ⚠️ A feature landing needs a line in both.
 
 Entries describe what a user of the fork gets that upstream does not. Upstream's own changes for a given
 version are in `CHANGELOG.md`.
