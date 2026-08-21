@@ -61,6 +61,12 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   subagent, same command and machine. That timeout is a permission state, never a code defect, and it kills
   the runner before any test body executes — so it can never distinguish one change from another.
   `sudo DevToolsSecurity -enable` does not help; the successful runs predate it.
+- **A menu item EXISTS before it has a frame.** Clicking `app.menuItems["New Session"]` straight after
+  clicking the `File` menu bar item throws `Invalid parameter not satisfying: point.x != INFINITY
+  (NSInternalInconsistencyException)`: XCUITest reports the item while AppKit is still laying the menu out,
+  and the click has no point to aim at. `waitForExistence` does NOT cover it — poll `isHittable` before
+  clicking. Measured in `RecencyDwellUITests.addSession`, about one run in three, which is exactly the rate
+  that reads as a pass on a single run.
 - **`xcodebuild` piped through `grep`/`tail` reports the PIPELINE's exit status, not its own.** Check for
   the literal `** TEST SUCCEEDED **` marker or read `${PIPESTATUS[0]}`. A failing run has been reported as
   a pass this way.

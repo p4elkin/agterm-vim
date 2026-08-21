@@ -181,6 +181,41 @@ paths:
 - Take the covered session's own solid background when it set one, else the theme color. Neither that field
   nor a live OSC 11 color is observed, so the color is whatever it was when the wash was last drawn.
 
+## Terminal links
+
+- A clicked link arrives as `GHOSTTY_ACTION_OPEN_URL` and lands in `GhosttySurfaceView.openLink`. The
+  decision is host-free, in `agtermCore`'s `LinkPolicy.disposition(for:)`, so it is unit-tested without an
+  app; the view only performs the outcome.
+- Four dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
+  Finder and never opened — opening goes through LaunchServices, so a click on `file:///…/X.app` or
+  `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.ignore` for
+  everything else, which is most things: a terminal renders untrusted program output, so any escape
+  sequence can carry any scheme.
+- ⚠️ **Follow a link with SHIFT+Cmd+click, not Cmd+click.** Ghostty turns link hovering off entirely while
+  an application has mouse reporting on. The gate is `mouse_event == .none OR (mouse.mods.shift AND
+  !mouseShiftCapture())`, in both `Surface.zig:4590` (pointer moved) and `Surface.zig:2704` (modifiers
+  changed), and the else arm actively CLEARS the state and sends an empty `mouse_over_link`. Every Claude
+  Code and zmx pane reports mouse events, so without shift there is no underline, `mouse.over_link` never
+  becomes true, and the click handler at `Surface.zig:3828` never runs — for plain URLs too, not only for
+  configured links. Shift is upstream's one escape, and `mouseModsWithCapture` (`Surface.zig:4357`) strips
+  it again before the highlight's modifiers are compared, so what the link sees is Cmd on its own.
+  `mouse-shift-capture` defaults to `.false`, which is what leaves the hatch open. This is deliberate
+  upstream behaviour, not a fork regression. When a link "does not work", check the chord first: a whole
+  session went into five wrong theories before the gate was read.
+- `agterm-xchat://msg/<id>` is agterm's own scheme and is deliberately NOT in `permittedSchemes`, so
+  nothing on that route reaches `NSWorkspace` or LaunchServices. The host must be exactly `msg`, the path
+  exactly one component, and that component a whole message id (`^msg-[0-9]{6}-[0-9a-f]{4}$`). A query, a
+  fragment or a percent-encoded newline is refused rather than trimmed — the shape is minted by agterm's
+  own `link` rule, so anything extra means the input is not what it claims to be.
+- `openXchatMessage` spawns `xchat-open` with an argv array, never a shell string, and injects
+  `AGTERM_SESSION_ID` so the overlay lands over the pane that was clicked. agterm deliberately does not
+  know how to RENDER an xchat message; that stays in agterm-agents beside the hook that parks it.
+  `xchat-open` re-checks the id against the same pattern, so there are two gates rather than one. A missing
+  helper is a log line, not a dialog.
+- The `link = <action>,<regex>` config key that mints those links is
+  `patches/ghostty/0002-link-config.patch`, not upstream. Read `patches/ghostty/README.md` before touching
+  it.
+
 ## OSC 11 backgrounds
 
 - Handle background `GHOSTTY_ACTION_COLOR_CHANGE` per pane. Under zero surface opacity, apply a surface

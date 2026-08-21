@@ -62,8 +62,14 @@ and so cannot be matched by the built-in URL link.
   deliberately NOT applied on this path — the template already states what the match means, so
   guessing at it as a path would fight the config.
 - A configured link gets the same highlight as the built-in URL link,
-  `hover_mods = ctrlOrSuper`, so it behaves like the link that is always there (cmd-click on
-  macOS).
+  `hover_mods = ctrlOrSuper`, so it behaves like the link that is always there.
+
+⚠️ **In agterm that means SHIFT+Cmd+click, not Cmd+click, and the patch cannot change it.** Ghostty
+turns link hovering off entirely while an application has mouse reporting on, which every Claude Code
+and zmx pane does, and shift is the one escape upstream leaves — see the terminal links section of
+`.claude/rules/libghostty.md` for the gate and the line numbers. Without shift a configured link
+never highlights and a click does nothing, which looks exactly like the patch not being in the build.
+It cost a session to tell those two apart.
 
 **Two things the union payload forced.** `Link.clone` copied the action by value, which would
 leave a clone's template pointing into the original's memory, so it now dupes the slice.
@@ -85,3 +91,8 @@ handed to the system opener, with `$0` substituted verbatim — but a plain `ope
 the raw matched text to the same opener, so a template is that same exposure with a prefix, not a
 new class. Nothing here executes a command. An action that ran one would be a different
 proposition: any text on screen matching the regex would become a click-to-execute trigger.
+
+⚠️ **Do not point a template at `file://`.** It was the first thing tried and it cannot work: agterm's
+`LinkPolicy` REVEALS a local file in Finder rather than opening it, deliberately and with tests, so the
+best case is a Finder window instead of the thing the link named. agterm's own `agterm-xchat://msg/<id>`
+scheme is what the template emits instead, handled in-process and never handed to the system opener.

@@ -15,6 +15,13 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- a cross-agent message id printed in any pane is clickable. Shift+Cmd+click a `msg-…` id and the parked
+  message opens in an overlay over that pane. It rests on a new `link = <action>,<regex>` config key, which
+  upstream ghostty declares but cannot parse, so the fork carries its own parser plus an `open:<template>`
+  action that turns a match into a URL. The id resolves through agterm's own `agterm-xchat:` scheme, which
+  is answered in-process and never handed to the system opener. ⚠️ Shift is required, not optional:
+  ghostty disables link hovering while an application has mouse reporting on, and shift is the one escape
+  it leaves — this applies to plain URLs in agterm too
 - a modal vim-style normal mode with its own `nmap` keybind namespace, entered from a `map <chord>
   normal_mode` line the user writes. Built-in actions fire from keymap leader sequences, an `nmap` target
   may name a custom command, and a line may end in an optional `insert` or `normal` mode word that decides
