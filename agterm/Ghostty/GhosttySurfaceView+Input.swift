@@ -3,6 +3,9 @@
 import agtermCore
 import AppKit
 import GhosttyKit
+import os
+
+private let logger = Logger(subsystem: "com.umputun.agterm", category: "GhosttySurfaceLinks")
 
 extension GhosttySurfaceView {
     // MARK: - Drag and drop (issue #51)
@@ -538,7 +541,43 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         switch LinkPolicy.disposition(for: raw) {
         case let .open(url): NSWorkspace.shared.open(url)
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
+        case let .xchat(id): openXchatMessage(id)
         case .ignore: return
+        }
+    }
+
+    /// Show a parked cross-agent message in an overlay over the session that was clicked, by running
+    /// `xchat-open <id>` from agterm-agents.
+    ///
+    /// agterm deliberately does not know how to RENDER an xchat message: that lives in one place, beside the
+    /// sender hook that parks it. So this is a FIXED program taking one argument `LinkPolicy` has already
+    /// validated as a whole message id, spawned with an argv array and never a shell string, so nothing in the
+    /// id could be read as a command. `xchat-open` re-checks the id against the same pattern before it touches
+    /// the filesystem, which makes this the second of two gates rather than the only one.
+    ///
+    /// `AGTERM_SESSION_ID` is injected because `xchat-open` targets its overlay by session and the app's own
+    /// environment carries none; without it the script falls back to printing to a stdout nobody reads.
+    ///
+    /// A no-op when the surface has no model session or the helper is not installed. The click is a
+    /// convenience over the `f` key that already follows pointers in the xchat overlay, so a missing helper
+    /// belongs in the log, not in a dialog.
+    private func openXchatMessage(_ id: String) {
+        guard let sessionID = session?.id else { return }
+        let candidates = ["\(NSHomeDirectory())/.local/bin/xchat-open", "/opt/homebrew/bin/xchat-open"]
+        guard let tool = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            logger.warning("xchat link clicked but xchat-open is not installed")
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = [id]
+        var env = ProcessInfo.processInfo.environment
+        env["AGTERM_SESSION_ID"] = sessionID.uuidString
+        process.environment = env
+        do {
+            try process.run()
+        } catch {
+            logger.warning("xchat-open failed to launch: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

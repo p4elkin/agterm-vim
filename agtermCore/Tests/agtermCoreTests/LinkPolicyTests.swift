@@ -168,4 +168,61 @@ struct LinkPolicyTests {
         }
         #expect(url.absoluteString == "file:///tmp/x.md")
     }
+
+    // MARK: agterm-xchat:// — agterm's own scheme for a parked cross-agent message
+
+    /// The one shape that resolves. Case-insensitive on the scheme and the host, like every other branch.
+    @Test(arguments: [
+        "agterm-xchat://msg/msg-133434-cad8",
+        "AGTERM-XCHAT://MSG/msg-133434-cad8",
+        "agterm-xchat://msg/msg-000000-0000",
+        "agterm-xchat://msg/msg-999999-ffff",
+    ])
+    func xchatMessageIDResolves(_ raw: String) {
+        guard case let .xchat(id) = LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) else {
+            Issue.record("expected .xchat for \(raw)")
+            return
+        }
+        #expect(id.range(of: LinkPolicy.xchatIDPattern, options: .regularExpression) != nil)
+    }
+
+    /// The id is the whole boundary on what can leave this classifier, so anything that is not exactly a
+    /// message id is refused rather than trimmed, resolved or passed along. A traversal is refused as a
+    /// MALFORMED ID — it is never treated as a path in the first place.
+    @Test(arguments: [
+        "agterm-xchat://msg/../../etc/passwd",            // traversal, plain
+        "agterm-xchat://msg/%2e%2e%2f%2e%2e%2fetc/passwd", // traversal, percent-encoded
+        "agterm-xchat://msg/msg-133434-cad8/../../etc",   // valid id then a traversal
+        "agterm-xchat://msg/msg-133434-cad8/extra",       // more than one path component
+        "agterm-xchat://msg/msg-13343-cad8",              // five digits
+        "agterm-xchat://msg/msg-1334345-cad8",            // seven digits
+        "agterm-xchat://msg/msg-133434-CAD8",             // hex must be lowercase
+        "agterm-xchat://msg/msg-133434-cadg",             // 'g' is not hex
+        "agterm-xchat://msg/msg-133434-cad8.md",          // the `.md` suffix is the file, not the id
+        "agterm-xchat://msg/xmsg-133434-cad8",            // prefix junk
+        "agterm-xchat://msg/",                            // no id at all
+        "agterm-xchat://msg",                             // no path at all
+        "agterm-xchat:///msg-133434-cad8",                // no host, so no route
+        "agterm-xchat://open/msg-133434-cad8",            // wrong route
+        "agterm-xchat://msg/msg-133434-cad8?run=x",       // a query is refused, not dropped
+        "agterm-xchat://msg/msg-133434-cad8#frag",        // a fragment is refused, not dropped
+        "agterm-xchat://msg/msg-133434-cad8%0A",          // trailing newline the anchored `$` could allow
+        "agterm-xchat://msg/msg-133434-cad8%0Arm%20-rf",  // newline plus a second line
+        "agterm-xchat-evil://msg/msg-133434-cad8",        // a scheme that merely starts the same
+        "agterm-xchat:msg/msg-133434-cad8",               // authority-less form has no route
+    ])
+    func xchatRefusesAnythingButAWholeID(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    /// The scheme must never reach `NSWorkspace`. That is enforced by it being absent from
+    /// `permittedSchemes` (the only set the app-side glue hands to the system opener) and by resolving to its
+    /// own case, which the glue answers in-process.
+    @Test func xchatSchemeIsNotSystemOpenable() {
+        #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.xchatScheme))
+        let decision = LinkPolicy.disposition(for: "agterm-xchat://msg/msg-133434-cad8",
+                                              localHosts: Self.localHosts)
+        #expect(decision != .open(URL(string: "agterm-xchat://msg/msg-133434-cad8")!))
+        #expect(decision == .xchat(id: "msg-133434-cad8"))
+    }
 }

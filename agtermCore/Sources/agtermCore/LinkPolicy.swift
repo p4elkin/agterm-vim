@@ -3,7 +3,8 @@ import Foundation
 /// Decides what agterm does when a terminal hyperlink is clicked (`GHOSTTY_ACTION_OPEN_URL`). A terminal
 /// renders UNTRUSTED program output, so an escape-sequence link can carry any scheme. `disposition(for:)`
 /// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`), REVEAL a LOCAL `file://` link in Finder
-/// (`NSWorkspace.activateFileViewerSelecting`), or IGNORE anything else. `file://` is revealed, never
+/// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
+/// `agterm-xchat://msg/<id>` scheme, or IGNORE anything else. `file://` is revealed, never
 /// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
 /// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder
@@ -14,10 +15,22 @@ public enum LinkPolicy {
     /// executable/handler.
     public static let permittedSchemes: Set<String> = ["http", "https", "mailto", "ftp"]
 
+    /// The one non-web scheme agterm answers itself: `agterm-xchat://msg/<id>` shows a parked cross-agent
+    /// message. Deliberately NOT in `permittedSchemes` — nothing on this route reaches `NSWorkspace` or
+    /// LaunchServices, and the id is re-validated below, so terminal output cannot use it to name a path, an
+    /// argument or a program. Only agterm's own `link` rule in `ghostty.conf` mints links of this shape.
+    public static let xchatScheme = "agterm-xchat"
+
+    /// A whole message id, anchored at both ends: `msg-`, six digits, four hex digits. The shape is fixed by
+    /// `xchat-send.py`, which mints it. Nothing else is ever accepted, so `../../.ssh/id_rsa` is a malformed
+    /// id rather than a path that gets resolved.
+    static let xchatIDPattern = "^msg-[0-9]{6}-[0-9a-f]{4}$"
+
     /// What a link click should do. Carries the target URL for `.open`/`.reveal`.
     public enum LinkDisposition: Equatable {
         case open(URL)
         case reveal(URL)
+        case xchat(id: String)
         case ignore
     }
 
@@ -98,6 +111,7 @@ public enum LinkPolicy {
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
         if permittedSchemes.contains(scheme) { return .open(url) }
+        if scheme == xchatScheme { return xchatDisposition(url) }
         guard scheme == "file" else { return .ignore }
         let host = normalizedHost(url.host(percentEncoded: false) ?? "")
         guard host.isEmpty || localHosts.contains(host) else { return .ignore }
@@ -113,5 +127,22 @@ public enum LinkPolicy {
         let normalizedPath = Self.lexicallyNormalizedAbsolutePath(rawPath)
         guard !isAutomountPath(normalizedPath) else { return .ignore }
         return .reveal(URL(fileURLWithPath: normalizedPath, isDirectory: false))
+    }
+
+    /// `agterm-xchat://msg/<id>` → `.xchat(id)`; anything else under the scheme → `.ignore`. The host must be
+    /// exactly `msg` (the only route the scheme has), the path must be one component, and that component must
+    /// be a whole message id. A query or a fragment is REFUSED rather than dropped: this shape is minted by
+    /// agterm's own `link` rule, so anything extra means the input is not what it claims to be. The newline
+    /// guard closes the one hole the anchored pattern leaves — a percent-encoded `%0A` decodes into the path,
+    /// and a regex `$` can match just before a trailing newline.
+    static func xchatDisposition(_ url: URL) -> LinkDisposition {
+        guard normalizedHost(url.host(percentEncoded: false) ?? "") == "msg" else { return .ignore }
+        guard url.query == nil, url.fragment == nil else { return .ignore }
+        let path = url.path(percentEncoded: false)
+        guard path.hasPrefix("/") else { return .ignore }
+        let id = String(path.dropFirst())
+        guard !id.contains(where: \.isNewline) else { return .ignore }
+        guard id.range(of: xchatIDPattern, options: .regularExpression) != nil else { return .ignore }
+        return .xchat(id: id)
     }
 }
