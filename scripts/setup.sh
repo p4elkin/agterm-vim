@@ -31,6 +31,25 @@ XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 RESOURCES_MARKER="agterm/Resources/terminfo"
 STAMP_FILE=".ghostty-build-stamp"
 
+# What the staged artifacts were built FROM: the upstream revision AND the patches applied on top
+# of it. The revision alone is not enough, and that gap shipped a broken build.
+#
+# ⚠️ Measured 2026-08-21: `patches/ghostty/0002-link-config.patch` was added without moving
+# GHOSTTY_REV. Every checkout whose stamp already matched the rev printed "already present",
+# skipped the build, and kept a libghostty with no `link` config parser -- so a deployed app
+# silently had none of the patch, with no error at any point. `git apply` never ran, so even the
+# does-it-still-apply check could not have caught it.
+#
+# Hashing the patch FILES rather than listing their names also catches an edited patch, which is
+# the same failure wearing a different hat.
+build_key() {
+  local patches=""
+  if compgen -G "patches/ghostty/*.patch" >/dev/null; then
+    patches="$(cat patches/ghostty/*.patch | shasum -a 256 | cut -d" " -f1)"
+  fi
+  printf '%s patches:%s\n' "$GHOSTTY_REV" "${patches:-none}"
+}
+
 # stage agterm's own bundled theme(s) from the committed source into the (gitignored,
 # setup-regenerated) ghostty themes dir. idempotent and called on both the cached and the
 # fresh-build path so the theme survives a themes-dir wipe and shows in the Appearance picker.
@@ -45,9 +64,11 @@ need_res=true
 [[ -d "$XCFRAMEWORK_DIR" ]] && need_xc=false
 [[ -d "$RESOURCES_MARKER" ]] && need_res=false
 
-# a stale stamp restages BOTH: they come out of one build, and an artifact built from another revision
-# cannot be told apart from a current one.
-if [[ ! -f "$STAMP_FILE" || "$(cat "$STAMP_FILE")" != "$GHOSTTY_REV" ]]; then
+# a stale stamp restages BOTH: they come out of one build, and an artifact built from another
+# revision -- or from the same revision with different patches -- cannot be told apart from a
+# current one.
+BUILD_KEY="$(build_key)"
+if [[ ! -f "$STAMP_FILE" || "$(cat "$STAMP_FILE")" != "$BUILD_KEY" ]]; then
   need_xc=true
   need_res=true
 fi
@@ -111,5 +132,5 @@ if $need_res; then
 fi
 
 stage_custom_themes
-printf '%s\n' "$GHOSTTY_REV" > "$STAMP_FILE"
+printf '%s\n' "$BUILD_KEY" > "$STAMP_FILE"
 echo "setup complete"
