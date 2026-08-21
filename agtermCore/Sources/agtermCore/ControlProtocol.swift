@@ -27,6 +27,18 @@ public enum Command: String, Codable, Sendable {
     case sessionPark = "session.park"
     case sessionSeen = "session.seen"
     case sessionRestore = "session.restore"
+    /// Advance the session's turn counter and write the visible turn mark into its pane's pty (fork only,
+    /// see `TurnMark`). Returns the new number in `result.count`; reads back as the session node's `turn`.
+    case sessionMark = "session.mark"
+    /// The `session.bookmark` family (fork only), see `ControlDispatcher+Bookmark.swift`: add bookmarks a
+    /// marked turn (the current one by default; `text` carries the prompt; same session + turn updates, and
+    /// the session node's `bookmarks` count is the read-back), list answers `result.bookmarks` JSON (`all`
+    /// spans sessions), go fires the existing `session.search` path with the turn's `TurnMark` needle
+    /// (`result.count` 0 = the mark left scrollback), and remove drops one turn's bookmark.
+    case sessionBookmarkAdd = "session.bookmark.add"
+    case sessionBookmarkList = "session.bookmark.list"
+    case sessionBookmarkGo = "session.bookmark.go"
+    case sessionBookmarkRemove = "session.bookmark.remove"
     case sessionBackground = "session.background"
     case sessionSplit = "session.split"
     case sessionSplitClose = "session.split.close"
@@ -218,6 +230,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var all: Bool?
     /// For `session.text` / `quick.text`: keep only the last N lines of the full buffer.
     public var lines: Int?
+    /// The `session.bookmark.*` turn number: bookmark (`add`, omitted = the current turn), jump to (`go`), or drop (`remove`); must be positive when present.
+    public var turn: Int?
     /// Direction for `session.go` (`next`|`prev`|`previous`|`first`|`last`), for `workspace.go`
     /// (`next`|`prev`|`previous` — a workspace has no attention state and no ends to jump to), for the
     /// reorder form of `session.move` / `workspace.move` (`up`|`down`|`top`|`bottom`), and for
@@ -359,6 +373,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 path: String? = nil, color: String? = nil, textColor: String? = nil, shape: String? = nil,
                 opacity: Double? = nil, fit: String? = nil,
                 position: String? = nil, repeats: Bool? = nil, all: Bool? = nil, lines: Int? = nil,
+                turn: Int? = nil,
                 light: String? = nil, dark: String? = nil,
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil) {
         self.name = name
@@ -421,6 +436,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.repeats = repeats
         self.all = all
         self.lines = lines
+        self.turn = turn
         self.light = light
         self.dark = dark
         self.close = close
@@ -624,6 +640,12 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// The session's unseen-notification badge count; nil/omitted when zero. `notify` (and terminal OSC
     /// 9/777) raise it, `session.seen` clears it. Ephemeral like `status` — never persisted, resets on restart.
     public let unseen: Int?
+    /// The session's turn counter — the number of the latest `session.mark` (fork only); nil/omitted when
+    /// no turn was marked. Ephemeral like `unseen`: a restart resets it with the scrollback the marks
+    /// lived in.
+    public let turn: Int?
+    /// How many turns of this session are bookmarked (fork only); nil/omitted when none. The read side of `session.bookmark.add`/`.remove`; persisted with the bookmarks, unlike `turn`.
+    public let bookmarks: Int?
     /// The default/left pane's live font size in points via `addressableSurface`: the main pane, or the
     /// promoted split survivor once the primary exited (the pane `font --pane left`, and the default, writes);
     /// nil/omitted when unrealized. The live cmd +/- value, persisted for the main pane but live-only for a
@@ -664,7 +686,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
                 statusShape: String? = nil,
-                background: BackgroundWatermark? = nil, unseen: Int? = nil,
+                background: BackgroundWatermark? = nil, unseen: Int? = nil, turn: Int? = nil,
+                bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
                 surfaces: [ControlSurfaceNode]? = nil, realized: Bool? = nil) {
         self.id = id
@@ -699,6 +722,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.statusShape = statusShape
         self.background = background
         self.unseen = unseen
+        self.turn = turn
+        self.bookmarks = bookmarks
         self.fontSize = fontSize
         self.splitFontSize = splitFontSize
         self.scratchFontSize = scratchFontSize
@@ -860,7 +885,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     /// A count payload for commands whose result is a number: the keymap-diagnostic count for
     /// `keymap.reload`; the ghostty config-diagnostic count for `config.reload` (across ALL config sources,
     /// not just the agterm-scoped `ghostty.conf` — libghostty diagnostics carry no source-file attribution);
-    /// and `session.search`'s total match count (whose "N of M" display string rides in `text`).
+    /// and `session.search`'s total match count (whose "N of M" display string rides in `text`); also
+    /// `session.mark`'s new turn number.
     public var count: Int?
     /// Number of sessions actually changed by a batch mutation (`session.close` or `session.move`); separate
     /// from `count`, whose CLI rendering is specific to diagnostics/search results.
@@ -889,6 +915,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var overlayRedirect: ControlOverlayRedirect?
     /// The addressed surface's cursor position for `surface.cursor`.
     public var cursor: ControlCursor?
+    /// The stored bookmarks for `session.bookmark.list` (fork only), in insertion order.
+    public var bookmarks: [ControlBookmarkNode]?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -897,7 +925,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 sync: Bool? = nil, light: String? = nil, dark: String? = nil,
                 events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil,
                 pick: ControlPickResult? = nil, overlayRedirect: ControlOverlayRedirect? = nil,
-                cursor: ControlCursor? = nil) {
+                cursor: ControlCursor? = nil, bookmarks: [ControlBookmarkNode]? = nil) {
         self.id = id
         self.tree = tree
         self.text = text
@@ -916,6 +944,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.pick = pick
         self.overlayRedirect = overlayRedirect
         self.cursor = cursor
+        self.bookmarks = bookmarks
     }
 }
 

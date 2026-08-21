@@ -136,6 +136,10 @@ public final class AppStore {
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
     @ObservationIgnored var recentClosedDidChange: (() -> Void)?
     @ObservationIgnored let controlEventSink: ((ControlEventDraft) -> Void)?
+    /// A session that is really gone: its surfaces are torn down and no undo can bring it back. Distinct from
+    /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
+    /// discards per-session state must hang off this, or an undone close silently loses it.
+    @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
     /// The zmx effects a close or a rename performs; nil leaves every one undone, which is what a test and an
     /// instance that wrapped nothing both want. What it is asked to do is decided by `ZmxLifecycle`.
     @ObservationIgnored let zmx: ZmxSessionSink?
@@ -192,6 +196,7 @@ public final class AppStore {
                 recentClosedStore: RecentClosedStore? = nil,
                 recentClosedDidChange: (() -> Void)? = nil,
                 controlEventSink: ((ControlEventDraft) -> Void)? = nil,
+                sessionDidFinalize: ((UUID) -> Void)? = nil,
                 zmx: ZmxSessionSink? = nil) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
@@ -199,6 +204,7 @@ public final class AppStore {
         self.recentClosedStore = recentClosedStore
         self.recentClosedDidChange = recentClosedDidChange
         self.controlEventSink = controlEventSink
+        self.sessionDidFinalize = sessionDidFinalize
         self.zmx = zmx
     }
 
@@ -279,6 +285,7 @@ public final class AppStore {
                             fontSize: (Session) -> Double? = { _ in nil },
                             splitFontSize: (Session) -> Double? = { _ in nil },
                             scratchFontSize: (Session) -> Double? = { _ in nil },
+                            bookmarkCount: (Session) -> Int? = { _ in nil },
                             quickVisible: () -> Bool? = { nil },
                             zoomedSurface: () -> String? = { nil },
                             pickPending: () -> String? = { nil },
@@ -338,6 +345,10 @@ public final class AppStore {
                                           statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
                                           background: session.backgroundWatermark,
                                           unseen: session.unseenCount > 0 ? session.unseenCount : nil,
+                                          turn: session.turnCounter > 0 ? session.turnCounter : nil,
+                                          // supplied by the host like the font sizes: the bookmark store is
+                                          // app-global (the library's), not this window store's.
+                                          bookmarks: bookmarkCount(session),
                                           fontSize: fontSize(session),
                                           splitFontSize: splitFontSize(session),
                                           scratchFontSize: scratchFontSize(session),
@@ -498,6 +509,14 @@ public final class AppStore {
         session(withID: sessionID)?.unseenCount = 0
     }
 
+    /// Advances a session's turn counter (`session.mark`) and returns the new number; nil for an unknown id.
+    /// Ephemeral like `clearUnseen`, so it never saves.
+    public func markTurn(_ sessionID: UUID) -> Int? {
+        guard let session = session(withID: sessionID) else { return nil }
+        session.turnCounter += 1
+        return session.turnCounter
+    }
+
     /// Pushes the Settings dwell into this window's store (nil = record on selection). Switching to nil flushes
     /// an armed push rather than dropping it: under the new setting that selection is already recorded, and
     /// leaving the timer running would record it a dwell later instead. Any other change re-arms, so an armed
@@ -553,6 +572,7 @@ public final class AppStore {
         removed.teardownPaneOverlays()
         removed.scratchSurface?.teardown()
         removed.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
+        sessionDidFinalize?(removed.id)
         WatermarkStorage.removeRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         sessionRecency.remove(sessionID)
         if wasActive {

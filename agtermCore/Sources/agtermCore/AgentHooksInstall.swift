@@ -39,17 +39,20 @@ public enum AgentHooksInstall {
     public static let rcMarkerBegin = "# >>> agterm agent-status >>>"
     public static let rcMarkerEnd = "# <<< agterm agent-status <<<"
 
-    /// The Claude Code hook events the merge installs, paired with the state (plus flags) each maps to.
+    /// The Claude Code hook events the merge installs, each paired with the wrapper invocations (state plus
+    /// flags) its one entry runs.
     /// `UserPromptSubmit` and `PostToolUse` both set `active` — the latter after every tool run, so the status
     /// returns to `active` when work RESUMES after a `blocked` permission prompt: Claude Code has no
     /// "permission answered" event, and the gated tool's `PreToolUse` fired BEFORE `blocked` was set, so its
     /// `PostToolUse` is the first hook afterwards. `Notification` alone carries the `permission_prompt` matcher,
     /// and only `Stop`→`completed` passes `--auto-reset` (it clears on visit); the rest stay keep-state.
-    static let claudeHooks: [(event: String, matcher: String?, state: String)] = [
-        ("UserPromptSubmit", nil, "active --blink"),
-        ("PostToolUse", nil, "active --blink"),
-        ("Stop", nil, "completed --auto-reset"),
-        ("Notification", "permission_prompt", "blocked"),
+    /// `UserPromptSubmit` alone also runs `mark` (fork only): a turn STARTS there, and the wrapper routes it to
+    /// `session mark`, which has agterm write the visible turn mark the bookmark commands search for.
+    static let claudeHooks: [(event: String, matcher: String?, states: [String])] = [
+        ("UserPromptSubmit", nil, ["active --blink", "mark"]),
+        ("PostToolUse", nil, ["active --blink"]),
+        ("Stop", nil, ["completed --auto-reset"]),
+        ("Notification", "permission_prompt", ["blocked"]),
     ]
 
     /// Codex lifecycle events paired with actions the installed Codex hook understands; the adapter, not
@@ -113,10 +116,21 @@ public enum AgentHooksInstall {
         var didChange = false
         for hook in claudeHooks {
             var entries = hooks[hook.event] as? [[String: Any]] ?? []
-            if entries.contains(where: { entryUsesWrapper($0, scriptDir: scriptDir) }) {
+            // an entry that already invokes the wrapper is UPGRADED, not skipped: a pre-`mark` install has a
+            // `UserPromptSubmit` entry carrying only `active --blink`, and treating "wrapper present" as "up
+            // to date" left every existing user without `session mark` forever, with the installer reporting
+            // nothing to change. Only the states it lacks are appended, so re-running stays idempotent.
+            if let index = entries.firstIndex(where: { entryUsesWrapper($0, scriptDir: scriptDir) }) {
+                let missing = hook.states.filter { !entryRunsState(entries[index], command: command, state: $0) }
+                guard !missing.isEmpty else { continue }
+                var commands = entries[index]["hooks"] as? [[String: Any]] ?? []
+                commands.append(contentsOf: missing.map { ["type": "command", "command": command + $0] })
+                entries[index]["hooks"] = commands
+                hooks[hook.event] = entries
+                didChange = true
                 continue
             }
-            entries.append(hookEntry(command: command, state: hook.state, matcher: hook.matcher))
+            entries.append(hookEntry(command: command, states: hook.states, matcher: hook.matcher))
             hooks[hook.event] = entries
             didChange = true
         }
@@ -333,15 +347,23 @@ public enum AgentHooksInstall {
         shellQuote(wrapperPath(scriptDir: scriptDir)) + " "
     }
 
-    // a single Claude hook entry: { (matcher?), hooks: [{ type: command, command }] }.
-    private static func hookEntry(command: String, state: String, matcher: String?) -> [String: Any] {
+    // a single Claude hook entry: { (matcher?), hooks: [{ type: command, command }, …] }, one command
+    // per wrapper invocation the event runs.
+    private static func hookEntry(command: String, states: [String], matcher: String?) -> [String: Any] {
         var entry: [String: Any] = [
-            "hooks": [["type": "command", "command": command + state]],
+            "hooks": states.map { ["type": "command", "command": command + $0] },
         ]
         if let matcher {
             entry["matcher"] = matcher
         }
         return entry
+    }
+
+    // does a hook entry already run this exact wrapper invocation? Matched on the whole `command + state`, so
+    // `active --blink` is not read as satisfying `active`, and `mark` is not read as satisfied by anything else.
+    private static func entryRunsState(_ entry: [String: Any], command: String, state: String) -> Bool {
+        guard let commands = entry["hooks"] as? [[String: Any]] else { return false }
+        return commands.contains { ($0["command"] as? String) == command + state }
     }
 
     // does a hook entry already invoke our wrapper (idempotency probe, by wrapper path)?

@@ -154,10 +154,10 @@ bumps the unseen badge, which the new attention pill would then display.
 - Create: `agtermCore/Sources/agtermCore/TurnMark.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/TurnMarkTests.swift`
 
-- [ ] write failing tests: the rendered line contains the needle; the needle for turn N differs from
+- [x] write failing tests: the rendered line contains the needle; the needle for turn N differs from
       turn N+1 and from turn NN containing N as a substring (10 must not match 1)
-- [ ] create `TurnMark` with `line(for:)` and `needle(for:)`, both host-free, no AppKit
-- [ ] run `cd agtermCore && swift test --filter TurnMark` — must pass before task 2
+- [x] create `TurnMark` with `line(for:)` and `needle(for:)`, both host-free, no AppKit
+- [x] run `cd agtermCore && swift test --filter TurnMark` — must pass before task 2
 
 ### Task 2: Bookmark model and store
 
@@ -166,12 +166,12 @@ bumps the unseen badge, which the new attention pill would then display.
 - Create: `agtermCore/Sources/agtermCore/BookmarkStore.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/BookmarkStoreTests.swift`
 
-- [ ] write failing tests: add then list round-trips; adding the same session and turn twice updates
+- [x] write failing tests: add then list round-trips; adding the same session and turn twice updates
       rather than duplicates; removing one leaves the rest; dropping a session drops only its own
-- [ ] write a failing test for persistence: encode and decode restores every field
-- [ ] create `Bookmark` (session id, turn number, prompt text, created-at) and `BookmarkStore` with
+- [x] write a failing test for persistence: encode and decode restores every field
+- [x] create `Bookmark` (session id, turn number, prompt text, created-at) and `BookmarkStore` with
       add, list, remove and a drop-for-session, `Codable`, no CoreGraphics types
-- [ ] run `cd agtermCore && swift test --filter Bookmark` — must pass before task 3
+- [x] run `cd agtermCore && swift test --filter Bookmark` — must pass before task 3
 
 ### Task 3: Persist bookmarks to their own file
 
@@ -180,11 +180,11 @@ bumps the unseen badge, which the new attention pill would then display.
 - Modify: `agtermCore/Tests/agtermCoreTests/BookmarkStoreTests.swift` (add the load/save cases beside
   the existing ones)
 
-- [ ] write failing tests: a missing file loads empty rather than throwing; a corrupt file loads
+- [x] write failing tests: a missing file loads empty rather than throwing; a corrupt file loads
       empty rather than throwing; save then load round-trips
-- [ ] implement load and save against a `bookmarks.json` in the state directory, following
+- [x] implement load and save against a `bookmarks.json` in the state directory, following
       `PersistenceStore.swift`'s encoder settings but NOT joining the window snapshot
-- [ ] run `cd agtermCore && swift test --filter Bookmark` — must pass before task 4
+- [x] run `cd agtermCore && swift test --filter Bookmark` — must pass before task 4
 
 ### Task 4: `session.mark` — count the turn and write the mark
 
@@ -199,13 +199,13 @@ bumps the unseen badge, which the new attention pill would then display.
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherTests.swift` (a case beside the
   `sessionStatus` routing tests)
 
-- [ ] write failing dispatcher tests: the command routes, the counter advances, an unknown target errors
-- [ ] add the `Command` case, the dispatcher route and the `ControlActions` method
-- [ ] implement the app side: resolve the surface, read its tty with `ghostty_surface_tty_name`, write
+- [x] write failing dispatcher tests: the command routes, the counter advances, an unknown target errors
+- [x] add the `Command` case, the dispatcher route and the `ControlActions` method
+- [x] implement the app side: resolve the surface, read its tty with `ghostty_surface_tty_name`, write
       `TurnMark.line(for:)` to that path
-- [ ] a failed write still returns ok with the number — the bookmark works without the jump
-- [ ] expose the turn number on `ControlSessionNode` in `AppStore.controlTree`
-- [ ] run `cd agtermCore && swift test --filter ControlDispatcher` — must pass before task 5
+- [x] a failed write still returns ok with the number — the bookmark works without the jump
+- [x] expose the turn number on `ControlSessionNode` in `AppStore.controlTree`
+- [x] run `cd agtermCore && swift test --filter ControlDispatcher` — must pass before task 5
 
 ### Task 5: The `session.bookmark` command family
 
@@ -218,12 +218,12 @@ bumps the unseen badge, which the new attention pill would then display.
 - Modify: `agtermCore/Sources/agtermctlKit/Commands.swift` (register the subcommand in `subcommands:`)
 - Modify: `agtermCore/Tests/agtermctlKitTests/CommandsTests.swift` (parsing cases beside the session ones)
 
-- [ ] write failing CLI-parsing tests for add, list, go and remove, including `list --all`
-- [ ] write failing dispatcher tests for each, including `go` on a bookmark whose mark is gone
-- [ ] implement the four commands; `go` fires the existing `session.search` path rather than a new one
-- [ ] `list` emits JSON suitable for piping into fzf
-- [ ] expose the bookmark count on `ControlSessionNode`
-- [ ] run `cd agtermCore && swift test --filter Bookmark` and `--filter Commands` — must pass before task 6
+- [x] write failing CLI-parsing tests for add, list, go and remove, including `list --all`
+- [x] write failing dispatcher tests for each, including `go` on a bookmark whose mark is gone
+- [x] implement the four commands; `go` fires the existing `session.search` path rather than a new one
+- [x] `list` emits JSON suitable for piping into fzf
+- [x] expose the bookmark count on `ControlSessionNode`
+- [x] run `cd agtermCore && swift test --filter Bookmark` and `--filter Commands` — must pass before task 6
 
 ### Task 6: The HUD toast on add
 
@@ -231,10 +231,10 @@ bumps the unseen badge, which the new attention pill would then display.
 - Modify: `agterm/Control/ControlServer+Mark.swift` (the add path)
 - Modify: `agtermTests/` — a new test file for the add path's toast behavior
 
-- [ ] write a failing test: an add whose toast cannot open still succeeds
-- [ ] open a short-lived HUD naming the turn number, reusing the existing `session.hud` path
-- [ ] never fail the add when the toast fails
-- [ ] run `./scripts/test-app.sh -only-testing:<the new class>` — must pass before task 7
+- [x] write a failing test: an add whose toast cannot open still succeeds
+- [x] open a short-lived HUD naming the turn number, reusing the existing `session.hud` path
+- [x] never fail the add when the toast fails
+- [x] run `./scripts/test-app.sh -only-testing:<the new class>` — must pass before task 7
 
 ### Task 7: The hook that calls `session.mark`
 
@@ -244,10 +244,10 @@ bumps the unseen badge, which the new attention pill would then display.
 - Modify: `agtermCore/Sources/agtermCore/AgentHooksInstall.swift` (the `claudeHooks` table at line 48)
 - Modify: `agtermCore/Tests/agtermCoreTests/` — the existing agent-hooks install tests
 
-- [ ] write failing tests that the installed `UserPromptSubmit` entry now also marks the turn
-- [ ] wire the hook, resolving the socket and target exactly as the status hook already does
-- [ ] ⚠️ do NOT run the installer. Verify through `agtermCore` tests only
-- [ ] run `cd agtermCore && swift test --filter AgentHooks` — must pass before task 8
+- [x] write failing tests that the installed `UserPromptSubmit` entry now also marks the turn
+- [x] wire the hook, resolving the socket and target exactly as the status hook already does
+- [x] ⚠️ do NOT run the installer. Verify through `agtermCore` tests only
+- [x] run `cd agtermCore && swift test --filter AgentHooks` — must pass before task 8
 
 ### Task 8: Document it as fork-only
 
@@ -256,30 +256,31 @@ bumps the unseen badge, which the new attention pill would then display.
 
 **Model:** haiku
 
-- [ ] record the commands, the mark's text and needle, and that agterm writes the mark rather than the hook
-- [ ] record the two proven facts: `/dev/tty` fails with ENXIO from a hook, and the pty by absolute
+- [x] record the commands, the mark's text and needle, and that agterm writes the mark rather than the hook
+- [x] record the two proven facts: `/dev/tty` fails with ENXIO from a hook, and the pty by absolute
       path works
-- [ ] record that `session.search` is the only viewport mover, so a bookmark can never store a position
-- [ ] confirm nothing was added to `plugins/`, `site/`, `README.md` or `CHANGELOG.md`
+- [x] record that `session.search` is the only viewport mover, so a bookmark can never store a position
+- [x] confirm nothing was added to `plugins/`, `site/`, `README.md` or `CHANGELOG.md`
 
 ### Task 9: Verify acceptance criteria
 
-- [ ] verify a bookmark whose mark is gone still lists and still shows its text
-- [ ] verify dedup: the same turn bookmarked twice yields one entry
-- [ ] verify closing a session drops its bookmarks
-- [ ] verify the diff touches no upstream-facing surface: `git diff --name-only` lists nothing under
+- [x] verify a bookmark whose mark is gone still lists and still shows its text
+- [x] verify dedup: the same turn bookmarked twice yields one entry
+- [x] verify closing a session drops its bookmarks
+- [x] verify the diff touches no upstream-facing surface: `git diff --name-only` lists nothing under
       `plugins/`, `site/`, `README.md`, `CHANGELOG.md`
-- [ ] run `cd agtermCore && swift test`
-- [ ] run `make build`
-- [ ] run `make test-app`
-- [ ] run `make lint` — ⚠️ two `file_length` violations in `AppStore.swift` and
+- [x] run `cd agtermCore && swift test`
+- [x] run `make build`
+- [x] run `make test-app`
+- [x] run `make lint` — ⚠️ two `file_length` violations in `AppStore.swift` and
       `ControlDispatcher.swift` are PREEXISTING and byte-identical to `main`. Do not split them and do
       not raise the limit. Any OTHER finding is this branch's and must be fixed.
 
 ### Task 10: [Final] Update documentation
 
-- [ ] update `CLAUDE.md` only if a genuinely new pattern was discovered
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update `CLAUDE.md` only if a genuinely new pattern was discovered — nothing new: every
+      discovered fact is control-API-scoped and already recorded in `.claude/rules/control-api.md`
+- [x] move this plan to `docs/plans/completed/`
 
 ## 9. Verification
 

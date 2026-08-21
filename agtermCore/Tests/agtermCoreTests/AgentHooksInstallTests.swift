@@ -44,6 +44,21 @@ struct AgentHooksInstallTests {
         #expect(evts["PostToolUse"]![0]["matcher"] == nil)
     }
 
+    @Test func mergeAddsTurnMarkCommandBesideUserPromptSubmitStatus() throws {
+        let result = try AgentHooksInstall.mergeClaudeSettings(existing: nil, scriptDir: scriptDir)
+        let prompt = (events(result.json)["UserPromptSubmit"]![0]["hooks"] as? [[String: Any]])?
+            .compactMap { $0["command"] as? String } ?? []
+        #expect(prompt.count == 2)
+        #expect(prompt.first?.hasSuffix("agent-status.sh' active --blink") == true)
+        // fork only: prompt submit also marks the turn start, through the same installed wrapper
+        #expect(prompt.last?.hasSuffix("agent-status.sh' mark") == true)
+        for event in ["PostToolUse", "Stop", "Notification"] {
+            let commands = (events(result.json)[event]![0]["hooks"] as? [[String: Any]])?
+                .compactMap { $0["command"] as? String } ?? []
+            #expect(commands.count == 1, "\(event) must not mark the turn")
+        }
+    }
+
     @Test func mergeWhenPresentIsNoOp() throws {
         let first = try AgentHooksInstall.mergeClaudeSettings(existing: nil, scriptDir: scriptDir)
         let second = try AgentHooksInstall.mergeClaudeSettings(existing: first.json, scriptDir: scriptDir)
@@ -410,5 +425,31 @@ struct AgentHooksInstallTests {
         try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: 0o600)], ofItemAtPath: path)
         #expect(AgentHooksInstall.posixMode(ofFile: path)?.intValue == 0o600)
         #expect(AgentHooksInstall.posixMode(ofFile: dir.appendingPathComponent("nope").path) == nil)
+    }
+
+    /// The upgrade case: a pre-`mark` install already invokes the wrapper on `UserPromptSubmit`, and treating
+    /// "wrapper present" as "up to date" left every existing user without `session mark` for good.
+    @Test func reinstallingOverAPreMarkEntryAppendsTheMissingMark() throws {
+        let scriptDir = "/tmp/agterm-hooks"
+        let wrapper = AgentHooksInstall.wrapperPath(scriptDir: scriptDir)
+        let old = """
+        {"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"'\(wrapper)' active --blink"}]}]}}
+        """
+        let result = try AgentHooksInstall.mergeClaudeSettings(existing: old, scriptDir: scriptDir)
+        #expect(result.changed)
+        let prompt = (events(result.json)["UserPromptSubmit"]![0]["hooks"] as? [[String: Any]])?
+            .compactMap { $0["command"] as? String } ?? []
+        #expect(prompt.count == 2)
+        #expect(prompt.last?.hasSuffix("agent-status.sh' mark") == true)
+        // the entry is upgraded in place, never duplicated
+        #expect(events(result.json)["UserPromptSubmit"]?.count == 1)
+    }
+
+    /// Still idempotent once both invocations are there.
+    @Test func reinstallingOverACompleteEntryChangesNothing() throws {
+        let scriptDir = "/tmp/agterm-hooks"
+        let first = try AgentHooksInstall.mergeClaudeSettings(existing: nil, scriptDir: scriptDir)
+        let second = try AgentHooksInstall.mergeClaudeSettings(existing: first.json, scriptDir: scriptDir)
+        #expect(!second.changed)
     }
 }

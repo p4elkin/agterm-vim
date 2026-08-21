@@ -135,10 +135,13 @@ renumbering. Do not reintroduce a count anywhere.
   `.fullscreen`, `.minimize`
 - `keymap.reload`, `keymap.list`, `config.reload`, `theme.set`, `theme.list`, `restore.clear`
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
+- `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
+  "Conversation bookmarks" below)
 
-`session.pairing` and `overlay-redirect.toggle` exist only on this fork and are listed here alone — see
-"Left out on purpose" in [[overlay-redirect]] for why the bundled skill, `site/commands.html` and
-`README.md` leave them out. The synchronization contract below applies to upstream commands.
+`session.pairing`, `overlay-redirect.toggle`, `session.mark` and the `session.bookmark` family exist
+only on this fork and are listed here alone — see "Left out on purpose" in [[overlay-redirect]] for why
+the bundled skill, `site/commands.html` and `README.md` leave them out. The synchronization contract
+below applies to upstream commands.
 
 `debug.appearance` is a private `Command` case, absent from the list above, used only by `AppearanceFlipUITests`.
 It accepts light/dark, sets `NSApp.appearance`, posts `.agtermSystemAppearanceChanged`, echoes the effective
@@ -716,6 +719,38 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   must reapply color after `windowOpacity` updates, including within-range drags that do not reload.
 - `Fit`/`Position` are CaseIterable typed enums. Revalidate free-text path/color during emission.
   Tree reads the stored background specification. See [[libghostty]] for live OSC 11 precedence.
+
+## Conversation bookmarks (fork only)
+
+- AGTERM writes the turn mark, never the hook. `session.mark` advances the session's turn counter and
+  writes the mark into the session's main pty; the Claude `UserPromptSubmit` hook only calls
+  `agterm-agent-status.sh mark`, which routes to `agtermctl session mark --target "$AGTERM_SESSION_ID"`.
+  One counter in one place cannot drift; a hook-side counter would be a second one that has to agree.
+- Two facts proven in a live pane carry the design. A hook cannot write `/dev/tty` — it fails with
+  ENXIO, `device not configured`, because Claude Code detaches its children from the pane's pty.
+  Writing the pty by ABSOLUTE path works, needs no controlling terminal, and lands on its own line at
+  the turn boundary. The written line came back padded to full terminal width, so nothing may depend
+  on the mark's rendered width.
+- `TurnMark` in `agtermCore` owns both strings: the rendered line `── ⟦N⟧ ──` and the search needle
+  `⟦N⟧` alone. They live in one type because the jump works only while the written and searched
+  strings agree; never spell either inline. The needle is never the decorated line (it reflows) and
+  never prose like `turn 7`, which agents type by accident — `⟦`/`⟧` are effectively never typed, and
+  the closing bracket keeps turn 1 from matching turn 10. `payload(for:)` wraps the line in `\r\n`
+  because a raw-mode pty does no `\n` to `\r\n` translation.
+- `session.search` is the ONLY mechanism that moves a pane's viewport: there is no API to read where
+  the viewport sits and none to scroll to a coordinate — the whole `ghostty_surface_*` C surface was
+  checked. So a bookmark can never store a position. It stores the turn number and the prompt text,
+  and `session.bookmark.go` routes onto the existing `session.search` action with the turn's needle.
+  A bookmark whose mark left scrollback still lists and shows its stored text; only the jump is lost.
+- Dedup keys on session id plus turn number, so re-adding a turn updates the entry rather than
+  duplicating it. `list` emits JSON for the fzf overlay, `--all` spanning sessions. Closing a session
+  drops its bookmarks. Persisted in their own `bookmarks.json`, never in the window snapshot.
+- The turn counter is per session, monotonic, ephemeral like `unseen`: a restart resets it with the
+  scrollback the marks lived in. A failed pty write still returns ok with the number — the bookmark
+  works without the jump. The add's confirming toast rides the `session.hud` path best-effort: the HUD
+  shares the single overlay slot, so it may be refused, and that never fails the add.
+- Read back `turn` (the latest mark's number, ephemeral) and `bookmarks` (the count, persisted) on the
+  session node, both omitted when zero/unset.
 
 ## Documentation mirrors
 

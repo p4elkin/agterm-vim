@@ -9,6 +9,11 @@
 # States: idle | active | completed | blocked. An optional --blink / --auto-reset
 # (and any further args) is forwarded verbatim to `agtermctl session status`.
 #
+#   agterm-agent-status.sh mark              # (fork only) mark a conversation turn start
+#
+# `mark` is not a status: it routes to `agtermctl session mark`, which advances the
+# session's turn counter and has agterm write the visible turn mark into the pane.
+#
 # Outside agterm this is a silent no-op, so it is safe to call from any hook.
 #
 # As a hook it must never interfere with the agent: stdout/stderr are suppressed
@@ -29,6 +34,24 @@ set -u
 # it. Pass it only when AGTERM_SOCKET is set (the app injects it alongside the id).
 state=$1
 shift
+
+# the mark carries --pane-id so it lands in the pane the AGENT runs in. without it an agent
+# in a split writes its marks over the other pane's output, and `bookmark go` then searches
+# the focused pane and finds none. only the token, not --pane: the app resolves the token to
+# the surface's CURRENT slot, and the baked role can be stale (#199).
+mark_pane=()
+[ -n "${AGTERM_PANE_ID:-}" ] && mark_pane+=(--pane-id "$AGTERM_PANE_ID")
+if [ "$state" = "mark" ]; then
+  if [ -n "${AGTERM_SOCKET:-}" ]; then
+    "${AGTERMCTL:-agtermctl}" session mark \
+      --target "$AGTERM_SESSION_ID" --socket "$AGTERM_SOCKET" \
+      "${mark_pane[@]+"${mark_pane[@]}"}" "$@" >/dev/null 2>&1 || true
+  else
+    "${AGTERMCTL:-agtermctl}" session mark --target "$AGTERM_SESSION_ID" \
+      "${mark_pane[@]+"${mark_pane[@]}"}" "$@" >/dev/null 2>&1 || true
+  fi
+  exit 0
+fi
 
 # forward the pane discriminators when the app injected them: each session surface
 # (main/split/scratch) sets its own AGTERM_PANE (the role) plus AGTERM_PANE_ID (a stable

@@ -155,6 +155,17 @@ extension GhosttySurfaceView {
         return pid > 0 ? pid_t(pid) : nil
     }
 
+    /// This surface's pty device path (`ghostty_surface_tty_name`, e.g. `/dev/ttys012`), nil when the
+    /// surface is not created or libghostty reports none. Writing to it by absolute path is how the turn
+    /// mark lands in the pane — a hook cannot: its `/dev/tty` fails with ENXIO.
+    func ttyName() -> String? {
+        guard let surface else { return nil }
+        let name = ghostty_surface_tty_name(surface)
+        guard let ptr = name.ptr, name.len > 0 else { return nil }
+        defer { ghostty_string_free(name) }
+        return String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(name.len)), encoding: .utf8)
+    }
+
     /// Synthesizes a Return keypress via the keyboard's own key path, so the shell treats it as Enter.
     /// Keycode 36 is the macOS virtual keycode for Return.
     private func sendReturn(to surface: ghostty_surface_t) {

@@ -99,6 +99,10 @@ public final class Session: Identifiable {
     /// Unseen notifications fired by this session's panes while unfocused; the sidebar badge reacts. Ephemeral.
     public var unseenCount: Int = 0
 
+    /// The latest `session.mark` turn number written into this session's pane. Ephemeral like `unseenCount`:
+    /// a restart resets it together with the scrollback the marks lived in.
+    @ObservationIgnored public var turnCounter: Int = 0
+
     /// Per-session agent status, driven over the control channel (`session.status`); the sidebar row's
     /// status glyph reacts. Ephemeral.
     public var agentIndicator = AgentIndicator()

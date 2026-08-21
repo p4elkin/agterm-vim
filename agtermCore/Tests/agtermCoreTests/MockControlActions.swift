@@ -34,6 +34,10 @@ final class MockControlActions: ControlActions {
         case sessionPark(target: String?, window: String?, ControlToggleMode)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
+        case sessionMark(target: String?, window: String?)
+        case sessionBookmarkAdd(target: String?, window: String?, turn: Int?, prompt: String)
+        case sessionBookmarkList(target: String?, window: String?, all: Bool)
+        case sessionBookmarkRemove(target: String?, window: String?, turn: Int)
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
         case sessionSplit(target: String?, window: String?, String?, SplitAxis?)
         case sessionSplitClose(target: String?, window: String?)
@@ -163,6 +167,14 @@ final class MockControlActions: ControlActions {
     var nextPickCancelResponse = ControlResponse(ok: true)
     var nextRestoreClearResponse = ControlResponse(ok: true)
     var nextSessionRestoreResponse = ControlResponse(ok: true)
+    var nextSessionMarkResponse = ControlResponse(ok: true)
+    var nextSessionBookmarkAddResponse = ControlResponse(ok: true)
+    var nextSessionBookmarkListResponse = ControlResponse(ok: true)
+    var nextSessionBookmarkRemoveResponse = ControlResponse(ok: true)
+    /// The store the `session.mark` arm drives when set (nil = record-only), like `focusStore`: the counter
+    /// advance runs through the SAME `markTurn` the real arm calls, and only id-spelling resolution is
+    /// supplied here, so a test must address sessions by full uuid.
+    var markStore: AppStore?
 
     func controlTree(window: String?) -> ControlResponse {
         calls.append(.tree(window: window))
@@ -297,6 +309,32 @@ final class MockControlActions: ControlActions {
                           update: ControlSessionStatusUpdate) -> ControlResponse {
         calls.append(.sessionStatus(target: target, window: window, update))
         return ControlResponse(ok: true)
+    }
+
+    func markSessionTurn(_ target: String?, window: String?, paneID: String?) -> ControlResponse {
+        calls.append(.sessionMark(target: target, window: window))
+        if let store = markStore {
+            guard let id = UUID(uuidString: target ?? ""), let turn = store.markTurn(id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, count: turn))
+        }
+        return nextSessionMarkResponse
+    }
+
+    func addSessionBookmark(_ target: String?, window: String?, turn: Int?, prompt: String) -> ControlResponse {
+        calls.append(.sessionBookmarkAdd(target: target, window: window, turn: turn, prompt: prompt))
+        return nextSessionBookmarkAddResponse
+    }
+
+    func listSessionBookmarks(_ target: String?, window: String?, all: Bool) -> ControlResponse {
+        calls.append(.sessionBookmarkList(target: target, window: window, all: all))
+        return nextSessionBookmarkListResponse
+    }
+
+    func removeSessionBookmark(_ target: String?, window: String?, turn: Int) -> ControlResponse {
+        calls.append(.sessionBookmarkRemove(target: target, window: window, turn: turn))
+        return nextSessionBookmarkRemoveResponse
     }
 
     func setSessionRestore(_ target: String?, window: String?,

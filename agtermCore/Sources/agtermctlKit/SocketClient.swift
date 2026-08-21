@@ -193,6 +193,9 @@ struct SocketClient {
         if let keymap = response.result?.keymap {
             return formatKeymap(keymap)
         }
+        if let bookmarks = response.result?.bookmarks {
+            return formatBookmarks(bookmarks)
+        }
         if let text = response.result?.text {
             return text
         }
@@ -219,6 +222,15 @@ struct SocketClient {
             return id
         }
         return "ok"
+    }
+
+    /// Render the `session bookmark list` payload one row per line: the mark's needle, the session name (or
+    /// its uuid when no open window holds it), and the stored prompt. The full record stays under `--json`.
+    static func formatBookmarks(_ bookmarks: [ControlBookmarkNode]) -> String {
+        guard !bookmarks.isEmpty else { return "no bookmarks" }
+        return bookmarks.map { node in
+            "\(node.needle) \(node.sessionName ?? node.session): \(node.prompt)"
+        }.joined(separator: "\n")
     }
 
     /// Render the `theme.list` payload as one theme name per line (no trailing newline), the active

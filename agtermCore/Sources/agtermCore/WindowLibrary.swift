@@ -84,6 +84,10 @@ public final class WindowLibrary {
     /// The state directory (AGTERM_STATE_DIR-aware): the index here, per-window files in `windows/`.
     @ObservationIgnored private let directory: URL
     @ObservationIgnored private let recentClosedStore: RecentClosedStore
+    /// App-global conversation bookmarks (fork only), rooted at the same state directory. Owned here because
+    /// the library is the one place every store's session-close events converge, which is where a closed
+    /// session's bookmarks are dropped.
+    @ObservationIgnored public let bookmarks: BookmarkCenter
     /// One bounded run-identified ring shared by every window store for this library/app lifetime.
     @ObservationIgnored private let controlEventRing: ControlEventRing
     /// Handed to every store this library makes; the app target supplies it. ⚠️ `closeWindow` must never use
@@ -122,6 +126,7 @@ public final class WindowLibrary {
         self.zmx = zmx
         self.directory = directory
         self.recentClosedStore = RecentClosedStore(directory: directory)
+        self.bookmarks = BookmarkCenter(persistence: BookmarkPersistence(directory: directory))
         self.controlEventRing = controlEventRing ?? ControlEventRing()
         self.treeEventDebouncers = [:]
         self.stores = [:]
@@ -696,6 +701,11 @@ public final class WindowLibrary {
                     payload: draft.payload
                 ))
             },
+            // the REAL teardown, not the `.sessionClosed` event: a soft close emits that at the start of its
+            // undo grace, so dropping there loses the bookmarks of a close the user then undoes. A window
+            // that closes while keeping its sessions never reaches here, which is what lets their bookmarks
+            // survive for a later reopen.
+            sessionDidFinalize: { [weak self] id in self?.bookmarks.dropSession(id) },
             zmx: zmx
         )
     }

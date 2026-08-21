@@ -428,7 +428,8 @@ final class ControlServer {
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand,
                 .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFocus, .sessionResize, .surfaceZoom,
                 .surfaceCursor,
-                .sessionStatus, .sessionFlag, .sessionPark, .sessionSeen, .sessionRestore, .notify,
+                .sessionStatus, .sessionFlag, .sessionPark, .sessionSeen, .sessionRestore, .sessionMark,
+                .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload, .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarParked, .sidebarExpand, .sidebarCollapse, .normalMode,
                 .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
@@ -616,6 +617,10 @@ final class ControlServer {
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },
             splitFontSize: { ($0.splitSurface as? GhosttySurfaceView)?.currentFontSize() },
             scratchFontSize: { ($0.scratchSurface as? GhosttySurfaceView)?.currentFontSize() },
+            bookmarkCount: { [library] session in
+                let count = library.bookmarks.count(sessionID: session.id)
+                return count > 0 ? count : nil
+            },
             // both are app-level facts now that the quick terminal is one detached panel, so every projected
             // window reports the same value for them rather than one of its own.
             quickVisible: { QuickTerminalController.shared.isVisible },

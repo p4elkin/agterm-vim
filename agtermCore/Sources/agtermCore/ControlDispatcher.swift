@@ -37,6 +37,18 @@ public protocol ControlActions {
     func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
+    /// Advance the target session's turn counter, write the visible `TurnMark` into its pane's pty, and
+    /// return the new number in `result.count`. A failed pty write is NOT an error — the number still names
+    /// the turn and a bookmark on it just loses the jump. Fork only.
+    func markSessionTurn(_ target: String?, window: String?, paneID: String?) -> ControlResponse
+    /// Bookmark a turn on the target session (fork only): `turn` nil means the session's current turn, and
+    /// the host rejects a session with no marked turn yet. Same session + turn updates the existing entry.
+    func addSessionBookmark(_ target: String?, window: String?, turn: Int?, prompt: String) -> ControlResponse
+    /// The stored bookmarks as `result.bookmarks`: the target session's, or every session's with `all`
+    /// (`all` ignores the target — the hub view spans sessions).
+    func listSessionBookmarks(_ target: String?, window: String?, all: Bool) -> ControlResponse
+    /// Drop the bookmark for `turn` on the target session; an absent bookmark is an error, not a no-op.
+    func removeSessionBookmark(_ target: String?, window: String?, turn: Int) -> ControlResponse
     /// Write a pane's PERSISTED restore-command override (consumed on the NEXT launch, never this run).
     /// The host resolves the target session and the live pane slot, then stores the tri-state value; it
     /// also owns the pane rejections that need a session (`scratch`, `right` without a split, an
@@ -255,8 +267,10 @@ public struct ControlDispatcher {
             return dispatchEventsRead(request)
         case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove, .sessionFlag, .sessionPark, .sessionSeen, .sessionStatus,
-                .sessionRestore:
+                .sessionRestore, .sessionMark:
             return dispatchSessionCommand(request)
+        case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
+            return await dispatchSessionBookmark(request)
         case .sessionSplit, .sessionSplitClose, .sessionScratch, .sessionFocus, .sessionResize,
                 .surfaceZoom, .surfaceCursor, .sessionType,
                 .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
@@ -477,6 +491,9 @@ public struct ControlDispatcher {
             return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
         case .sessionRestore:
             return dispatchSessionRestore(request)
+        case .sessionMark:
+            return actions.markSessionTurn(request.target, window: request.args?.window,
+                                           paneID: request.args?.paneID)
         default:
             preconditionFailure("unexpected session command: \(request.cmd.rawValue)")
         }

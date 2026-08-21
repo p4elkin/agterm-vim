@@ -56,6 +56,36 @@ final class WindowLibraryTests {
         #expect(library.windowName(for: UUID()) == "")
     }
 
+    @Test func closingASessionDropsItsBookmarksAndOnlyIts() {
+        let library = WindowLibrary(directory: directory)
+        let store = try! #require(library.store(for: library.windows[0].id))
+        let workspace = store.workspaces[0]
+        let doomed = try! #require(store.addSession(toWorkspace: workspace.id, cwd: "/a"))
+        let survivor = try! #require(store.addSession(toWorkspace: workspace.id, cwd: "/b"))
+        library.bookmarks.add(sessionID: doomed.id, turn: 1, prompt: "gone with the session")
+        library.bookmarks.add(sessionID: survivor.id, turn: 1, prompt: "stays")
+
+        store.closeSession(doomed.id)
+
+        #expect(library.bookmarks.list(sessionID: doomed.id).isEmpty)
+        #expect(library.bookmarks.list().map(\.sessionID) == [survivor.id])
+    }
+
+    /// The default close path is the SOFT one, and it emits `.sessionClosed` when the grace starts. Dropping
+    /// on that event lost the bookmarks of a close the user then undid.
+    @Test func undoingASoftCloseKeepsTheSessionsBookmarks() {
+        let library = WindowLibrary(directory: directory)
+        let store = try! #require(library.store(for: library.windows[0].id))
+        let session = try! #require(store.addSession(toWorkspace: store.workspaces[0].id, cwd: "/a"))
+        library.bookmarks.add(sessionID: session.id, turn: 1, prompt: "survives the undo")
+
+        #expect(store.softCloseSession(session.id))
+        #expect(library.bookmarks.list(sessionID: session.id).count == 1)
+
+        #expect(store.undoPendingClose())
+        #expect(library.bookmarks.list(sessionID: session.id).map(\.prompt) == ["survives the undo"])
+    }
+
     @Test func allOpenSessionsFlattensEverySessionAcrossWindows() {
         let library = WindowLibrary(directory: directory)
         #expect(library.allOpenSessions().count == 1)
