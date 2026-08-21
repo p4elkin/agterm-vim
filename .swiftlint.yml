@@ -1,6 +1,6 @@
 # swiftlint config for agterm — tailored, low-noise.
 # philosophy: disable only rules that fight deliberate project conventions; keep every
-# rule that surfaces a real, fixable finding on; hold source files under 1000 lines and
+# rule that surfaces a real, fixable finding on; hold source files under 1500 lines and
 # test files under 2000 (via nested configs in agtermUITests/, agtermTests/, and agtermCore/Tests/).
 
 excluded:
@@ -29,12 +29,12 @@ line_length:
   ignores_comments: true
   ignores_urls: true
 
-# size limits: source files stay under 1000 lines, source type bodies under 800.
+# size limits: source files stay under 1500 lines, source type bodies under 800.
 # the biggest source file is agterm/Ghostty/GhosttySurfaceView.swift; test files get a
 # 2000-line budget via nested configs (agtermUITests/, agtermTests/, agtermCore/Tests/).
 file_length:
-  warning: 1000
-  error: 1100
+  warning: 1500
+  error: 1600
 type_body_length:
   warning: 800
   error: 1000

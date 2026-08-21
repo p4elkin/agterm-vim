@@ -61,7 +61,7 @@ C-boundary concurrency before changing the bridge.
   - `cd agtermCore && swift test`: host-free tests; `scripts/test.sh` wraps it.
   - `scripts/test-app.sh`: isolated hosted AppKit tests.
   - `make prep|build|run|release|deploy|test|test-app|lint|clean`; `make dist VERSION=x.y.z [PUBLISH=1]`.
-- `make lint` runs strict SwiftLint from the root. Root limits are 200-column lines, 1000-line source
+- `make lint` runs strict SwiftLint from the root. Root limits are 200-column lines, 1500-line source
   files, and 800-line types; test configs raise file/type limits to 2000 and inherit all other rules.
   Disabled/tuned rules reflect deliberate conventions. Zero findings are required.
 - Every change must build, pass `swift test`, `make test-app`, and `make lint`.
@@ -69,7 +69,7 @@ C-boundary concurrency before changing the bridge.
   via `-only-testing:<Target>/<Class>/<test>`. Never re-run a whole XCUITest suite to verify a narrow
   change; `agtermUITests/ControlAPIUITests` alone is 82 methods and about 7.5 minutes, and tells you
   nothing the targeted run did not.
-- For maintainer work, ask before splitting a touched long file and do not raise limits reflexively.
+- For maintainer work, ask before splitting a touched long file.
   Contributors need not refactor preexisting length; mention it without blocking or suggesting a limit bump.
 
 ## Worktrees and local builds

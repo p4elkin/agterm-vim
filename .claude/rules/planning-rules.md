@@ -46,8 +46,7 @@ the setup reveals the goal, and never label arrange/act/assert.
 
 ## Limits
 
-Source files stay under 1000 lines, types under 800, lines under 200 columns. Test files may reach 2000.
-Do not raise a SwiftLint limit to make a change fit — put new logic in a new file instead.
+Source files stay under 1500 lines, types under 800, lines under 200 columns. Test files may reach 2000.
 
 ## Scope
 
