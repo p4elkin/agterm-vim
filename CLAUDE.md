@@ -249,4 +249,4 @@ spans intact, and format long catalogs as lists.
 - `release.md`: local signing, notarization, release, Homebrew, changelog, the two fork docs a feature must update.
 - `zmx.md`: native zmx wrapping, session keys, wrap decisions, lifecycle traps, foreground resolution.
 - `overlay-redirect.md`: which machine an overlay opens on, the two pairing fields, the two-phase open.
-- `fork-rebase.md`: rebasing this fork onto upstream, the gate set, the files that keep colliding.
+- `fork-merge.md`: merging upstream into this fork, the gate set, the files that keep colliding.

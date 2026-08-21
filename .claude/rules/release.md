@@ -31,7 +31,7 @@ in the script itself; the fifth is a standing condition, not a bug:
   that config on 2026-08-16. Re-check with `gh repo view --json nameWithOwner` in a fresh clone, which
   starts without it. Reading upstream still works with an explicit `-R umputun/agterm`.
 - the manifest gate reads the fork's trunk: `git fetch -q origin main` and `origin/main:<manifest>`.
-  See [[fork-rebase]] for the remotes.
+  See [[fork-merge]] for the remotes.
 - the Homebrew cask bump is OFF. `TAP_REPO` defaults to empty and the whole step is skipped; set
   `AGTERM_TAP_REPO=<owner>/homebrew-<name>` to turn it back on, which also restores the Homebrew line in
   the release body.
@@ -46,7 +46,7 @@ in the script itself; the fifth is a standing condition, not a bug:
   the app as damaged, so the note carries the `xattr -dr com.apple.quarantine` line users need. Restoring
   the signed wording without a real certificate sends every downloader into that error.
 
-Fork release notes live in `CHANGELOG-fork.md`, never `CHANGELOG.md`: [[fork-rebase]] takes upstream's
+Fork release notes live in `CHANGELOG-fork.md`, never `CHANGELOG.md`: [[fork-merge]] takes upstream's
 copy whole on every rebase, so a note written there is erased by the next daily run. Upstream has no such
 file, so it never conflicts. `release.sh` publishes a section from it as the release body via
 `--notes-file`; the `draft-approval` review above applies to that text.
@@ -68,7 +68,7 @@ otherwise read as a bug.
 
 Nothing checks this.
 `ci.yml` triggers on `master` and the fork lives on `main`, so no CI job runs on the fork at all, and
-adding one means editing a workflow file that already collides on every rebase ([[fork-rebase]]).
+adding one means editing a workflow file that already collides on every upstream merge ([[fork-merge]]).
 The rule has failed in both directions already: `FORK-NOTES.md` said "two separable features" until nine
 had shipped, and the recency dwell reached users with no changelog entry.
 Both were found by writing the catalog, not by any tooling.

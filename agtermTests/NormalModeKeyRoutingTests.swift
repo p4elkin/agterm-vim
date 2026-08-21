@@ -18,7 +18,7 @@ import agtermCore
 /// (0→a, 1→s, 3→f, 5→g, 6→z, 12→q, 14→e, 15→r, 17→t, 18→1, 19→2, 34→i, 46→m) or a named key, so a layout
 /// that cannot type ASCII resolves every one of them by physical position to exactly the same chord.
 /// Skipping there hid two thirds of this suite — the whole overlay handover included — behind whichever
-/// input source happened to be selected, on the one gate `.claude/rules/fork-rebase.md` names for
+/// input source happened to be selected, on the one gate `.claude/rules/fork-merge.md` names for
 /// `handleKeyDown`.
 @MainActor
 final class NormalModeKeyRoutingTests: XCTestCase {
