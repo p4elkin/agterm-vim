@@ -106,6 +106,7 @@ public enum Command: String, Codable, Sendable {
     case pickResult = "pick.result"
     case pickCancel = "pick.cancel"
     case restoreClear = "restore.clear"
+    case version = "version"
     /// UI-TEST-ONLY: forces the app-level appearance (`light`|`dark` via `args.name`) so an XCUITest can
     /// simulate a macOS light/dark flip; with NO name it READS the side the last config feed applied, so a
     /// test can assert the flip drove the reload. Refused outside an XCUITest launch, and EXEMPT from the
@@ -635,6 +636,12 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// the Settings shape / the default plain circle. The read side of `session.status --shape` — the
     /// PER-CALL override only, exactly like `statusColor`.
     public let statusShape: String?
+    /// When the agent status was last SET, as epoch seconds on the `ControlEvent.ts` clock (so the two
+    /// compare directly); nil/omitted when idle. Stamped on EVERY non-idle `session.status`, not only on a
+    /// change of state, so a hook re-pushing `active` refreshes it and "now minus this" reads as how long ago
+    /// the status was last WRITTEN — normally the agent's own push, though a pane promotion re-tags the
+    /// indicator and counts too. Ephemeral like `status` and `unseen` — never persisted.
+    public let statusChangedAt: Double?
     /// The session's background watermark spec; nil/omitted when none is set. The read side of
     /// `session.background`.
     public let background: BackgroundWatermark?
@@ -686,7 +693,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 mirrorsSession: OverlayMirrorSource? = nil, viewer: OverlayViewer? = nil,
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
-                statusShape: String? = nil,
+                statusShape: String? = nil, statusChangedAt: Double? = nil,
                 background: BackgroundWatermark? = nil, unseen: Int? = nil, turn: Int? = nil,
                 bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
@@ -721,6 +728,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.statusBlink = statusBlink
         self.statusColor = statusColor
         self.statusShape = statusShape
+        self.statusChangedAt = statusChangedAt
         self.background = background
         self.unseen = unseen
         self.turn = turn
@@ -847,6 +855,10 @@ public struct ControlTree: Codable, Sendable, Equatable {
     public let sessionRecency: [String]?
     /// The id of the picker currently awaiting a choice, or nil when no picker is open.
     public let pickPending: String?
+    /// The app serving this socket. Constant rather than live like every field above it, and present so an
+    /// agent already reading the tree gets its version floor without a second round-trip; `version` answers
+    /// the same question for a caller that has no tree, no window, and no JSON parser.
+    public let app: AppIdentity?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
@@ -855,7 +867,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 zoomedSurface: String? = nil, dashboardMembers: [String]? = nil,
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
                 dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
-                pickPending: String? = nil) {
+                pickPending: String? = nil, app: AppIdentity? = nil) {
         self.workspaces = workspaces
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
@@ -871,6 +883,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.dashboardFontMode = dashboardFontMode
         self.sessionRecency = sessionRecency
         self.pickPending = pickPending
+        self.app = app
     }
 }
 
@@ -918,6 +931,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var cursor: ControlCursor?
     /// The stored bookmarks for `session.bookmark.list` (fork only), in insertion order.
     public var bookmarks: [ControlBookmarkNode]?
+    /// The app serving this socket, for `version`. The same value `tree` carries.
+    public var app: AppIdentity?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -926,7 +941,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 sync: Bool? = nil, light: String? = nil, dark: String? = nil,
                 events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil,
                 pick: ControlPickResult? = nil, overlayRedirect: ControlOverlayRedirect? = nil,
-                cursor: ControlCursor? = nil, bookmarks: [ControlBookmarkNode]? = nil) {
+                cursor: ControlCursor? = nil, bookmarks: [ControlBookmarkNode]? = nil,
+                app: AppIdentity? = nil) {
         self.id = id
         self.tree = tree
         self.text = text
@@ -946,6 +962,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.overlayRedirect = overlayRedirect
         self.cursor = cursor
         self.bookmarks = bookmarks
+        self.app = app
     }
 }
 

@@ -385,6 +385,32 @@ struct AppSettingsTests {
         #expect(!json.contains("interfaceFontSize"))
     }
 
+    @Test func quickTerminalSizePercentRoundTripsAndDefaultsNil() throws {
+        #expect(AppSettings().quickTerminalSizePercent == nil)
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("quickTerminalSizePercent"))
+        let original = AppSettings(quickTerminalSizePercent: 70)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded.quickTerminalSizePercent == 70)
+        #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func quickTerminalSizePercentResolvesOffGridValuesToTheDefault() {
+        #expect(AppSettings(quickTerminalSizePercent: 70).effectiveQuickTerminalSizePercent == 70)
+        // hand-edited or written by a version offering more choices: applied as neither 75% nor a snapped
+        // neighbour, so the picker and the panel cannot disagree about the size in use.
+        #expect(AppSettings(quickTerminalSizePercent: 75).effectiveQuickTerminalSizePercent == nil)
+        #expect(AppSettings(quickTerminalSizePercent: 400).effectiveQuickTerminalSizePercent == nil)
+        #expect(AppSettings(quickTerminalSizePercent: 0).effectiveQuickTerminalSizePercent == nil)
+        #expect(AppSettings().effectiveQuickTerminalSizePercent == nil)
+    }
+
+    @Test func everyOfferedQuickTerminalChoiceSurvivesResolution() {
+        for percent in QuickTerminalMetrics.sizePercentChoices {
+            #expect(AppSettings(quickTerminalSizePercent: percent).effectiveQuickTerminalSizePercent == percent)
+        }
+    }
+
     @Test func sidebarAndInterfaceFontSizesAreIndependent() throws {
         let sidebarOnly = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "sidebarFontSize": 17 }"#.utf8))
         #expect(sidebarOnly.effectiveSidebarFontSize == 17)

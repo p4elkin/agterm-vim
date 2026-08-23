@@ -68,7 +68,10 @@ paths:
   merge, marker, backup, and optional-agent policy.
 - Skill installation targets every existing Claude/Codex skill root, creating Claude only when neither
   exists. Refuse an unmarked `SKILL.md`. The sole source is `plugins/agterm/skills/agterm/` with
-  `SKILL.md`, references, examples, troubleshooting, and `scripts/show-image.sh`.
+  `SKILL.md`, references, examples, cookbook, troubleshooting, and `scripts/show-image.sh`. The whole
+  directory copies verbatim, so a new file ships automatically — but the loader opens only what `SKILL.md`
+  routes to, so a file added without a `description`/`when_to_use` trigger and a body pointer is dead
+  weight.
 - `show-image.sh` opens a PTY overlay and emits chunked kitty APC/base64. Pinned Ghostty has no OSC-1337
   or sixel, agent stdout escapes controls, and tool shells lack `/dev/tty`. Resolve relative to the loaded
   skill; hardcoded install paths and `${CLAUDE_PLUGIN_ROOT}` fail across app/plugin copies.
@@ -133,7 +136,7 @@ renumbering. Do not reintroduce a count anywhere.
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
-- `keymap.reload`, `keymap.list`, `config.reload`, `theme.set`, `theme.list`, `restore.clear`
+- `keymap.reload`, `keymap.list`, `config.reload`, `theme.set`, `theme.list`, `restore.clear`, `version`
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
@@ -250,6 +253,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `session.type` ok means the keystrokes were queued to the pty, not that the shell read or ran them (#350).
   Nothing is lost in between: libghostty's write mailbox blocks instead of dropping, messages queued before
   the io thread starts are drained once the subprocess is up, and no code path flushes pending tty input.
+  A NUL never reaches that path: `ghostty_input_key_s.text` is NUL-terminated and libghostty slices at the
+  first zero, so `session.type`/`quick.type` reject text carrying one with `text must not contain a NUL
+  byte` rather than typing the run up to it, sending its Return, and answering ok (#455).
   A caller needing execution polls `session.text`, which is what the e2e marker idiom does.
   `ghostty_surface_key`'s bool reports consumption, not delivery, so checking it would add no readiness.
 - `inject` emits Ghostty key events and Return keycode 36 for newline/CR/CRLF. Never replace it with
@@ -524,7 +530,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   derive validation/help from `StatusShape.allCases`. Idle accepts but does not render shape.
   AppKit and SwiftUI resolve through shared color/symbol helpers.
 - `ControlEventPayload` and `EventFormatter.human` must include every override; human status prints color
-  and shape. Tree reports state, pane, true blink, per-call color, and per-call shape only while non-idle.
+  and shape. Tree reports state, pane, true blink, per-call color, per-call shape, and `statusChangedAt`
+  only while non-idle.
+- `statusChangedAt` is `Session.statusChangedAt` as epoch seconds — a plain `Double`, since
+  `ControlProtocol.swift` imports no Foundation. It shares the `ControlEvent.ts` clock so a poller can
+  compare the two, and `setAgentIndicator` stamps it BEFORE the unchanged-indicator early return, which is
+  what makes a re-pushed `active` refresh the age instead of freezing it. Ephemeral: cleared on idle, never
+  persisted, absent after restore.
 - Pane is left/right/scratch, nil meaning left. It controls pane-scoped keystroke clearing and GUI
   blocked/completed reveal. Control attention navigation changes selection only.
 - `--pane-id` (#199) is a stable per-surface token that overrides stale baked role after promote/re-split,
@@ -610,6 +622,23 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   remains visible. Workspace adapters stay in `ControlServer+WorkspaceCommands.swift`.
 
 ## Tree and window read-back
+
+- `version` and the tree's `app` are two projections of ONE `AppIdentity`, built once in the app target
+  from `Bundle.main` and passed in. Nothing below the app target reads `Bundle.main`: a hosted test would
+  see its own host bundle and the projections would drift apart. The same value feeds
+  `SurfaceEnvironment`'s `TERM_PROGRAM_VERSION`, so the three can never disagree.
+- `app.version` is the comparable number a cookbook recipe's minimum is checked against; `app.commit` is
+  diagnostics and never part of that comparison. `app` is the only CONSTANT on the tree top level. It is
+  absent from `window.list` because it describes the app rather than a window and duplicating it there
+  buys nothing — NOT because a cache would stale it, which cannot happen to a constant. A caller with no
+  tree uses `version`.
+- `agtermctl version`'s `client:` line is HUMAN OUTPUT ONLY. `--json` stays the raw `ControlResponse` like
+  every other command; a client-reported path in the protocol would be a field the server cannot vouch
+  for. Resolve it with `_NSGetExecutablePath` + `realpath`, never `argv[0]`, and never print it after a
+  server error.
+- A keymap- or palette-launched process inherits the APP's launch environment, not a surface's, so it has
+  no `TERM_PROGRAM_VERSION` (`CustomCommandRunner` merges `ProcessInfo.processInfo.environment` with the
+  `AGT_*` context only). That is why a recipe preflight uses `agtermctl version` rather than the variable.
 
 - Session nodes include foreground/split foreground argv, background spec, overlay size, pane overlays,
   split axis, split ratio, split focus, status fields, flag, `parked`, unseen, restore pins, the two

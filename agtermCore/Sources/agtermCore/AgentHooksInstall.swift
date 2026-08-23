@@ -15,7 +15,7 @@ public enum AgentHooksInstall {
 
     /// The bundled Pi extension's path relative to the agent-status package, and its destination filename.
     public static let piExtensionRelativePath = "pi/agterm-status.ts"
-    public static let piExtensionName = "agterm-status.ts"
+    static let piExtensionName = "agterm-status.ts"
 
     /// Ownership sentinel in the bundled Pi extension: a reinstall refuses to overwrite an unmarked same-named
     /// extension, preserving a user-authored integration.
@@ -23,7 +23,7 @@ public enum AgentHooksInstall {
 
     /// The bundled OpenCode plugin's path relative to the agent-status package, and its destination filename.
     public static let opencodePluginRelativePath = "opencode/agterm-status.js"
-    public static let opencodePluginName = "agterm-status.js"
+    static let opencodePluginName = "agterm-status.js"
 
     /// Ownership sentinel in the bundled OpenCode plugin, same policy as `piExtensionMarker`. Named `*Plugin*`
     /// (not `*Extension*`) because OpenCode's host term is plugin — a deliberate divergence from `piExtension*`.
@@ -34,10 +34,13 @@ public enum AgentHooksInstall {
     public static let integrationRelativePath = "shell/integration.sh"
     public static let fishIntegrationRelativePath = "shell/integration.fish"
 
+    /// Sentinel opening the installer-baked AGTERMCTL block; a re-bake replaces it instead of duplicating it.
+    static let agtermctlMarker = "# >>> agterm agtermctl path (installer-baked) >>>"
+
     /// Marker lines bracketing the agterm-managed block in a shell rc file; the opening marker is also the
     /// idempotency probe (present → already installed).
-    public static let rcMarkerBegin = "# >>> agterm agent-status >>>"
-    public static let rcMarkerEnd = "# <<< agterm agent-status <<<"
+    static let rcMarkerBegin = "# >>> agterm agent-status >>>"
+    static let rcMarkerEnd = "# <<< agterm agent-status <<<"
 
     /// The Claude Code hook events the merge installs, each paired with the wrapper invocations (state plus
     /// flags) its one entry runs.
@@ -67,7 +70,7 @@ public enum AgentHooksInstall {
     ]
 
     /// The destination directory for Pi's auto-discovered global extensions.
-    public static func piExtensionDirectory(home: String) -> String {
+    static func piExtensionDirectory(home: String) -> String {
         home + "/.pi/agent/extensions"
     }
 
@@ -84,7 +87,7 @@ public enum AgentHooksInstall {
     }
 
     /// The destination directory for OpenCode's auto-discovered global plugins.
-    public static func opencodePluginDirectory(home: String) -> String {
+    static func opencodePluginDirectory(home: String) -> String {
         home + "/.config/opencode/plugins"
     }
 
@@ -293,6 +296,46 @@ public enum AgentHooksInstall {
         return lines.joined(separator: "\n")
     }
 
+    /// bake `toolPath` — the bundled `agtermctl` — into an installed wrapper, replacing the block a previous
+    /// install left behind. The `-x` test sits INSIDE the unset branch so an explicit override is never
+    /// second-guessed; the wrapper's own header owns why the PATH rung has to stay reachable.
+    public static func bakeAgtermctlPath(into text: String, toolPath: String) -> String {
+        let block = agtermctlBlockLines(toolPath: toolPath)
+        return insertAfterShebang(stripBakedBlock(from: text, bodyLines: block.count - 1), lines: block)
+    }
+
+    // the baked block, marker line first.
+    private static func agtermctlBlockLines(toolPath: String) -> [String] {
+        [
+            agtermctlMarker,
+            "if [ -z \"${AGTERMCTL:-}\" ]; then",
+            "  AGTERMCTL=\(shellQuote(toolPath))",
+            "  [ -x \"$AGTERMCTL\" ] || AGTERMCTL=\"$(command -v agtermctl || true)\"",
+            "fi",
+        ]
+    }
+
+    // drop a previously baked block: the marker plus `bodyLines` lines below it. `bodyLines` measures the block
+    // being WRITTEN, so an older build's block of another length mis-strips; safe only because
+    // `copyBundledFolder` re-copies the pristine wrapper first, leaving no marker to match.
+    private static func stripBakedBlock(from text: String, bodyLines: Int) -> String {
+        var result: [String] = []
+        var skip = 0
+        for line in text.components(separatedBy: "\n") {
+            if skip > 0 { skip -= 1; continue }
+            if line == agtermctlMarker { skip = bodyLines; continue }
+            result.append(line)
+        }
+        return result.joined(separator: "\n")
+    }
+
+    private static func insertAfterShebang(_ text: String, lines block: [String]) -> String {
+        var lines = text.components(separatedBy: "\n")
+        let insertAt = lines.first?.hasPrefix("#!") == true ? 1 : 0
+        lines.insert(contentsOf: block, at: insertAt)
+        return lines.joined(separator: "\n")
+    }
+
     /// derive a backup path by appending `.bak` to the full path, extension intact (`settings.json.bak`).
     public static func backupPath(for path: String) -> String {
         path + ".bak"
@@ -300,11 +343,11 @@ public enum AgentHooksInstall {
 
     /// the absolute wrapper-script path the installed hooks invoke (`<scriptDir>/agterm-agent-status.sh`); the
     /// caller's hook entry appends the state.
-    public static func wrapperPath(scriptDir: String) -> String {
+    static func wrapperPath(scriptDir: String) -> String {
         scriptDir + "/" + wrapperName
     }
 
-    public static func codexWrapperPath(scriptDir: String) -> String {
+    static func codexWrapperPath(scriptDir: String) -> String {
         scriptDir + "/" + codexWrapperName
     }
 
@@ -313,7 +356,7 @@ public enum AgentHooksInstall {
     /// merge declines, and nothing checks the two against each other.
     /// The wrapper's absolute path is baked into each command — shell-quoted (so a path with spaces stays one
     /// token) inside a TOML basic string — so the hook fires without the CLI on PATH.
-    public static func codexHooksBlock(scriptDir: String) -> String {
+    static func codexHooksBlock(scriptDir: String) -> String {
         let wrapper = shellQuote(codexWrapperPath(scriptDir: scriptDir))
         return codexHooks.map { hook in
             """

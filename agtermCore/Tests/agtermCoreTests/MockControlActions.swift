@@ -50,6 +50,7 @@ final class MockControlActions: ControlActions {
         case font(target: String?, window: String?, pane: String?, String)
         case keymapReload
         case keymapList
+        case version
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
         case themeSet(String?)
@@ -125,6 +126,7 @@ final class MockControlActions: ControlActions {
     var nextFontResponse = ControlResponse(ok: true)
     var nextNotifyResponse = ControlResponse(ok: true)
     var nextKeymapListResponse = ControlResponse(ok: true)
+    var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
     var nextConfigResponse = ControlResponse(ok: true)
     var nextThemeSetResponse = ControlResponse(ok: true)
@@ -402,6 +404,11 @@ final class MockControlActions: ControlActions {
     func listKeymap() -> ControlResponse {
         calls.append(.keymapList)
         return nextKeymapListResponse
+    }
+
+    func appIdentity() -> ControlResponse {
+        calls.append(.version)
+        return nextVersionResponse
     }
 
     func reloadGhosttyConfig() -> ControlResponse {

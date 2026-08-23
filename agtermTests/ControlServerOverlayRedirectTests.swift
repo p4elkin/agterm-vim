@@ -26,6 +26,7 @@ final class ControlServerOverlayRedirectTests: XCTestCase {
                 library: library,
                 actions: actions,
                 settingsModel: SettingsModel(library: library, settingsStore: settingsStore),
+                identity: AppIdentity(version: "9.9.9", commit: "testsha"),
                 socketPath: stateDir.appendingPathComponent("control.sock").path
             )
             OverlayRedirectController.shared.setEnabled(false)

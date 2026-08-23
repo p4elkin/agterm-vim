@@ -1,7 +1,7 @@
 # agterm control reference
 
-Full detail for every `agtermctl` command. See `SKILL.md` for the model and addressing overview, and
-`examples.md` for recipes.
+Full detail for every `agtermctl` command. See `SKILL.md` for the model and addressing overview,
+`examples.md` for worked examples, and `cookbook.md` for the repository's installable recipes.
 
 ## Connection and output
 
@@ -15,7 +15,8 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
 - **Response shape**: `{"ok": true, "result": {…}}` or `{"ok": false, "error": "<message>"}`.
   `result` carries one of: `id` (affected/new session/workspace/window), `text` (session copy/text),
   `exitCode` (overlay result), `count` (diagnostics/search), `affected` (sessions actually changed by a
-  batch close/move), `tree` (the tree), `windows` (window list). The process exit code is non-zero when
+  batch close/move), `tree` (the tree), `windows` (window list), `app` (the serving app's identity, for
+  `version`). The process exit code is non-zero when
   `ok` is false.
 - **Options go after the subcommand**: `agtermctl session type "ls" --target active`, never before it.
 
@@ -161,7 +162,12 @@ glyph-tint override — the `--color` value; omitted when idle or using the conf
 `statusShape` (the glyph silhouette override — the `--shape` value, one of
 `circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape picked in Settings reads back as
-absent),
+absent), `statusChangedAt` (when the status was last SET, in epoch seconds — the same clock an event's
+`ts` carries, so the two compare directly; omitted when idle. It is stamped on every non-idle
+`session status`, not only on a change of state, so a hook re-pushing `active` refreshes it and
+`now - statusChangedAt` reads as how long ago the status was last WRITTEN — the age of the glyph.
+Normally that write is the agent's own push; a pane promotion re-tags the indicator and also counts.
+Ephemeral like `unseen`: never persisted, so it is absent after a restart even for a restored session),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
 process — what it is running — omitted when the pane sits at its shell prompt, and also for a
 setuid/setgid foreground process like `top` or `sudo`, whose argv macOS refuses to expose),
@@ -200,7 +206,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries fourteen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries fifteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -234,14 +240,19 @@ first — the currently ACTIVE session is dropped and the visible navigation sco
 title-bar recent popover's filtering but uncapped, where that popover shows at most ten, not the raw stack;
 a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
-and `pickPending` (the id of the native picker currently awaiting an answer in this
-window, omitted when none is pending). `idleMs` is live
+`pickPending` (the id of the native picker currently awaiting an answer in this
+window, omitted when none is pending), and `app` (which agterm is serving this socket: `version`, plus
+`commit` when the build recorded one — the same value `agtermctl version` returns, so an agent already
+reading the tree gets its version floor without a second round-trip; it is not duplicated onto
+`window.list`, where a caller uses `version` instead). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four `dashboard*` fields,
 `sessionRecency`, and `pickPending`
-are `tree`-only (a GUI/keyboard change would leave a cached copy stale).
-All fourteen are read-only projections of GUI state.
+are `tree`-only (a GUI/keyboard change would leave a cached copy stale). All of those are read-only
+projections of live GUI state. `app` is the one CONSTANT among them, and is absent from `window.list`
+for a different reason: it describes the serving app rather than a window, so repeating it on every row
+buys nothing. A caller with no tree uses `version`.
 
 ## workspace
 
@@ -415,6 +426,8 @@ error keeps those names for compatibility.
   surface, so `session new --no-select` followed straight away by `session type` does not race the mount.
   `--select` selects the session first, and only when its surface is not ready — a realized session is typed
   into without moving the user's selection. A surface that never comes up → `session not realized`.
+  Text carrying a NUL is rejected with `text must not contain a NUL byte`, since libghostty's key-text
+  field is NUL-terminated and could only deliver the run up to it.
   `--pane left` types into the main pane (the default when omitted), `--pane right` into the split pane
   (errors with `session has no split pane` when the session has no split), `--pane scratch` into the
   session's scratch terminal even while it is hidden (`session has no scratch terminal` when none opened);
@@ -490,7 +503,9 @@ error keeps those names for compatibility.
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
 - `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|diamond|capsule|star] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
-  set the sidebar agent-status glyph. `--blink` requests an attention pulse; macOS Reduce Motion
+  set the sidebar agent-status glyph. Every non-idle call stamps the session node's `statusChangedAt`,
+  including one that re-pushes the status already showing, so a poller can tell a fresh glyph from a stale
+  one without keeping state of its own. `--blink` requests an attention pulse; macOS Reduce Motion
   suppresses the repeating sidebar and dashboard animation while keeping the status visible, and the
   pulse resumes when Reduce Motion is disabled. `--auto-reset` clears it back to idle once the session
   is visited (use for a one-shot completion flash). `--sound` plays a
@@ -975,7 +990,8 @@ it waited for. Results age out oldest-first: the 8 most recent per open window, 
 ## quick
 
 `agtermctl quick [show|hide|toggle]` — the app's one quick terminal (a single scratch terminal in a
-floating panel at 90% of the focused screen up to 1100x700, not in the tree and owned by no window; its
+floating panel at 90% of the focused screen up to 1100x700 unless Settings > Interface sets a share of its
+own, not in the tree and owned by no window; its
 shell stays alive across hides). Errors with `no open window` when none is open, and with `pick pending`
 while a picker is up. Read its visibility back from the tree's top-level `quickVisible`.
 A panel YOU open with `show` stays up when agterm loses focus — including when it was already visible
@@ -1279,12 +1295,40 @@ command at a clean quit and re-runs it on relaunch; `restore clear` wipes those 
 
 Which programs are NOT re-run is controlled by `restore-denylist.conf` in the config directory (one
 command name per line, seeded with the terminal multiplexers `tmux`/`screen`/`zellij`). It is a plain
-user-edited file read at launch — there is no control command for it.
+user-edited file read at launch — there is no control command for it. Two more things are skipped
+whatever the denylist says, and the pane starts a plain shell. A control character in the command's
+name or any argument: the restored line is typed, so the line editor reads that byte as an editing key
+rather than as text. A byte sequence that was not valid UTF-8: it is captured lossily, so replaying it
+would run an argument the process never had.
 
 For a PER-SESSION, per-pane override that pins (or suppresses) what a pane restores, use
 `session restore` (in the session section above): it wins over the captured foreground, bypasses the
 denylist, and is what a `SessionStart` hook rewrites to reattach a non-idempotent command. `restore clear`
 here is app-global and touches only the captured commands, not those overrides.
+
+## version
+
+`agtermctl version` — which agterm is serving this socket. App-global: no target, no `--window`, and no
+window need be open, so it works as a preflight from a keymap-launched script. Returns `result.app`:
+
+- `version` — the app's version, the number a cookbook recipe's minimum is compared against.
+- `commit` — the build's git commit, omitted when the build recorded none. Diagnostics only; never part
+  of a version comparison.
+
+Human output is `version` alone, or `version (commit)`, followed by a `client:` line naming the resolved
+path of the `agtermctl` that ran — a diagnostic for a stale CLI earlier on `PATH` than the app's bundled
+helper. That line is human output only: `--json` stays the raw server response, and a caller that needs
+the client path resolves the binary it invoked itself.
+
+Address the socket explicitly when the answer must be about THIS session's app: `agtermctl` never reads
+`AGTERM_SOCKET`, so a bare call resolves the default path and may report a different instance. Use
+`--socket "$AGTERM_SOCKET"` from a session shell and `--socket "$AGT_SOCKET"` from a keymap- or
+palette-launched child.
+
+The same identity is on the `tree` top level as `app`, so an agent already reading the tree needs no
+second call. In a session shell `$TERM_PROGRAM_VERSION` carries the same number, but it is ABSENT in a
+process launched from the keymap or the palette, which inherits the app's launch environment rather than
+a terminal surface's.
 
 ## Errors you may see
 
@@ -1324,6 +1368,7 @@ CLI rejects the same value locally with `mode must be one of: on, off, toggle, a
 locally with `mode must be on, off, or toggle`),
 `no open window` (quick/sidebar/workspace filter), `quick terminal not open` / `quick terminal not realized` (quick type) /
 `failed to read surface buffer` (quick text / session text),
+`text must not contain a NUL byte` (session type / quick type),
 `invalid restore mode` / `session.restore set requires a command` / `command must not contain control characters` /
 `command too long (max 1024 bytes)` / `the scratch terminal is never restored` / `unknown pane id` /
 `failed to save the restore override, the previous value is still in effect` (session

@@ -88,6 +88,9 @@ final class GhosttyApp {
     /// The sizes the palette/picker and session switcher derive from the separate `interfaceFontSize`,
     /// resolved once per settings change rather than per row.
     private(set) var interfaceMetrics = InterfaceMetrics(fontSize: AppSettings.defaultInterfaceFontSize)
+    /// The share of the focused screen the quick-terminal panel takes, as a percentage; nil = the built-in
+    /// size. `QuickTerminalController` reads it when it frames the panel; settings-mirrored like `toolbarMode`.
+    private(set) var quickTerminalSizePercent: Int?
     /// The base terminal font size in points (the Settings default; nil → the ghostty built-in). The renderer
     /// never reads it — it is the size a session with a nil `session.fontSize` reverts to, which the dashboard
     /// font-override clear needs to recognize its own async CELL_SIZE report (`pendingFontRestore`).
@@ -234,6 +237,11 @@ final class GhosttyApp {
     /// `InterfaceMetrics` clamps its own input, so a hand-edited out-of-range value lands in range here too.
     func setInterfaceFontSize(_ size: Double) {
         interfaceMetrics = InterfaceMetrics(fontSize: size)
+    }
+
+    /// `QuickTerminalMetrics.panelSize` clamps what it is given, so the raw setting is stored as-is.
+    func setQuickTerminalSizePercent(_ percent: Int?) {
+        quickTerminalSizePercent = percent
     }
 
     /// Set the agent-status glyph colors from the user's hex settings; nil or malformed → the system default.
@@ -509,6 +517,30 @@ final class GhosttyApp {
         return cfg
     }
 
+    /// Their ssh wrappers require a `ghostty` CLI absent from agterm's bundle.
+    private static let unsupportedShellFeatures: Set<String> = ["ssh-env", "ssh-terminfo"]
+
+    /// Applies the override after recursive includes so no user config can re-enable these features.
+    private func forceUnsupportedShellFeaturesOff(_ cfg: ghostty_config_t) {
+        let key = "shell-integration-features"
+        var bits: UInt32 = 0
+        guard key.withCString({ ghostty_config_get(cfg, &bits, $0, UInt(key.utf8.count)) }) else {
+            logger.warning("could not read \(key, privacy: .public); leaving ssh shell features as configured")
+            return
+        }
+        let value = ShellIntegrationFeatures.overrideValue(resolvedBits: bits,
+                                                          disabled: Self.unsupportedShellFeatures)
+        let tmp = (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-sif-\(UUID().uuidString).conf")
+        do {
+            try "shell-integration-features = \(value)\n".write(toFile: tmp, atomically: true, encoding: .utf8)
+        } catch {
+            logger.warning("shell-integration-features override write failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        tmp.withCString { ghostty_config_load_file(cfg, $0) }
+        try? FileManager.default.removeItem(atPath: tmp)
+    }
+
     private func loadConfig(_ inputs: ConfigInputs, extraOverlayPath: String? = nil) -> ghostty_config_t? {
         guard let cfg = ghostty_config_new() else { return nil }
 
@@ -551,6 +583,7 @@ final class GhosttyApp {
         }
 
         ghostty_config_load_recursive_files(cfg)
+        forceUnsupportedShellFeaturesOff(cfg)
         ghostty_config_finalize(cfg)
 
         let diagCount = ghostty_config_diagnostics_count(cfg)

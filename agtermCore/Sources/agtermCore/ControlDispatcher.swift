@@ -75,6 +75,7 @@ public protocol ControlActions {
     func font(_ target: String?, window: String?, pane: String?, action: String) -> ControlResponse
     func reloadKeymap() -> ControlResponse
     func listKeymap() -> ControlResponse
+    func appIdentity() -> ControlResponse
     func reloadGhosttyConfig() -> ControlResponse
     func sendNotification(_ target: String?, window: String?, title: String?, body: String) -> ControlResponse
     func setTheme(args: ControlArgs?) -> ControlResponse
@@ -284,7 +285,7 @@ public struct ControlDispatcher {
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
                 .sidebarCollapse, .sidebarParked, .normalMode, .restoreClear, .sessionPairing,
-                .overlayRedirectToggle:
+                .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
@@ -514,7 +515,7 @@ public struct ControlDispatcher {
             }
             // a control character would smuggle an extra line (or an escape sequence) into the shell the
             // override is typed into, so the whole class is rejected — tab included.
-            guard !command.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) else {
+            guard !CommandRestore.hasControlCharacter(command) else {
                 return ControlResponse(ok: false, error: "command must not contain control characters")
             }
             guard command.utf8.count <= ControlRestoreOverride.maxCommandBytes else {
@@ -545,6 +546,13 @@ public struct ControlDispatcher {
     private enum PaneSelection<Pane> {
         case pane(Pane?)
         case rejected(ControlResponse)
+    }
+
+    /// Non-nil when `text` carries a NUL: libghostty's key-text field is NUL-terminated and slices at the
+    /// first zero, dropping the run's tail while the Return after it still submits the shortened line (#455).
+    private func nulRejection(_ text: String) -> ControlResponse? {
+        guard text.unicodeScalars.contains(where: { $0.value == 0 }) else { return nil }
+        return ControlResponse(ok: false, error: "text must not contain a NUL byte")
     }
 
     /// The shared `--pane` selector: nil when absent, the parsed pane when `parse` accepts it, and `error`
@@ -676,6 +684,7 @@ public struct ControlDispatcher {
             guard let text = request.args?.text else {
                 return ControlResponse(ok: false, error: "session.type requires text")
             }
+            if let rejection = nulRejection(text) { return rejection }
             return await actions.typeSession(request.target, window: request.args?.window,
                                              options: ControlSessionTypeOptions(
                                                 text: text,
@@ -781,6 +790,8 @@ public struct ControlDispatcher {
             return actions.reloadKeymap()
         case .keymapList:
             return actions.listKeymap()
+        case .version:
+            return actions.appIdentity()
         case .configReload:
             return actions.reloadGhosttyConfig()
         case .notify:
@@ -879,6 +890,7 @@ public struct ControlDispatcher {
             guard let text = request.args?.text else {
                 return ControlResponse(ok: false, error: "quick.type requires text")
             }
+            if let rejection = nulRejection(text) { return rejection }
             return await actions.typeQuick(text: text)
         case .quickText:
             let all = request.args?.all ?? false

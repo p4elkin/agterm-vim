@@ -290,6 +290,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The palette, picker and session-switcher text point size, nil for `defaultInterfaceFontSize`.
     /// Panel widths scale with it (`InterfaceMetrics`). Independent of `sidebarFontSize`.
     public var interfaceFontSize: Double?
+    /// The share of the focused screen the quick-terminal panel takes, as a percentage; nil keeps the
+    /// built-in size. `QuickTerminalMetrics.panelSize` resolves and clamps it.
+    public var quickTerminalSizePercent: Int?
     /// Raw names of the chrome elements the user has HIDDEN (see `InterfaceElement`); nil/empty shows
     /// everything. Unknown names are dropped by `resolvedHiddenInterfaceElements`.
     public var hiddenInterfaceElements: [String]?
@@ -323,7 +326,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, recencyDwell: String? = nil,
                 sidebarFontSize: Double? = nil,
-                interfaceFontSize: Double? = nil,
+                interfaceFontSize: Double? = nil, quickTerminalSizePercent: Int? = nil,
                 hiddenInterfaceElements: [String]? = nil,
                 autoHideSidebarInactiveWindows: Bool? = nil, welcomeShown: Bool? = nil,
                 overlayRedirectEnabled: Bool? = nil) {
@@ -365,6 +368,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.recencyDwell = recencyDwell
         self.sidebarFontSize = sidebarFontSize
         self.interfaceFontSize = interfaceFontSize
+        self.quickTerminalSizePercent = quickTerminalSizePercent
         self.hiddenInterfaceElements = hiddenInterfaceElements
         self.autoHideSidebarInactiveWindows = autoHideSidebarInactiveWindows
         self.welcomeShown = welcomeShown
@@ -447,6 +451,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Bounds a raw palette/switcher point size to `interfaceFontSizeRange`.
     public static func clampInterfaceFontSize(_ size: Double) -> Double {
         min(interfaceFontSizeRange.upperBound, max(interfaceFontSizeRange.lowerBound, size))
+    }
+
+    /// The resolved quick-terminal share, or nil for the built-in size. The single read point, and the one
+    /// the Settings picker binds: a stored value outside `QuickTerminalMetrics.sizePercentChoices` — hand
+    /// edited, or written by a later version offering more of them — resolves to nil rather than being
+    /// applied, so the picker can never show blank while the panel uses a size it has no row for.
+    /// `panelSize` clamps its own argument as well; that guards a direct caller, this owns the setting.
+    public var effectiveQuickTerminalSizePercent: Int? {
+        guard let quickTerminalSizePercent,
+              QuickTerminalMetrics.sizePercentChoices.contains(quickTerminalSizePercent) else { return nil }
+        return quickTerminalSizePercent
     }
 
     /// The resolved sidebar row-text size, clamped. The single read point.

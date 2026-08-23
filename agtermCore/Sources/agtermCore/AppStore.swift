@@ -292,7 +292,7 @@ public final class AppStore {
                             dashboardMembers: () -> [String]? = { nil },
                             dashboardHighlighted: () -> String? = { nil },
                             dashboardFontSize: () -> Double? = { nil },
-                            dashboardFontMode: () -> String? = { nil }) -> ControlTree {
+                            dashboardFontMode: () -> String? = { nil }, app: AppIdentity? = nil) -> ControlTree {
         let activeID = selectedSessionID
         // `currentWorkspaceID`, not the selected session's owner: an EMPTY destination selects nothing, so
         // deriving this from the selection alone made `tree` name the workspace `workspace.go` just left.
@@ -343,6 +343,7 @@ public final class AppStore {
                                           statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
                                           statusColor: idle ? nil : session.agentIndicator.color,
                                           statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
+                                          statusChangedAt: idle ? nil : session.statusChangedAt?.timeIntervalSince1970,
                                           background: session.backgroundWatermark,
                                           unseen: session.unseenCount > 0 ? session.unseenCount : nil,
                                           turn: session.turnCounter > 0 ? session.turnCounter : nil,
@@ -376,7 +377,7 @@ public final class AppStore {
                            dashboardFontSize: dashboardFontSize(),
                            dashboardFontMode: dashboardFontMode(),
                            sessionRecency: controlSessionRecency(),
-                           pickPending: pickPending())
+                           pickPending: pickPending(), app: app)
     }
 
     /// The tree's `paneOverlays`: the panes covered by their own overlay, omitted when neither is.

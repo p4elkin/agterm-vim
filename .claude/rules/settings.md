@@ -6,6 +6,7 @@ paths:
   - "agterm/Views/WindowAppearance.swift"
   - "agterm/NSColor+AgtermHex.swift"
   - "agtermCore/Sources/agtermCore/AppSettings.swift"
+  - "agtermCore/Sources/agtermCore/QuickTerminalMetrics.swift"
   - "agtermCore/Sources/agtermCore/SettingsStore.swift"
   - "agtermUITests/SettingsUITests.swift"
 ---
@@ -53,6 +54,10 @@ paths:
 - Non-Ghostty settings update app mirrors and `.agtermAppearanceChanged`, not surfaces. The mute wash
   fades text toward terminal color; with transparency it also tints the see-through area. Sidebar tint
   composes over opaque or blurred backgrounds; AppKit must leave the sidebar unfilled.
+- `quickTerminalSizePercent` is the quick-terminal panel's share of its screen, nil for the built-in size.
+  `QuickTerminalMetrics` owns the arithmetic, the offered choices and the clamp; [[windows]] owns why a set
+  percentage replaces the points cap instead of raising it. Mirrored to `GhosttyApp` like `toolbarMode`,
+  and read when the panel is framed, so no appearance broadcast is involved.
 - `inactivePaneMuteStrength` drives the inactive split pane and the backdrop behind a floating overlay and
   the quick terminal, so its label names both. [[libghostty]] owns how those washes render.
 - Status colors default to active `#DBD9E6`, system amber, and system green. Shapes are raw
@@ -85,10 +90,11 @@ paths:
   `terminalColor`, quick-terminal backing, title/window appearance, and non-observable chrome mirrors.
 - Settings is a 540x640 six-tab SwiftUI scene with explicit selection defaulting General, preventing
   `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse, Sessions, and Ghostty
-  Config. Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row plus
-  Multiple Windows. Notifications holds banner/badge/attention/bounce/sound. Agent Status holds
-  colors/shapes, sound, auto-follow, recency dwell, and Reset. Key Mapping holds config directory,
-  diagnostics, and Reload.
+  Config. Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, plus
+  Multiple Windows and the quick terminal's panel size, which sits there rather than under Appearance's
+  Window because the panel belongs to no window.
+  Notifications holds banner/badge/attention/bounce/sound. Agent Status holds colors/shapes, sound,
+  auto-follow, recency dwell, and Reset. Key Mapping holds config directory, diagnostics, and Reload.
 - Keep titlebar construction in `WindowContentView+Titlebar.swift` so `WindowContentView.swift` remains
   below the 1000-line limit.
 - Keep Agent Status shape pickers in a trailing-aligned 80-point column wider than the 64.5...68-point
@@ -160,7 +166,13 @@ paths:
   mid-run reopen, and `recoverOrphanedWindows` drops captures while the sticky override still arms
   (a corrupt index must not re-execute a closed window's last command).
 - Restore only when the toggle is on and basename is absent from user
-  `restore-denylist.conf`, seeded with `tmux`, `screen`, and `zellij`. Feed captured argv once through
+  `restore-denylist.conf`, seeded with `tmux`, `screen`, and `zellij`. A control character anywhere in the
+  argv also refuses, matching what `session.restore set` rejects a pin for: the line is typed, so the line
+  editor reads the byte before the shell parser and quoting cannot protect it. U+FFFD refuses with it,
+  since `parseProcArgs` decodes lossily and replaying it would run a different argument. Both refuse at
+  RENDER, keeping `hadForeground` true so a stale `initialCommand` stays preempted. A pin loaded from a
+  snapshot never passed the dispatcher's check, so `restoreInput` applies it again at the sink; both share
+  `CommandRestore.hasControlCharacter`. Feed captured argv once through
   shell-quoted `config.initial_input` so exit returns to the shell, then nil it. Only one foreground
   process from a typed pipeline/compound command can be captured.
 - `session.new --command` persists durable `initialCommand` and restores through shell-replacing

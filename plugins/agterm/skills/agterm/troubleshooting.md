@@ -29,7 +29,12 @@ You are inside agterm (`AGTERM_ENABLED=1`). Use:
   global Ghostty config is on. agterm's Settings (font/theme/opacity/scroll) still win. Use it for keys the UI does not expose, e.g.
   `macos-option-as-alt`. Most keys apply to open panes on reload, but layout keys (`window-padding-*`)
   and spawn-time keys (`term`, `shell-integration-features`) only take effect in a new session/window
-  or after a relaunch. Full reference: https://ghostty.org/docs/config
+  or after a relaunch. Full reference: https://ghostty.org/docs/config. Two values in it do NOT apply:
+  `ssh-env` and `ssh-terminfo` for `shell-integration-features`. Ghostty implements them by replacing
+  `ssh` with a wrapper calling a `ghostty` CLI absent from agterm's bundle, so agterm forces both off
+  after reading the config and keeps every other flag. Setting either is by design a no-op, reports no
+  diagnostic, and is NOT a bug. For remote terminfo, install the entry manually with
+  `infocmp -x xterm-ghostty | ssh <host> 'tic -x -'`.
 - **Logs** (unified logging, subsystem `com.umputun.agterm`):
   ```bash
   log show --predicate 'subsystem == "com.umputun.agterm"' --info --last 30m
@@ -147,6 +152,19 @@ further prompt, and a dismissed prompt is never re-offered (`osascript` keeps re
 to send Apple events"). The user changes the answer in System Settings ▸ Privacy & Security under the
 matching service, e.g. Automation ▸ agterm. This is macOS policy, not an agterm bug: do not file it.
 
+### "a command cannot read ~/Downloads, ~/Desktop or ~/Documents"
+
+macOS protects those folders, plus removable and network volumes, on its own: a separate mechanism from the
+services above, gated by no entitlement, and agterm is not sandboxed. The per-folder usage-description
+strings are optional and agterm ships none, so the prompt carries macOS's own wording. The answer is
+recorded against the app macOS holds responsible, so another terminal listing the folder proves nothing
+about agterm. The user grants it in System Settings ▸ Privacy & Security ▸ Files & Folders ▸ agterm, or
+gives agterm Full Disk Access, which covers all of them at once. A dismissed prompt is never re-offered.
+`/bin/ls -la <folder>`, against the failing folder itself, usually tells the two causes apart: `Operation
+not permitted` for the privacy denial, `Permission denied` for ordinary permission bits, and some `ls`
+replacements print the same wording for both. Needing the grant is macOS policy, not an agterm bug: do not
+file it.
+
 ### "The agent-status glyph does not update"
 
 Install the hooks from Help ▸ Install Agent Status Hooks…. For shell-integrated agents, start a fresh shell
@@ -155,7 +173,10 @@ so the installer-added `source` line takes effect. For Pi, restart it or run `/r
 For OpenCode, restart it so it loads `~/.config/opencode/plugins/agterm-status.js`;
 the plugin installs only after OpenCode has created `~/.config/opencode`.
 The installed wrapper resolves the bundled `agtermctl` itself; a bare development build instead needs
-`agtermctl` on `PATH`.
+`agtermctl` on `PATH`. Moving or replacing agterm.app invalidates the path the installer baked in — the
+wrapper then falls back to `agtermctl` on `PATH`, and with nothing there the glyph silently stops
+updating. Re-run Help ▸ Install Agent Status Hooks… after moving the app, or install the CLI with
+Help ▸ Install Command Line Tool….
 
 ### "The agent-status glyph updates the wrong session"
 

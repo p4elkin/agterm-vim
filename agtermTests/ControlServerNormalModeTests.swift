@@ -31,6 +31,7 @@ final class ControlServerNormalModeTests: XCTestCase {
                 actions: actions,
                 settingsModel: SettingsModel(library: library,
                                              settingsStore: SettingsStore(directory: stateDir)),
+                identity: AppIdentity(version: "9.9.9", commit: "testsha"),
                 socketPath: stateDir.appendingPathComponent("control.sock").path
             )
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),

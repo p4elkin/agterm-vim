@@ -90,7 +90,7 @@ public struct Agtermctl: ParsableCommand {
         abstract: "Drive agterm over its control socket.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self,
-                      Pick.self, Restore.self, OverlayRedirect.self]
+                      Pick.self, Restore.self, OverlayRedirect.self, Version.self]
     )
 
     public init() {}

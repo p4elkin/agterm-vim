@@ -452,4 +452,38 @@ struct AgentHooksInstallTests {
         let second = try AgentHooksInstall.mergeClaudeSettings(existing: first.json, scriptDir: scriptDir)
         #expect(!second.changed)
     }
+
+    // MARK: - agtermctl path baking
+
+    private let wrapperStub = """
+    #!/usr/bin/env bash
+    set -u
+    "${AGTERMCTL:-agtermctl}" session status "$1"
+    """
+
+    @Test func bakeInsertsTheBlockAfterTheShebang() {
+        let baked = AgentHooksInstall.bakeAgtermctlPath(into: wrapperStub, toolPath: "/Applications/agterm.app/Contents/MacOS/agtermctl")
+        let lines = baked.components(separatedBy: "\n")
+        #expect(lines.first == "#!/usr/bin/env bash")
+        #expect(lines[1] == AgentHooksInstall.agtermctlMarker)
+        #expect(lines.contains("  AGTERMCTL='/Applications/agterm.app/Contents/MacOS/agtermctl'"))
+        #expect(baked.hasSuffix(wrapperStub.components(separatedBy: "\n").dropFirst().joined(separator: "\n")))
+    }
+
+    @Test func bakedBlockFallsBackToPathWhenTheBakedBundleIsGone() {
+        // pins #472: the wrapper swallows the failure, so the block has to test the path before committing
+        let baked = AgentHooksInstall.bakeAgtermctlPath(into: wrapperStub, toolPath: "/Volumes/agterm/agterm.app/Contents/MacOS/agtermctl")
+        #expect(baked.contains(#"  [ -x "$AGTERMCTL" ] || AGTERMCTL="$(command -v agtermctl || true)""#))
+        #expect(baked.contains(#"if [ -z "${AGTERMCTL:-}" ]; then"#))
+    }
+
+    @Test func rebakingReplacesTheBlockInsteadOfStackingIt() {
+        let dmg = AgentHooksInstall.bakeAgtermctlPath(into: wrapperStub, toolPath: "/Volumes/agterm/agterm.app/Contents/MacOS/agtermctl")
+        let moved = AgentHooksInstall.bakeAgtermctlPath(into: dmg, toolPath: "/Applications/agterm.app/Contents/MacOS/agtermctl")
+        let lines = moved.components(separatedBy: "\n")
+        #expect(lines.filter { $0 == AgentHooksInstall.agtermctlMarker }.count == 1)
+        #expect(lines.filter { $0.contains("command -v agtermctl") }.count == 1)
+        #expect(!moved.contains("/Volumes/agterm"))
+        #expect(moved == AgentHooksInstall.bakeAgtermctlPath(into: wrapperStub, toolPath: "/Applications/agterm.app/Contents/MacOS/agtermctl"))
+    }
 }

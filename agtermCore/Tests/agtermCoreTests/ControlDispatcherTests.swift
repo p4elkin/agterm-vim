@@ -1242,6 +1242,30 @@ struct ControlDispatcherTests {
         #expect(actions.calls == [.keymapList])
     }
 
+    @Test func versionRoutesToActionsAndKeepsTheIdentity() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let identity = AppIdentity(version: "0.24.0", commit: "a1b2c3d")
+        actions.nextVersionResponse = ControlResponse(ok: true, result: ControlResult(app: identity))
+
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .version))
+
+        #expect(response?.result?.app == identity)
+        #expect(actions.calls == [.version])
+    }
+
+    // app-global like keymap.list: a target or window a caller attaches is ignored, never resolved.
+    @Test func versionIgnoresTargetAndWindow() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .version, target: "active",
+                                                                args: ControlArgs(window: "w1")))
+
+        #expect(response?.ok == true)
+        #expect(actions.calls == [.version])
+    }
+
     @Test func notifyRequiresBodyBeforeCallingActions() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)
@@ -1327,6 +1351,20 @@ struct ControlDispatcherTests {
         let response = await dispatcher.dispatch(ControlRequest(cmd: .sessionType, target: "session"))
 
         #expect(response == ControlResponse(ok: false, error: "session.type requires text"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func sessionTypeRejectsNulBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionType, target: "session",
+            args: ControlArgs(text: "safe\u{0}danger\n")
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "text must not contain a NUL byte"))
+        // no action call is what pins #455: the pre-fix path typed "safe" and still sent the Return.
         #expect(actions.calls.isEmpty)
     }
 
@@ -1595,6 +1633,18 @@ struct ControlDispatcherTests {
         let response = await dispatcher.dispatch(ControlRequest(cmd: .quickType))
 
         #expect(response == ControlResponse(ok: false, error: "quick.type requires text"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func quickTypeRejectsNulBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .quickType, args: ControlArgs(text: "safe\u{0}danger\n")
+        ))
+
+        #expect(response == ControlResponse(ok: false, error: "text must not contain a NUL byte"))
         #expect(actions.calls.isEmpty)
     }
 

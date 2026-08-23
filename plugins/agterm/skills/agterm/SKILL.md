@@ -14,7 +14,9 @@ description: >
   window/workspace/session addressing model and the AGTERM_* environment a spawned shell sees, plus
   subscribe to status, notification, session lifecycle, and tree-change events; diagnose problems
   (keymap editor, custom actions, logs); and file a bug as a GitHub issue or a
-  feature request / question as a GitHub Discussion.
+  feature request / question as a GitHub Discussion. Also list, fetch and install the repository's
+  cookbook recipes, and read one as reference for a tricky workflow; and report the version of the app
+  serving the socket.
 when_to_use: >
   Trigger on: agterm, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.split.close, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, cursor column, dashboard, pick, pick.open, pick.result, pick.cancel, native picker, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
@@ -22,7 +24,9 @@ when_to_use: >
   session.hud, hud panel, show a message over a session, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
   window.select, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.parked, hide parked rows, sidebar.expand, sidebar.collapse, flagged, normal mode, notify, font.inc, keymap.reload, keymap.list, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap, show an image, display an image inline, show-image,
-  AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
+  AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: agterm cookbook,
+  cookbook recipe, list recipes, install a recipe, agterm recipe for X, what recipes are there, and
+  agterm version, which agterm is running, agterm version check. Also troubleshoot agterm,
   keymap editor won't open, custom action / custom command not working, agterm logs, file an agterm
   bug, report an agterm issue, open an agterm discussion / feature request.
 allowed-tools: Bash(agtermctl *)
@@ -92,16 +96,16 @@ An overlay covers the whole session, or with `--pane left|right` exactly one spl
 sibling pane visible and usable. The same session-wide slot also holds a **HUD** (`session hud`), a small
 passive panel carrying a message instead of a program: the session keeps focus and stays typable under it.
 One slot, so a session shows either a HUD or a program overlay, never both. Separately, the app has one
-**quick terminal** (a scratch shell in a floating panel at 90% of the focused screen, not part of the tree
-and not owned by a window).
+**quick terminal** (a scratch shell in a floating panel at 90% of the focused screen capped at 1100x700,
+or whatever share Settings sets instead; not part of the tree and not owned by a window).
 
 Inspect the live tree any time with `agtermctl tree --json` (workspaces → sessions, each with
 `id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `hud`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` and `surface cursor` (`left`, `right`, `scratch`, `overlay`,
-`overlay-left`, or `overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries fourteen
-read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
+`overlay-left`, or `overlay-right`), including hidden-but-alive split/scratch surfaces. The tree object also carries
+read-only top-level fields — `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `recencyDwellMs` (how long a session must stay
 selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately; typing and
 control `session select` both record without waiting it out),
@@ -115,8 +119,10 @@ of the zoomed surface, omitted when nothing is zoomed — the read side of `surf
 `dashboardMembers`, `dashboardHighlighted`, `dashboardFontSize` and `dashboardFontMode` (the read sides of
 the write-only `dashboard` command, all omitted when no dashboard is open), `sessionRecency` (the window's
 jump-back targets, session ids most recent first, with the active session dropped and the visible
-navigation scope applied; omitted when there is nothing to jump back to), and `pickPending` (the id of the
-picker awaiting an answer, omitted when none is pending). List windows with
+navigation scope applied; omitted when there is nothing to jump back to), `pickPending` (the id of the
+picker awaiting an answer, omitted when none is pending), and `app` (the serving app's `version`, plus
+`commit` when the build recorded one — the same value `agtermctl version` returns).
+reference.md lists every one with its exact shape. List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `recencyDwellMs`,
 `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
@@ -164,8 +170,8 @@ rule.) After `--command`, confirm in `tree --json` that the new node's `foregrou
 
 ## Command summary
 
-Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
-**examples.md**.
+Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; worked
+examples in **examples.md**; installable community workflows in **cookbook.md**.
 
 **tree** — print the workspace/session tree (`--json` for structured). Each session node carries
 `foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
@@ -177,7 +183,11 @@ via `session status`: `active`|`completed`|`blocked`, omitted when idle), `statu
 that status: `left` (main) | `right` (split) | `scratch`, from `session status --pane`, omitted when
 unset or idle), `statusBlink`/`statusColor`/`statusShape` (the status glyph's `--blink` flag, its `--color`
 `#rrggbb` tint and its `--shape` silhouette from `session status`, omitted when idle / not blinking / using
-the configured color or shape — the tint and the silhouette report the per-call override only), `background` (the background
+the configured color or shape — the tint and the silhouette report the per-call override only),
+`statusChangedAt` (when that status was last set, in epoch seconds — the same clock as an event's `ts`;
+omitted when idle, and refreshed by a re-push of the SAME status, so `now - statusChangedAt` is how long
+ago the status was last written — normally the agent's own push, though a pane promotion re-tags the
+indicator and counts too; ephemeral, so it does not survive a restart), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
 `unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
 seen` — omitted when zero), `commandWait` (whether a `--command` session was created with `--wait` to
@@ -532,6 +542,13 @@ appearance automatically; `theme set --dark none` stops tracking. The app defaul
 **restore** — `restore clear` — clear every session's saved foreground command (the
 restore-running-command capture) so the next restart restores plain shells.
 
+**version** — `agtermctl version` — which agterm is serving this socket, as `result.app` (`version`, plus
+`commit` when the build recorded one). App-global: no target, no `--window`, no window need be open, so it
+works as a preflight from a keymap-launched script, which has no `$TERM_PROGRAM_VERSION`. Address the
+socket explicitly (`--socket "$AGTERM_SOCKET"`, or `"$AGT_SOCKET"` in a keymap child): a bare call
+resolves the DEFAULT socket, which may be another app. The same identity is on the tree top level as
+`app`.
+
 ## Displaying an image inline
 
 This skill bundles `scripts/show-image.sh`. It opens an overlay (a real terminal) and renders the
@@ -574,11 +591,13 @@ Full detail, templates, and the exact `gh` commands are in **troubleshooting.md*
 ## Reference files
 
 - **reference.md** — full per-command detail: every flag, the JSON return shapes
-  (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`), error strings, the scratch/overlay/split
+  (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`/`app`), error strings, the scratch/overlay/split
   lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `|` alternatives,
   `{AGT_X}` tokens).
-- **examples.md** — copy-paste agtermctl recipes for common tasks (build a layout, run a program in a
+- **examples.md** — copy-paste agtermctl examples for common tasks (build a layout, run a program in a
   blocking overlay and read its status, type into a fresh session, notify, inspect the tree).
+- **cookbook.md** — how to list, acquire and install the repository's cookbook recipes, and how to read
+  one as reference for a tricky workflow. The recipe list lives in the repo, not here; fetch it.
 - **troubleshooting.md** — diagnosing common problems (keymap editor, custom actions, logs) and the
   bug-issue / feature-Discussion reporting workflow (draft-first, scrub, never post without approval).
 - **scripts/show-image.sh** — bundled helper that displays an image inline in an overlay (see above).

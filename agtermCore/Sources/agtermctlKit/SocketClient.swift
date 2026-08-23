@@ -196,6 +196,10 @@ struct SocketClient {
         if let bookmarks = response.result?.bookmarks {
             return formatBookmarks(bookmarks)
         }
+        if let app = response.result?.app {
+            guard let commit = app.commit, !commit.isEmpty else { return app.version }
+            return "\(app.version) (\(commit))"
+        }
         if let text = response.result?.text {
             return text
         }

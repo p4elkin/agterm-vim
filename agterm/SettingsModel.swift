@@ -63,6 +63,7 @@ final class SettingsModel {
         applySidebarBackgroundShift()
         applySidebarFontSize()
         applyInterfaceFontSize()
+        applyQuickTerminalSizePercent()
         applyBaseFontSize()
         applyAgentStatusColors()
         applyAgentStatusShapes()
@@ -213,6 +214,10 @@ final class SettingsModel {
     func setSidebarBackgroundShift(_ value: Int?) { settings.sidebarBackgroundShift = value; persistAndApply() }
     func setSidebarFontSize(_ value: Double?) { settings.sidebarFontSize = value; persistAndApply() }
     func setInterfaceFontSize(_ value: Double?) { settings.interfaceFontSize = value; persistAndApply() }
+    func setQuickTerminalSizePercent(_ value: Int?) {
+        settings.quickTerminalSizePercent = value
+        persistAndApply()
+    }
     // not a ghostty key, so persistAndApply()'s writeGhosttyConfig() no-ops and no surface reload fires.
     func setRestoreRunningCommand(_ value: Bool?) { settings.restoreRunningCommand = value; persistAndApply() }
     // chrome flag, not a ghostty key: persistAndApply() no-ops the config but rides .agtermAppearanceChanged.
@@ -582,6 +587,10 @@ final class SettingsModel {
         #
         # NOTE: agterm's UI-managed keys (font, theme, background opacity/blur, scroll speed) are set
         # in Settings and always win over this file — set those in Settings, everything else here.
+        #
+        # NOT SUPPORTED: the `ssh-env` and `ssh-terminfo` shell-integration features. They work by
+        # wrapping `ssh` as a call to the `ghostty` CLI absent from agterm's bundle,
+        # so agterm forces them back off. Your other shell-integration-features flags are kept.
 
         """
     }
@@ -620,6 +629,7 @@ final class SettingsModel {
         applySidebarBackgroundShift()
         applySidebarFontSize()
         applyInterfaceFontSize()
+        applyQuickTerminalSizePercent()
         applyBaseFontSize()
         applyAgentStatusColors()
         applyAgentStatusShapes()
@@ -723,6 +733,10 @@ final class SettingsModel {
 
     private func applyInterfaceFontSize() {
         GhosttyApp.shared.setInterfaceFontSize(settings.effectiveInterfaceFontSize)
+    }
+
+    private func applyQuickTerminalSizePercent() {
+        GhosttyApp.shared.setQuickTerminalSizePercent(settings.effectiveQuickTerminalSizePercent)
     }
 
     private func applyBaseFontSize() {
