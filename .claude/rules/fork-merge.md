@@ -1,3 +1,34 @@
+---
+# The merge-danger lists the triage job and the fork-merge-triage skill both read at run time.
+# They live here rather than in the skill so they are versioned with the code they describe.
+#
+# flagged: a conflict here clears the stomach test only when its enclosing declaration is not one of
+# the constructs below. Nothing about a flagged file is an automatic stop; it raises the bar.
+flagged:
+  - "agterm/Commands/CustomCommandRunner.swift"
+  - "agtermCore/Sources/agtermCore/Keymap.swift"
+  - "agtermCore/Sources/agtermCore/BuiltinAction.swift"
+  - "agtermCore/Sources/agtermCore/NormalModeState.swift"
+  - "agtermCore/Sources/agtermCore/KeybindMatcher.swift"
+# constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
+# the hunk looks like. A file listed with no member means the whole file, because it is small enough
+# that subdividing it buys nothing.
+constructs:
+  - "CustomCommandRunner.handleKeyDown"
+  - "CustomCommandRunner.handleNormalModeKey"
+  - "Keymap.parseKeymap"
+  - "Keymap.resolveMapLines"
+  - "Keymap.resolveBuiltinOverrides"
+  - "Keymap.validateBindings"
+  - "Keymap.unboundAfterRestoringStrandedDefaults"
+  - "BuiltinAction"
+  - "NormalModeState"
+  - "KeybindMatcher"
+# declined: files the candidate rule below offered and a human said no to. Only ever appended to by a
+# merger session acting on an explicit answer, never on silence. See "Keeping the lists current".
+declined: []
+---
+
 ## Keeping the fork current with upstream
 
 This fork sits on top of `umputun/agterm` and is kept current by MERGING `upstream/master` in, never by
@@ -50,6 +81,54 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].
+
+### Keeping the lists current
+
+The frontmatter at the top of this file holds three lists, and the triage job and the
+`fork-merge-triage` skill both read them at run time rather than carrying their own copies.
+
+`flagged` and `constructs` are the stomach test's inputs. A flagged file raises the bar for a hunk
+and stops nothing by itself; a hunk whose enclosing declaration is one of the constructs needs a
+person whatever it looks like. `BuiltinAction`, `NormalModeState` and `KeybindMatcher` are named
+whole, at 94, 101 and 76 lines, because subdividing a file that small buys nothing.
+
+**The lists cannot be derived, and three attempts to derive them were measured failing on
+2026-08-23.** The `paths:` frontmatter across `.claude/rules/*.md` declares 127 paths while leaving
+117 fork-modified Swift files undeclared, `NormalModeState.swift` among them. Fork commit density
+ranks the five flagged files 10th, 25th, 28th, 47th and 48th, well below `ControlProtocol.swift`,
+`Session.swift` and `AppStore.swift`, none of which are dangerous — density measures churn. A
+key-path grep is the narrowest of the three and still catches `SidebarRowViews.swift` for naming
+`BuiltinAction` in passing. The property being looked for is "a plausible resolution here silently
+kills behaviour", and git history does not record it.
+
+So a new entry arrives one of two ways, and the second exists because the first has already failed.
+
+**When a feature lands.** That is the only moment anyone knows whether new behaviour is invisible to
+the gates, and the author is already editing `FORK-NOTES.md` — see "The two fork docs" in
+[[release]], which now carries the clause.
+
+**When the job asks.** Every run computes candidates: files the FORK changed since the last merge
+that sit on the key path, minus `flagged`, minus `declined`. A run with an empty remainder says
+nothing.
+
+⚠️ **A candidate has nothing to do with whether anything conflicted.** It asks whether the fork grew
+something that would be dangerous the NEXT time upstream touched it. So the two are independent in
+both directions: a clean merge can carry new candidates, and an ugly merge can carry none. Worse,
+70-odd fork-added files can never conflict at all, because upstream has no version of them — zero
+conflicts and maximum unwatched fork behaviour, the same inversion the silent files show one layer
+up.
+
+⚠️ **`declined` is only ever appended to on an explicit answer, never on silence.** A merger session
+writes it when a person says which candidates matter and which do not, and commits that edit with
+the merge. Nothing may treat an unanswered question as a no: a candidate dismissed by silence is
+the failure this whole mechanism exists to remove.
+
+Because the question rides the report rather than a failure, a green run notifies without stopping.
+The floor is the backstop: once five candidates are unanswered, or one has been waiting three weeks,
+a green run exits 2 instead of pushing, purely to make somebody look. Without it the asking degrades
+into "the job asks when upstream happens to be awkward", which is unrelated to whether the fork grew
+anything dangerous — and the better the triage gets at merging cleanly, the more runs exit 0 and the
+less often the question would ever be seen.
 
 ### Delegating it
 

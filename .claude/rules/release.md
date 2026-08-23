@@ -66,6 +66,12 @@ README or cookbook preset with the real detail — it must not grow into a secon
 The changelog entry is user-facing prose about what you now get, including any trap a user would
 otherwise read as a bug.
 
+⚠️ The same commit also answers one merge question: does this feature add a file to `flagged` in
+[[fork-merge]]'s frontmatter? Landing is the only moment anyone knows, and a feature that touches key
+routing while adding no test under `agtermTests/` is the case that needs it — `make test-app` is the
+only gate compiling that target, so behaviour with no test there is invisible to every gate. Say no
+explicitly rather than skipping the question; the merge job asks again later either way.
+
 Nothing checks this.
 `ci.yml` triggers on `master` and the fork lives on `main`, so no CI job runs on the fork at all, and
 adding one means editing a workflow file that already collides on every upstream merge ([[fork-merge]]).
