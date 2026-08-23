@@ -95,7 +95,7 @@ and no conflict points at it.
 flowchart TD
   U[upstream commits since the merge base] --> T[territory report - which rules files own a file upstream changed]
   U --> M[git merge]
-  M --> F[attention flags - which hunks sit in a guarded file]
+  M --> F[attention flags - which hunks sit in a flagged file]
   F --> A[merger session reads the flags and the territory report first]
   T --> A
   A --> H{does this hunk pass the stomach test?}
@@ -103,8 +103,8 @@ flowchart TD
   H -->|no| L[leave it, and it goes in the brief]
   P --> Z{every hunk resolved?}
   L --> Z
-  Z -->|yes| G2[gates, then push]
-  Z -->|no| B[gates on what was resolved, then the brief]
+  Z -->|yes| C[commit the merge] --> G2[gates, then push - exit 0]
+  Z -->|no| B[merge left open, uncommitted - exit 2, brief]
   G2 --> RP[report]
   B --> RP
 ```
@@ -112,19 +112,25 @@ flowchart TD
 - The territory report is a second input, independent of the conflict set. That is what makes the
   silent files visible.
 - Grading happens per hunk, not per merge. One hard hunk must not hold up eleven easy ones.
-- A guarded file raises the bar for a hunk. It is not a branch of its own, and it never decides the
+- A flagged file raises the bar for a hunk. It is not a branch of its own, and it never decides the
   outcome by itself.
 
 ## The three tiers
 
-| tier | what happens | exit |
+| tier | what the merger session did | exit |
 |---|---|---|
-| proceed | The agent resolves every hunk, says so in the report, the gates run, the merge is pushed. | 0 |
-| resolve and report | The agent resolves what it can with confidence. The gates run. It pushes on green, and the report names what it left alone. | 0 |
-| stop and brief | The hunks that failed the stomach test are left alone. The merge stays on disk. The brief asks Sasha to choose. | 2 |
+| resolved | Every hunk resolved. Merge committed. The job gates it and pushes on green. | 0 |
+| resolved with review | Same, and the report calls out resolutions a person should check afterwards. Still pushes on green. | 0 |
+| stopped | At least one hunk refused. Merge left OPEN on disk, uncommitted. The brief asks Sasha to choose. | 2 |
 
-Sasha chose that the middle tier pushes on green rather than holding. Holding a green merge earns
-nothing the report does not already give, and it turns every routine merge into a chore.
+⚠️ **There is no partial commit, and an earlier draft of this table implied there was.** A merge
+holding an unresolved conflict cannot be committed, so "resolve what you can and leave the rest" is
+not a third outcome — it is the stopped tier. What the middle tier resolves, it resolves fully; what
+it flags, it flags in prose, after the fact.
+
+That is also why the middle tier pushes rather than holding. The only difference between it and the
+top tier is a paragraph in the report, and holding a green merge over a paragraph turns every routine
+merge into a chore. A wrong call stays findable because the report names it.
 
 ## What the script decides, and what the agent decides
 
