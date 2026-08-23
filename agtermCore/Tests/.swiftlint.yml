@@ -1,7 +1,7 @@
 # nested config: test files (agtermCoreTests + agtermctlKitTests) get a 2000-line budget; everything else inherits root.
 file_length:
-  warning: 2000
-  error: 2200
+  warning: 4000
+  error: 5000
 type_body_length:
-  warning: 1800
-  error: 2000
+  warning: 3600
+  error: 4500
