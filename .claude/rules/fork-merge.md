@@ -26,7 +26,23 @@ constructs:
   - "KeybindMatcher"
 # declined: files the candidate rule below offered and a human said no to. Only ever appended to by a
 # merger session acting on an explicit answer, never on silence. See "Keeping the lists current".
-declined: []
+declined:
+  # Offered by the candidate rule on 2026-08-23 and declined, with the reason each time being that
+  # the FORK owns no key-routing behaviour in the file — the rule matched them for naming `Chord`,
+  # `BuiltinAction` or `NSEvent` in passing. GhosttySurfaceView+Input.swift was the near miss: it
+  # really does hold `keyDown` and `isInterruptKeystroke`, but `git diff <merge-base> main` shows the
+  # fork has changed neither, so a bad resolution there cannot kill fork behaviour.
+  - "agterm/Ghostty/GhosttySurfaceView+Input.swift"
+  - "agterm/Views/WindowContentView.swift"
+  - "agterm/Views/WindowContentView+Titlebar.swift"
+  - "agterm/Views/WorkspaceSidebar.swift"
+  - "agterm/Views/SidebarRowViews.swift"
+  - "agterm/Control/ControlServer.swift"
+  - "agterm/Control/ControlServer+AppCommands.swift"
+  - "agtermCore/Sources/agtermCore/AppStore.swift"
+  - "agtermCore/Sources/agtermCore/ControlDispatcher.swift"
+  - "agtermCore/Sources/agtermCore/Session.swift"
+  - "agtermCore/Sources/agtermctlKit/MiscCommands.swift"
 ---
 
 ## Keeping the fork current with upstream
