@@ -232,13 +232,28 @@ struct SessionTests {
     }
 
     @Test func effectiveCwdStaysPrimaryWhileSplitFocused() {
-        // effectiveCwd (new-pane seeding + AGTERM_SESSION_PWD) is NOT focus-aware.
         let session = Session(initialCwd: "/repo")
         session.currentCwd = "/repo/primary"
         session.isSplit = true
         session.splitFocused = true
         session.splitCwd = "/var/log"
         #expect(session.effectiveCwd == "/repo/primary")
+    }
+
+    @Test func cwdForPaneResolvesPaneSpecificDirectory() {
+        let session = Session(initialCwd: "/repo")
+        session.currentCwd = "/repo/primary"
+        session.splitCwd = "/var/log"
+        #expect(session.cwd(for: .left) == "/repo/primary")
+        #expect(session.cwd(for: .scratch) == "/repo/primary")
+        #expect(session.cwd(for: .right) == "/var/log")
+
+        session.splitCwd = nil
+        session.initialSplitCwd = "/var/restored"
+        #expect(session.cwd(for: .right) == "/var/restored")
+
+        session.initialSplitCwd = nil
+        #expect(session.cwd(for: .right) == "/repo/primary")
     }
 
     @Test func agentIndicatorDefaultsToIdle() {

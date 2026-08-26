@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.25.0 - 2026-08-25
+
+### New Features
+
+- the quick terminal can be sized as a share of the screen instead of a fixed ceiling. It was sized `min(90% on each axis, 1100x700 points)`, so past roughly 1222x780 the cap was the only term acting: on a 2560x1440-point display that is 21% of the screen area where the 90% share intends 81%, which meant scrolling sideways through a wide `git diff` with empty space around the panel. Settings ▸ Interface now offers Default plus a discrete 40, 50, 60, 70, 80 or 90 percent, and leaving it unset keeps the old size exactly. Reported in discussion #453 #459 @umputun
+- `agtermctl version` reports which agterm is serving the socket, with no target and no window needed. Its human output also names the resolved path of the `agtermctl` that ran, which catches a stale CLI sitting ahead of the bundled one on `PATH`. The bundled agent skill learns the cookbook in the same release, so an agent asked to list recipes or set one up has something to work from instead of a bare URL #476 @umputun
+- the tree's session node reports `statusChangedAt`, so anything reasoning about how old a status glyph is stops keeping shadow state of its own. Epoch seconds on the same clock as `ControlEvent.ts`, and it records when the status was last WRITTEN rather than when it last changed, so a hook re-asserting `active` on every tool event refreshes it #465 @umputun
+
+### Improved
+
+- a cookbook recipe putting two coding agents in one split, each typing a line straight into the other's composer, so you watch both halves of the exchange without relaying anything by hand #466 @umputun
+- a cookbook recipe giving GitHub Copilot CLI the same per-session sidebar glyphs the installer already wires up for Claude Code, through Copilot's own hook support #464 @rychkov
+- the macOS permission story is documented and its prompts say why. The troubleshooting guide explains the seven entitlement-gated services and what a grant actually covers, then separately covers the Files & Folders family, a different mechanism a user whose `ls ~/Downloads` failed had reason to read as unfixable. macOS asks for Desktop, Documents, Downloads, removable and network volumes in agterm's own words now too: the app already explained its other privacy prompts, and those five previously fell back to Apple's generic copy 1f9d673 #470 #474 @umputun
+- the docs teach how to extend agterm rather than only documenting the pieces: a four-step section between Install and the concepts tour, each step adding one building block, ending at asking an agent that carries the bundled skill. A file browser is one keymap line, and nothing in the docs used to put that within reach #471 @umputun
+- the backlog-picker recipe stopped offering to delete the records whose whole job is stopping a rediscovery. Its rules told the agent to drop any item nobody will ever do, which is what a `worth: no` record is, and it named a field as the dedupe key that the same file calls stale. It also briefs the decision before asking now. Reported in #478 a322fa6 @umputun
+
+### Bug Fixes
+
+- `ssh` inside agterm died the moment it started for anyone who had turned on ghostty's `ssh-env` or `ssh-terminfo` shell integration, a regression in 0.24.0. Both features work by replacing `ssh` with a wrapper calling a `ghostty` CLI that agterm's bundle does not carry. agterm now loads both flags off after the user's config, so the wrapper is never defined. Reported in #463 #475 @umputun
+- the agent-status hooks stopped working silently whenever the app bundle moved after they were installed, with installing from the mounted DMG and then ejecting it the easy way in. The installed wrapper baked an absolute path and never checked it still existed, and it suppresses output and exits 0 by design, so the only symptom was sidebar glyphs quietly not appearing. It now tests the baked path and falls back to `PATH` #473 @bot-rogerthat
+- a NUL byte in `session.type` or `quick.type` text truncated the injection and still answered ok. Worse than silent: the text run and its Return are separate keystrokes, so when a newline followed that run, the shortened line still got its Return and ran. Both commands reject it now #458 @umputun
+- restoring a captured running command could leave a pane at a continuation prompt or run a different command. The line is typed through `initial_input`, so control bytes in it reach the shell's line editor before anything parses them as a command. A capture carrying one is refused instead of replayed #457 @umputun
+- a custom command or chord fired from the right split pane exported the primary pane's working directory as `$AGT_SESSION_PWD`, and spawned its child there #482 @vladislav-yevtushenko
+- the seeded `keymap.conf`'s Lazygit example omitted `--target`, so the overlay it opens could land in whatever session you had switched to by the time the command reached the server rather than the one the chord fired in #474 @umputun
+
 ## v0.24.0 - 2026-08-17
 
 ### New Features

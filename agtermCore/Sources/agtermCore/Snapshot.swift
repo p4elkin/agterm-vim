@@ -166,8 +166,9 @@ public struct SessionSnapshot: Codable, Equatable, Sendable {
     /// Whether the session is parked — kept as a row with its agent killed; nil (missing key) = not parked,
     /// and false is omitted on write so a tree with no parked row serializes as it did before the field.
     public var parked: Bool?
-    /// The main pane's foreground command (full argv) at the last clean quit, re-run on restore when
-    /// `AppSettings.restoreRunningCommand` is on. nil at a shell prompt, or with the feature off.
+    /// The main pane's foreground command (full argv) as of the last clean quit or the last
+    /// `restore.capture`, re-run on restore when `AppSettings.restoreRunningCommand` is on. nil at a shell
+    /// prompt, or with the feature off, which gates every capture site.
     public var foregroundCommand: [String]?
     /// The split (right) pane's foreground command (full argv), the split analogue of `foregroundCommand`.
     public var splitForegroundCommand: [String]?

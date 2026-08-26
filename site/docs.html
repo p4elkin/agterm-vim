@@ -2508,8 +2508,15 @@
               >) is the place to customize agterm. It sits next to
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span> and gets the same
               treatment: a fully commented starter file is written on first launch, so a fresh one changes nothing. It is always loaded,
-              and is scoped to agterm so the standalone Ghostty.app never reads it. Put any ghostty config key there — the keys
-              agterm manages from Settings (font, theme, opacity, blur, scroll speed) still win. A common use:
+              and is scoped to agterm so the standalone Ghostty.app never reads it. Put any ghostty config key there. Values agterm emits
+              from Settings use <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">font-family</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">font-size</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">theme</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">background-opacity</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">background-blur</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">mouse-scroll-multiplier</span>, and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">right-click-action</span>. They load last,
+              so they win over matching values in this file. The last two are emitted even when their controls use the defaults. A common use:
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">macos-option-as-alt = true</span>. The
               full key reference is at <a href="https://ghostty.org/docs/config" style="color: #6d82f3">ghostty.org/docs/config</a>.
               Two values in it do not apply here:
@@ -3030,7 +3037,9 @@ command = "'/Users/you/.config/agterm/agent-status/agterm-codex-status.sh' stop"
                 Only a single-process command restores faithfully; a command whose name or arguments carry a control character
                 starts a plain shell instead, since the restored line is typed and the line editor would read that byte as an
                 editing key rather than text, and so does one carrying bytes that were not valid UTF-8, which are captured
-                lossily and would replay a different argument; a force-quit or crash captures nothing, and a capture replays
+                lossily and would replay a different argument; a force-quit or crash captures nothing unless
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl restore capture</span> ran
+                beforehand, and a capture replays
                 exactly once, since the launch that arms it clears it from the state file; and the multiplexers in
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">restore-denylist.conf</span>
                 (seeded with tmux/screen/zellij) start fresh. That file is yours to edit: agterm writes a commented starter at

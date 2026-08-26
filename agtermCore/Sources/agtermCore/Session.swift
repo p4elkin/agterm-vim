@@ -460,9 +460,19 @@ public final class Session: Identifiable {
     }
 
     /// The live `currentCwd` once a PWD report arrived, else `initialCwd`. Always the PRIMARY pane's, never
-    /// focus-aware (cf. `focusedCwd`): it seeds new split/overlay/quick terminals and backs
-    /// `AGTERM_SESSION_PWD`, which must stay stable regardless of focus.
+    /// focus-aware (cf. `focusedCwd`): it seeds new split, overlay, scratch and quick terminals. A custom
+    /// command's `AGT_SESSION_PWD` resolves through `cwd(for:)`, so the right pane's value can differ.
     public var effectiveCwd: String { currentCwd ?? initialCwd }
+
+    /// The working directory for a given pane role: the split pane's while targeting `.right`, else the primary's.
+    public func cwd(for pane: CommandContext.Pane) -> String {
+        switch pane {
+        case .right:
+            return splitCwd ?? initialSplitCwd ?? effectiveCwd
+        case .left, .scratch:
+            return effectiveCwd
+        }
+    }
 
     /// The focused pane's surface: the split (right) while it has focus and exists, else the primary. With the
     /// split hidden the detail pane maximizes this one and focus helpers target it, so typing always reaches

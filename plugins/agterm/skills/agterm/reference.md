@@ -1209,7 +1209,8 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 `$AGT_*` form for any of them:
 
 - `{AGT_SESSION_NAME}` / `$AGT_SESSION_NAME` — the session's display name (the focused pane's terminal title, remote-settable via OSC).
-- `{AGT_SESSION_PWD}` / `$AGT_SESSION_PWD` — the focused pane's working directory.
+- `{AGT_SESSION_PWD}` / `$AGT_SESSION_PWD` — the working directory of the pane the command fired from;
+  the scratch terminal reports the main pane's, since it tracks no cwd of its own.
 - `{AGT_SELECTION}` / `$AGT_SELECTION` — the current selection.
 - `{AGT_PANE}` / `$AGT_PANE` — the pane the command fired from: `left` (main), `right` (split), or
   `scratch` (the session's scratch terminal). Feed it back as `session type --pane "$AGT_PANE"` to type
@@ -1248,8 +1249,9 @@ as the GUI's File ▸ Reload Config menu/palette item, which posts a warning ban
 ghostty config and the place to put agterm overrides/customizations. It is ALWAYS loaded. The app builds
 its terminal config in order, each source overriding the one before: ghostty's bundled defaults, then
 your global `~/.config/ghostty/config` (OFF by default — opt in with Settings ▸ General ▸ Use my global
-Ghostty config), then `<config dir>/ghostty.conf`, then agterm's own Settings (font, theme, background
-opacity/blur, scroll speed), which load last and win for the keys the UI manages. The scoped file is
+Ghostty config), then `<config dir>/ghostty.conf`, then the values agterm emits from Settings, which
+load last and win over matching values in `ghostty.conf`. The current list of those keys is at
+https://agterm.com/docs#ghostty. The scoped file is
 agterm-only; the standalone Ghostty.app never reads it. agterm is self-contained by default, so a config
 written for Ghostty.app does not silently change agterm — put agterm overrides in `ghostty.conf` (e.g.
 `macos-option-as-alt = true`); the full reference is at https://ghostty.org/docs/config. Editing it from
@@ -1285,13 +1287,31 @@ kept); over the socket `theme set` is the commit, with no preview.
 
 ## restore
 
+`agtermctl restore capture` — capture every open pane's live foreground command NOW, into the same slot the
+quit-time capture fills, and persist it. For the exit that never reaches `applicationWillTerminate`: a force
+quit, a crash, a hard reset, a power loss, all of which today leave every pane restoring a plain shell. (A
+shutdown, restart or logout is not one of them: that path quits the app normally and captures by itself.)
+Run it from a scheduled job or bind it, and an exit nobody was there for restores like a deliberate
+quit. Consumption is unchanged — the next launch arms each captured command once and clears it. App-global
+(no `--window`), prints `count`, the number of panes it captured a command for (main and shown split count
+one each). With the **Restore running commands on restart** setting off it captures nothing and returns an
+error saying so: nothing would replay the capture, and it would go stale where a `session.restore` pin
+would keep waiting for the setting. A capture is also only as fresh as its last run: a pager or a build that
+has finished since still re-runs after a crash, which `restore clear` drops wholesale and
+`restore-denylist.conf` prevents per program. Typed at a prompt the command records ITSELF, since while it
+runs it is that pane's foreground process and the pane comes back running `agtermctl restore capture` (which
+prints its count and captures itself again). Bind it or schedule it rather than running it by hand:
+`restore clear` is app-global, so it is no per-pane undo.
+
 `agtermctl restore clear` — clear every session's saved CAPTURED foreground command and persist, so the
 next restart restores plain shells for those panes (not whatever each pane was running). It does NOT clear
 a `session.new --command` session's own command (`initialCommand`, the durable creation identity), which
 still re-runs on restore when the setting is on. This is the counterpart to the
 opt-in **Restore running commands on restart** setting: that setting captures each pane's foreground
 command at a clean quit and re-runs it on relaunch; `restore clear` wipes those saved commands now
-(also closing the force-quit re-fire window). App-global (no `--window`), prints `ok`.
+(also closing the force-quit re-fire window). App-global (no `--window`), prints `ok`. Like `restore capture`
+it acknowledges only a save that landed: if any window's write fails it reports that at least one window
+failed to save, since those captures are still on disk and nothing reads those slots back.
 
 Which programs are NOT re-run is controlled by `restore-denylist.conf` in the config directory (one
 command name per line, seeded with the terminal multiplexers `tmux`/`screen`/`zellij`). It is a plain

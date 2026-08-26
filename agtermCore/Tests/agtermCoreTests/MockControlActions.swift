@@ -97,6 +97,7 @@ final class MockControlActions: ControlActions {
         case pickResult(target: String, window: String?)
         case pickCancel(target: String, window: String?)
         case restoreClear
+        case restoreCapture
     }
 
     var calls: [Call] = []
@@ -168,6 +169,7 @@ final class MockControlActions: ControlActions {
     var nextPickResultResponse = ControlResponse(ok: true)
     var nextPickCancelResponse = ControlResponse(ok: true)
     var nextRestoreClearResponse = ControlResponse(ok: true)
+    var nextRestoreCaptureResponse = ControlResponse(ok: true)
     var nextSessionRestoreResponse = ControlResponse(ok: true)
     var nextSessionMarkResponse = ControlResponse(ok: true)
     var nextSessionBookmarkAddResponse = ControlResponse(ok: true)
@@ -660,5 +662,10 @@ final class MockControlActions: ControlActions {
     func clearRestoreCommands() -> ControlResponse {
         calls.append(.restoreClear)
         return nextRestoreClearResponse
+    }
+
+    func captureRestoreCommands() -> ControlResponse {
+        calls.append(.restoreCapture)
+        return nextRestoreCaptureResponse
     }
 }

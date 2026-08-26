@@ -16,7 +16,7 @@ agtermctl window list --json # windows, with open/active flags
 agtermctl tree --json | jq -r '.result.tree.workspaces[].sessions[] | "\(.name): \(.foreground // "shell")"'
 ```
 
-## Reset the restore-on-restart commands
+## Capture or reset the restore-on-restart commands
 
 The opt-in "Restore running commands on restart" setting saves each pane's foreground command at quit.
 Clear those saved commands so the next launch restores plain shells:
@@ -24,6 +24,16 @@ Clear those saved commands so the next launch restores plain shells:
 ```bash
 agtermctl restore clear
 ```
+
+Or capture them now, so an exit that never reaches a clean quit (a force quit, a crash, a hard reset)
+restores like one. It needs the setting on, and answers with the number of panes it captured:
+
+```bash
+agtermctl restore capture
+```
+
+Use a keybind or a scheduled job rather than typing it at a prompt: run by hand it records ITSELF, being
+that pane's foreground process while it runs, and `restore clear` is app-global so it is no per-pane undo.
 
 ## Pin what a pane restores (per-session override)
 
@@ -994,8 +1004,8 @@ agtermctl config reload                 # apply it; prints the diagnostic count 
 ```
 
 `ghostty.conf` is scoped to agterm and overrides the bundled defaults and your global
-`~/.config/ghostty/config`; agterm's own Settings (font, theme, opacity, scroll) still win. Full key
-reference: https://ghostty.org/docs/config
+`~/.config/ghostty/config`; the values agterm emits from Settings load last and win over matching values
+there. Current list: https://agterm.com/docs#ghostty. Full key reference: https://ghostty.org/docs/config
 
 ## Set the terminal theme
 

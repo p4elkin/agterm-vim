@@ -112,7 +112,8 @@ paths:
 - `isSplit` means both panes are shown, `hasSplit` means the second shell exists, `splitAxis` chooses
   left/right or top/bottom, and `splitFocused` chooses focus. Split title/cwd feed focus-aware display name
   and focused cwd based on `splitFocused`, even hidden.
-  `effectiveCwd` remains primary for new panes and `AGTERM_SESSION_PWD`; `activeSurface` follows focus.
+  `effectiveCwd` remains primary and seeds new terminals; a custom command's `AGT_SESSION_PWD` resolves
+  through `cwd(for:)`. `activeSurface` follows focus.
 - Creating a split focuses right. Hiding retains both shells and shows the focused pane maximized;
   reshown splits preserve focus. `closePrimaryPane` promotes right into primary with cwd/title/foreground
   command; `closeSplitPane` keeps primary when both exist and otherwise closes the session.

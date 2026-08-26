@@ -154,6 +154,9 @@ public protocol ControlActions {
     /// Cancel a native picker. The host owns window resolution, registry lookup, and dismissal.
     func cancelPick(_ target: String, window: String?) -> ControlResponse
     func clearRestoreCommands() -> ControlResponse
+    /// Capture every open pane's foreground command now, the same read `applicationWillTerminate` does. The
+    /// host owns the `sysctl` read, the save, and the count it reports back.
+    func captureRestoreCommands() -> ControlResponse
 }
 
 /// The parsed `session.pairing` update: which field to touch and what to set it to, or that it should be
@@ -284,8 +287,8 @@ public struct ControlDispatcher {
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
-                .sidebarCollapse, .sidebarParked, .normalMode, .restoreClear, .sessionPairing,
-                .overlayRedirectToggle, .version:
+                .sidebarCollapse, .sidebarParked, .normalMode, .restoreClear, .restoreCapture,
+                .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
@@ -827,6 +830,8 @@ public struct ControlDispatcher {
             return actions.setNormalMode(mode)
         case .restoreClear:
             return actions.clearRestoreCommands()
+        case .restoreCapture:
+            return actions.captureRestoreCommands()
         case .sessionPairing:
             return dispatchSessionPairing(request)
         case .overlayRedirectToggle:

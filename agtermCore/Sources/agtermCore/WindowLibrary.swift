@@ -551,7 +551,17 @@ public final class WindowLibrary {
     /// Flushes every open window's store — the quit-time flush persisting cwd changes made since the last
     /// structural mutation.
     public func saveAllOpen() {
-        for store in stores.values { store.save() }
+        saveAllOpenChecked()
+    }
+
+    /// `saveAllOpen()` that REPORTS whether every window's write landed, for a caller whose acknowledgement
+    /// must not outrun the disk. Every store is attempted before the verdict, so one unwritable window does
+    /// not skip the others. Same shape as `AppStore.saveChecked` one layer down.
+    @discardableResult
+    public func saveAllOpenChecked() -> Bool {
+        var allLanded = true
+        for store in stores.values where !store.saveChecked() { allLanded = false }
+        return allLanded
     }
 
     /// Finalizes any grace-period session/workspace closes in open windows before a window/app teardown.
