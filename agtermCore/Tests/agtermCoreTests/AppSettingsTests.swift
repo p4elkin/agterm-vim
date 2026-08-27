@@ -505,6 +505,49 @@ struct AppSettingsTests {
         #expect(legacy.rightClickPaste == nil)
     }
 
+    @Test func cursorStyleIsAGhosttyKeyEmittedOnlyWhenPicked() throws {
+        // "From config" emits nothing, so a hand-written ghostty.conf `cursor-style` still decides.
+        #expect(AppSettings().cursorStyle == nil)
+        #expect(AppSettings().effectiveCursorStyle == nil)
+        #expect(!AppSettings().ghosttyConfigLines().contains { $0.hasPrefix("cursor-style") })
+        // ghostty's own wire vocabulary, so the set and the emitted spelling are pinned as literals here
+        // rather than derived from the enum a typo would carry into both sides of the comparison.
+        #expect(AppSettings.CursorStyle.allCases.map(\.rawValue) == ["block", "bar", "underline"])
+        #expect(AppSettings(cursorStyle: "block").ghosttyConfigLines().contains("cursor-style = block"))
+        #expect(AppSettings(cursorStyle: "bar").ghosttyConfigLines().contains("cursor-style = bar"))
+        #expect(AppSettings(cursorStyle: "underline").ghosttyConfigLines().contains("cursor-style = underline"))
+        for style in AppSettings.CursorStyle.allCases {
+            let settings = AppSettings(cursorStyle: style.rawValue)
+            #expect(settings.effectiveCursorStyle == style)
+            #expect(settings.ghosttyConfigLines().contains("cursor-style = \(style.rawValue)"))
+            let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+            #expect(decoded == settings)
+        }
+        // block_hollow is a valid ghostty shape the picker deliberately does not offer, so it resolves
+        // like any unoffered value: back to the config chain, never emitted from settings.
+        for raw in ["block_hollow", "spinner"] {
+            #expect(AppSettings(cursorStyle: raw).effectiveCursorStyle == nil)
+            #expect(!AppSettings(cursorStyle: raw).ghosttyConfigLines().contains { $0.hasPrefix("cursor-style") })
+        }
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.cursorStyle == nil)
+        #expect(legacy.effectiveCursorStyle == nil)
+    }
+
+    @Test func cursorBlinkCarriesGhosttysThreeStates() throws {
+        // nil is not "off": ghostty blinks AND keeps honoring DEC mode 12, which either explicit key kills.
+        #expect(AppSettings().cursorBlink == nil)
+        #expect(!AppSettings().ghosttyConfigLines().contains { $0.hasPrefix("cursor-style-blink") })
+        #expect(AppSettings(cursorBlink: true).ghosttyConfigLines().contains("cursor-style-blink = true"))
+        #expect(AppSettings(cursorBlink: false).ghosttyConfigLines().contains("cursor-style-blink = false"))
+        for value: Bool? in [nil, true, false] {
+            let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(cursorBlink: value)))
+            #expect(decoded.cursorBlink == value)
+        }
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.cursorBlink == nil)
+    }
+
     @Test func newSessionDirectoryRoundTripsAndIsNotAConfigLine() throws {
         let original = AppSettings(newSessionDirectory: "custom", newSessionCustomDirectory: "/tmp/work")
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))

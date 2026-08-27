@@ -209,6 +209,39 @@ final class SettingsUITests: XCTestCase {
                       "selecting Normal should persist toolbarMode=normal to settings.json")
     }
 
+    func testCursorStyleAndBlinkPickersPersist() throws {
+        let picker = settingsControl(tab: "Appearance", control: "settings-cursor-style")
+
+        picker.click()
+        let bar = app.menuItems["Bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the cursor dropdown should offer a Bar item")
+        bar.click()
+        XCTAssertTrue(poll { self.settingsValue("cursorStyle") == "bar" },
+                      "selecting Bar should persist cursorStyle=bar to settings.json")
+
+        picker.click()
+        let shapeDefault = app.menuItems["Default"]
+        XCTAssertTrue(shapeDefault.waitForExistence(timeout: 5), "the cursor dropdown should offer a Default item")
+        shapeDefault.click()
+        XCTAssertTrue(poll { self.settingsObject()?["cursorStyle"] == nil },
+                      "selecting Default should remove the cursorStyle key from settings.json")
+
+        let blink = settingsControl(tab: "Appearance", control: "settings-cursor-blink")
+        blink.click()
+        let steady = app.menuItems["Steady"]
+        XCTAssertTrue(steady.waitForExistence(timeout: 5), "the blink dropdown should offer a Steady item")
+        steady.click()
+        XCTAssertTrue(poll { self.settingsBool("cursorBlink") == false },
+                      "selecting Steady should persist cursorBlink=false")
+
+        blink.click()
+        let blinkDefault = app.menuItems["Default"]
+        XCTAssertTrue(blinkDefault.waitForExistence(timeout: 5), "the blink dropdown should offer a Default item")
+        blinkDefault.click()
+        XCTAssertTrue(poll { self.settingsObject()?["cursorBlink"] == nil },
+                      "selecting Default should remove the cursorBlink key from settings.json")
+    }
+
     func testQuickTerminalSizePickerPersists() throws {
         let picker = settingsControl(tab: "Interface", control: "settings-quick-terminal-size")
 

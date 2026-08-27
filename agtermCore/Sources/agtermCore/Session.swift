@@ -681,12 +681,20 @@ public final class Session: Identifiable {
         }
     }
 
-    /// Drops the unconsumed CAPTURE payloads only, leaving the `session.restore` pins — persisted and
-    /// pending — armed. What `restore.clear` needs: it clears captures, and the launch arms them here
-    /// rather than in the persisted fields, so clearing those alone would leave a replay running.
+    /// Drops the unconsumed CAPTURE payloads only, leaving the persisted and pending `session.restore` pins
+    /// armed. The pending half of `clearCapturedForegroundCommands()`; public because agterm-linux calls it.
     public func clearPendingForegroundCommands() {
         pendingForegroundCommand = nil
         pendingSplitForegroundCommand = nil
+    }
+
+    /// Drops the captured foreground commands whole: the persisted pair AND the unconsumed pending pair.
+    /// `restore.clear` and a non-last window close both need exactly this, over different session sets.
+    /// `.claude/rules/settings.md` covers why the persisted fields cannot be dropped on their own.
+    public func clearCapturedForegroundCommands() {
+        foregroundCommand = nil
+        splitForegroundCommand = nil
+        clearPendingForegroundCommands()
     }
 
     /// Drops every unconsumed bootstrap payload — both override pins and both captured commands — leaving

@@ -163,6 +163,10 @@ C-boundary concurrency before changing the bridge.
   `agtermCore`; keep the app target a side-effect adapter, continuing the #78 hoist series. Control uses `ControlDispatcher` plus
   `ControlActions`, with unmigrated commands returning nil to the app switch. Installers, status sound,
   and watermark follow the same split.
+- `agtermCore` is a `.library` product consumed by the `agterm-linux` fork, so a `public` symbol may have
+  a caller outside this repo and narrowing it can break that build.
+  GitHub code search excludes forks by default; use `fork:true` or inspect a clone before concluding no
+  downstream caller exists. The app target has no downstream consumer.
 - `GhosttyCallbacks` is `@unchecked Sendable`, not `@MainActor`. C closures capture nothing and reach
   `GhosttyApp.shared`. Copy `char*` before hopping; every main-actor touch uses
   `DispatchQueue.main.async`.
