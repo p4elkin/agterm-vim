@@ -114,6 +114,8 @@ Check, in order:
 - **The pane resolved to the scratch, or you pinned `--pane right` on a session with no split.** Both are
   rejected at set time (`the scratch terminal is never restored` / `session has no split`), so nothing was
   pinned — re-read the command's output.
+- **The pin landed on the other pane.** Pass `--json` when setting the override and compare `result.pane`
+  with the pane you meant.
 - **It already fired once this launch.** The override is consumed once per launch: after it runs, a second
   surface for the same pane in the SAME session (e.g. opening a fresh split with ⌘D) gets a plain shell. It
   is still pinned — `tree` reports `restoreCommand` — and fires again on the NEXT restart.
@@ -205,6 +207,31 @@ mishandles it. agterm emits correct paired focus-in/focus-out and is already mac
 refocus click is not forwarded into the pty), so the terminal is not at fault. Tracked as
 anthropics/claude-code#72188 (mouse-click variant #72273). Workaround: answer before switching away, or
 `Esc` the stuck prompt and let it re-ask.
+
+### "Every session restores to the directory it was created in"
+
+NOT an agterm bug when a shell wrapper is in play. agterm learns a session's cwd only from OSC 7, reported
+by Ghostty's shell integration, which is injected into the shell agterm spawns and does NOT survive that
+shell replacing itself. A `.zshrc` that `exec`s a wrapper (Amazon Q CLI, Kiro CLI, Fig) replaces it before
+the first prompt, so `currentCwd` is never written and every cwd consumer falls back to the creation
+directory: restore, the directory under the session name, `session reveal`, and `{AGT_SESSION_PWD}`.
+Confirm with `cd` then `agtermctl tree --json` — the session's `cwd` does not follow the `cd`. Fix in
+`.zshrc`, below the block that replaced the shell:
+`[[ -n "$GHOSTTY_RESOURCES_DIR" ]] && builtin source "$GHOSTTY_RESOURCES_DIR/shell-integration/zsh/ghostty-integration"`
+(a no-op where it already loaded; bash, fish and nushell have their own files in that directory).
+
+Three neighbouring cases share the cause; the block covers all but the last. `exec zsh` at a prompt
+replaces a shell that already reported, so the cwd FREEZES at that moment rather than never being set —
+the replacement reads `.zshrc`, so the block fixes it. `sudo -E zsh` and other nested shells are children,
+not replacements: the cwd stays frozen while one runs, then the outer shell resumes at its next prompt. A shell inside tmux
+needs the block AND a tmux setting — tmux is a terminal rather than a passthrough, so the pane shell's
+report reaches tmux, which forwards it on only with its `osc7` terminal feature on, and its default
+`terminal-features` does not grant that to `xterm-ghostty`: add
+`set -as terminal-features ',xterm-ghostty:osc7'` to `~/.tmux.conf` and restart the tmux server.
+
+Separate limit, unrelated to the block: the program runs on the wrapper's inner pty, which agterm cannot
+see into, so the capture never reaches it and restore cannot bring that program back — pin it with
+`session restore '<command>'` instead.
 
 ### "⌘-hover does not underline links inside tmux or vim"
 

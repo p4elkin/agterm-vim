@@ -596,6 +596,11 @@ error keeps those names for compatibility.
   `$AGTERM_PANE_ID`) resolves the pane's LIVE slot, so a hook in a promoted-then-re-split pane still pins
   the right one; UNLIKE `session status`, a token that does not resolve is an error unless `--pane` is also
   given as the fallback (a silent main-pane default here would overwrite the wrong pane).
+  Every success names the pane it wrote in `result.pane` (`left`/`right`), which is the read-back for
+  `--pane-id`: a token names a surface rather than a role, so without it the caller has to re-read the tree
+  and diff `restoreCommand` against `splitRestoreCommand` to find out where the pin landed. Only an app
+  predating the field omits it from a successful `session.restore`; treat absence as UNKNOWN, never as the
+  default `left` pane.
   The pinned value is SHELL CODE: it persists in the window's state file (`windows/<id>.json`), is readable
   via `tree`, and may enter shell history when it runs — so it must not carry secrets, and only
   safely-interpolated values (a UUID-shaped session id) belong in it. It persists immediately, so a
@@ -635,9 +640,10 @@ error keeps those names for compatibility.
   flashes open then vanishes and `overlay result` reports 127; give an absolute path or wrap in
   `"zsh -lc '…'"`.
   Full-size by default (hides the session); `--size-percent N` (1–100) makes it a floating framed panel
-  with the session visible behind. **By default the overlay does NOT switch the active session** — full
-  and floating both open on `--target` and run their program in the background, appearing when the user
-  visits that session. **Pass `--follow` to select the target after opening** (a no-op if it is already
+  with the session visible behind, and a percent outside that range is an error. **By default the
+  overlay does NOT switch the active session** — full and floating both open on `--target` and run
+  their program in the background, appearing when the user visits that session. **Pass `--follow` to
+  select the target after opening** (a no-op if it is already
   active); use it when you want the user pulled to the overlay, omit it to open quietly. `--background-color #rrggbb` gives the overlay pane its own solid
   background color, independent of the session's own `session background color` (nil = the default theme
   background); it honors the Settings window translucency, captured when the overlay opens. `--wait` keeps the overlay open after the command exits (press a key
@@ -1362,6 +1368,8 @@ a terminal surface's.
 `session.hud.open requires a message` (also for a blank one) / `session.hud.update requires a message` /
 `hud text must not contain control characters` /
 `hud message too long (max 256 characters)` / `hud detail too long (max 256 characters)` /
+`session.overlay.open: --size-percent must be 1...100` /
+`session.overlay.resize: --size-percent must be 1...100` /
 `session.hud.open: --size-percent must be 1...100` /
 `hud helper is not bundled in this build` / `could not write the hud message` /
 `invalid position: <value> (top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right|top|bottom)`

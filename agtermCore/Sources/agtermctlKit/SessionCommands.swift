@@ -22,6 +22,15 @@ struct Session: ParsableCommand {
                       Overlay.self, Hud.self]
     )
 
+    /// The overlay and HUD arms share one accepted range for `--size-percent`, so the gate belongs to
+    /// neither. `1...100` is the input domain both document; the narrower bound for rendering a HUD is a
+    /// presentation limit applied app-side, not a rejection.
+    static func validateSizePercent(_ sizePercent: Int?) throws {
+        if let sizePercent, !(1...100).contains(sizePercent) {
+            throw ValidationError("--size-percent must be between 1 and 100")
+        }
+    }
+
     struct New: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Create a session.")
         @Option(name: .long, help: "Working directory (defaults to $HOME).") var cwd: String?
@@ -709,6 +718,7 @@ struct Session: ParsableCommand {
                 if pane != nil, sizePercent != nil {
                     throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
                 }
+                try Session.validateSizePercent(sizePercent)
             }
 
             func makeRequest() throws -> ControlRequest {
@@ -764,9 +774,7 @@ struct Session: ParsableCommand {
             func validate() throws {
                 if full && sizePercent != nil { throw ValidationError("--full cannot be combined with --size-percent") }
                 if !full && sizePercent == nil { throw ValidationError("provide --size-percent PERCENT or --full") }
-                if let sizePercent, !(1...100).contains(sizePercent) {
-                    throw ValidationError("--size-percent must be between 1 and 100")
-                }
+                try Session.validateSizePercent(sizePercent)
             }
 
             func makeRequest() throws -> ControlRequest {
@@ -882,12 +890,6 @@ struct Session: ParsableCommand {
             return style ?? (spinner ? HudSpinner.defaultStyle.rawValue : nil)
         }
 
-        static func validateSizePercent(_ sizePercent: Int?) throws {
-            if let sizePercent, !(1...100).contains(sizePercent) {
-                throw ValidationError("--size-percent must be between 1 and 100")
-            }
-        }
-
         struct Open: RequestCommand {
             static let configuration = CommandConfiguration(
                 abstract: "Post a message panel over the session; the session keeps focus and stays typable.")
@@ -927,7 +929,7 @@ struct Session: ParsableCommand {
                 try Hud.validateTextColor(textColor)
                 try Hud.validatePosition(position)
                 try Hud.validateSpinnerStyle(spinnerStyle)
-                try Hud.validateSizePercent(sizePercent)
+                try Session.validateSizePercent(sizePercent)
             }
 
             func makeRequest() throws -> ControlRequest {
@@ -970,7 +972,7 @@ struct Session: ParsableCommand {
                 try Hud.validateTextColor(textColor)
                 try Hud.validatePosition(position)
                 try Hud.validateSpinnerStyle(spinnerStyle)
-                try Hud.validateSizePercent(sizePercent)
+                try Session.validateSizePercent(sizePercent)
             }
 
             func makeRequest() throws -> ControlRequest {

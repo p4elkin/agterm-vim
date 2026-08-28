@@ -816,6 +816,13 @@ struct CommandsTests {
         #expect(try request(["session", "overlay", "open", "htop", "--size-percent", "70"]) == expected)
     }
 
+    @Test func sessionOverlayOpenRejectsBadSizePercent() {
+        #expect(validationMessage(["session", "overlay", "open", "cmd", "--size-percent", "0"])
+            == "--size-percent must be between 1 and 100")
+        #expect(validationMessage(["session", "overlay", "open", "cmd", "--size-percent", "150"])
+            == "--size-percent must be between 1 and 100")
+    }
+
     @Test func sessionOverlayOpenWithBackgroundColor() throws {
         // --background-color maps to ControlArgs.color (shared field, disambiguated by the command).
         let expected = ControlRequest(cmd: .sessionOverlayOpen, target: "active",
@@ -955,6 +962,8 @@ struct CommandsTests {
 
     @Test func sessionOverlayOpenRejectsPaneWithSizePercent() {
         #expect(validationMessage(["session", "overlay", "open", "cmd", "--pane", "left", "--size-percent", "70"])
+            == "--pane cannot be combined with --size-percent (pane overlays are always full)")
+        #expect(validationMessage(["session", "overlay", "open", "cmd", "--pane", "left", "--size-percent", "150"])
             == "--pane cannot be combined with --size-percent (pane overlays are always full)")
     }
 

@@ -57,3 +57,7 @@ protocol tests all carry it, and a state-setting command must expose its result 
 `site/docs.html` is the canonical user guide, `site/commands.html` the canonical command reference,
 and the bundled agent skill under `plugins/agterm/skills/agterm/` is the source for installed copies.
 A change to the control API, the keymap or the model that updates only some of those is a real finding.
+
+For contributor PRs, `site/index.html` and `CHANGELOG.md` are maintainer-owned exceptions. The home
+page is marketing copy; the changelog is written during release. Do not report their absence. Flag
+edits to either file for maintainer review.

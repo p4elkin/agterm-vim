@@ -739,4 +739,41 @@ final class ControlServerSessionActionsTests: XCTestCase {
         XCTAssertTrue(resized.ok, resized.error ?? "")
         XCTAssertEqual(bodyText(session), body, "a resize must rewrite the header the helper reads")
     }
+    func testRestoreReportsThePaneItActuallyWrote() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        session.hasSplit = true
+        let splitSurface = SessionRestoreTestSurface(paneToken: "split-token")
+        session.splitSurface = splitSurface
+
+        let toSplit = server.setSessionRestore(
+            session.id.uuidString, window: nil,
+            update: ControlSessionRestoreUpdate(pin: .pin("echo split"), pane: nil,
+                                                paneID: splitSurface.paneToken))
+        XCTAssertTrue(toSplit.ok, toSplit.error ?? "")
+        XCTAssertEqual(toSplit.result?.pane, "right")
+        XCTAssertEqual(session.splitRestoreCommand, "echo split")
+
+        let toMain = server.setSessionRestore(
+            session.id.uuidString, window: nil,
+            update: ControlSessionRestoreUpdate(pin: .pin("echo main"), pane: nil, paneID: nil))
+        XCTAssertTrue(toMain.ok, toMain.error ?? "")
+        XCTAssertEqual(toMain.result?.pane, "left")
+        XCTAssertEqual(session.restoreCommand, "echo main")
+    }
+
+}
+
+@MainActor
+private final class SessionRestoreTestSurface: TerminalSurface {
+    let paneToken: String
+    let isRealized = true
+
+    init(paneToken: String) {
+        self.paneToken = paneToken
+    }
+
+    func teardown() {}
+    func promoteToPrimaryPane() {}
 }

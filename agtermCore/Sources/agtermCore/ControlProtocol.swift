@@ -913,6 +913,9 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var themes: [String]?
     /// The applied primary-pane split fraction echoed by `session.resize`, after clamping / a relative nudge.
     public var ratio: Double?
+    /// The pane `session.restore` wrote, as a `StatusPane` raw value.
+    /// Present on every success, including the `--pane` and default-to-main paths.
+    public var pane: String?
     /// The light/dark syncing state for `theme.set`/`theme.list`, from the stored theme: `sync` = whether it
     /// is ghostty's dual `light:,dark:` form (the terminal tracks the macOS appearance), `light`/`dark` its
     /// sides. While syncing `theme` is absent; otherwise `theme` is the plain single theme, these absent.
@@ -938,7 +941,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
                 affected: Int? = nil,
-                theme: String? = nil, themes: [String]? = nil, ratio: Double? = nil,
+                theme: String? = nil, themes: [String]? = nil, ratio: Double? = nil, pane: String? = nil,
                 sync: Bool? = nil, light: String? = nil, dark: String? = nil,
                 events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil,
                 pick: ControlPickResult? = nil, overlayRedirect: ControlOverlayRedirect? = nil,
@@ -954,6 +957,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.theme = theme
         self.themes = themes
         self.ratio = ratio
+        self.pane = pane
         self.sync = sync
         self.light = light
         self.dark = dark

@@ -385,11 +385,11 @@ omitted when expanded).
   split renders both panes, a HIDDEN one renders only the FOCUSED pane, so the refused one is the pane
   that does not have focus.
   Target with `--target "$AGTERM_SESSION_ID"` for YOUR session (default `active` is the user's selection).
-  **By default `overlay open` does NOT switch the user** — full and floating (`--size-percent`) both open
-  on `--target` and run their program in the background; the panel appears when the user visits that
-  session. **Pass `--follow` to select the target after opening** (a no-op if it is already active): use
-  `--follow` when you want the user pulled to the overlay, omit it to open quietly on your own or another
-  session.
+  **By default `overlay open` does NOT switch the user** — full and floating (`--size-percent N`, 1-100)
+  both open on `--target` and run their program in the background; the panel appears when the user visits
+  that session. **Pass `--follow` to select the target after opening** (a no-op if it is already active):
+  use `--follow` when you want the user pulled to the overlay, omit it to open quietly on your own or
+  another session.
   `--background-color` gives the overlay pane its own solid color, independent of the session's. An
   overlay is a real terminal (pty), which is also how you **display an image inline** — via the bundled
   `scripts/show-image.sh` (see below).

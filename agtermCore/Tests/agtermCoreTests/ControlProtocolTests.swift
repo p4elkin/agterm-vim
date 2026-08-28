@@ -527,6 +527,17 @@ struct ControlProtocolTests {
         #expect(decoded.result?.ratio == 0.85)
     }
 
+    @Test func sessionRestoreResultRoundTripsPaneAndOmitsWhenNil() throws {
+        let response = ControlResponse(ok: true, result: ControlResult(id: "9f3c", pane: "right"))
+        let decoded = try roundTrip(response)
+        #expect(decoded == response)
+        #expect(decoded.result?.pane == "right")
+
+        let json = String(decoding: try JSONEncoder().encode(ControlResult(id: "9f3c")), as: UTF8.self)
+        #expect(!json.contains("\"pane\""), "a nil pane must be omitted from the JSON; got \(json)")
+        #expect(try JSONDecoder().decode(ControlResult.self, from: Data(json.utf8)).pane == nil)
+    }
+
     @Test func sessionFlagRawStringMapsToCommandAndMode() throws {
         let raw = #"{"cmd":"session.flag","target":"active","args":{"mode":"on"}}"#
         let decoded = try JSONDecoder().decode(ControlRequest.self, from: Data(raw.utf8))

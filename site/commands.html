@@ -1417,7 +1417,14 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$AGTERM_PANE_ID</span>) resolves the pane's live slot; unlike
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session status</span>, a token that does
                 not resolve is an error unless <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span> is also given
-                as the fallback. The pinned value is shell code stored in the window's state file and readable via
+                as the fallback. Every success names the pane it wrote in
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.pane</span>, the read-back for
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane-id</span>: a token names a surface rather than a role, so without it the caller has to re-read
+                the tree and diff <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restoreCommand</span> against
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitRestoreCommand</span> to find out where the pin landed. Only an app predating the field omits it from
+                a successful <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session.restore</span>; treat absence as unknown, never as the default
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">left</span> pane.
+                The pinned value is shell code stored in the window's state file and readable via
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>, so it must not carry secrets. Not to be confused
                 with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">restore clear</span>, which is
                 app-global and clears every session's <em>captured</em> command.
@@ -1453,7 +1460,7 @@
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 Full-size by default, hiding the session;
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--size-percent N</span> (1–100) makes it a floating
-                framed panel with the session visible behind.
+                framed panel with the session visible behind. A percent outside that range is an error.
                 <strong style="color: #bfbab0">Returns</strong> the overlay's
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.id</span>.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> gives the overlay pane its
