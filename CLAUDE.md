@@ -53,7 +53,7 @@ C-boundary concurrency before changing the bridge.
 - Xcodegen creates the app project; Xcode 26 builds it. Call `xcodegen`, `xcodebuild`, and `swift`
   directly through repository scripts; `mise` is unused.
 - Swift 6 `agtermCore` uses complete concurrency checking and has no Xcode/libghostty dependency.
-- `scripts/setup.sh` builds pinned libghostty with Homebrew zig 0.15.2 and Xcode's Metal Toolchain.
+- `scripts/setup.sh` builds pinned libghostty with Homebrew Zig 0.16 and Xcode's Metal Toolchain.
   It is idempotent after artifacts exist.
 - Commands:
   - `scripts/run.sh`: setup, generate, Debug build, launch.
@@ -143,11 +143,12 @@ C-boundary concurrency before changing the bridge.
 
 - `scripts/setup.sh` builds upstream `ghostty-org/ghostty` at `GHOSTTY_REV` using
   `zig build -Demit-xcframework=true -Dxcframework-target=native`. No fork or disposable daily build is used.
-- `GHOSTTY_REV` is `0ba6250` (2026-08-16), a plain reproducibility pin with no workaround attached.
+- `GHOSTTY_REV` is `683d8db` (2026-08-25), a plain reproducibility pin carrying upstream's hidden-surface
+  GPU release.
   It sat at `4dcb09ada` (2026-04-30) from June while later builds blanked scrollback on a font-size
   increase; upstream fixed that and the case was re-verified by hand before the bump. Re-test the
   font-increase case when moving it, and check `minimum_zig_version` in `build.zig.zon` against
-  `ZIG_FORMULA` — the 0.15 to 0.16 jump came with this bump.
+  `ZIG_FORMULA`. The 0.15 to 0.16 jump came with the `0ba6250` bump, not this one.
 - `.ghostty-build-stamp` records the rev the staged artifacts came from and is what decides a rebuild.
   Presence alone would serve an xcframework built from a different rev silently, so a `GHOSTTY_REV`
   change costs everyone exactly one libghostty rebuild and nobody keeps a stale core by accident.

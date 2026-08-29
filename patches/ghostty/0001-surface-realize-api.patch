@@ -149,8 +149,9 @@ diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
 index 0f4a294..5c627db 100644
 --- a/src/renderer/generic.zig
 +++ b/src/renderer/generic.zig
-@@ -959,6 +959,16 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -952,7 +952,17 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
              );
+             self.display_realized = true;
              self.reinitialize_shaders = false;
              self.target_config_modified = 1;
 +

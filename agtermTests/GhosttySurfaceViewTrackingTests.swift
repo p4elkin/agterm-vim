@@ -12,8 +12,8 @@ private final class StubContentView: NSView {
 /// Pins the chrome-versus-surface split that keeps the resize cursor over the dividers (issue #324).
 /// Returning true for chrome puts the flicker back; returning false for a sibling pane silences the
 /// visible terminal's own cursor instead. Neither shows up in any other test. Also carries the surface's
-/// other two invisible contracts: the `viewOnly` refusal the dashboard and the HUD both rest on, and the
-/// temp files teardown owns.
+/// other invisible contracts: the `viewOnly` refusal the dashboard and the HUD both rest on, the renderer
+/// visibility gate, and the temp files teardown owns.
 @MainActor
 final class GhosttySurfaceViewTrackingTests: XCTestCase {
     private var window: NSWindow!
@@ -132,6 +132,90 @@ final class GhosttySurfaceViewTrackingTests: XCTestCase {
 
         XCTAssertFalse(view.acceptsFirstResponder)
         XCTAssertNil(view.hitTest(inside), "a view-only surface must let the click through instead of taking it")
+    }
+
+    func testRendererVisibilityRequiresAnOnScreenHost() {
+        surface.wantsLayer = true
+        surface.layer?.contents = NSColor.red.cgColor
+        XCTAssertTrue(surface.showsOnScreen)
+        surface.deckOnScreen = false
+        XCTAssertFalse(surface.showsOnScreen)
+        XCTAssertNotNil(surface.rendererVisibilityTask)
+        surface.updateRendererVisibility(delayHide: false)
+        XCTAssertNil(surface.rendererVisibilityTask)
+        surface.deckOnScreen = true
+        surface.removeFromSuperview()
+        XCTAssertFalse(surface.showsOnScreen)
+    }
+
+    func testHiddenJanitorSweepsWhileHiddenAndRetiresOnReveal() async throws {
+        surface.wantsLayer = true
+        surface.layer?.contents = NSColor.red.cgColor
+        surface.rendererVisible = false
+        surface.startHiddenJanitor(interval: 20_000_000)
+        XCTAssertNotNil(surface.hiddenJanitorTask)
+        try await waitUntil("retained frame swept") { self.surface.layer?.contents == nil }
+        surface.rendererVisible = true
+        try await waitUntil("janitor retires after reveal") { self.surface.hiddenJanitorTask == nil }
+    }
+
+    func testDestroySurfaceCancelsTheHiddenJanitor() {
+        surface.rendererVisible = false
+        surface.startHiddenJanitor()
+        XCTAssertNotNil(surface.hiddenJanitorTask)
+        surface.destroySurface()
+        XCTAssertNil(surface.hiddenJanitorTask)
+    }
+
+    func testDeferredHideLandsAfterTheFirstPresent() async throws {
+        surface.wantsLayer = true
+        surface.deckOnScreen = false
+        surface.updateRendererVisibility(
+            delayHide: false, grace: 10_000_000_000, presentPoll: 10_000_000, presentTimeout: 5_000_000_000
+        )
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNotNil(surface.rendererVisibilityTask)
+        surface.layer?.contents = NSColor.red.cgColor
+        try await waitUntil("hide lands after first present") { self.surface.rendererVisibilityTask == nil }
+        XCTAssertEqual(surface.layer?.needsDisplayOnBoundsChange, false)
+    }
+
+    func testDeferredHideExpiresForANeverPaintedPane() async throws {
+        surface.wantsLayer = true
+        surface.deckOnScreen = false
+        surface.updateRendererVisibility(delayHide: false, presentPoll: 10_000_000, presentTimeout: 50_000_000)
+        XCTAssertNotNil(surface.rendererVisibilityTask)
+        try await waitUntil("expiry hides the pane") { self.surface.rendererVisibilityTask == nil }
+        XCTAssertEqual(surface.layer?.needsDisplayOnBoundsChange, false)
+    }
+
+    func testRevealCancelsTheDeferredHideAndRestoresBoundsRedraw() {
+        surface.wantsLayer = true
+        surface.deckOnScreen = false
+        surface.updateRendererVisibility(delayHide: false, presentPoll: 10_000_000, presentTimeout: 5_000_000_000)
+        XCTAssertNotNil(surface.rendererVisibilityTask)
+        surface.deckOnScreen = true
+        XCTAssertNil(surface.rendererVisibilityTask)
+        XCTAssertEqual(surface.layer?.needsDisplayOnBoundsChange, true)
+    }
+
+    func testAlreadyPaintedPaneHidesWithoutDeferral() {
+        surface.wantsLayer = true
+        surface.layer?.needsDisplayOnBoundsChange = true
+        surface.layer?.contents = NSColor.red.cgColor
+        surface.deckOnScreen = false
+        surface.updateRendererVisibility(delayHide: false)
+        XCTAssertNil(surface.rendererVisibilityTask)
+        XCTAssertEqual(surface.layer?.needsDisplayOnBoundsChange, false)
+    }
+
+    private func waitUntil(_ what: String, timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
     }
 
     // MARK: - teardown
