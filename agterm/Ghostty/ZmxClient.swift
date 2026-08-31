@@ -145,10 +145,6 @@ struct ZmxWrapping: Sendable {
     /// What the surface factories use.
     static let live = ZmxWrapping(env: ProcessInfo.processInfo.environment, client: .live)
 
-    /// The macOS default login shell, used when `$SHELL` is unset. A full path, never a basename: it is
-    /// `exec`ed inside the keep-shell-open wrapper's `-lc` script.
-    static let fallbackShell = "/bin/zsh"
-
     /// The variable zmx exports into a session's shell, and the one an agterm launched from inside a wrapped
     /// pane inherits. `ZMX_DIR` is deliberately NOT touched: the budget probe and every spawned `zmx` call
     /// need whatever directory the user pinned.
@@ -160,6 +156,8 @@ struct ZmxWrapping: Sendable {
     struct Wrapped {
         let command: String
         let key: String
+        /// Text to type into the pane, non-nil only for a FRESH keep-shell-open row — see `ZmxWrap.decide`.
+        let initialInput: String?
     }
 
     /// The command this pane should run instead of what it would have run, or nil to leave it exactly as it
@@ -168,19 +166,19 @@ struct ZmxWrapping: Sendable {
     /// `keys` is `Session.zmxKeys(for:)`, taken whole rather than as two arguments so the pane's own key and
     /// its sibling's cannot be handed over the wrong way round.
     func command(sessionID: UUID, role: ZmxSessionKey.Role, keys: (own: String?, sibling: String?),
-                 pinnedCommand: String?, keepShellOpen: Bool) -> Wrapped? {
+                 pinnedCommand: String?, keepShellOpen: Bool, sessionWasRestored: Bool = false) -> Wrapped? {
         let probe = ZmxSocketBudget.probe(env: env, keyByteCount: ZmxSessionKey.maxByteCount)
         let inputs = ZmxWrap.Inputs(sessionID: sessionID, role: role, existingKey: keys.own,
                                     siblingKey: keys.sibling, pinnedCommand: pinnedCommand,
-                                    keepShellOpen: keepShellOpen, shell: shell,
+                                    keepShellOpen: keepShellOpen, sessionWasRestored: sessionWasRestored,
                                     zmxPath: client.locate(), budgetReason: probe,
                                     isolatedStateDir: env["AGTERM_STATE_DIR"] != nil,
                                     skipRequested: !(env["AGTERM_ZMX_SKIP"] ?? "").isEmpty)
         let pane = "\(sessionID.uuidString)-\(role.rawValue)"
         switch ZmxWrap.decide(inputs) {
-        case .wrap(let command, let key):
+        case .wrap(let command, let key, let initialInput):
             logger.info("pane \(pane, privacy: .public) runs zmx session \(key, privacy: .public)")
-            return Wrapped(command: command, key: key)
+            return Wrapped(command: command, key: key, initialInput: initialInput)
         case .unwrapped(let reason):
             logger.notice("pane \(pane, privacy: .public) not wrapped: \(reason, privacy: .public)")
             return nil
@@ -229,10 +227,6 @@ struct ZmxWrapping: Sendable {
                 client.kill(key)
             }
         }
-    }
-
-    private var shell: String {
-        env["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackShell
     }
 
     /// Drops an inherited `ZMX_SESSION`, so a pane spawned by an agterm that was itself launched from inside

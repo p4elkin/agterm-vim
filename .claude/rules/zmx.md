@@ -42,8 +42,14 @@ is implemented; this list exists so nobody has to read the whole file to find ou
   idea in "Lifecycle traps" is the way out if it ever matters.
 - **A row with an automatic name keeps the label from its last surface build.** Only an explicit rename
   relabels; following the cwd would spawn a `zmx set` per OSC report.
-- **Unknown: whether a restored keep-shell-open row re-runs its command.** A second
-  `zmx attach <name> <command>` reads as create-time only, but nothing verifies it. See "Keep-shell-open form".
+- **A restored keep-shell-open row comes back at a PROMPT, never re-running its command.** Its command is
+  typed only when the row is fresh, so after a reboot — which ends the zmx server and loses every session —
+  the row attaches to a newly created shell and sits there empty. That is the deliberate price of never
+  typing into a live agent. See "Keep-shell-open form".
+  The old `zmx attach <key> <shell> -lc '<command>\nexec <shell> -l'` form did the opposite and it was
+  measured on 2026-08-30: after a reboot 41 of 88 parked rows came back with a fresh Claude in them, 7.9 GB
+  resident, from launchers that had last run days earlier. `agterm-park boot` in `~/dev/agterm-agents`
+  existed to repair that once per login; the typed form removes the cause.
 
 ### Session key convention
 
@@ -103,15 +109,15 @@ tidy. It is the documented escape hatch for a pane that should stay plain, the h
 being retired, and `agtermUITests` sets it in `launchForUITest` to keep a test pane off the multiplexer. Had
 the wrapper ignored it, setting it would have gone on looking correct while the app wrapped the pane anyway.
 
-Isolated instances never wrap. A row with a pinned command and `--keep-shell-open` wraps as
-`zmx attach <key> <shell> -lc '<command>\nexec <shell> -l'`.
+Isolated instances never wrap. A row with a pinned command and `--keep-shell-open` wraps BARE like every
+other row and gets its command back as typed input — see "Keep-shell-open form".
 
 Every rejection is a normal outcome and is logged at `notice`, not `debug`: the whole failure mode of
 this feature is unwrapping silently, so the reason has to be collected by default.
 
 ### Wrapper form
 
-The wrapper is ALWAYS a bare `zmx attach <key>`, never `zmx attach <key> <command>`.
+The wrapper is ALWAYS a bare `zmx attach <key>`, for every row, never `zmx attach <key> <command>`.
 zmx's own help states that a provided command is used INSTEAD of creating a shell.
 Folding a command inside would make that command the zmx session's entire process, not a program
 inside its shell. That is exactly the vanishing agent row bug: claude exits, the session ends
@@ -130,14 +136,37 @@ This differs from `--wait`, which holds the surface with a press-any-key prompt 
 Both address the same user pain and cannot both apply to one row; the dispatcher rejects the
 combination. Store this flag on the session for both tree read-back and wrap decisions.
 
-The command and the `exec` tail are separated by a NEWLINE, not `; ` — a pinned command ending in a `#`
-comment would otherwise swallow the tail and the row would vanish exactly as it does without the flag.
+**The command is TYPED, not wrapped.** The wrap line stays a bare `zmx attach <key>`, and
+`ZmxWrap.Decision.wrap` carries the command back as `initialInput`, which the factory hands to libghostty
+as `initial_input` — the same "as if typed" path restore-running-command uses. zmx spawns a login `$SHELL`
+for the session it creates, so the command runs in THAT shell.
 
-⚠️ Open question: a restored keep-shell-open row hands that same `-lc` script to a zmx session that already
-exists. `zmx attach <name> [command...]` is documented as "attach to session, creating if needed" with the
-command used INSTEAD of creating a shell, which reads as create-time only — but nothing in code, tests or
-the manual checklist confirms that a second attach with a command is a no-op. If it is not, such a row
-re-runs its command inside the live session on every launch.
+Two things this buys, and they are the reason the older `zmx attach <key> <shell> -lc '<command>\nexec
+<shell> -l'` form is gone:
+
+- **One login shell per pane instead of two.** The old form loaded the full `~/.zshrc` in the `-lc` shell
+  and again in the `exec`ed one. Startup cost only — the first shell `exec`s away and only the second is
+  resident — but after a reboot 85 rows paid it at once.
+- **The login PATH.** A pinned command is often a bare binary name, from `session new --command`, from a
+  `cookbook/` recipe, or captured by restore off a live pane. Typing it into a login shell finds it; a
+  plain `-c` shell would not, and the row would come back empty with nothing to say why.
+
+⚠️ **Only a FRESH row types it.** `ZmxWrap.Inputs.sessionWasRestored` is `Session.wasRestored`, and a
+restored row types nothing: its session is still holding what was running, and the keystrokes would land in
+whatever program has the foreground. This is the same reasoning that already drops `plan.initialInput` for a
+wrapped pane, extended to the pinned command. A fresh row cannot collide with a live daemon — its key comes
+from a new session uuid, and `existingKey` is nil.
+The cost is the reboot case in "Known caveats": the session is gone, the attach creates a bare one, and the
+row comes back at a prompt.
+
+⚠️ `initial_input` alongside a `command` is normally refused in `GhosttySurfaceView.createSurface`, because
+a command REPLACES the shell and typed text would land inside that program. The wrapped pane is the one
+exemption, passed explicitly as `commandForwardsInput`: `zmx attach` is a client that forwards keystrokes to
+a shell of its own. Measured 2026-08-31 under a pty: input written at attach time survives zmx switching the
+pane to raw mode and reaches the new session's shell.
+
+The old form's `#`-comment trap is gone with the `exec` tail it protected — a typed line has no tail to
+swallow — but the trailing newline still matters, because it is what submits the line.
 
 ### Isolated instance bypass
 
@@ -240,9 +269,9 @@ run at most once per tree command, even with many wrapped panes, and it uses
 `buildTree` runs on the main actor and agent hooks call `tree` constantly.
 
 Because the capture drops the wrapper, a wrapped pane needs no restore replay at all: the persistent
-session still holds what was running. The factories therefore drop `plan.initialInput` and force
-`waitAfterCommand` false for a wrapped pane, and turning `restoreRunningCommand` off is not required for
-this feature.
+session still holds what was running. The factories therefore take the wrapper's own input decision over
+`plan.initialInput` — nil for every wrapped pane except a fresh keep-shell-open row — and force
+`waitAfterCommand` false, and turning `restoreRunningCommand` off is not required for this feature.
 
 ### The inherited session scrub
 

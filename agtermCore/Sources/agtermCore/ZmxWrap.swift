@@ -12,7 +12,9 @@ public enum ZmxWrap {
     /// What a surface factory should do with the pane's command.
     public enum Decision: Equatable, Sendable {
         /// Run this command line instead of what the pane would have run; the pane owns zmx session `key`.
-        case wrap(command: String, key: String)
+        /// `initialInput` is text to type into the pane once it is up, non-nil only for a keep-shell-open row
+        /// whose zmx session is being created — see `decide`.
+        case wrap(command: String, key: String, initialInput: String?)
         /// Leave the pane exactly as it would be without zmx — a login shell, or its own pinned command.
         /// `reason` is for the log only: every reason here is a normal outcome, never a failure.
         case unwrapped(reason: String)
@@ -29,8 +31,9 @@ public enum ZmxWrap {
     ///   `decide` for the promoted-row case that would otherwise put two panes on one daemon.
     /// - `pinnedCommand`: the row's `initialCommand`. nil OR blank means a plain login shell — `""` already
     ///   means "pinned to no command" elsewhere in the model (`Session.restoreCommand`).
-    /// - `keepShellOpen`: run the command inside zmx's own shell so the row survives it exiting.
-    /// - `shell`: the user's `$SHELL`, read only by the keep-shell-open form.
+    /// - `keepShellOpen`: type the command into zmx's own login shell so the row survives it exiting.
+    /// - `sessionWasRestored`: `Session.wasRestored`. A restored row's zmx session already holds what was
+    ///   running, so its pinned command must not be typed again; only a FRESH row creates its session.
     /// - `zmxPath`: the located binary, nil when zmx is not installed.
     /// - `budgetReason`: `ZmxSocketBudget.probe`'s answer; non-nil means the socket could not bind.
     /// - `isolatedStateDir`: `AGTERM_STATE_DIR` is set, so this is a dev or test instance. It wraps nothing,
@@ -44,22 +47,23 @@ public enum ZmxWrap {
         public let siblingKey: String?
         public let pinnedCommand: String?
         public let keepShellOpen: Bool
-        public let shell: String
+        public let sessionWasRestored: Bool
         public let zmxPath: String?
         public let budgetReason: String?
         public let isolatedStateDir: Bool
         public let skipRequested: Bool
 
         public init(sessionID: UUID, role: ZmxSessionKey.Role, existingKey: String?, siblingKey: String?,
-                    pinnedCommand: String?, keepShellOpen: Bool, shell: String, zmxPath: String?,
-                    budgetReason: String?, isolatedStateDir: Bool, skipRequested: Bool = false) {
+                    pinnedCommand: String?, keepShellOpen: Bool, sessionWasRestored: Bool = false,
+                    zmxPath: String?, budgetReason: String?, isolatedStateDir: Bool,
+                    skipRequested: Bool = false) {
             self.sessionID = sessionID
             self.role = role
             self.existingKey = existingKey
             self.siblingKey = siblingKey
             self.pinnedCommand = pinnedCommand
             self.keepShellOpen = keepShellOpen
-            self.shell = shell
+            self.sessionWasRestored = sessionWasRestored
             self.zmxPath = zmxPath
             self.budgetReason = budgetReason
             self.isolatedStateDir = isolatedStateDir
@@ -67,10 +71,10 @@ public enum ZmxWrap {
         }
     }
 
-    /// ⚠️ The wrapper is never `zmx attach <key> <command>`. A command given to zmx is used INSTEAD of
-    /// creating a shell, so it becomes the session's whole process: it exits, the session ends, the client
-    /// exits, and the pane has nothing left in it. `keepShellOpen` therefore hands zmx a shell and puts the
-    /// command inside it.
+    /// ⚠️ The wrapper is ALWAYS a bare `zmx attach <key>`, for every row. A command given to zmx is used
+    /// INSTEAD of creating a shell, so it becomes the session's whole process: it exits, the session ends,
+    /// the client exits, and the pane has nothing left in it. A keep-shell-open row therefore gets its
+    /// command back as `initialInput`, typed into the login shell zmx spawns for the session itself.
     ///
     /// ⚠️ A pane is left unwrapped rather than given the key its SIBLING owns. `closePrimaryPane` promotes
     /// the split survivor with its `-right` key into the main slot and clears `zmxSplitKey`, so the next ⌘D
@@ -88,21 +92,23 @@ public enum ZmxWrap {
         guard key != inputs.siblingKey else {
             return .unwrapped(reason: "the row's other pane already owns \(key)")
         }
+        let attach = CommandRestore.shellQuotedLine([zmx, "attach", key])
         let pinned = inputs.pinnedCommand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !pinned.isEmpty else {
-            return .wrap(command: CommandRestore.shellQuotedLine([zmx, "attach", key]), key: key)
-        }
+        guard !pinned.isEmpty else { return .wrap(command: attach, key: key, initialInput: nil) }
         guard inputs.keepShellOpen else {
             return .unwrapped(reason: "a pinned command replaces the login shell the hook would run in")
         }
-        // one level of quoting per level of shell: the script is quoted as one argument here, and the `exec`
-        // tail is quoted again inside it because that string is what zmx's `-lc` shell evaluates.
+        // Typed, not wrapped: zmx spawns a login `$SHELL` for the session, and the command goes into THAT
+        // shell rather than into one more `-lc` shell of our own. One profile load per pane instead of two,
+        // and the command reaches the login PATH, which a `-c` shell would not give it.
         //
-        // Separated by a NEWLINE, not `; ` — a pinned command ending in a `#` comment would swallow the tail
-        // on one line and the row would vanish exactly as it does without the flag.
-        let script = "\(pinned)\nexec \(CommandRestore.shellQuotedLine([inputs.shell, "-l"]))"
-        return .wrap(command: CommandRestore.shellQuotedLine([zmx, "attach", key, inputs.shell, "-lc", script]),
-                     key: key)
+        // ⚠️ Only a FRESH row types it. A restored row re-attaches to a session that is still holding what
+        // was running, and typing there would run it a second time — into whatever program is in the
+        // foreground. This is the same reasoning that already drops `plan.initialInput` for a wrapped pane,
+        // applied to the pinned command as well. The cost is a reboot: the session is gone, the attach
+        // creates a bare one, and the row comes back at a prompt instead of re-running its command.
+        return .wrap(command: attach, key: key,
+                     initialInput: inputs.sessionWasRestored ? nil : pinned + "\n")
     }
 
     /// The key this pane already owns, when it is one this session could have produced. A key naming another

@@ -31,6 +31,11 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     /// instead of closing immediately. Only meaningful with `command`.
     private let waitAfterCommand: Bool
 
+    /// Whether `initialInput` may be fed alongside `command`. False for the exec path, where the command
+    /// REPLACES the shell and typed text would land inside that program. True only for the zmx wrapper: its
+    /// command is a client that forwards keystrokes to the login shell zmx spawns for the session.
+    private let commandForwardsInput: Bool
+
     /// Whether this surface grabs first responder as soon as it is created — the overlay's path: it mounts
     /// over an already-focused session, and `TerminalView.focusIfNeeded` grabs only when the view is in a
     /// window at the first `updateNSView`, which the deferred overlay surface is not, with no later update.
@@ -333,12 +338,14 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
     var lastReportedMousePoint: NSPoint?
 
     init(workingDirectory: String, fontSize: Float? = nil, command: String? = nil, initialInput: String? = nil,
-         waitAfterCommand: Bool = false, autoFocus: Bool = false, env: [String: String] = [:]) {
+         waitAfterCommand: Bool = false, commandForwardsInput: Bool = false, autoFocus: Bool = false,
+         env: [String: String] = [:]) {
         self.workingDirectory = workingDirectory
         self.initialFontSize = fontSize
         self.command = command
         self.initialInput = initialInput
         self.waitAfterCommand = waitAfterCommand
+        self.commandForwardsInput = commandForwardsInput
         self.autoFocus = autoFocus
         self.env = env
         super.init(frame: .zero)
@@ -581,8 +588,9 @@ final class GhosttySurfaceView: NSView, TerminalSurface {
         }
         // restore-running-command: feed the captured command line to the login shell as if typed, so it re-runs
         // and exits back to a prompt. same buffer lifetime; mutually exclusive with `command` (which REPLACES
-        // the shell), enforced here rather than by caller discipline alone.
-        if command == nil, let initialInput, let p = strdup(initialInput) {
+        // the shell), enforced here rather than by caller discipline alone — `commandForwardsInput` is the one
+        // exemption, the zmx wrapper, whose command forwards what is typed to a shell of its own.
+        if command == nil || commandForwardsInput, let initialInput, let p = strdup(initialInput) {
             configCStrings.append(p)
             config.initial_input = UnsafePointer(p)
         }

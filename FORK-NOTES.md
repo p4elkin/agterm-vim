@@ -35,7 +35,9 @@ is the `.claude/rules` file that owns the design.
 - **Panes wrapped through zmx** — a pane's shell outlives the app and can be reattached. Session keys per
   pane, orphaned daemons reaped at launch, the foreground process resolved past the zmx client, and
   `session new --keep-shell-open` leaving the row at a prompt after its command exits.
-  Section below; design in `.claude/rules/zmx.md`.
+  A keep-shell-open row's command is TYPED into the login shell zmx spawns for the session, not wrapped in
+  a shell of the app's own, so a wrapped pane loads one shell profile instead of two and a restored row
+  never re-runs its command. Section below; design in `.claude/rules/zmx.md`.
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
   the workstation appears on the laptop mirroring it.
   Section below; design in `.claude/rules/overlay-redirect.md`.

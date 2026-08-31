@@ -5,20 +5,20 @@ import Testing
 struct ZmxWrapTests {
     private let id = UUID(uuidString: "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F")!
     private let zmx = "/opt/homebrew/bin/zmx"
-    private let shell = "/bin/zsh"
 
     private func inputs(role: ZmxSessionKey.Role = .left, existingKey: String? = nil, siblingKey: String? = nil,
-                        command: String? = nil, keepShellOpen: Bool = false,
+                        command: String? = nil, keepShellOpen: Bool = false, wasRestored: Bool = false,
                         zmxPath: String? = "/opt/homebrew/bin/zmx", budgetReason: String? = nil,
                         isolated: Bool = false, skip: Bool = false) -> ZmxWrap.Inputs {
         ZmxWrap.Inputs(sessionID: id, role: role, existingKey: existingKey, siblingKey: siblingKey,
-                       pinnedCommand: command, keepShellOpen: keepShellOpen, shell: shell, zmxPath: zmxPath,
-                       budgetReason: budgetReason, isolatedStateDir: isolated, skipRequested: skip)
+                       pinnedCommand: command, keepShellOpen: keepShellOpen, sessionWasRestored: wasRestored,
+                       zmxPath: zmxPath, budgetReason: budgetReason, isolatedStateDir: isolated,
+                       skipRequested: skip)
     }
 
-    private func wrapped(_ decision: ZmxWrap.Decision) -> (command: String, key: String)? {
-        guard case let .wrap(command, key) = decision else { return nil }
-        return (command, key)
+    private func wrapped(_ decision: ZmxWrap.Decision) -> (command: String, key: String, input: String?)? {
+        guard case let .wrap(command, key, input) = decision else { return nil }
+        return (command, key, input)
     }
 
     private func unwrappedReason(_ decision: ZmxWrap.Decision) -> String? {
@@ -164,50 +164,47 @@ struct ZmxWrapTests {
         }
     }
 
-    @Test func keepShellOpenRunsTheCommandInsideZmxShell() {
+    /// The whole point of option C: one login shell per pane. zmx spawns the session's own login `$SHELL`,
+    /// and the command is typed into THAT rather than into a `-lc` shell of ours that has to `exec` another.
+    @Test func keepShellOpenTypesTheCommandIntoZmxOwnLoginShell() {
         let result = wrapped(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true)))
-        let parts = argv(of: result?.command ?? "")
         // never `zmx attach <key> <command>`: a command given to zmx REPLACES its shell and takes the
         // session down with it when it exits.
-        #expect(parts == [zmx, "attach", "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left", shell, "-lc",
-                          "claude\nexec '\(shell)' '-l'"])
+        #expect(argv(of: result?.command ?? "") == [zmx, "attach", "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left"])
+        #expect(result?.input == "claude\n")
     }
 
-    /// A `; ` separator puts the tail inside a trailing comment and the row vanishes silently, which is the
-    /// exact failure `--keep-shell-open` exists to prevent.
-    @Test func aCommandEndingInACommentStillReachesTheExecTail() {
-        let parts = argv(of: wrapped(ZmxWrap.decide(inputs(command: "claude # notes", keepShellOpen: true)))?
-            .command ?? "")
-        #expect(parts.last?.hasSuffix("exec '\(shell)' '-l'") == true)
-        #expect(parts.last?.contains("\n") == true)
+    /// ⚠️ The reattach case. A restored row's session is still holding what was running, so typing the
+    /// pinned command again would run it a second time, into whatever program is in the foreground.
+    @Test func aRestoredKeepShellOpenRowTypesNothing() {
+        let result = wrapped(ZmxWrap.decide(inputs(command: "claude", keepShellOpen: true, wasRestored: true)))
+        #expect(argv(of: result?.command ?? "") == [zmx, "attach", "6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left"])
+        #expect(result?.input == nil)
     }
 
     @Test func keepShellOpenIgnoredWithoutACommand() {
-        #expect(wrapped(ZmxWrap.decide(inputs(keepShellOpen: true)))?.command
-                == "'\(zmx)' 'attach' '6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left'")
+        let result = wrapped(ZmxWrap.decide(inputs(keepShellOpen: true)))
+        #expect(result?.command == "'\(zmx)' 'attach' '6C8E2C3A-6C1D-4F1E-9E9C-0A1B2C3D4E5F-left'")
+        #expect(result?.input == nil)
     }
 
-    @Test func commandSurvivesExactlyOneShellEvaluation() {
+    @Test func aPlainRowTypesNothing() {
+        #expect(wrapped(ZmxWrap.decide(inputs()))?.input == nil)
+        #expect(wrapped(ZmxWrap.decide(inputs(command: "  ")))?.input == nil)
+    }
+
+    /// Typed VERBATIM, like every other `initial_input` in the app: the line editor is the only thing that
+    /// reads it, so quoting it would put backslashes on the user's command line.
+    @Test func theTypedCommandIsNotQuotedOrEscaped() {
         let command = #"printf "%s" "$HOME" `id -u` 'it'"'"'s' && echo \done"#
-        let result = wrapped(ZmxWrap.decide(inputs(command: command, keepShellOpen: true)))
-        let parts = argv(of: result?.command ?? "")
-        // the outer level yields the script verbatim: nothing in the command was expanded or re-escaped on
-        // the way through, so the `-lc` shell is the first and only thing that evaluates it.
-        #expect(parts.count == 6)
-        #expect(parts[5] == "\(command)\nexec '\(shell)' '-l'")
-        #expect(parts[5].hasPrefix(command))
+        #expect(wrapped(ZmxWrap.decide(inputs(command: command, keepShellOpen: true)))?.input == command + "\n")
     }
 
-    @Test func shellPathWithASpaceStaysOneArgument() {
-        let spaced = "/opt/my shells/zsh"
-        let decision = ZmxWrap.decide(ZmxWrap.Inputs(sessionID: id, role: .left, existingKey: nil,
-                                                     siblingKey: nil, pinnedCommand: "claude",
-                                                     keepShellOpen: true, shell: spaced, zmxPath: zmx,
-                                                     budgetReason: nil, isolatedStateDir: false))
-        let parts = argv(of: wrapped(decision)?.command ?? "")
-        #expect(parts.count == 6)
-        #expect(parts[3] == spaced)
-        #expect(parts[5] == "claude\nexec '\(spaced)' '-l'")
+    /// A trailing `#` comment used to swallow the wrapper's `exec` tail and the row vanished. With the tail
+    /// gone there is nothing left to swallow, and the newline is what submits the line.
+    @Test func aCommandEndingInACommentIsStillOneTypedLine() {
+        let result = wrapped(ZmxWrap.decide(inputs(command: "claude # notes", keepShellOpen: true)))
+        #expect(result?.input == "claude # notes\n")
     }
 
     @Test func zmxPathWithASpaceStaysOneArgument() {

@@ -18,11 +18,19 @@ final class ZmxWrappingTests: XCTestCase {
         return ZmxWrapping(env: env, client: client)
     }
 
+    private func wrap(_ wrapping: ZmxWrapping, role: ZmxSessionKey.Role = .left, existingKey: String? = nil,
+                      siblingKey: String? = nil, pinnedCommand: String? = nil, keepShellOpen: Bool = false,
+                      wasRestored: Bool = false) -> ZmxWrapping.Wrapped? {
+        wrapping.command(sessionID: sessionID, role: role, keys: (existingKey, siblingKey),
+                         pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen,
+                         sessionWasRestored: wasRestored)
+    }
+
     private func command(_ wrapping: ZmxWrapping, role: ZmxSessionKey.Role = .left, existingKey: String? = nil,
                          siblingKey: String? = nil, pinnedCommand: String? = nil,
                          keepShellOpen: Bool = false) -> String? {
-        wrapping.command(sessionID: sessionID, role: role, keys: (existingKey, siblingKey),
-                         pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen)?.command
+        wrap(wrapping, role: role, existingKey: existingKey, siblingKey: siblingKey,
+             pinnedCommand: pinnedCommand, keepShellOpen: keepShellOpen)?.command
     }
 
     // MARK: - what the factories get back
@@ -39,13 +47,11 @@ final class ZmxWrappingTests: XCTestCase {
     /// The factories record `key` on the session and hand it back here on the next launch, so a promoted
     /// survivor re-attaches to the `-right` daemon holding its agent rather than a fresh `-left` one.
     func testTheReportedKeyIsWhatTheFactoryMustRecord() {
-        let wrapped = wrapping().command(sessionID: sessionID, role: .left, keys: (nil, nil),
-                                         pinnedCommand: nil, keepShellOpen: false)
+        let wrapped = wrap(wrapping())
         XCTAssertEqual(wrapped?.key, leftKey)
         XCTAssertTrue(wrapped?.command.contains(leftKey) == true)
         let promoted = "\(sessionID.uuidString)-right"
-        let readBack = wrapping().command(sessionID: sessionID, role: .left, keys: (promoted, nil),
-                                          pinnedCommand: nil, keepShellOpen: false)
+        let readBack = wrap(wrapping(), existingKey: promoted)
         XCTAssertEqual(readBack?.key, promoted)
         XCTAssertEqual(readBack?.command, "'\(zmx)' 'attach' '\(promoted)'")
     }
@@ -61,34 +67,36 @@ final class ZmxWrappingTests: XCTestCase {
         XCTAssertNil(command(wrapping(), pinnedCommand: "ssh host"))
     }
 
-    func testKeepShellOpenRunsTheCommandInsideZmxShell() {
-        let line = command(wrapping(), pinnedCommand: "claude", keepShellOpen: true)
-        XCTAssertEqual(line, "'\(zmx)' 'attach' '\(leftKey)' '/bin/zsh' '-lc' 'claude\nexec '\\''/bin/zsh'\\'' '\\''-l'\\'''")
+    func testKeepShellOpenWrapsBareAndTypesTheCommand() {
+        let wrapped = wrap(wrapping(), pinnedCommand: "claude", keepShellOpen: true)
+        XCTAssertEqual(wrapped?.command, "'\(zmx)' 'attach' '\(leftKey)'")
+        XCTAssertEqual(wrapped?.initialInput, "claude\n")
+    }
+
+    /// ⚠️ A restored row re-attaches to a session that already holds what was running, so the seam has to
+    /// carry `wasRestored` through or the pinned command runs a second time inside the live agent.
+    func testARestoredKeepShellOpenRowTypesNothing() {
+        let wrapped = wrap(wrapping(), pinnedCommand: "claude", keepShellOpen: true, wasRestored: true)
+        XCTAssertEqual(wrapped?.command, "'\(zmx)' 'attach' '\(leftKey)'")
+        XCTAssertNil(wrapped?.initialInput)
     }
 
     /// ⚠️ The claim the whole flag exists for, RUN rather than spelled: the row must land at a prompt after
-    /// its command exits. The stub stands in for `zmx attach <key>`, which drops those two arguments and runs
-    /// the rest, so the assertion covers the real line including every level of quoting.
-    func testTheKeepShellOpenWrapperLeavesAShellRunningAfterTheCommand() throws {
+    /// its command exits. The stub stands in for `zmx attach <key>`, which drops its arguments and runs a
+    /// login shell; the typed input is fed to it exactly as libghostty feeds `initial_input` to the pane.
+    func testTheTypedCommandRunsAndLeavesTheShellRunning() throws {
         let stub = try makeTemporaryDirectory().appendingPathComponent("zmx")
-        try "#!/bin/sh\nshift 2\nexec \"$@\"\n".write(to: stub, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\nexec /bin/sh -l\n".write(to: stub, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
-        let wrapper = try XCTUnwrap(command(wrapping(env: ["SHELL": "/bin/sh"], zmxPath: stub.path),
-                                            pinnedCommand: "echo ran-the-command", keepShellOpen: true))
+        let wrapped = try XCTUnwrap(wrap(wrapping(zmxPath: stub.path),
+                                         pinnedCommand: "echo ran-the-command", keepShellOpen: true))
+        let typed = try XCTUnwrap(wrapped.initialInput)
 
-        let output = ZmxClient.capture("/bin/sh", ["-c", "printf 'echo survived\\n' | \(wrapper)"], timeout: 10)
+        let script = "printf '%s' \(CommandRestore.shellQuotedLine([typed + "echo survived\n"])) | \(wrapped.command)"
+        let output = ZmxClient.capture("/bin/sh", ["-c", script], timeout: 10)
 
         XCTAssertEqual(output?.contains("ran-the-command"), true, "\(output ?? "no output")")
         XCTAssertEqual(output?.contains("survived"), true, "the shell did not outlive the command")
-    }
-
-    /// The fallback is the FULL path, because the wrapper `exec`s it inside its own script.
-    func testMissingShellFallsBackToTheZshPath() {
-        for env in [[String: String](), ["SHELL": ""]] {
-            let line = command(wrapping(env: env), pinnedCommand: "claude", keepShellOpen: true) ?? ""
-            XCTAssertTrue(line.contains("'/bin/zsh' '-lc'"), line)
-            XCTAssertFalse(line.contains("'zsh' '-lc'"), line)
-        }
     }
 
     func testIsolatedStateDirectoryWrapsNothing() {

@@ -22,6 +22,16 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- a pane pinned with `--keep-shell-open` now starts ONE login shell instead of two. The command is typed
+  into the login shell zmx spawns for the session rather than wrapped in another `zsh -lc` that has to
+  `exec` a third. Nothing is resident either way, but the saved profile load is paid per pane at surface
+  creation, and after a reboot every parked row pays it at once. A bare command name also resolves now,
+  because it runs on the login PATH. ⚠️ Behaviour change: a RESTORED keep-shell-open row no longer re-runs
+  its command — it comes back at a prompt. That is deliberate. Its zmx session is normally still holding
+  what was running, and typing there would run the command a second time inside the live program; when the
+  session is gone, after a reboot, the row comes back empty instead of spawning a fresh agent. The previous
+  form did spawn one: measured on 2026-08-30, 41 of 88 parked rows came back with a new Claude in them,
+  7.9 GB resident
 - bookmark a turn in an agent conversation and jump back to it. The agent prints a numbered mark at the
   start of each turn, `session bookmark add` records that number plus the prompt text, and
   `session bookmark go` searches the pane for the mark. `session.search` is the only thing that moves a

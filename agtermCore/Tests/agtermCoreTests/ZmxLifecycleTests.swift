@@ -31,9 +31,9 @@ struct ZmxLifecycleTests {
         let keys = session.zmxKeys(for: role)
         let inputs = ZmxWrap.Inputs(sessionID: session.id, role: role, existingKey: keys.own,
                                     siblingKey: keys.sibling, pinnedCommand: nil, keepShellOpen: false,
-                                    shell: "/bin/zsh", zmxPath: "/opt/homebrew/bin/zmx", budgetReason: nil,
+                                    zmxPath: "/opt/homebrew/bin/zmx", budgetReason: nil,
                                     isolatedStateDir: false)
-        guard case let .wrap(_, key) = ZmxWrap.decide(inputs) else { return nil }
+        guard case let .wrap(_, key, _) = ZmxWrap.decide(inputs) else { return nil }
         store.recordZmxSession(key, role: role, forSession: session)
         return key
     }

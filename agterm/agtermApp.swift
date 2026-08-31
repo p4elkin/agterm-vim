@@ -261,20 +261,24 @@ struct agtermApp: App {
         let plan = CommandRestore.restorePlan(inputs)
         // zmx wrapping: a pane that would run a login shell instead runs `zmx attach <key>`, so its processes
         // and scrollback outlive the app. `plan.command` is what would REPLACE that shell, so it is also what
-        // decides against wrapping — unless the row asked to keep its shell open, which runs the command
-        // inside zmx's own shell instead. A wrapped pane drops `plan.initialInput` (the persistent session
-        // already holds what was running) and `commandWait`, which held the user's OWN command at exit.
+        // decides against wrapping — unless the row asked to keep its shell open, where the wrapper stays bare
+        // and the command comes back as `wrapped.initialInput`, typed into the login shell zmx spawns for the
+        // session. A wrapped pane therefore takes the wrapper's own input decision over `plan.initialInput`
+        // (the persistent session already holds what was running), and drops `commandWait`, which held the
+        // user's OWN command at exit.
         let wrapped = ZmxWrapping.live.command(sessionID: session.id, role: .left,
                                                keys: session.zmxKeys(for: .left), pinnedCommand: plan.command,
-                                               keepShellOpen: session.keepShellOpen)
+                                               keepShellOpen: session.keepShellOpen,
+                                               sessionWasRestored: session.wasRestored)
         // recorded, never re-derived: `closePrimaryPane` promotes a `-right` pane into this slot, and close,
         // rename and the next launch's wrapper all read the key back from here. The same call labels the
         // daemon, so a row that is never renamed still reads as itself in `zmx list`.
         if let wrapped { store.recordZmxSession(wrapped.key, role: .left, forSession: session) }
         let view = GhosttySurfaceView(workingDirectory: session.initialCwd, fontSize: session.fontSize.map(Float.init),
                                       command: wrapped?.command ?? plan.command,
-                                      initialInput: wrapped == nil ? plan.initialInput : nil,
-                                      waitAfterCommand: wrapped == nil && session.commandWait, env: env)
+                                      initialInput: wrapped.map(\.initialInput) ?? plan.initialInput,
+                                      waitAfterCommand: wrapped == nil && session.commandWait,
+                                      commandForwardsInput: wrapped != nil, env: env)
         view.session = session
         let sessionID = session.id
         view.onExit = { [weak view] in
