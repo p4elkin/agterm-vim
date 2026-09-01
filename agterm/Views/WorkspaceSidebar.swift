@@ -527,7 +527,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             RowContent(label: rowLabel(for: session, workspaceName: workspaceName), hasSplit: session.hasSplit,
                        splitAxis: session.splitAxis,
                        unseen: effectiveUnseen(session.unseenCount),
-                       indicator: effectiveIndicator(forSession: session.id), flagged: session.flagged,
+                       indicator: session.agentIndicator, flagged: session.flagged,
                        parked: session.parked, focusMember: false, parkedCount: 0)
         }
 

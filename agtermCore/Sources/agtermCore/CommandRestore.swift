@@ -5,7 +5,7 @@ import Foundation
 /// back into a shell command line. The app target owns only the `sysctl`/libghostty calls; every
 /// judgement defers here so it stays unit-tested and off the C boundary.
 public enum CommandRestore {
-    /// The login shells treated as "no program to restore" (the pane was at its prompt).
+    /// The login shells treated as "no program to restore" (a shell held the pane, nothing to re-run).
     private static let knownShells: Set<String> = ["zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh"]
 
     /// Sanity cap on argc: a corrupt header must not drive `reserveCapacity` into a huge allocation.
@@ -27,14 +27,53 @@ public enum CommandRestore {
         return false
     }
 
-    /// Whether `argv` is an interactive shell at its prompt — the "idle pane, nothing to restore" case:
-    /// `argv[0]` is a known shell (or `$SHELL`, passed as `extra`) AND only option flags follow it. A
+    /// Whether `argv` is shell-shaped with nothing to restore: `argv[0]` is a known shell (or `$SHELL`,
+    /// passed as `extra`) AND only option flags follow it. NOT proof of an interactive prompt, since a
+    /// builtin or a shell loop runs in the shell process and leaves argv untouched. A
     /// shell RUNNING something is NOT idle and IS captured — a script path (`/bin/sh /usr/local/bin/cld`,
     /// the foreground of any `#!/bin/sh` wrapper) or a `-c` command leaves a non-flag argument after
     /// `argv[0]`.
     public static func isIdleShell(argv: [String], extra: String? = nil) -> Bool {
         guard let first = argv.first, isKnownShell(basename(first), extra: extra) else { return false }
         return !argv.dropFirst().contains { !$0.hasPrefix("-") }
+    }
+
+    /// What a pane's foreground argv means to the `tree` read: a program to report, or a recognized shell in
+    /// the foreground. The restore capture collapses `foregroundShell` to nil: otherwise `hadForeground`
+    /// would suppress `initialCommand` in `restorePlan`.
+    public enum PaneForeground: Sendable, Equatable {
+        /// A real foreground program, argv dash-stripped and ready to render.
+        case program([String])
+        /// A RECOGNIZED shell IN THE FOREGROUND, as its basename (`zsh`, `fish`) — not a claim that it sits at
+        /// a prompt, since a builtin runs in the shell process and leaves argv unchanged. A shell matching
+        /// neither the known set nor `$SHELL` is not recognized and reports as `program` instead.
+        case foregroundShell(String)
+
+        /// The argv the tree reports as `foreground`; nil when a shell holds the foreground.
+        public var command: [String]? {
+            if case .program(let argv) = self { return argv }
+            return nil
+        }
+
+        /// The basename the tree reports as `foregroundShell`; nil while a program runs.
+        public var shellName: String? {
+            if case .foregroundShell(let name) = self { return name }
+            return nil
+        }
+    }
+
+    /// Classify a pane's raw foreground argv for the `tree` read. Nil for an empty argv only; the two live
+    /// answers are the cases of `PaneForeground`. `extra` is the user's `$SHELL` basename, widening
+    /// recognition to a non-standard login shell exactly as `isIdleShell` does.
+    ///
+    /// The shell basename is taken AFTER `stripLoginDash`, never before: `basename` splits on `/`, so it
+    /// drops the login mark from a path form (`-/bin/zsh`) but keeps it on the bare form (`-zsh`), which is
+    /// the common case and would otherwise reach callers as `-zsh`.
+    public static func paneForeground(argv: [String], extra: String? = nil) -> PaneForeground? {
+        guard !argv.isEmpty else { return nil }
+        let stripped = stripLoginDash(argv)
+        if isIdleShell(argv: argv, extra: extra) { return .foregroundShell(basename(stripped[0])) }
+        return .program(stripped)
     }
 
     /// Drop the leading `-` macOS dash-marks a login process's argv[0] with, so the argv names a program

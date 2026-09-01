@@ -116,7 +116,9 @@ struct ControlDispatcherBookmarkTests {
         center.add(sessionID: bookmarked.id, turn: 1, prompt: "p")
         center.add(sessionID: bookmarked.id, turn: 2, prompt: "q")
 
-        let tree = store.controlTree(bookmarkCount: { session in
+        // `bookmarkCount` is fork-only, so it lives on the paneForeground overload alone; that one has no
+        // default for its first closure.
+        let tree = store.controlTree(paneForeground: { _ in nil }, bookmarkCount: { session in
             let count = center.count(sessionID: session.id)
             return count > 0 ? count : nil
         })

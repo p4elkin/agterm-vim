@@ -144,11 +144,27 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let commandWait: Bool?
     /// The split pane's hold-after-exit policy; nil/omitted without a holding split creation command.
     public let splitCommandWait: Bool?
-    /// The LIVE foreground process command (full argv) in the main pane; nil/omitted at the shell prompt —
-    /// the same capture restore-running-command uses.
+    /// The LIVE foreground process command (full argv) in the main pane; nil/omitted when the foreground IS a
+    /// recognized shell (`foregroundShell` names it) and whenever the process cannot be read — no foreground
+    /// pid, a setuid leader like `top`/`sudo`, an unresolved zmx pane, a failed syscall. Shares the restore
+    /// capture's extraction but not its rules: this read descends the process group, the capture does not.
     public let foreground: [String]?
     /// The split (right) pane's live foreground command (full argv), the split analogue of `foreground`.
     public let splitForeground: [String]?
+    /// The main pane's foreground process when it IS a recognized shell, as its basename (`zsh`, `fish`);
+    /// nil/omitted whenever `foreground` is present. For a pane that exists, neither field means agterm could
+    /// not determine the foreground state at all — the two a bare nil `foreground` used to conflate.
+    ///
+    /// NOT proof of an interactive prompt, so it is never permission to type: a builtin such as `read` or
+    /// `vared`, and a shell loop, run inside the shell process, leaving a pane blocked on input
+    /// indistinguishable from one at a prompt. Recognized means agterm knows the argv as a shell, by a
+    /// built-in set widened with the user's `$SHELL`; a shell outside both reports in `foreground` like any
+    /// other program.
+    public let foregroundShell: String?
+    /// The split (right) pane's foreground shell basename, the split analogue of `foregroundShell`. Read
+    /// `hasSplit` before interpreting the split pair: with no split pane both are absent because there is no
+    /// pane, not because anything could not be read.
+    public let splitForegroundShell: String?
     /// The main pane's PERSISTED restore-command override, the read side of `session.restore`. Tri-state:
     /// omitted = no override (auto-capture), `""` = pinned to nothing (a plain shell), a command = that shell
     /// line runs on the next launch. Read from persisted state, so it still reports the pin after the
@@ -233,6 +249,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 parked: Bool? = nil,
                 commandWait: Bool? = nil, splitCommandWait: Bool? = nil,
                 foreground: [String]? = nil, splitForeground: [String]? = nil,
+                foregroundShell: String? = nil, splitForegroundShell: String? = nil,
                 restoreCommand: String? = nil, splitRestoreCommand: String? = nil,
                 mirrorsSession: OverlayMirrorSource? = nil, viewer: OverlayViewer? = nil,
                 status: String? = nil,
@@ -266,6 +283,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.splitCommandWait = splitCommandWait
         self.foreground = foreground
         self.splitForeground = splitForeground
+        self.foregroundShell = foregroundShell
+        self.splitForegroundShell = splitForegroundShell
         self.restoreCommand = restoreCommand
         self.splitRestoreCommand = splitRestoreCommand
         self.mirrorsSession = mirrorsSession

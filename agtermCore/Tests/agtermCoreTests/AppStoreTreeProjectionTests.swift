@@ -321,9 +321,13 @@ struct AppStoreTreeProjectionTests {
         store.selectSession(active.id)
 
         // explicit closure types: the projection has enough optional fields that inference times out here
-        let foreground: (Session) -> [String]? = { $0.id == active.id ? ["ssh", "host"] : nil }
-        let splitForeground: (Session) -> [String]? = { $0.id == other.id ? ["tail", "-f", "app.log"] : nil }
-        let tree = store.controlTree(foreground: foreground, splitForeground: splitForeground)
+        let foreground: (Session) -> CommandRestore.PaneForeground? = {
+            $0.id == active.id ? .program(["ssh", "host"]) : nil
+        }
+        let splitForeground: (Session) -> CommandRestore.PaneForeground? = {
+            $0.id == other.id ? .program(["tail", "-f", "app.log"]) : nil
+        }
+        let tree = store.controlTree(paneForeground: foreground, splitPaneForeground: splitForeground)
 
         #expect(tree.workspaces[0].sessions[0].foreground == ["ssh", "host"])
         #expect(tree.workspaces[0].sessions[0].splitForeground == nil)
@@ -349,5 +353,36 @@ struct AppStoreTreeProjectionTests {
         #expect(surfaces.first { $0.kind == "right" }?.cwd == "/repo/right")
         // nil everywhere else means "the session's own", so nothing changed for a reader that only knew that.
         #expect(surfaces.first { $0.kind == "left" }?.cwd == nil)
+    }
+
+    @Test func controlTreeSplitsPaneForegroundIntoCommandAndForegroundShell() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "one")
+        _ = try! #require(store.addSession(toWorkspace: ws.id, cwd: "/a"))
+
+        var node = store.controlTree(paneForeground: { _ in .foregroundShell("zsh") },
+                                     splitPaneForeground: { _ in .program(["tail", "-f", "/x"]) })
+            .workspaces[0].sessions[0]
+        #expect(node.foreground == nil)
+        #expect(node.foregroundShell == "zsh")
+        #expect(node.splitForeground == ["tail", "-f", "/x"])
+        #expect(node.splitForegroundShell == nil)
+
+        node = store.controlTree(paneForeground: { _ in nil }).workspaces[0].sessions[0]
+        #expect(node.foreground == nil)
+        #expect(node.foregroundShell == nil)
+    }
+
+    @Test func controlTreeCompatibilityOverloadKeepsArgvCallersAndReportsNoForegroundShell() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        _ = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo"))
+
+        // the argv-shaped lookup an older consumer supplies: it cannot name a shell, so foregroundShell stays nil.
+        let node = store.controlTree(foreground: { _ in ["ssh", "host"] }).workspaces[0].sessions[0]
+
+        #expect(node.foreground == ["ssh", "host"])
+        #expect(node.foregroundShell == nil)
+        #expect(node.splitForegroundShell == nil)
     }
 }
