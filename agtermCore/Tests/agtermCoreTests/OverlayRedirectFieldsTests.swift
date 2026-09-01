@@ -108,6 +108,7 @@ struct OverlayRedirectFieldsTests {
 
     @Test func bothAppearInTheTreeNodeWhenSet() throws {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil,
                                          mirrorsSession: OverlayMirrorSource(host: "p4studio.local", session: "s1"),
                                          viewer: OverlayViewer(host: "p4air.local", row: "r7", confirmedAt: 1_000_000))
         let json = String(data: try JSONEncoder().encode(session), encoding: .utf8) ?? ""

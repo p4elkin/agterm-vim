@@ -6,6 +6,30 @@ import Testing
 // restore-time clamping.
 @MainActor
 struct SnapshotRoundTripTests {
+    @Test func paneIdentitiesRoundTrip() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.toggleSplit(session.id)
+        let primary = session.paneIdentity
+        let split = session.splitPaneIdentity
+        let restored = makeStore()
+        restored.restore(from: store.snapshot())
+        #expect(restored.workspaces[0].sessions[0].paneIdentity == primary)
+        #expect(restored.workspaces[0].sessions[0].splitPaneIdentity == split)
+    }
+
+    @Test func legacySnapshotMintsPaneIdentities() throws {
+        let json = #"{"id":"00000000-0000-0000-0000-000000000001","cwd":"/tmp","isSplit":true}"#
+        let snapshot = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snapshot.paneIdentity == nil)
+        #expect(snapshot.splitPaneIdentity == nil)
+        let store = makeStore()
+        store.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [snapshot])]))
+        let session = store.workspaces[0].sessions[0]
+        #expect(session.splitPaneIdentity != nil)
+    }
+
     @Test func splitCwdRoundTripsThroughSnapshot() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")
@@ -101,81 +125,44 @@ struct SnapshotRoundTripTests {
         #expect(restored.workspaces[0].sessions[0].commandWait == false)
     }
 
+    @Test func splitCreationIdentityRoundTripsForShownAndHiddenSplits() {
+        let shownStore = makeStore()
+        let shownWorkspace = shownStore.addWorkspace(name: "shown")
+        let shown = shownStore.addSession(toWorkspace: shownWorkspace.id, cwd: "/shown")!
+        shown.isSplit = true
+        shown.hasSplit = true
+        shown.splitInitialCommand = "ssh split-host"
+        shown.splitCommandWait = true
+
+        let shownSnapshot = shownStore.snapshot()
+        #expect(shownSnapshot.workspaces[0].sessions[0].splitInitialCommand == "ssh split-host")
+        #expect(shownSnapshot.workspaces[0].sessions[0].splitCommandWait == true)
+
+        let restoredShown = makeStore()
+        restoredShown.restore(from: shownSnapshot)
+        #expect(restoredShown.workspaces[0].sessions[0].splitInitialCommand == "ssh split-host")
+        #expect(restoredShown.workspaces[0].sessions[0].splitCommandWait)
+
+        let hiddenStore = makeStore()
+        let hiddenWorkspace = hiddenStore.addWorkspace(name: "hidden")
+        let hidden = hiddenStore.addSession(toWorkspace: hiddenWorkspace.id, cwd: "/hidden")!
+        hidden.hasSplit = true
+        hidden.splitInitialCommand = "ssh hidden-host"
+        hidden.splitCommandWait = true
+
+        let restoredHidden = makeStore()
+        restoredHidden.restore(from: hiddenStore.snapshot())
+        #expect(restoredHidden.workspaces[0].sessions[0].splitInitialCommand == "ssh hidden-host")
+        #expect(restoredHidden.workspaces[0].sessions[0].splitCommandWait)
+    }
+
     @Test func legacySnapshotWithoutCommandWaitDecodesNil() throws {
         // the missing key must decode as nil rather than failing the whole load, like every post-v1 field.
         let json = #"{"id":"\#(UUID().uuidString)","customName":null,"cwd":"/a","initialCommand":"make test"}"#
         let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
         #expect(snap.commandWait == nil)
-    }
-
-    @Test func keepShellOpenRoundTripsThroughSnapshot() {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
-        session.keepShellOpen = true
-        let snap = store.snapshot()
-        #expect(snap.workspaces[0].sessions[0].keepShellOpen == true)
-        let restored = makeStore()
-        restored.restore(from: snap)
-        #expect(restored.workspaces[0].sessions[0].keepShellOpen == true)
-    }
-
-    @Test func keepShellOpenFalseIsOmittedFromTheJSONAndRestoresFalse() throws {
-        // a tree with no keep-shell-open row must serialize exactly as it did before the field existed.
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: ws.id, cwd: "/a", command: "claude")!
-        #expect(session.keepShellOpen == false)
-        let snap = store.snapshot()
-        #expect(snap.workspaces[0].sessions[0].keepShellOpen == nil)
-        let json = try String(decoding: JSONEncoder().encode(snap), as: UTF8.self)
-        #expect(!json.contains("keepShellOpen"), "an unset flag must write no key; got \(json)")
-        let restored = makeStore()
-        restored.restore(from: snap)
-        #expect(restored.workspaces[0].sessions[0].keepShellOpen == false)
-    }
-
-    /// A promoted survivor's key is what makes this worth persisting: the row is addressed as the main pane
-    /// but attaches to `-right`, and only the snapshot carries that across a restart.
-    @Test func theZmxKeysRoundTripThroughSnapshot() throws {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        session.zmxPrimaryKey = "\(session.id.uuidString)-right"
-        session.zmxSplitKey = "\(session.id.uuidString)-left"
-        let snap = store.snapshot()
-        #expect(snap.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
-        let restored = makeStore()
-        restored.restore(from: snap)
-        #expect(restored.workspaces[0].sessions[0].zmxPrimaryKey == "\(session.id.uuidString)-right")
-        #expect(restored.workspaces[0].sessions[0].zmxSplitKey == "\(session.id.uuidString)-left")
-    }
-
-    @Test func anUnwrappedRowWritesNoZmxKeys() throws {
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        _ = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        let json = try String(decoding: JSONEncoder().encode(store.snapshot()), as: UTF8.self)
-        #expect(!json.contains("zmxPrimaryKey"), "an unwrapped row must write no key; got \(json)")
-        #expect(!json.contains("zmxSplitKey"))
-    }
-
-    @Test func legacySnapshotWithoutZmxKeysDecodesNil() throws {
-        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","zmxPrimaryKey":7}"#
-        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
-        #expect(snap.zmxPrimaryKey == nil)
-        #expect(snap.zmxSplitKey == nil)
-    }
-
-    @Test func legacySnapshotWithoutKeepShellOpenDecodesNil() throws {
-        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/a","initialCommand":"claude","commandWait":true}"#
-        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
-        #expect(snap.keepShellOpen == nil)
-        #expect(snap.commandWait == true)
-        let store = makeStore()
-        let ws = store.addWorkspace(name: "work")
-        store.restore(from: Snapshot(workspaces: [WorkspaceSnapshot(id: ws.id, name: "work", sessions: [snap])]))
-        #expect(store.workspaces[0].sessions[0].keepShellOpen == false)
+        #expect(snap.splitInitialCommand == nil)
+        #expect(snap.splitCommandWait == nil)
     }
 
     @Test func sidebarWidthAndVisibilityRoundTripThroughSnapshot() {
@@ -261,14 +248,30 @@ struct SnapshotRoundTripTests {
         #expect(unknownSession.splitAxis == nil)
     }
 
-    @Test func hiddenSplitDoesNotPersistAnUnrestorableAxis() {
+    @Test func hiddenSplitKeepsIdentityAndAxisButDefaultsFocusToPrimary() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")
         let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
-        session.hasSplit = true
+        store.toggleSplit(session.id)
+        let splitIdentity = session.splitPaneIdentity
+        session.splitFocused = true
+        store.toggleSplit(session.id)
         session.isSplit = false
         session.splitAxis = .topBottom
-        #expect(store.snapshot().workspaces[0].sessions[0].splitAxis == nil)
+        let snapshot = store.snapshot()
+        let saved = snapshot.workspaces[0].sessions[0]
+        #expect(saved.hasSplit == true)
+        #expect(saved.splitPaneIdentity == splitIdentity)
+        #expect(saved.splitAxis == .topBottom)
+
+        let restored = makeStore()
+        restored.restore(from: snapshot)
+        let result = restored.workspaces[0].sessions[0]
+        #expect(result.hasSplit)
+        #expect(!result.isSplit)
+        #expect(!result.splitFocused)
+        #expect(result.splitPaneIdentity == splitIdentity)
+        #expect(result.splitAxis == .topBottom)
     }
 
     @Test func restoreCommandRoundTripsThroughSnapshot() {
@@ -287,6 +290,57 @@ struct SnapshotRoundTripTests {
         let r = restored.workspaces[0].sessions[0]
         #expect(r.restoreCommand == "claude --resume abc")
         #expect(r.splitRestoreCommand == "tail -f /var/log/x")
+    }
+
+    @Test func contextRoundTripsThroughSnapshot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.context = "PR #517: restore reap ordering"
+        let snap = store.snapshot()
+        #expect(snap.workspaces[0].sessions[0].context == "PR #517: restore reap ordering")
+        let restored = makeStore()
+        restored.restore(from: snap)
+        #expect(restored.workspaces[0].sessions[0].context == "PR #517: restore reap ordering")
+    }
+
+    @Test func snapshotWithoutContextDecodesNil() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/tmp"}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.context == nil)
+    }
+
+    // `stored` is the JSON-ESCAPED body: an unescaped control byte is invalid JSON, so embedding one would
+    // test the parser's leniency instead of the context rule.
+    @Test(arguments: [#""#, #"   "#, #"PR\n517"#, #"PR\u2028517"#, #"PR\t517"#, #"PR517\n"#])
+    func handEditedInvalidContextDropsWithoutFailingTheDecode(stored: String) throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/tmp","context":"\#(stored)","customName":"keep"}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.context == nil)
+        #expect(snap.customName == "keep")
+    }
+
+    @Test func handEditedOversizedContextDropsWithoutFailingTheDecode() throws {
+        let oversized = String(repeating: "a", count: Session.contextByteLimit + 1)
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/tmp","context":"\#(oversized)","customName":"keep"}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.context == nil)
+        #expect(snap.customName == "keep")
+    }
+
+    @Test func handEditedContextIsTrimmedOnDecode() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","cwd":"/tmp","context":"  PR #517  "}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.context == "PR #517")
+    }
+
+    @Test func duplicatedSessionDoesNotInheritContext() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.context = "PR #517"
+        let copy = store.duplicateSession(session.id)
+        #expect(copy?.context == nil)
     }
 
     @Test func emptyRestoreCommandRoundTripsAsEmptyNotNil() throws {

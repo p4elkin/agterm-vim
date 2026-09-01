@@ -850,6 +850,15 @@ struct SocketClientTests {
         #expect(SocketClient.formatResponse(response, json: false) == "0.850")
     }
 
+    // the caller compares its request against the echo to detect a clamp, so both directions are pinned:
+    // rounding 271.34 would report a clamp that never happened, and trimming 300.0's tail would contradict
+    // the integral example the CLI docs tell callers to expect.
+    @Test(arguments: [(271.3, "271.3"), (271.34, "271.34"), (300.0, "300.0")])
+    func formatResponseSidebarWidth(_ stored: Double, _ rendered: String) {
+        let response = ControlResponse(ok: true, result: ControlResult(sidebarWidth: stored))
+        #expect(SocketClient.formatResponse(response, json: false) == rendered)
+    }
+
     @Test func formatResponseErrorFallback() {
         #expect(SocketClient.formatResponse(ControlResponse(ok: false), json: false) == "error: unknown error")
     }

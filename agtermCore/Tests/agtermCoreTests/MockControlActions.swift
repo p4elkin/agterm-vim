@@ -32,6 +32,7 @@ final class MockControlActions: ControlActions {
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
         case sessionFlag(target: String?, window: String?, String?)
         case sessionPark(target: String?, window: String?, ControlToggleMode)
+        case sessionContext(target: String?, window: String?, context: String?)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
         case sessionMark(target: String?, window: String?)
@@ -41,6 +42,7 @@ final class MockControlActions: ControlActions {
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
         case sessionSplit(target: String?, window: String?, String?, SplitAxis?)
         case sessionSplitClose(target: String?, window: String?)
+        case sessionSwap(target: String?, window: String?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
@@ -55,6 +57,11 @@ final class MockControlActions: ControlActions {
         case notify(target: String?, window: String?, title: String?, body: String)
         case themeSet(String?)
         case themeList
+        case restoreModeRead
+        case restoreModeSet(RestoreMode)
+        case zmxList
+        case zmxPrune
+        case zmxKill(target: String, window: String?, pane: ZmxPaneRole)
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
         case sidebarParked(window: String?, ControlParkedVisibilityMode, ControlParkedScope)
@@ -63,6 +70,7 @@ final class MockControlActions: ControlActions {
         case normalMode(ControlToggleMode)
         case overlayPairing(target: String?, window: String?, ControlOverlayPairingUpdate)
         case overlayRedirectToggle(ControlToggleMode)
+        case sidebarWidth(points: Double, window: String?)
         case quick(String?)
         case quickType(text: String)
         case quickText(all: Bool, lines: Int?)
@@ -124,6 +132,7 @@ final class MockControlActions: ControlActions {
     var nextOverlayRedirectToggleResponse = ControlResponse(ok: true)
     var nextExpandResponse = ControlResponse(ok: true)
     var nextCollapseResponse = ControlResponse(ok: true)
+    var nextSidebarWidthResponse = ControlResponse(ok: true)
     var nextFontResponse = ControlResponse(ok: true)
     var nextNotifyResponse = ControlResponse(ok: true)
     var nextKeymapListResponse = ControlResponse(ok: true)
@@ -132,6 +141,10 @@ final class MockControlActions: ControlActions {
     var nextConfigResponse = ControlResponse(ok: true)
     var nextThemeSetResponse = ControlResponse(ok: true)
     var nextThemeListResponse = ControlResponse(ok: true)
+    var nextRestoreModeResponse = ControlResponse(ok: true)
+    var nextZmxListResponse = ControlResponse(ok: true)
+    var nextZmxPruneResponse = ControlResponse(ok: true)
+    var nextZmxKillResponse = ControlResponse(ok: true)
     var nextQuickResponse = ControlResponse(ok: true)
     var nextQuickTypeResponse = ControlResponse(ok: true)
     var nextQuickTextResponse = ControlResponse(ok: true)
@@ -179,6 +192,7 @@ final class MockControlActions: ControlActions {
     /// advance runs through the SAME `markTurn` the real arm calls, and only id-spelling resolution is
     /// supplied here, so a test must address sessions by full uuid.
     var markStore: AppStore?
+    var nextSessionSwapResponse = ControlResponse(ok: true)
 
     func controlTree(window: String?) -> ControlResponse {
         calls.append(.tree(window: window))
@@ -304,6 +318,11 @@ final class MockControlActions: ControlActions {
         return ControlResponse(ok: true)
     }
 
+    func setSessionContext(_ target: String?, window: String?, context: String?) -> ControlResponse {
+        calls.append(.sessionContext(target: target, window: window, context: context))
+        return ControlResponse(ok: true)
+    }
+
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse {
         calls.append(.markSessionSeen(target: target, window: window))
         return ControlResponse(ok: true)
@@ -359,6 +378,11 @@ final class MockControlActions: ControlActions {
     func closeSessionSplit(_ target: String?, window: String?) -> ControlResponse {
         calls.append(.sessionSplitClose(target: target, window: window))
         return ControlResponse(ok: true)
+    }
+
+    func swapSessionPanes(_ target: String?, window: String?) async -> ControlResponse {
+        calls.append(.sessionSwap(target: target, window: window))
+        return nextSessionSwapResponse
     }
 
     func scratchSession(_ target: String?, window: String?, mode: String?,
@@ -434,6 +458,31 @@ final class MockControlActions: ControlActions {
         return nextThemeListResponse
     }
 
+    func readRestoreMode() -> ControlResponse {
+        calls.append(.restoreModeRead)
+        return nextRestoreModeResponse
+    }
+
+    func setRestoreMode(_ mode: RestoreMode) -> ControlResponse {
+        calls.append(.restoreModeSet(mode))
+        return nextRestoreModeResponse
+    }
+
+    func listZmxDaemons() -> ControlResponse {
+        calls.append(.zmxList)
+        return nextZmxListResponse
+    }
+
+    func pruneZmxDaemons() -> ControlResponse {
+        calls.append(.zmxPrune)
+        return nextZmxPruneResponse
+    }
+
+    func killZmxDaemon(target: String, window: String?, pane: ZmxPaneRole) -> ControlResponse {
+        calls.append(.zmxKill(target: target, window: window, pane: pane))
+        return nextZmxKillResponse
+    }
+
     func setSidebarVisibility(_ mode: ControlToggleMode) -> ControlResponse {
         calls.append(.sidebarVisibility(mode))
         return nextSidebarVisibilityResponse
@@ -487,6 +536,11 @@ final class MockControlActions: ControlActions {
     func setOverlayRedirectToggle(_ mode: ControlToggleMode) -> ControlResponse {
         calls.append(.overlayRedirectToggle(mode))
         return nextOverlayRedirectToggleResponse
+    }
+
+    func setSidebarWidth(_ points: Double, window: String?) -> ControlResponse {
+        calls.append(.sidebarWidth(points: points, window: window))
+        return nextSidebarWidthResponse
     }
 
     func setQuickTerminal(mode: String?) -> ControlResponse {

@@ -12,6 +12,8 @@ paths:
   Without `--publish`, the dry run stops before upload. Upstream signs as
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
+- Developer ID signing is inside-out: `agtermctl` and zmx are signed first with no entitlements, then the
+  app is sealed with its TCC entitlements. The script rejects either helper if app entitlements leak into it.
 - Before writing or committing a release section, put the exact `CHANGELOG-fork.md` text in a temp file and
   pass it through the `draft-approval` skill's `draft-review.sh`; address annotations and get explicit
   chat approval. `release_notes()` publishes that section as the GitHub release body.

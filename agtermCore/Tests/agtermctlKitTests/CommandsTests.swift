@@ -24,6 +24,15 @@ struct CommandsTests {
         }
     }
 
+    private func requestErrorMessage(_ build: () throws -> ControlRequest) -> String? {
+        do {
+            _ = try build()
+            return nil
+        } catch {
+            return Agtermctl.message(for: error)
+        }
+    }
+
     @Test func tree() throws {
         #expect(try request(["tree"]) == ControlRequest(cmd: .tree))
     }
@@ -178,21 +187,6 @@ struct CommandsTests {
         #expect(validationMessage(["session", "new", "--wait"]) == "--wait requires --command")
     }
 
-    @Test func sessionNewWithKeepShellOpen() throws {
-        let expected = ControlRequest(cmd: .sessionNew,
-                                      args: ControlArgs(command: "claude", keepShellOpen: true))
-        #expect(try request(["session", "new", "--command", "claude", "--keep-shell-open"]) == expected)
-    }
-
-    @Test func sessionNewRejectsKeepShellOpenWithoutCommand() {
-        #expect(validationMessage(["session", "new", "--keep-shell-open"]) == "--keep-shell-open requires --command")
-    }
-
-    @Test func sessionNewRejectsKeepShellOpenWithWait() {
-        #expect(validationMessage(["session", "new", "--command", "claude", "--keep-shell-open", "--wait"])
-            == "--keep-shell-open cannot be combined with --wait")
-    }
-
     @Test func sessionNewRejectsWorkspaceAndWorkspaceName() {
         #expect(validationMessage(["session", "new", "--workspace", "active", "--workspace-name", "servers"])
             == "use either --workspace or --workspace-name, not both")
@@ -342,6 +336,12 @@ struct CommandsTests {
         #expect(command.target.target == "s1")
     }
 
+    @Test func sessionTypeStdinRejectsInvalidUTF8() throws {
+        let command = try Session.TypeText.parse(["--stdin", "--target", "s1"])
+        #expect(requestErrorMessage { try command.makeRequest(input: Data([0xFF])) }
+            == "stdin must be valid UTF-8")
+    }
+
     @Test func sessionTypeWithPane() throws {
         let expected = ControlRequest(cmd: .sessionType, target: "s1",
                                       args: ControlArgs(text: "ls\n", select: false, pane: "right"))
@@ -400,6 +400,11 @@ struct CommandsTests {
     @Test func sessionSplitCloseWithTargetAndWindow() throws {
         let expected = ControlRequest(cmd: .sessionSplitClose, target: "s1", args: ControlArgs(window: "w1"))
         #expect(try request(["session", "split", "close", "--target", "s1", "--window", "w1"]) == expected)
+    }
+
+    @Test func sessionSwapWithTargetAndWindow() throws {
+        let expected = ControlRequest(cmd: .sessionSwap, target: "s1", args: ControlArgs(window: "w1"))
+        #expect(try request(["session", "swap", "--target", "s1", "--window", "w1"]) == expected)
     }
 
     @Test func sessionScratchDefaultsToggle() throws {
@@ -535,6 +540,12 @@ struct CommandsTests {
     @Test func sessionTextWithPaneAndTarget() throws {
         let expected = ControlRequest(cmd: .sessionText, target: "9f3c", args: ControlArgs(pane: "right"))
         #expect(try request(["session", "text", "--pane", "right", "--target", "9f3c"]) == expected)
+    }
+
+    @Test func sessionTextWithPaneIDAndPane() throws {
+        let expected = ControlRequest(cmd: .sessionText, target: "active",
+                                      args: ControlArgs(pane: "right", paneID: "stable-token"))
+        #expect(try request(["session", "text", "--pane-id", "stable-token", "--pane", "right"]) == expected)
     }
 
     @Test func sessionTextWithPaneScratch() throws {
@@ -682,6 +693,29 @@ struct CommandsTests {
 
     @Test func restoreCaptureIsAppGlobalAndCarriesNoArgs() throws {
         #expect(try request(["restore", "capture"]) == ControlRequest(cmd: .restoreCapture))
+    }
+
+    @Test func sessionContextSetsText() throws {
+        let expected = ControlRequest(cmd: .sessionContext, target: "s1",
+                                      args: ControlArgs(text: "PR #517", mode: "set"))
+        #expect(try request(["session", "context", "PR #517", "--target", "s1"]) == expected)
+    }
+
+    @Test func sessionContextClears() throws {
+        let expected = ControlRequest(cmd: .sessionContext, target: "active", args: ControlArgs(mode: "clear"))
+        let req = try request(["session", "context", "--clear"])
+        #expect(req == expected)
+        #expect(req.args?.text == nil)
+    }
+
+    @Test func sessionContextCarriesTextVerbatimForTheServerToValidate() throws {
+        let padded = "  PR #517: reap ordering  "
+        #expect(try request(["session", "context", padded]).args?.text == padded)
+    }
+
+    @Test(arguments: [["session", "context"], ["session", "context", "PR #517", "--clear"]])
+    func sessionContextRejectsNeitherAndBothFormsAtParseTime(argv: [String]) {
+        #expect(validationMessage(argv) == "provide exactly one of a TEXT or --clear")
     }
 
     @Test func sessionRestorePinsCommand() throws {
@@ -1196,6 +1230,12 @@ struct CommandsTests {
         #expect(command.text == nil)
     }
 
+    @Test func quickTypeStdinRejectsInvalidUTF8() throws {
+        let command = try Quick.TypeText.parse(["--stdin"])
+        #expect(requestErrorMessage { try command.makeRequest(input: Data([0xFF])) }
+            == "stdin must be valid UTF-8")
+    }
+
     @Test func quickTypeWithoutTextOrStdinThrows() {
         // the message is raised in makeRequest, not validate, so parseAsRoot alone would not reach it.
         #expect(throws: (any Error).self) { try request(["quick", "type"]) }
@@ -1512,6 +1552,24 @@ struct CommandsTests {
 
     @Test func modeRejectsBadMode() {
         #expect(validationMessage(["mode", "normal"]) == "mode must be on, off, or toggle")
+    }
+
+    @Test func sidebarWidth() throws {
+        #expect(try request(["sidebar", "width", "271.3"]) ==
+            ControlRequest(cmd: .sidebarWidth, args: ControlArgs(sidebarWidth: 271.3)))
+    }
+
+    @Test func sidebarWidthWithWindow() throws {
+        #expect(try request(["sidebar", "width", "300", "--window", "abc"]) ==
+            ControlRequest(cmd: .sidebarWidth, args: ControlArgs(window: "abc", sidebarWidth: 300)))
+    }
+
+    @Test func sidebarWidthRejectsNonNumericPoints() {
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["sidebar", "width", "wide"]) }
+    }
+
+    @Test func sidebarWidthRejectsNonFinitePoints() {
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["sidebar", "width", "nan"]) }
     }
 
     @Test func sessionFlagDefaultsToggle() throws {

@@ -2,340 +2,376 @@ import Foundation
 import Testing
 @testable import agtermCore
 
-/// Records what a store asked zmx to do, so a test asserts on the effects rather than on the predicate twice.
-@MainActor
-final class ZmxSinkSpy {
-    private(set) var ended: [String] = []
-    private(set) var labelled: [(key: String, name: String)] = []
-
-    var sink: ZmxSessionSink {
-        ZmxSessionSink(end: { [weak self] in self?.ended.append($0) },
-                       label: { [weak self] key, name in self?.labelled.append((key, name)) })
-    }
-}
-
 @MainActor
 struct ZmxLifecycleTests {
-    private let id = UUID(uuidString: "1B4E28BA-2FA1-11D2-883F-0016D3CCA427")!
-    private var left: String { "\(id.uuidString)-left" }
-    private var right: String { "\(id.uuidString)-right" }
+    @Test func listParserKeepsClientCountsAndUnreachableNames() throws {
+        let output = """
+        name=agterm-a\tpid=10\tclients=0\tcreated=1\tcwd=/tmp
+        name=agterm-b\tpid=11\tclients=2\tcreated=1\tcmd=zsh
+        name=agterm-busy\terr=Timeout\tstatus=unreachable
 
-    private func row(primary: String? = nil, split: String? = nil) -> ZmxLifecycle.Row {
-        ZmxLifecycle.Row(primaryKey: primary, splitKey: split)
+        """
+
+        #expect(try ZmxListParser.parse(output) == [
+            ZmxSessionRecord(name: "agterm-a", clients: 0, leaderPID: 10),
+            ZmxSessionRecord(name: "agterm-b", clients: 2, leaderPID: 11),
+            ZmxSessionRecord(name: "agterm-busy", clients: nil),
+        ])
     }
 
-    /// One surface build, as `agtermApp`'s factories perform it: decide from the keys the row already holds,
-    /// then record what was wrapped. Returns the key the pane took, nil when it was left a plain shell.
-    @discardableResult
-    private func buildPane(_ store: AppStore, _ session: Session, role: ZmxSessionKey.Role) -> String? {
-        let keys = session.zmxKeys(for: role)
-        let inputs = ZmxWrap.Inputs(sessionID: session.id, role: role, existingKey: keys.own,
-                                    siblingKey: keys.sibling, pinnedCommand: nil, keepShellOpen: false,
-                                    zmxPath: "/opt/homebrew/bin/zmx", budgetReason: nil,
-                                    isolatedStateDir: false)
-        guard case let .wrap(_, key, _) = ZmxWrap.decide(inputs) else { return nil }
-        store.recordZmxSession(key, role: role, forSession: session)
-        return key
+    @Test func listParserRejectsPartialOutputInsteadOfReapingFromIt() {
+        #expect((try? ZmxListParser.parse("")) == [])
+        #expect(throws: ZmxListParser.ParseError.self) {
+            try ZmxListParser.parse("pid=10\tclients=0\n")
+        }
+        #expect(throws: ZmxListParser.ParseError.self) {
+            try ZmxListParser.parse("name=agterm-a\tclients=wat\n")
+        }
+        #expect(throws: ZmxListParser.ParseError.self) {
+            try ZmxListParser.parse("name=agterm-a\tpid=wat\tclients=0\n")
+        }
     }
 
-    /// A session whose panes were wrapped, as the surface factories leave it.
-    @discardableResult
-    private func wrapSession(_ session: Session, split: Bool = false) -> Session {
-        session.zmxPrimaryKey = "\(session.id.uuidString)-left"
-        if split { session.zmxSplitKey = "\(session.id.uuidString)-right" }
-        return session
+    @Test func leaderMapUsesOnlyAppNamesWithReadablePositivePids() throws {
+        let app = ZmxSupport.daemonName(for: UUID())
+        let noPID = ZmxSupport.daemonName(for: UUID())
+        let unreachable = ZmxSupport.daemonName(for: UUID())
+        let records = try ZmxListParser.parse("""
+        name=\(app)\tpid=10\tclients=0
+        name=other\tpid=11\tclients=0
+        name=\(noPID)\tclients=0
+        name=\(unreachable)\terr=Timeout\tstatus=unreachable
+        """)
+
+        #expect(ZmxLeaderMap.leaders(in: records) == [app: 10])
     }
 
-    // MARK: - the predicate
+    @Test func foregroundRefreshGateInvalidatesAndReconcilesSlowly() {
+        var gate = ZmxRefreshGate()
+        let start = Date(timeIntervalSince1970: 100)
 
-    @Test func rowCloseEndsTheOnePaneKey() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left), close: .row) == [left])
+        let first = gate.shouldRefresh(now: start)
+        let held = gate.shouldRefresh(now: start.addingTimeInterval(1))
+        #expect(first)
+        #expect(!held)
+        gate.noteLifecycleChange()
+        let invalidated = gate.shouldRefresh(now: start.addingTimeInterval(2))
+        let heldAgain = gate.shouldRefresh(now: start.addingTimeInterval(3))
+        let reconciled = gate.shouldRefresh(
+            now: start.addingTimeInterval(2 + ZmxRefreshGate.reconcileInterval))
+        #expect(invalidated)
+        #expect(!heldAgain)
+        #expect(reconciled)
     }
 
-    @Test func rowCloseWithASplitEndsBothPaneKeys() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .row) == [left, right])
+    @Test func foregroundRefreshNeedsAtLeastOneActuallyWrappedPane() {
+        let ordinary = Session(initialCwd: "/ordinary")
+        ordinary.surface = SpySurface(backedByZmx: false)
+        let wrapped = Session(initialCwd: "/wrapped")
+        wrapped.surface = SpySurface(backedByZmx: true)
+
+        #expect(!ZmxForegroundRefreshPolicy.hasWrappedPane(in: [ordinary]))
+        #expect(ZmxForegroundRefreshPolicy.hasWrappedPane(in: [ordinary, wrapped]))
+        wrapped.surface = SpySurface(backedByZmx: false)
+        wrapped.hasSplit = true
+        wrapped.splitSurface = SpySurface(backedByZmx: true)
+        #expect(ZmxForegroundRefreshPolicy.hasWrappedPane(in: [wrapped]))
     }
 
-    @Test func splitCloseEndsOnlyTheSplitKey() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .split) == [right])
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left), close: .split).isEmpty)
+    @Test func reapPolicyUsesCompleteLiveInventoryAndZeroClientAppNamesOnly() {
+        let known = ZmxSupport.daemonName(for: UUID())
+        let orphan = ZmxSupport.daemonName(for: UUID())
+        let sessions = [
+            ZmxSessionRecord(name: known, clients: 0),
+            ZmxSessionRecord(name: orphan, clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.daemonName(for: UUID()), clients: 1),
+            ZmxSessionRecord(name: "other", clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.daemonName(for: UUID()), clients: nil),
+        ]
+
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .live,
+                                          knownNames: [known]) == [orphan])
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .live, knownNames: nil) == nil)
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .none,
+                                          knownNames: nil) == [known, orphan])
     }
 
-    @Test func windowCloseEndsNothing() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .window).isEmpty)
+    /// pins the reap against a user's own zmx session: `ZMX_DIR` is exported into every wrapped pane, so
+    /// `zmx new agterm-notes` typed in one lands in the namespace the reaper sweeps
+    @Test func reapRefusesEveryNameOutsideTheGeneratedDaemonShape() {
+        let ours = ZmxSupport.daemonName(for: UUID())
+        let sessions = [
+            ZmxSessionRecord(name: ours, clients: 0),
+            ZmxSessionRecord(name: "agterm-notes", clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.namePrefix, clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.namePrefix + String(repeating: "a", count: 31), clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.namePrefix + String(repeating: "a", count: 33), clients: 0),
+            ZmxSessionRecord(name: ZmxSupport.namePrefix + String(repeating: "A", count: 32), clients: 0),
+            ZmxSessionRecord(name: ours + "-2", clients: 0),
+        ]
+
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .live, knownNames: []) == [ours])
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .rerun,
+                                          knownNames: nil) == [ours])
+        #expect(ZmxReapPolicy.namesToKill(sessions: sessions, requestedMode: .none, knownNames: nil) == [ours])
     }
 
-    /// ⚠️ The client that went away may have DETACHED, leaving a live agent in the session behind it.
-    @Test func aClientExitEndsNothing() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: left, split: right), close: .clientExit).isEmpty)
+    @Test func leaderMapKeepsOnlyGeneratedDaemonNames() {
+        let ours = ZmxSupport.daemonName(for: UUID())
+        let leaders = ZmxLeaderMap.leaders(in: [
+            ZmxSessionRecord(name: ours, clients: 0, leaderPID: 41),
+            ZmxSessionRecord(name: "agterm-notes", clients: 0, leaderPID: 42),
+        ])
+
+        #expect(leaders == [ours: 41])
     }
 
-    @Test func anUnwrappedRowOwnsNothing() {
-        #expect(ZmxLifecycle.keysToEnd(row(), close: .row).isEmpty)
-        #expect(ZmxLifecycle.ownedKeys(row()).isEmpty)
-        // an unwrapped left pane beside a wrapped split still ends only the split's key
-        #expect(ZmxLifecycle.keysToEnd(row(split: right), close: .row) == [right])
+    @Test func immediateSessionAndWorkspaceCloseFinalizeEveryOwnedPane() throws {
+        var finalized: [[UUID]] = []
+        let store = AppStore(persistence: temporaryPersistence(),
+                             paneFinalizer: { finalized.append($0) })
+        let firstWorkspace = store.addWorkspace(name: "first")
+        let first = try #require(store.addSession(toWorkspace: firstWorkspace.id, cwd: "/first"))
+        let firstSplit = UUID()
+        first.hasSplit = true
+        first.splitPaneIdentity = firstSplit
+        let secondWorkspace = store.addWorkspace(name: "second")
+        let second = try #require(store.addSession(toWorkspace: secondWorkspace.id, cwd: "/second"))
+
+        store.closeSession(first.id)
+        #expect(finalized == [[first.paneIdentity, firstSplit]])
+
+        store.removeWorkspace(secondWorkspace.id)
+        #expect(finalized == [[first.paneIdentity, firstSplit], [second.paneIdentity]])
     }
 
-    /// A promoted survivor's key is `-right` while the model calls it the main pane, so ownership can never
-    /// be re-derived from the role.
-    @Test func aPromotedRowOwnsTheKeyItActuallyAttachedTo() {
-        #expect(ZmxLifecycle.keysToEnd(row(primary: right), close: .row) == [right])
-    }
-
-    // MARK: - the store
-
-    @Test func closingARowEndsItsSessions() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
+    @Test func undoKeepsPanesAndGraceFinalizationKillsThem() throws {
+        var finalized: [[UUID]] = []
+        let store = AppStore(persistence: temporaryPersistence(),
+                             paneFinalizer: { finalized.append($0) })
         let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        store.toggleSplit(session.id)
-        store.closeSession(session.id)
-        #expect(spy.ended == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
-    }
-
-    @Test func closingAnUnwrappedRowEndsNothing() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
-        store.closeSession(session.id)
-        #expect(spy.ended.isEmpty)
-    }
-
-    @Test func closingTheSplitEndsOnlyTheSplitSession() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        store.toggleSplit(session.id)
-        store.closeSplit(session.id)
-        #expect(spy.ended == ["\(session.id.uuidString)-right"])
-        #expect(session.zmxSplitKey == nil, "the right pane is gone, so the row stops owning its key")
-    }
-
-    // MARK: - a pane's own exit
-
-    /// ⚠️ The path that actually fires in production. Under wrapping the pane's process IS the zmx client, so
-    /// its exit means only that the client went away: the user may have detached from a session still running
-    /// their agent. `agtermApp.handlePaneExit` routes here, and it must end nothing.
-    @Test func theSplitPanesOwnExitEndsNothing() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        session.surface = SpySurface()
-        session.splitSurface = SpySurface()
-        store.toggleSplit(session.id)
-        store.closeSplitPane(session.id)
-        #expect(spy.ended.isEmpty)
-        #expect(store.session(withID: session.id) != nil)
-    }
-
-    @Test func thePrimaryPanesOwnExitEndsNothing() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
-        store.closePrimaryPane(session.id) // no split: the whole row goes, but its daemon may be detached
-        #expect(spy.ended.isEmpty)
-        #expect(store.session(withID: session.id) == nil)
-    }
-
-    /// ⚠️ The critical case: the survivor keeps attaching to `-right`, so the row must own THAT key
-    /// afterwards. Re-deriving `-left` here kills the wrong daemon on close and lets a later ⌘D open a second
-    /// client on the live one.
-    @Test func aPromotedSurvivorCarriesItsOwnKeyIntoTheMainSlot() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        session.surface = SpySurface()
-        session.splitSurface = SpySurface()
-        session.isSplit = true
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        let split = UUID()
         session.hasSplit = true
-        store.closePrimaryPane(session.id)
-        #expect(session.zmxPrimaryKey == "\(session.id.uuidString)-right")
-        #expect(session.zmxSplitKey == nil)
-        #expect(spy.ended.isEmpty)
-        store.closeSession(session.id)
-        #expect(spy.ended == ["\(session.id.uuidString)-right"])
-    }
+        session.splitPaneIdentity = split
 
-    @Test func aPromotedRowIsRenamedUnderItsOwnKey() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        session.surface = SpySurface()
-        session.splitSurface = SpySurface()
-        store.closePrimaryPane(session.id)
-        store.renameSession(session.id, to: "rebase")
-        #expect(spy.labelled.map(\.key) == ["\(session.id.uuidString)-right"])
-    }
-
-    // MARK: - what a surface build records
-
-    /// ⚠️ Command-D after a promotion. The main pane is a live client of `-right`, so the split factory must
-    /// not derive `-right` a second time: both panes would drive one terminal and an `exit` in either would
-    /// end the agent in both. A restart replays the same decision off the snapshot, so it must hold there too.
-    @Test func aReSplitAfterAPromotionNeverTakesTheMainPanesKey() {
-        let store = makeStore(zmx: ZmxSinkSpy().sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
-        buildPane(store, session, role: .left)
-        buildPane(store, session, role: .right)
-        session.surface = SpySurface()
-        session.splitSurface = SpySurface()
-        session.isSplit = true
-        session.hasSplit = true
-        store.closePrimaryPane(session.id)
-
-        #expect(buildPane(store, session, role: .right) == nil)
-        #expect(session.zmxPrimaryKey == "\(session.id.uuidString)-right")
-        #expect(session.zmxSplitKey == nil)
-
-        let restored = store.session(from: store.sessionSnapshot(session))
-        #expect(buildPane(store, restored, role: .left) == "\(session.id.uuidString)-right")
-        #expect(buildPane(store, restored, role: .right) == nil)
-        #expect(restored.zmxSplitKey == nil)
-    }
-
-    /// The label is not a rename-only effect: the retired `agterm-zmx-sync` is what used to keep it current,
-    /// so without this every never-renamed row shows a bare uuid in `zmx list` and the pick list.
-    @Test func wrappingAPaneLabelsItsSessionWithoutARename() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a/project")!
-        buildPane(store, session, role: .left)
-        buildPane(store, session, role: .right)
-        #expect(spy.labelled.map(\.key)
-                == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
-        #expect(spy.labelled.allSatisfy { $0.name == session.displayName })
-    }
-
-    // MARK: - the other teardown paths
-
-    @Test func aGraceCloseEndsTheSessionOnlyWhenItFinalizes() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
         #expect(store.softCloseSession(session.id, grace: 60))
-        #expect(spy.ended.isEmpty)
-        store.finalizeAllPendingCloses()
-        #expect(spy.ended == ["\(session.id.uuidString)-left"])
-    }
-
-    @Test func undoingAGraceCloseEndsNothing() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
-        #expect(store.softCloseSession(session.id, grace: 60))
+        #expect(finalized.isEmpty)
         #expect(store.undoPendingClose())
-        #expect(spy.ended.isEmpty)
+        #expect(finalized.isEmpty)
+
+        #expect(store.softCloseSession(session.id, grace: 60))
+        store.finalizePendingClose(try #require(store.pendingCloseSummary?.id))
+        #expect(finalized == [[session.paneIdentity, split]])
     }
 
-    @Test func aGracefullyClosedWorkspaceEndsEverySessionInIt() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
+    @Test func workspaceGraceFinalizesAllPanesOnlyAfterTheUndoWindow() throws {
+        var finalized: [[UUID]] = []
+        let store = AppStore(persistence: temporaryPersistence(),
+                             paneFinalizer: { finalized.append($0) })
+        _ = store.addWorkspace(name: "kept")
+        let removed = store.addWorkspace(name: "removed")
+        let session = try #require(store.addSession(toWorkspace: removed.id, cwd: "/repo"))
+
+        #expect(store.softRemoveWorkspace(removed.id, grace: 60))
+        #expect(finalized.isEmpty)
+        store.finalizePendingClose(try #require(store.pendingCloseSummary?.id))
+        #expect(finalized == [[session.paneIdentity]])
+    }
+
+    @Test func splitCloseFinalizesOnlySplitWhilePromotionMovesSurvivorIdentity() throws {
+        var finalized: [[UUID]] = []
+        let store = AppStore(persistence: temporaryPersistence(),
+                             paneFinalizer: { finalized.append($0) })
         let workspace = store.addWorkspace(name: "work")
-        let first = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
-        let second = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/b")!)
-        _ = store.addWorkspace(name: "other") // the last workspace is never removable
-        #expect(store.softRemoveWorkspace(workspace.id, grace: 60))
-        #expect(spy.ended.isEmpty)
-        store.finalizeAllPendingCloses()
-        #expect(spy.ended == ["\(first.id.uuidString)-left", "\(second.id.uuidString)-left"])
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        let split = UUID()
+        session.hasSplit = true
+        session.isSplit = true
+        session.splitPaneIdentity = split
+
+        store.closeSplit(session.id)
+        #expect(finalized == [[split]])
+        #expect(session.paneIdentity != split)
+
+        finalized.removeAll()
+        let promoted = UUID()
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        session.hasSplit = true
+        session.isSplit = true
+        session.splitPaneIdentity = promoted
+        store.closePrimaryPane(session.id)
+        #expect(finalized.isEmpty)
+        #expect(session.paneIdentity == promoted)
+        #expect(session.splitPaneIdentity == nil)
     }
 
-    @Test func removingAWorkspaceEndsEverySessionInIt() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let first = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!)
-        let second = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/b")!)
-        _ = store.addWorkspace(name: "other") // the last workspace is never removable
-        store.removeWorkspace(workspace.id)
-        #expect(spy.ended == ["\(first.id.uuidString)-left", "\(second.id.uuidString)-left"])
-    }
-
-    @Test func renamingARowLabelsBothItsPaneSessions() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = wrapSession(store.addSession(toWorkspace: workspace.id, cwd: "/a")!, split: true)
-        store.toggleSplit(session.id)
-        store.renameSession(session.id, to: "rebase")
-        #expect(spy.labelled.map(\.key) == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
-        #expect(spy.labelled.allSatisfy { $0.name == "rebase" })
-        #expect(spy.ended.isEmpty)
-    }
-
-    @Test func renamingAnUnwrappedRowLabelsNothing() {
-        let spy = ZmxSinkSpy()
-        let store = makeStore(zmx: spy.sink)
-        let workspace = store.addWorkspace(name: "work")
-        let session = store.addSession(toWorkspace: workspace.id, cwd: "/a")!
-        session.initialCommand = "htop"
-        store.renameSession(session.id, to: "top")
-        #expect(spy.labelled.isEmpty)
-    }
-
-    // MARK: - windows
-
-    /// ⚠️ The one mistake that would kill every agent in a window on ⌘W. A closed window keeps its session
-    /// ids in `windows/<id>.json` and reopens with them, so its teardown must reach no zmx session at all.
-    @Test func closingAWindowEndsNothing() throws {
-        try withLibrary { library, spy in
-            let windowID = library.windows[0].id
-            let store = try #require(library.store(for: windowID))
-            let session = try #require(store.workspaces.first?.sessions.first)
-            wrapSession(session, split: true)
-            store.toggleSplit(session.id)
-            library.closeWindow(windowID)
-            #expect(spy.ended.isEmpty)
-            // and the row is still claimed by the persisted window, which is what makes ending it wrong
-            let reopened = try #require(library.loadStore(for: windowID))
-            #expect(reopened.workspaces.first?.sessions.first?.id == session.id)
-        }
-    }
-
-    /// Deleting a window destroys its rows for good, so it is the one window path that DOES end them.
-    @Test func deletingAnOpenWindowEndsItsSessions() throws {
-        try withLibrary { library, spy in
-            let doomed = library.newWindow()
-            let store = try #require(library.store(for: doomed.id))
-            let session = try #require(store.workspaces.first?.sessions.first)
-            wrapSession(session, split: true)
-            library.removeWindow(doomed.id)
-            #expect(spy.ended == ["\(session.id.uuidString)-left", "\(session.id.uuidString)-right"])
-        }
-    }
-
-    /// The same for a window whose store is not loaded: the keys come off its persisted snapshot.
-    @Test func deletingAClosedWindowEndsTheSessionsItsSnapshotRecords() throws {
-        try withLibrary { library, spy in
-            let doomed = library.newWindow()
-            let store = try #require(library.store(for: doomed.id))
-            let session = try #require(store.workspaces.first?.sessions.first)
-            wrapSession(session)
-            store.save()
-            library.closeWindow(doomed.id)
-            #expect(spy.ended.isEmpty)
-            library.removeWindow(doomed.id)
-            #expect(spy.ended == ["\(session.id.uuidString)-left"])
-        }
-    }
-
-    private func withLibrary(_ body: (WindowLibrary, ZmxSinkSpy) throws -> Void) throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-zmx-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    @Test func windowDeleteFinalizesOpenAndClosedWindowsWhileCloseAloneKeepsPanes() throws {
+        let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let spy = ZmxSinkSpy()
-        try body(WindowLibrary(directory: directory, zmx: spy.sink), spy)
+        var finalized: [[UUID]] = []
+        let library = WindowLibrary(directory: directory, paneFinalizer: { finalized.append($0) })
+        let openExtra = library.newWindow(name: "open")
+        let openSession = try #require(library.store(for: openExtra.id)?.workspaces.first?.sessions.first)
+        library.removeWindow(openExtra.id)
+        #expect(finalized == [[openSession.paneIdentity]])
+
+        let closedExtra = library.newWindow(name: "closed")
+        let closedSession = try #require(library.store(for: closedExtra.id)?.workspaces.first?.sessions.first)
+        let closedIdentities = [closedSession.paneIdentity]
+
+        library.closeWindow(closedExtra.id)
+        #expect(finalized == [[openSession.paneIdentity]])
+        library.removeWindow(closedExtra.id)
+        #expect(finalized == [[openSession.paneIdentity], closedIdentities])
+    }
+
+    @Test func launchInventoryUpgradesLegacyPaneIdentitiesBeforeStoreRestore() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let windowID = UUID()
+        try writeIndex(WindowsIndex(windows: [WindowEntry(id: windowID, name: "window 1", isOpen: true)]),
+                       directory: directory)
+        try writeWindow(Snapshot(workspaces: [WorkspaceSnapshot(
+            id: UUID(), name: "work", sessions: [
+                SessionSnapshot(id: UUID(), customName: nil, cwd: "/repo", isSplit: true),
+            ])]), id: windowID, directory: directory)
+        var inventories: [Set<UUID>?] = []
+
+        let library = WindowLibrary(directory: directory, paneFinalizer: nil,
+                                    launchInventorySink: { inventories.append($0) })
+        let restored = try #require(library.store(for: windowID)?.workspaces.first?.sessions.first)
+        let disk = try PersistenceStore(
+            directory: directory.appendingPathComponent("windows"),
+            fileName: "\(windowID.uuidString).json").loadChecked()
+        let persisted = try #require(disk.workspaces.first?.sessions.first)
+
+        #expect(inventories == [Set([restored.paneIdentity, try #require(restored.splitPaneIdentity)])])
+        #expect(persisted.paneIdentity == restored.paneIdentity)
+        #expect(persisted.splitPaneIdentity == restored.splitPaneIdentity)
+    }
+
+    @Test func corruptClosedWindowMakesLaunchInventoryIncomplete() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let open = UUID(), closed = UUID()
+        try writeIndex(WindowsIndex(windows: [
+            WindowEntry(id: open, name: "open", isOpen: true),
+            WindowEntry(id: closed, name: "closed", isOpen: false),
+        ]), directory: directory)
+        try writeWindow(Snapshot(workspaces: [WorkspaceSnapshot(
+            id: UUID(), name: "work", sessions: [SessionSnapshot(id: UUID(), customName: nil, cwd: "/repo")])]),
+                        id: open, directory: directory)
+        let closedURL = directory.appendingPathComponent("windows/\(closed.uuidString).json")
+        try Data("{".utf8).write(to: closedURL)
+        var inventories: [Set<UUID>?] = []
+
+        _ = WindowLibrary(directory: directory, paneFinalizer: nil,
+                          launchInventorySink: { inventories.append($0) })
+        #expect(inventories.count == 1)
+        #expect(inventories[0] == nil)
+    }
+
+    @Test func snapshotRestoreKeepsTheDaemonNameForMissingDaemonUpsert() throws {
+        let store = AppStore(persistence: temporaryPersistence())
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        let expected = ZmxSupport.daemonName(for: session.paneIdentity)
+        let snapshot = store.snapshot()
+        let restored = AppStore(persistence: temporaryPersistence())
+
+        restored.restore(from: snapshot, launchRestore: true)
+        let restoredSession = try #require(restored.workspaces.first?.sessions.first)
+        #expect(ZmxSupport.daemonName(for: restoredSession.paneIdentity) == expected)
+    }
+
+    @Test func launchInventoryClaimsWindowFilesMissingFromAStaleIndex() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let indexed = UUID(), stray = UUID()
+        let indexedPane = UUID(), strayPane = UUID()
+        try writeIndex(WindowsIndex(windows: [WindowEntry(id: indexed, name: "indexed", isOpen: true)]),
+                       directory: directory)
+        try writeWindow(paneSnapshot(indexedPane), id: indexed, directory: directory)
+        try writeWindow(paneSnapshot(strayPane), id: stray, directory: directory)
+        var inventories: [Set<UUID>?] = []
+
+        let library = WindowLibrary(directory: directory, paneFinalizer: nil,
+                                    launchInventorySink: { inventories.append($0) })
+
+        #expect(inventories == [Set([indexedPane, strayPane])])
+        #expect(library.windows.map(\.id) == [indexed])
+        #expect(library.store(for: stray) == nil)
+    }
+
+    @Test func unreadableUnindexedWindowFileMakesLaunchInventoryIncomplete() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let indexed = UUID(), stray = UUID()
+        try writeIndex(WindowsIndex(windows: [WindowEntry(id: indexed, name: "indexed", isOpen: true)]),
+                       directory: directory)
+        try writeWindow(paneSnapshot(UUID()), id: indexed, directory: directory)
+        try writeWindow(paneSnapshot(UUID()), id: stray, directory: directory)
+        try Data("{".utf8).write(to: directory.appendingPathComponent("windows/\(stray.uuidString).json"))
+        var inventories: [Set<UUID>?] = []
+
+        _ = WindowLibrary(directory: directory, paneFinalizer: nil,
+                          launchInventorySink: { inventories.append($0) })
+
+        #expect(inventories == [nil])
+    }
+
+    @Test func unsavableStrayIdentityUpgradeMakesLaunchInventoryIncomplete() throws {
+        let directory = temporaryDirectory()
+        let windowsDirectory = directory.appendingPathComponent("windows")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                                   ofItemAtPath: windowsDirectory.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let indexed = UUID(), stray = UUID()
+        try writeIndex(WindowsIndex(windows: [WindowEntry(id: indexed, name: "indexed", isOpen: true)]),
+                       directory: directory)
+        try writeWindow(paneSnapshot(UUID()), id: indexed, directory: directory)
+        try writeWindow(Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [
+            SessionSnapshot(id: UUID(), customName: nil, cwd: "/repo"),
+        ])]), id: stray, directory: directory)
+        // read-only directory: `save(_:)` writes atomically through a sibling temp file, so the minted
+        // identity cannot persist and an unpersisted claim must not be trusted by the reap
+        try FileManager.default.setAttributes([.posixPermissions: 0o500],
+                                              ofItemAtPath: windowsDirectory.path)
+        var inventories: [Set<UUID>?] = []
+
+        _ = WindowLibrary(directory: directory, paneFinalizer: nil,
+                          launchInventorySink: { inventories.append($0) })
+
+        #expect(inventories == [nil])
+    }
+
+    private func paneSnapshot(_ pane: UUID) -> Snapshot {
+        Snapshot(workspaces: [WorkspaceSnapshot(id: UUID(), name: "work", sessions: [
+            SessionSnapshot(id: UUID(), paneIdentity: pane, customName: nil, cwd: "/repo"),
+        ])])
+    }
+
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agterm-zmx-lifecycle-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func temporaryPersistence() -> PersistenceStore {
+        PersistenceStore(directory: temporaryDirectory())
+    }
+
+    private func writeIndex(_ index: WindowsIndex, directory: URL) throws {
+        try JSONEncoder().encode(index).write(to: directory.appendingPathComponent("windows.json"))
+    }
+
+    private func writeWindow(_ snapshot: Snapshot, id: UUID, directory: URL) throws {
+        try PersistenceStore(directory: directory.appendingPathComponent("windows"),
+                             fileName: "\(id.uuidString).json").save(snapshot)
     }
 }

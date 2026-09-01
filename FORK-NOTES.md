@@ -32,12 +32,6 @@ is the `.claude/rules` file that owns the design.
 
 **Panes and sessions**
 
-- **Panes wrapped through zmx** — a pane's shell outlives the app and can be reattached. Session keys per
-  pane, orphaned daemons reaped at launch, the foreground process resolved past the zmx client, and
-  `session new --keep-shell-open` leaving the row at a prompt after its command exits.
-  A keep-shell-open row's command is TYPED into the login shell zmx spawns for the session, not wrapped in
-  a shell of the app's own, so a wrapped pane loads one shell profile instead of two and a restored row
-  never re-runs its command. Section below; design in `.claude/rules/zmx.md`.
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
   the workstation appears on the laptop mirroring it.
   Section below; design in `.claude/rules/overlay-redirect.md`.
@@ -168,29 +162,6 @@ Consequences worth knowing:
   the keyboard instead of ending the mode — keys pass to the overlay and the mode is still on when it
   closes — while walking onto an overlay already running, or entering the mode over one, keeps the keys,
   and a yielded key still reaches `map` binds, ⌘⌃F and `ctrl+space`. A HUD is passive and yields nothing.
-
-## Panes wrapped through zmx
-
-Every plain interactive pane is spawned as `zmx attach <key>` instead of a bare login shell, so the
-zmx session outlives the app and the app knows which session owns which pane. This replaces a
-zprofile hook that used to do the wrapping from outside.
-
-What it buys:
-
-- A pane's foreground process is resolved PAST the zmx client, so `tree --json` reports what you are
-  actually running rather than `zmx`.
-- Closing or renaming a row ends or relabels its zmx session, and orphaned daemons are reaped at
-  launch.
-- `session new --command` gained `--keep-shell-open`, which runs the command inside the session's
-  shell so the row lands at a prompt when it exits. It excludes `--wait`.
-
-`AGTERM_ZMX_SKIP` (non-empty) leaves a pane unwrapped, and is honoured by the wrapper itself, not
-only by the old hook. The UI test launcher sets it, which is not optional.
-
-⚠️ Caveats that are deliberate and will not be fixed by accident — a promoted split survivor is never
-zmx-backed again, a runtime attach failure closes the row rather than falling back to a plain shell,
-and a detached session whose row left the snapshot is reaped at the next launch. `.claude/rules/zmx.md`
-argues each one.
 
 ## Overlays open on the machine you are watching from
 
@@ -334,7 +305,7 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 - `patches/ghostty/` — the fork's own libghostty patches, applied by `scripts/setup.sh` on top of the
   pinned upstream rev.
 - `CHANGELOG-fork.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
-- `.claude/rules/keymap.md`, `control-api.md`, `notifications.md`, `zmx.md`, `overlay-redirect.md` and
+- `.claude/rules/keymap.md`, `control-api.md`, `notifications.md`, `overlay-redirect.md` and
   `fork-merge.md` document the design and how the fork is kept current.
 
 ## Not done

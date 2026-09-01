@@ -10,11 +10,6 @@ extension AppStore {
         let renamed = TerminalText.sanitized(name).trimmedOrNil
         guard session.customName != renamed else { return }
         session.customName = renamed
-        // zmx has no rename, so a renamed row carries its name as the session's `agterm_name` label instead —
-        // which is what keeps `zmx list` and the pick list readable after a rename.
-        if let zmx {
-            for key in ZmxLifecycle.ownedKeys(zmxRow(session)) { zmx.label(key, session.displayName) }
-        }
         scheduleTreeChanged()
         save()
     }

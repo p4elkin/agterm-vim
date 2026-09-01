@@ -1,7 +1,8 @@
 import Foundation
 
-/// The window's custom titlebar row state: `normal` stacks the session name over the cwd subtitle,
+/// The window's custom titlebar row state: `normal` stacks the session name over a second line,
 /// `compact` is one short row, `hidden` drops the row and the traffic lights for a full-bleed terminal.
+/// `TitlebarComposition` owns what each mode puts on those lines.
 /// Raw-stored, resolved by `effectiveToolbarMode`. Top-level, unlike the nested sibling mode enums,
 /// because the app target uses a bare `ToolbarMode`.
 public enum ToolbarMode: String, Codable, Sendable, CaseIterable {
@@ -28,6 +29,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     case sidebarToggle
     case sessionName
     case windowName
+    case sessionContext
     case recentSessions
     case scratch
     case split
@@ -57,6 +59,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
         case .sidebarToggle: return "Sidebar toggle"
         case .sessionName: return "Session name"
         case .windowName: return "Window name"
+        case .sessionContext: return "Session context"
         case .recentSessions: return "Recent sessions"
         case .scratch: return "Scratch terminal"
         case .split: return "Split view"
@@ -258,8 +261,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// How much darker or lighter the sidebar background is than the terminal background, 0...10 with 5
     /// neutral; nil means `defaultSidebarBackgroundShift`. A SwiftUI wash (`sidebarShiftAmount`).
     public var sidebarBackgroundShift: Int?
-    /// Whether, on restart, each pane re-runs what it ran at the last clean quit (nil = off) — a captured
-    /// `SessionSnapshot.foregroundCommand` plus a `session.new --command` session's `initialCommand`.
+    /// The global process-restore policy. nil is a pre-migration settings object and resolves through
+    /// `restoreRunningCommand` until `migrateRestoreMode()` normalizes it.
+    public var restoreMode: RestoreMode?
+    /// Legacy decode shim. Migration clears it before any save so new files write only `restoreMode`.
     public var restoreRunningCommand: Bool?
     /// Whether agterm also loads the user's GLOBAL `~/.config/ghostty/config` over its bundled defaults.
     /// nil = off, so a config written for the standalone Ghostty.app does NOT silently change agterm; opt
@@ -340,7 +345,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 blockedStatusShape: String? = nil, completedStatusShape: String? = nil,
                 configDirectory: String? = nil,
                 mouseScrollMultiplier: Double? = nil, inactivePaneMuteStrength: Int? = nil,
-                sidebarBackgroundShift: Int? = nil, restoreRunningCommand: Bool? = nil,
+                sidebarBackgroundShift: Int? = nil, restoreMode: RestoreMode? = nil,
+                restoreRunningCommand: Bool? = nil,
                 inheritGlobalGhosttyConfig: Bool? = nil, attentionButtonEnabled: Bool? = nil,
                 dockBounce: String? = nil, notificationSoundName: String? = nil,
                 blockedStatusSoundName: String? = nil, rightClickPaste: Bool? = nil,
@@ -377,6 +383,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mouseScrollMultiplier = mouseScrollMultiplier
         self.inactivePaneMuteStrength = inactivePaneMuteStrength
         self.sidebarBackgroundShift = sidebarBackgroundShift
+        self.restoreMode = restoreMode
         self.restoreRunningCommand = restoreRunningCommand
         self.inheritGlobalGhosttyConfig = inheritGlobalGhosttyConfig
         self.attentionButtonEnabled = attentionButtonEnabled
@@ -399,6 +406,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.autoHideSidebarInactiveWindows = autoHideSidebarInactiveWindows
         self.welcomeShown = welcomeShown
         self.overlayRedirectEnabled = overlayRedirectEnabled
+    }
+
+    /// The configured mode, including an object decoded from the legacy boolean schema.
+    public var effectiveRestoreMode: RestoreMode {
+        restoreMode ?? (restoreRunningCommand == true ? .rerun : .none)
+    }
+
+    /// Converts the legacy boolean in memory. Saving after this writes only the new enum key.
+    public mutating func migrateRestoreMode() {
+        restoreMode = effectiveRestoreMode
+        restoreRunningCommand = nil
     }
 
     /// The hidden chrome elements, unknown (future-written) raw names dropped. The single read point.

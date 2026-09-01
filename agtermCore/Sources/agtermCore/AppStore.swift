@@ -99,10 +99,10 @@ public final class AppStore {
     public internal(set) var hideParked = false
     public internal(set) var parkedRevealedWorkspaceIDs: Set<UUID> = []
 
-    /// This window's sidebar width in points, persisted in `Snapshot`; drag-driven, clamped to the bounds below.
+    /// Sidebar width in points, persisted per window; drag and `sidebar.width` write it.
     public var sidebarWidth: Double = AppStore.sidebarWidthDefault
 
-    /// Default + drag/restore bounds, shared by the divider drag and the `restore()` clamp so they can't drift.
+    /// Bounds shared by drag, `sidebar.width`, and `restore()` through `clampSidebarWidth`.
     public static let sidebarWidthDefault: Double = 220
     public static let sidebarWidthMin: Double = 160
     public static let sidebarWidthMax: Double = 560
@@ -114,11 +114,6 @@ public final class AppStore {
     /// The even split a never-moved divider renders at; the base for a relative
     /// `session.resize` while `Session.splitRatio` is nil.
     public static let splitRatioDefault: Double = 0.5
-
-    /// Clamp a primary-pane split fraction to `splitRatioMin...splitRatioMax`.
-    public static func clampSplitRatio(_ ratio: Double) -> Double {
-        min(splitRatioMax, max(splitRatioMin, ratio))
-    }
 
     /// Most-recently-selected session ids, front = current; drives the Ctrl-Tab switcher (`items[1]` is the
     /// previous). `@ObservationIgnored`, read imperatively; persisted so the order survives a relaunch.
@@ -140,9 +135,7 @@ public final class AppStore {
     /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
     /// discards per-session state must hang off this, or an undone close silently loses it.
     @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
-    /// The zmx effects a close or a rename performs; nil leaves every one undone, which is what a test and an
-    /// instance that wrapped nothing both want. What it is asked to do is decided by `ZmxLifecycle`.
-    @ObservationIgnored let zmx: ZmxSessionSink?
+    @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp writes once after the
     /// burst settles instead of hitting disk per event.
     @ObservationIgnored private let saveDebouncer = Debouncer()
@@ -197,7 +190,7 @@ public final class AppStore {
                 recentClosedDidChange: (() -> Void)? = nil,
                 controlEventSink: ((ControlEventDraft) -> Void)? = nil,
                 sessionDidFinalize: ((UUID) -> Void)? = nil,
-                zmx: ZmxSessionSink? = nil) {
+                paneFinalizer: (([UUID]) -> Void)?) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
@@ -205,7 +198,7 @@ public final class AppStore {
         self.recentClosedDidChange = recentClosedDidChange
         self.controlEventSink = controlEventSink
         self.sessionDidFinalize = sessionDidFinalize
-        self.zmx = zmx
+        self.paneFinalizer = paneFinalizer
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -308,31 +301,28 @@ public final class AppStore {
                     // only the split pane can sit somewhere else: the session node's cwd is `effectiveCwd`,
                     // always the primary's. Nil means "the session's", so nothing changes for the other kinds.
                     let paneCwd = surface == .split ? (session.splitCwd ?? session.initialSplitCwd) : nil
-                    return ControlSurfaceNode(id: id, kind: surface.rawValue,
-                                              active: surface.isActive(in: session),
-                                              visible: surface.isVisible(in: session),
-                                              cwd: paneCwd)
+                    return ControlSurfaceNode(id: id, kind: surface.rawValue, active: surface.isActive(in: session),
+                                              visible: surface.isVisible(in: session), cwd: paneCwd,
+                                              backedByZmx: session.zmxBacking(for: surface))
                 }
                 return ControlSessionNode(id: session.id.uuidString, name: session.displayName,
                                           cwd: session.effectiveCwd, title: session.oscTitle,
                                           active: session.id == activeID,
-                                          split: session.isSplit,
-                                          hasSplit: session.hasSplit ? true : nil,
+                                          split: session.isSplit, hasSplit: session.hasSplit ? true : nil,
+                                          backedByZmx: session.allPanesBackedByZmx,
                                           splitAxis: session.hasSplit ? session.splitAxis.rawValue : nil,
                                           splitRatio: session.hasSplit ? session.splitRatio : nil,
                                           splitFocused: session.hasSplit ? session.splitFocused : nil,
                                           overlay: session.programOverlayActive,
                                           overlaySizePercent: session.programOverlayActive
                                               ? session.overlaySizePercent : nil,
-                                          paneOverlays: paneOverlays(session),
-                                          hud: hudNode(session),
+                                          paneOverlays: paneOverlays(session), hud: hudNode(session),
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           parked: session.parked ? true : nil,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
-                                          keepShellOpen: (session.initialCommand != nil && session.keepShellOpen)
+                                          splitCommandWait: (session.splitInitialCommand != nil && session.splitCommandWait)
                                               ? true : nil,
-                                          foreground: foreground(session),
-                                          splitForeground: splitForeground(session),
+                                          foreground: foreground(session), splitForeground: splitForeground(session),
                                           // the PERSISTED overrides, not the transient pending payloads, so
                                           // a read after one fired still reports what stays pinned.
                                           restoreCommand: session.restoreCommand,
@@ -357,7 +347,8 @@ public final class AppStore {
                                           // host-free: `isRealized` is on `TerminalSurface`, so this needs
                                           // no app-side closure like the font sizes above. An empty slot is
                                           // false, not omitted — "no terminal" either way to a caller.
-                                          realized: session.surface?.isRealized ?? false)
+                                          realized: session.surface?.isRealized ?? false,
+                                          context: session.context)
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -369,7 +360,7 @@ public final class AppStore {
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
                            recencyDwellMs: recencyDwellMs,
-                           sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue,
+                           sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue, sidebarWidth: sidebarWidth,
                            workspaceFilter: focusEnabled,
                            quickVisible: quickVisible(), zoomedSurface: zoomedSurface(),
                            dashboardMembers: dashboardMembers(),
@@ -444,7 +435,7 @@ public final class AppStore {
     /// workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
-                           name: String? = nil, wait: Bool = false, keepShellOpen: Bool = false,
+                           name: String? = nil, wait: Bool = false,
                            at index: Int? = nil, select: Bool = true) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // both reach a custom command's expansion — cwd through initialCwd, name through customName — so
@@ -453,7 +444,6 @@ public final class AppStore {
                               customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
         session.initialCommand = command
         session.commandWait = wait
-        session.keepShellOpen = keepShellOpen
         if let index {
             let destination = max(0, min(index, workspaces[wsIndex].sessions.count))
             workspaces[wsIndex].sessions.insert(session, at: destination)
@@ -555,18 +545,15 @@ public final class AppStore {
 
     /// Removes a session, tears down its surface, and — if it was active — reselects the most-recently-active
     /// surviving session in scope (`closeReselectionTarget(after:)`), falling back to the positional neighbor.
-    ///
-    /// `endingZmx` is false when the caller is a pane's own EXIT rather than a deliberate close — see
-    /// `ZmxLifecycle.Close.clientExit` for why a zmx client that went away may not take its session with it.
-    public func closeSession(_ sessionID: UUID, endingZmx: Bool = true) {
+    public func closeSession(_ sessionID: UUID, alreadyFinalized: UUID? = nil) {
         guard let location = location(ofSession: sessionID) else { return }
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
-        endZmxSessions(removed, close: endingZmx ? .row : .clientExit)
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
+        finalizePaneIdentities([removed], alreadyFinalized: alreadyFinalized)
         removed.surface?.teardown()
         removed.splitSurface?.teardown()
         removed.overlaySurface?.teardown()
@@ -603,8 +590,8 @@ public final class AppStore {
                                     focusMember: focusedWorkspaceIDs.contains(workspaceID))
         for session in workspace.sessions { emitSessionClosed(session, workspace: workspace.id) }
         if workspace.sessions.isEmpty { scheduleTreeChanged() }
+        finalizePaneIdentities(workspace.sessions)
         for session in workspace.sessions {
-            endZmxSessions(session, close: .row)
             session.surface?.teardown()
             session.splitSurface?.teardown()
             session.overlaySurface?.teardown()
@@ -884,72 +871,6 @@ public final class AppStore {
         if changed { save() }
     }
 
-    /// Sets (or clears) a session's flag — the durable flagged working-set membership the flat sidebar view
-    /// projects — and persists. Clean no-op for an unknown id or a matching flag, so delta-computed callers
-    /// stay idempotent. Unflagging narrows in `.flagged` mode (dropping the row rendering the active session),
-    /// hence `reselectIfSelectionHidden`; in tree mode it only repairs a selection stranded by something else.
-    public func setFlag(_ on: Bool, forSession id: UUID) {
-        guard let session = session(withID: id), session.flagged != on else { return }
-        session.flagged = on
-        pruneSidebarSelection()
-        reselectIfSelectionHidden()
-        save()
-    }
-
-    /// Sets (or clears) multiple sessions' flags in one save. Unknown ids are ignored.
-    public func setFlag(_ on: Bool, forSessions ids: [UUID]) {
-        let targetIDs = Set(ids)
-        guard !targetIDs.isEmpty else { return }
-        var changed = false
-        for workspace in workspaces {
-            for session in workspace.sessions where targetIDs.contains(session.id) && session.flagged != on {
-                session.flagged = on
-                changed = true
-            }
-        }
-        if changed {
-            pruneSidebarSelection()
-            reselectIfSelectionHidden() // the batch can unflag the active session too
-            save()
-        }
-    }
-
-    /// Sets (or clears) a session's background watermark and persists it; clean no-op for an unknown id or an
-    /// unchanged spec, so a repeated `session.background` is idempotent. Returns whether the spec CHANGED, so
-    /// the app target can gate its (retained, teardown-only-freed) per-surface config apply on a real change
-    /// — without that a scripted set-loop keeps appending owned configs. The store owns only the spec; the
-    /// C-boundary apply lives app-side in `ControlServer`/`GhosttySurfaceView`.
-    @discardableResult
-    public func setBackgroundWatermark(_ watermark: BackgroundWatermark?, forSession id: UUID) -> Bool {
-        guard let session = session(withID: id), session.backgroundWatermark != watermark else { return false }
-        let previous = session.backgroundWatermark
-        session.backgroundWatermark = watermark
-        // a `.text` watermark owns a rendered `<id>.png`; switching away leaves it unreferenced. `clear` and
-        // teardown sweep the same file, so this is only the eager reclaim for text→image/nil.
-        if previous?.kind == .text, watermark?.kind != .text {
-            WatermarkStorage.removeRenderedText(sessionID: id)
-        }
-        save()
-        return true
-    }
-
-    /// Unflags every session in one `save()`; no write when nothing is flagged. Backs Clear Flagged and the
-    /// `session.flag clear` control mode. No `reselectIfSelectionHidden`, unlike the `setFlag` mutators:
-    /// clearing EVERY flag leaves the list empty, so there is nowhere to move — a partial clear would need it.
-    public func clearFlags() {
-        var changed = false
-        for workspace in workspaces {
-            for session in workspace.sessions where session.flagged {
-                session.flagged = false
-                changed = true
-            }
-        }
-        if changed {
-            pruneSidebarSelection()
-            save()
-        }
-    }
-
     /// The flagged sessions across all workspaces in tree order — the projection the flat sidebar renders.
     public var flaggedSessions: [Session] {
         workspaces.flatMap(\.sessions).filter(\.flagged)
@@ -984,8 +905,8 @@ public final class AppStore {
                                       isExpanded: !(workspaceSnapshot.collapsed ?? false)))
         }
         // clamp on restore (not just nil-default) so a corrupt or hand-edited snapshot can't drive an
-        // out-of-range frame width; the drag path clamps to the same bounds.
-        sidebarWidth = min(AppStore.sidebarWidthMax, max(AppStore.sidebarWidthMin, snapshot.sidebarWidth ?? AppStore.sidebarWidthDefault))
+        // out-of-range frame width; the drag and `sidebar.width` clamp to the same bounds.
+        sidebarWidth = AppStore.clampSidebarWidth(snapshot.sidebarWidth ?? AppStore.sidebarWidthDefault)
         sidebarVisible = snapshot.sidebarVisible ?? true
         sidebarMode = snapshot.sidebarMode ?? .tree
         restoreFocus(from: snapshot)

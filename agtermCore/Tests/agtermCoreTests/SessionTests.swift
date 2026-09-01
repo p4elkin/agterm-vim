@@ -592,12 +592,20 @@ struct SessionTests {
         session.splitRestoreCommand = "tail -f /var/log/x"
         session.pendingRestoreCommand = session.restoreCommand
         session.pendingSplitRestoreCommand = session.splitRestoreCommand
+        session.foregroundCommand = ["tee", "/tmp/m"]
+        session.splitForegroundCommand = ["tail", "-f", "/var/log/x"]
+        session.pendingForegroundCommand = session.foregroundCommand
+        session.pendingSplitForegroundCommand = session.splitForegroundCommand
 
         session.clearPendingRestoreOverrides()
         #expect(session.takePendingRestoreOverride(pane: .left) == nil)
         #expect(session.takePendingRestoreOverride(pane: .right) == nil)
+        #expect(session.takePendingForegroundCommand(pane: .left) == nil)
+        #expect(session.takePendingForegroundCommand(pane: .right) == nil)
         #expect(session.restoreCommand == "claude --resume main")
         #expect(session.splitRestoreCommand == "tail -f /var/log/x")
+        #expect(session.foregroundCommand == ["tee", "/tmp/m"])
+        #expect(session.splitForegroundCommand == ["tail", "-f", "/var/log/x"])
     }
 
     @Test func takePendingRestoreOverrideLeavesThePersistedValueIntact() {
@@ -1038,6 +1046,75 @@ struct SessionTests {
         session.splitRestoreCommand = "tail -f /var/log/x"
         #expect(session.takePendingRestoreOverride(pane: .left) == nil)
         #expect(session.takePendingRestoreOverride(pane: .right) == nil)
+    }
+
+    @Test func contextStartsUnset() {
+        #expect(Session(initialCwd: "/repo").context == nil)
+    }
+
+    @Test(arguments: [
+        ("PR #517", "PR #517"),
+        ("  PR #517  ", "PR #517"),
+        (" a ", "a"),
+    ])
+    func contextTrimsOuterSpaces(input: String, expected: String) {
+        #expect(Session.validateContext(input) == .valid(expected))
+    }
+
+    @Test(arguments: ["PR #517\n", "\nPR #517", "PR #517\t", "\tPR #517", "PR #517\r", "PR #517\u{2028}"])
+    func contextRejectsEdgeControlCharactersRatherThanTrimmingThem(input: String) {
+        #expect(isInvalidContext(input))
+    }
+
+    @Test(arguments: ["", " ", "\t", "\n", "   \n\t  "])
+    func contextRejectsBlank(input: String) {
+        #expect(isInvalidContext(input))
+    }
+
+    @Test func contextRejectionMessagePointsAtClear() {
+        #expect(Session.validateContext("") == .invalid("context must not be empty (use --clear to remove it)"))
+    }
+
+    @Test func contextAcceptsExactlyTheByteLimit() {
+        let value = String(repeating: "a", count: Session.contextByteLimit)
+        #expect(Session.validateContext(value) == .valid(value))
+    }
+
+    @Test func contextRejectsOneByteOverTheLimit() {
+        #expect(isInvalidContext(String(repeating: "a", count: Session.contextByteLimit + 1)))
+    }
+
+    @Test func contextLimitCountsBytesNotCharacters() {
+        let value = String(repeating: "é", count: 129)
+        #expect(value.count == 129)
+        #expect(value.utf8.count == 258)
+        #expect(isInvalidContext(value))
+    }
+
+    @Test func contextAcceptsMultibyteUpToTheByteLimit() {
+        let value = String(repeating: "é", count: 128)
+        #expect(value.utf8.count == Session.contextByteLimit)
+        #expect(Session.validateContext(value) == .valid(value))
+    }
+
+    @Test(arguments: ["PR\u{2028}517", "PR\u{2029}517"])
+    func contextRejectsUnicodeLineSeparators(input: String) {
+        #expect(isInvalidContext(input))
+    }
+
+    @Test(arguments: ["PR\n517", "PR\r517", "PR\u{0}517", "PR\u{7}517", "PR\t517", "PR\u{85}517"])
+    func contextRejectsInnerControlCharacters(input: String) {
+        #expect(isInvalidContext(input))
+    }
+
+    @Test func contextKeepsEmojiAndZeroWidthJoiners() {
+        let value = "ship it 👩‍💻"
+        #expect(Session.validateContext(value) == .valid(value))
+    }
+
+    private func isInvalidContext(_ raw: String) -> Bool {
+        if case .invalid = Session.validateContext(raw) { return true }
+        return false
     }
 }
 

@@ -238,7 +238,7 @@ the `p4machines` skill for the Tailscale names) before relying on the watched-by
 
 `bin/agterm-remote-overlay` was `git rm`'d from `~/dev/agterm-agents` once this section captured its
 reasoning; `bin/agterm-zmx-retire` (a separate, unrelated script that retires the outside zprofile
-wrapping hook — see `.claude/rules/zmx.md`) was not touched.
+wrapping hook) was not touched.
 
 ### The mirror job's side
 

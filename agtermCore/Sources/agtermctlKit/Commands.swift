@@ -90,7 +90,7 @@ public struct Agtermctl: ParsableCommand {
         abstract: "Drive agterm over its control socket.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Config.self, Theme.self,
-                      Pick.self, Restore.self, OverlayRedirect.self, Version.self]
+                      Pick.self, Restore.self, Zmx.self, OverlayRedirect.self, Version.self]
     )
 
     public init() {}
@@ -126,6 +126,14 @@ extension RequestCommand {
         SocketClient.printResponse(response, json: options.json, echoID: echoesResultID)
         if !response.ok { throw ExitCode.failure }
     }
+}
+
+/// Decodes a `type` command's stdin payload, whose contract is text; an invalid byte empties it entirely.
+func decodeTypedStdin(_ input: Data) throws -> String {
+    guard let text = String(data: input, encoding: .utf8) else {
+        throw ValidationError("stdin must be valid UTF-8")
+    }
+    return text
 }
 
 // MARK: - tree

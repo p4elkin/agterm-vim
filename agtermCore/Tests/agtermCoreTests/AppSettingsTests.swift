@@ -193,12 +193,12 @@ struct AppSettingsTests {
         #expect(AppSettings(notificationsEnabled: false).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
-    @Test func restoreRunningCommandRoundTripsAndIsNotAConfigLine() throws {
-        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(restoreRunningCommand: true)))
-        #expect(decoded.restoreRunningCommand == true)
-        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
-        #expect(legacy.restoreRunningCommand == nil)
-        #expect(AppSettings(restoreRunningCommand: true).ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    @Test func restoreModeRoundTripsAndIsNotAConfigLine() throws {
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(AppSettings(restoreMode: .live)))
+        #expect(decoded.restoreMode == .live)
+        #expect(decoded.effectiveRestoreMode == .live)
+        #expect(AppSettings(restoreMode: .live).ghosttyConfigLines()
+            == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
     @Test func autoHideSidebarInactiveWindowsRoundTripsAndIsNotAConfigLine() throws {
@@ -689,6 +689,17 @@ struct AppSettingsTests {
         let hidden = AppSettings(hiddenInterfaceElements: ["workspaceAddSession"])
         #expect(hidden.isInterfaceElementHidden(.workspaceAddSession))
         #expect(!hidden.isInterfaceElementHidden(.newSession))
+    }
+
+    @Test func sessionContextIsATitleBarInterfaceElementGatingOnlyItself() {
+        #expect(InterfaceElement.sessionContext.section == .titleBar)
+        #expect(InterfaceElement.sessionContext.displayName == "Session context")
+        let hidden = AppSettings(hiddenInterfaceElements: ["sessionContext"])
+        #expect(hidden.isInterfaceElementHidden(.sessionContext))
+        #expect(!hidden.isInterfaceElementHidden(.sessionName))
+        #expect(!hidden.isInterfaceElementHidden(.windowName))
+        let names = AppSettings(hiddenInterfaceElements: ["sessionName", "windowName"])
+        #expect(!names.isInterfaceElementHidden(.sessionContext))
     }
 
     @Test func focusFilterIsASidebarInterfaceElement() {

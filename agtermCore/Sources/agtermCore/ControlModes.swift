@@ -158,9 +158,6 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     public let command: String?
     /// Hold the surface after `--command` exits; the dispatcher rejects `--wait` without a `--command`.
     public let wait: Bool?
-    /// Run `--command` inside the pane's persistent shell so the row lands at a prompt when it exits. The
-    /// dispatcher rejects it without a `--command` and rejects it beside `wait`.
-    public let keepShellOpen: Bool?
     public let name: String?
     /// Anchor to place the new session right AFTER (id / prefix / `active`); it carries its own workspace,
     /// so this bypasses `workspace`/`workspaceName`. Mutually exclusive with `before`.
@@ -172,7 +169,7 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
 
     public init(window: String?, cwd: String?, workspace: String?, workspaceName: String?,
                 createWorkspace: Bool?, command: String?, wait: Bool? = nil,
-                keepShellOpen: Bool? = nil, name: String?,
+                name: String?,
                 after: String? = nil, before: String? = nil, noSelect: Bool = false) {
         self.window = window
         self.cwd = cwd
@@ -181,7 +178,6 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
         self.createWorkspace = createWorkspace
         self.command = command
         self.wait = wait
-        self.keepShellOpen = keepShellOpen
         self.name = name
         self.after = after
         self.before = before

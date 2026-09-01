@@ -31,8 +31,11 @@ extension AppStore {
     }
 
     func sessionSnapshot(_ session: Session) -> SessionSnapshot {
-        SessionSnapshot(id: session.id, customName: session.customName, cwd: session.currentCwd ?? session.initialCwd,
-                        isSplit: session.isSplit, splitAxis: session.isSplit ? session.splitAxis : nil,
+        SessionSnapshot(id: session.id, paneIdentity: session.paneIdentity,
+                        splitPaneIdentity: session.hasSplit ? session.splitPaneIdentity : nil,
+                        customName: session.customName, cwd: session.currentCwd ?? session.initialCwd,
+                        isSplit: session.isSplit, hasSplit: session.hasSplit ? true : nil,
+                        splitAxis: session.hasSplit ? session.splitAxis : nil,
                         fontSize: session.fontSize,
                         splitCwd: session.splitCwd ?? session.initialSplitCwd, splitRatio: session.splitRatio,
                         flagged: session.flagged,
@@ -40,12 +43,13 @@ extension AppStore {
                         foregroundCommand: session.foregroundCommand,
                         splitForegroundCommand: session.splitForegroundCommand,
                         initialCommand: session.initialCommand, commandWait: session.commandWait ? true : nil,
-                        keepShellOpen: session.keepShellOpen ? true : nil,
-                        zmxPrimaryKey: session.zmxPrimaryKey, zmxSplitKey: session.zmxSplitKey,
+                        splitInitialCommand: session.splitInitialCommand,
+                        splitCommandWait: session.splitCommandWait ? true : nil,
                         backgroundWatermark: session.backgroundWatermark,
                         restoreCommand: session.restoreCommand,
                         splitRestoreCommand: session.splitRestoreCommand,
-                        mirrorsSession: session.mirrorsSession, viewer: session.viewer)
+                        mirrorsSession: session.mirrorsSession, viewer: session.viewer,
+                        context: session.context)
     }
 
     func workspaceSnapshot(_ workspace: Workspace) -> WorkspaceSnapshot {
@@ -63,31 +67,30 @@ extension AppStore {
     /// field: `snapshot()` serializes those, so arming one would let any save before the surface spawns
     /// rewrite what `loadStore`'s launch strip just removed from disk.
     ///
-    /// A split hidden at the last quit is NOT rebuilt (`hasSplit` follows `isSplit`), so its pinned override
-    /// describes a pane that no longer exists and is DROPPED here, the rule `closeSplit` applies when a pane
-    /// goes away. Keeping it would leave a value `tree` reports but no write can clear (`session.restore
-    /// --pane right` is rejected without a split), and a fresh ⌘D split at the next quit would inherit it.
+    /// A hidden split keeps its identity and restore state so showing it reattaches the surviving daemon;
+    /// focus is intentionally not persisted and therefore returns to the primary pane.
     func session(from snapshot: SessionSnapshot, launchRestore: Bool = false) -> Session {
-        let session = Session(id: snapshot.id, initialCwd: snapshot.cwd, customName: snapshot.customName)
+        let hasSplit = (snapshot.isSplit ?? false) || (snapshot.hasSplit ?? false)
+        let session = Session(id: snapshot.id, initialCwd: snapshot.cwd, customName: snapshot.customName,
+                              paneIdentity: snapshot.paneIdentity ?? UUID(),
+                              splitPaneIdentity: hasSplit ? (snapshot.splitPaneIdentity ?? UUID()) : nil)
         session.isSplit = snapshot.isSplit ?? false
-        session.hasSplit = session.isSplit
-        session.splitAxis = session.isSplit ? (snapshot.splitAxis ?? .leftRight) : .leftRight
+        session.hasSplit = hasSplit
+        session.splitAxis = hasSplit ? (snapshot.splitAxis ?? .leftRight) : .leftRight
         session.fontSize = snapshot.fontSize
         session.initialSplitCwd = snapshot.splitCwd
         session.splitRatio = snapshot.splitRatio.map { min(AppStore.splitRatioMax, max(AppStore.splitRatioMin, $0)) }
         session.flagged = snapshot.flagged ?? false
         session.parked = snapshot.parked ?? false
+        session.context = snapshot.context
         session.initialCommand = snapshot.initialCommand
         session.commandWait = snapshot.commandWait ?? false
-        session.keepShellOpen = snapshot.keepShellOpen ?? false
-        // both keys come back even for a split the snapshot does not rebuild: the daemon behind the key is
-        // still running, so the row must keep owning it — a fresh ⌘D re-attaches to it rather than a new one.
-        session.zmxPrimaryKey = snapshot.zmxPrimaryKey
-        session.zmxSplitKey = snapshot.zmxSplitKey
+        session.splitInitialCommand = hasSplit ? snapshot.splitInitialCommand : nil
+        session.splitCommandWait = hasSplit ? (snapshot.splitCommandWait ?? false) : false
         session.wasRestored = true
         session.backgroundWatermark = snapshot.backgroundWatermark
         session.restoreCommand = snapshot.restoreCommand
-        session.splitRestoreCommand = session.isSplit ? snapshot.splitRestoreCommand : nil
+        session.splitRestoreCommand = hasSplit ? snapshot.splitRestoreCommand : nil
         session.mirrorsSession = snapshot.mirrorsSession
         session.viewer = snapshot.viewer
         if launchRestore {
@@ -96,7 +99,7 @@ extension AppStore {
             // just removed from disk.
             session.pendingForegroundCommand = snapshot.foregroundCommand
             session.pendingRestoreCommand = snapshot.restoreCommand
-            if session.isSplit {
+            if hasSplit {
                 session.pendingSplitForegroundCommand = snapshot.splitForegroundCommand
                 session.pendingSplitRestoreCommand = session.splitRestoreCommand
             }

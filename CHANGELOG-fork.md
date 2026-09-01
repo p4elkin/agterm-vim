@@ -20,6 +20,24 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Changed
+
+- the fork's own zmx pane wrapping is gone; upstream's is used instead. Upstream shipped native zmx
+  wrapping of its own between `82d6f17` and `c8860a9`, and carrying both was not possible — the two
+  implementations own the same seam in the surface factory and collide on three file names. Upstream's
+  is the larger feature: it bundles and signs a pinned `zmx`, adds a Restore mode setting
+  (`Fresh shells` / `Re-run commands` / `Live sessions`), replays commands into daemons recreated after a
+  reboot, and exposes `agtermctl zmx list|prune|kill` plus `restore.mode` over the control socket.
+  ⚠️ Three things change for anyone who used the fork's version. Wrapping now happens only in
+  `Live sessions` restore mode, not for every pane. Daemons are named `agterm-<hex12>` from a per-pane
+  identity, not `<session-uuid>-left|right`, so daemons detached under the old build are orphaned once.
+  They live in a private `ZMX_DIR` (`/tmp/agterm-zmx-<hash of the state directory>`), so a plain shell,
+  a mosh session or `agterm-zmx pick` reaches them only after exporting that directory —
+  `agtermctl zmx list --json` names every daemon with its window, workspace, session and pane.
+- `session new --keep-shell-open` is removed with the wrapper that implemented it. In `Live sessions`
+  mode a fresh pane's command is typed into the daemon's login shell already, which is what the flag
+  asked for; in the other two modes there is no shell to keep open.
+
 ### New Features
 
 - a pane pinned with `--keep-shell-open` now starts ONE login shell instead of two. The command is typed

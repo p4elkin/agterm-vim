@@ -1,120 +1,150 @@
 import Foundation
 
-/// Which zmx sessions a teardown ends, and which it must leave alone. Pure, because this is the one rule in
-/// the wrapping that can destroy a live agent: the app target owns only the `zmx kill` that follows.
-public enum ZmxLifecycle {
-    /// What actually went away.
-    public enum Close: Sendable, Equatable {
-        /// The whole row, both panes, for good.
-        case row
-        /// The right pane only; the row survives as a single pane.
-        case split
-        /// ⚠️ A window closed, which ends NOTHING. The window keeps its session ids in `windows/<id>.json`
-        /// and reopens with them, so ending their sessions would kill every agent in the window on ⌘W.
-        /// `agterm-zmx-sync` records that mistake in its own header; it is the reason this case exists at all
-        /// rather than being an absent call.
-        case window
-        /// ⚠️ The pane's own process exited, which ends NOTHING. Under wrapping that process IS the zmx
-        /// client, and a client exits for two reasons the app cannot tell apart: the session ended (there is
-        /// then nothing left to kill) or the user DETACHED from it (killing it would destroy the running
-        /// agent they detached to keep). The daemon a detach leaves behind is reattachable by name, and an
-        /// abandoned one is reaped at the next launch, so leaking is the recoverable side of this choice.
-        case clientExit
+public struct ZmxSessionRecord: Equatable, Sendable {
+    public let name: String
+    public let clients: Int?
+    public let leaderPID: Int32?
+
+    public init(name: String, clients: Int?) {
+        self.init(name: name, clients: clients, leaderPID: nil)
     }
 
-    /// A row as the model knows it while it is being torn down: the zmx sessions its two panes actually
-    /// attached to, recorded by the surface factory (`Session.zmxPrimaryKey`/`zmxSplitKey`).
+    public init(name: String, clients: Int?, leaderPID: Int32?) {
+        self.name = name
+        self.clients = clients
+        self.leaderPID = leaderPID
+    }
+}
+
+public enum ZmxListParser {
+    public enum ParseError: Error, Equatable {
+        case missingName
+        case missingClients(String)
+        case invalidClients(String)
+        case invalidLeaderPID(String)
+    }
+
+    public static func parse(_ output: String) throws -> [ZmxSessionRecord] {
+        try output.split(whereSeparator: \.isNewline).map { rawLine in
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("→ ") { line.removeFirst(2) }
+            var name: String?
+            var clients: Int?
+            var leaderPID: Int32?
+            var hasError = false
+            for field in line.split(separator: "\t", omittingEmptySubsequences: false) {
+                if field.hasPrefix("name=") {
+                    name = String(field.dropFirst("name=".count))
+                } else if field.hasPrefix("clients=") {
+                    let raw = String(field.dropFirst("clients=".count))
+                    guard let value = Int(raw), value >= 0 else { throw ParseError.invalidClients(raw) }
+                    clients = value
+                } else if field.hasPrefix("pid=") {
+                    let raw = String(field.dropFirst("pid=".count))
+                    guard let value = Int32(raw), value > 0 else { throw ParseError.invalidLeaderPID(raw) }
+                    leaderPID = value
+                } else if field.hasPrefix("err=") {
+                    hasError = true
+                }
+            }
+            guard let name, !name.isEmpty else { throw ParseError.missingName }
+            guard clients != nil || hasError else { throw ParseError.missingClients(name) }
+            return ZmxSessionRecord(name: name, clients: clients, leaderPID: leaderPID)
+        }
+    }
+}
+
+public enum ZmxLeaderMap {
+    public static func leaders(in sessions: [ZmxSessionRecord]) -> [String: Int32] {
+        Dictionary(uniqueKeysWithValues: sessions.compactMap { session in
+            guard ZmxSupport.isDaemonName(session.name), let leaderPID = session.leaderPID else { return nil }
+            return (session.name, leaderPID)
+        })
+    }
+}
+
+public struct ZmxRefreshGate: Sendable {
+    public static let reconcileInterval: TimeInterval = 30
+
+    private var invalidated = true
+    private var lastRefreshAt: Date?
+
+    public init() {}
+
+    public mutating func noteLifecycleChange() {
+        invalidated = true
+    }
+
+    public mutating func shouldRefresh(now: Date) -> Bool {
+        let expired = lastRefreshAt.map { now.timeIntervalSince($0) >= Self.reconcileInterval } ?? true
+        guard invalidated || expired else { return false }
+        invalidated = false
+        lastRefreshAt = now
+        return true
+    }
+}
+
+public enum ZmxForegroundRefreshPolicy {
+    @MainActor public static func hasWrappedPane(in sessions: [Session]) -> Bool {
+        sessions.contains { session in
+            session.surface?.backedByZmx == true || session.splitSurface?.backedByZmx == true
+        }
+    }
+}
+
+public enum ZmxReapPolicy {
+    /// Nil means a requested-live inventory was incomplete and no reap is safe. A deliberate non-live
+    /// request claims no daemon and removes every zero-client daemon this app could have emitted.
     ///
-    /// ⚠️ Deliberately NOT the pane roles. Re-deriving `<uuid>-left` from "this is the main pane" is wrong
-    /// for a promoted split survivor, which keeps the `-right` session it attached to, and wrong for any row
-    /// whose wrap decision differed from what the model can see (`plan.command` versus `initialCommand`).
-    public struct Row: Equatable, Sendable {
-        public let primaryKey: String?
-        public let splitKey: String?
-
-        public init(primaryKey: String?, splitKey: String?) {
-            self.primaryKey = primaryKey
-            self.splitKey = splitKey
-        }
-    }
-
-    /// The zmx sessions this row owns, main pane first. Empty for a row no pane of which was ever wrapped.
-    public static func ownedKeys(_ row: Row) -> [String] {
-        [row.primaryKey, row.splitKey].compactMap { $0 }
-    }
-
-    /// The keys `close` must end.
-    public static func keysToEnd(_ row: Row, close: Close) -> [String] {
-        switch close {
-        case .window, .clientExit: []
-        case .row: ownedKeys(row)
-        case .split: [row.splitKey].compactMap { $0 }
+    /// `isDaemonName` rather than the prefix alone, matching prune and kill: the namespace is a shared
+    /// /tmp directory and this is the one path that destroys without the user asking.
+    public static func namesToKill(sessions: [ZmxSessionRecord], requestedMode: RestoreMode,
+                                   knownNames: Set<String>?) -> [String]? {
+        let liveRequested = requestedMode == .live
+        if liveRequested, knownNames == nil { return nil }
+        let claimed = knownNames ?? []
+        return sessions.compactMap { session in
+            guard ZmxSupport.isDaemonName(session.name), session.clients == 0 else { return nil }
+            guard !liveRequested || !claimed.contains(session.name) else { return nil }
+            return session.name
         }
     }
 }
 
-/// The zmx effects a close or a rename performs, injected into `AppStore` so the decision above stays
-/// host-free and the subprocess stays in the app target. A nil sink does nothing, which is what a test and an
-/// instance that wrapped nothing both want.
-@MainActor
-public struct ZmxSessionSink {
-    /// End the session named `key`, and every client attached to it.
-    public var end: (_ key: String) -> Void
-    /// Write `name` into the session's `agterm_name` label. zmx has no rename, so the label is the only thing
-    /// that carries a renamed row into `zmx list` and the pick list.
-    public var label: (_ key: String, _ name: String) -> Void
-
-    public init(end: @escaping (_ key: String) -> Void, label: @escaping (_ key: String, _ name: String) -> Void) {
-        self.end = end
-        self.label = label
+public enum PaneIdentityInventory {
+    public struct Upgrade: Sendable {
+        public let identities: Set<UUID>
+        public let changed: Bool
     }
-}
 
-extension Session {
-    /// The two keys a wrap decision for `role` reads: the one this pane recorded, and the one its sibling
-    /// pane holds. One function rather than two field reads at each factory, because swapping them hands a
-    /// pane the daemon the pane beside it is already attached to.
-    public func zmxKeys(for role: ZmxSessionKey.Role) -> (own: String?, sibling: String?) {
-        switch role {
-        case .left: (zmxPrimaryKey, zmxSplitKey)
-        case .right: (zmxSplitKey, zmxPrimaryKey)
+    public static func upgrade(_ snapshot: inout Snapshot) -> Upgrade {
+        var identities: Set<UUID> = []
+        var changed = false
+        for workspaceIndex in snapshot.workspaces.indices {
+            for sessionIndex in snapshot.workspaces[workspaceIndex].sessions.indices {
+                var session = snapshot.workspaces[workspaceIndex].sessions[sessionIndex]
+                if session.paneIdentity == nil {
+                    session.paneIdentity = UUID()
+                    changed = true
+                }
+                if let paneIdentity = session.paneIdentity { identities.insert(paneIdentity) }
+                let hasSplit = (session.isSplit ?? false) || (session.hasSplit ?? false)
+                if hasSplit {
+                    if session.splitPaneIdentity == nil {
+                        session.splitPaneIdentity = UUID()
+                        changed = true
+                    }
+                    if let splitPaneIdentity = session.splitPaneIdentity { identities.insert(splitPaneIdentity) }
+                }
+                snapshot.workspaces[workspaceIndex].sessions[sessionIndex] = session
+            }
         }
-    }
-}
-
-extension ZmxLifecycle.Row {
-    @MainActor public init(_ session: Session) {
-        self.init(primaryKey: session.zmxPrimaryKey, splitKey: session.zmxSplitKey)
+        return Upgrade(identities: identities, changed: changed)
     }
 
-    /// The row a closed window's persisted sessions describe, for the delete path that has no live store.
-    public init(_ snapshot: SessionSnapshot) {
-        self.init(primaryKey: snapshot.zmxPrimaryKey, splitKey: snapshot.zmxSplitKey)
-    }
-}
-
-extension AppStore {
-    /// A pane's surface just wrapped under `key`: the row RECORDS it (see `ZmxLifecycle.Row` for why it is
-    /// never re-derived) and the daemon takes the row's display name as its `agterm_name` label.
-    ///
-    /// Labelling here rather than in `renameSession` alone is what keeps `zmx list` and the pick list
-    /// readable for a row nobody ever renamed; it also relabels every wrapped row at each launch, since a
-    /// restored pane comes back through the same factories.
-    public func recordZmxSession(_ key: String, role: ZmxSessionKey.Role, forSession session: Session) {
-        switch role {
-        case .left: session.zmxPrimaryKey = key
-        case .right: session.zmxSplitKey = key
+    @MainActor public static func identities(in sessions: [Session]) -> [UUID] {
+        sessions.flatMap { session in
+            [session.paneIdentity] + [session.splitPaneIdentity].compactMap { $0 }
         }
-        zmx?.label(key, session.displayName)
-    }
-
-    /// The row `ZmxLifecycle` reads, built from the live session.
-    func zmxRow(_ session: Session) -> ZmxLifecycle.Row { ZmxLifecycle.Row(session) }
-
-    /// End the zmx sessions a teardown owns. Every caller is a place the row or its split really went away;
-    /// ⚠️ no window-close path may call this at all, see `ZmxLifecycle.Close.window`.
-    func endZmxSessions(_ session: Session, close: ZmxLifecycle.Close) {
-        guard let zmx else { return }
-        for key in ZmxLifecycle.keysToEnd(zmxRow(session), close: close) { zmx.end(key) }
     }
 }
