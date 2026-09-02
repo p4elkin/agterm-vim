@@ -36,12 +36,14 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [annotate-claude-replies](annotate-claude-replies/) | mark up Claude's answers in revdiff and send the notes back | 0.13.0, revdiff, python3, Claude Code |
 | [annotate-pane-output](annotate-pane-output/) | mark up what the pane just printed in revdiff and send the notes back to whatever is running there | 0.13.0, revdiff, python3 |
 | [backlog-picker](backlog-picker/) | pick one of the repo's written-down deferred items and hand it to the agent in the pane | 0.20.2, python3, Claude Code |
+| [chat-rooms](chat-rooms/) | the agent writes long answers into rooms, read live in the pane beside it with unread counts | 0.22.0, python3, fzf, curl, Claude Code |
 | [claude-clear](claude-clear/) | one chord sends /clear to the pane's Claude Code run, and nothing when it is not running | 0.13.0, python3, Claude Code |
 | [claude-conversation-picker](claude-conversation-picker/) | pick a past Claude Code conversation by what it was about and resume it in the pane | 0.21.0, python3, Claude Code |
 | [claude-recap](claude-recap/) | one key lists what the Claude Code run in a session was working on | 0.10.0, zsh, jq, Claude Code |
 | [close-tab-when-done](close-tab-when-done/) | arm a tab with a chord and it closes itself when the agent stops replying | 0.22.0, jq, Claude Code |
 | [container-agent-status](container-agent-status/) | a containerized agent reports status onto its sidebar row via a TCP notification to the host | 0.7.1, nc, timeout, Claude Code |
 | [copilot-agent-status](copilot-agent-status/) | Copilot CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Copilot CLI |
+| [cross-agent-chat](cross-agent-chat/) | sessions message each other without flooding the chat, one chord reads the conversation back | 0.10.0, python3, fzf, Claude Code |
 | [kimi-agent-status](kimi-agent-status/) | Kimi Code sessions report agent status onto their sidebar row | 0.3.1, Kimi Code |
 | [kiro-agent-status](kiro-agent-status/) | Kiro CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Kiro CLI |
 | [status-announcer](status-announcer/) | demo: speak agent status changes from a dedicated session | 0.16.0, jq |
