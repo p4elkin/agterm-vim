@@ -190,14 +190,14 @@ these. `.claude/rules/planning-rules.md` says static reading and building only, 
 store is at `~/.local/state/agterm-xchat`, and `enter` and `ctrl-o` write cursors — so driving it
 would clear real badges. The on-screen behaviour is the maintainer's pass below.
 
-- [ ] `list` emits both kinds, newest first, each labelled in field 1, still three tab-separated fields
-- [ ] `show` on a peer group renders every file's messages and marks every path
-- [ ] `markdown` on a peer group writes one document and exits 0
-- [ ] `show` and `markdown` on a room behave exactly as before
-- [ ] a peer's own `sent` records do not count toward its unread
-- [ ] `where` prints both roots
-- [ ] run every `cookbook/chat-rooms/test_*.py`, `uvx ruff check --isolated --ignore EXE001` and `uvx --from shellcheck-py shellcheck`
-- [ ] confirm no `__pycache__` or `.ruff_cache` left in the recipe directory
+- [x] `list` emits both kinds, newest first, each labelled in field 1, still three tab-separated fields
+- [x] `show` on a peer group renders every file's messages and marks every path
+- [x] `markdown` on a peer group writes one document and exits 0
+- [x] `show` and `markdown` on a room behave exactly as before
+- [x] a peer's own `sent` records do not count toward its unread
+- [x] `where` prints both roots
+- [x] run every `cookbook/chat-rooms/test_*.py`, `uvx ruff check --isolated --ignore EXE001` and `uvx --from shellcheck-py shellcheck`
+- [x] confirm no `__pycache__` or `.ruff_cache` left in the recipe directory
 
 ### For the maintainer, by hand
 
