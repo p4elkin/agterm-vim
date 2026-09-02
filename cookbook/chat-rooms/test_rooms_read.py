@@ -163,6 +163,30 @@ class ListTests(ReaderTests):
         self.assertEqual(code, 0)
         self.assertEqual(rows[0][1].split(", ")[0], "1 new")
 
+    def test_replying_does_not_mark_the_peers_message_read(self):
+        # The reply lands in my own thread as `sent`, so the raw tail is 2 while the unread
+        # count is 1. Sizing the highlight window with the count slides it past the peer's
+        # message, and the conversation opens with nothing marked.
+        path = self.thread(MINE, PEER, [
+            thread_record("2026-09-02 10:00:00", "peer asked", "their question"),
+            thread_record("2026-09-02 11:00:00", "I answered", "my reply", direction="sent")])
+
+        code, out = self.show(path)
+
+        self.assertEqual(code, 0)
+        self.assertIn("1 unread", out)
+
+    def test_a_reply_after_two_peer_messages_leaves_both_unread(self):
+        path = self.thread(MINE, PEER, [
+            thread_record("2026-09-02 10:00:00", "first", "first question"),
+            thread_record("2026-09-02 11:00:00", "second", "second question"),
+            thread_record("2026-09-02 12:00:00", "answered", "my reply", direction="sent")])
+
+        code, out = self.show(path)
+
+        self.assertEqual(code, 0)
+        self.assertIn("2 unread", out)
+
     def test_every_row_is_three_fields_with_the_path_last(self):
         room = self.room(MINE, "design-notes",
                          [room_record("2026-09-02 10:00:00", "note", "opening")])

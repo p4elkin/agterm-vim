@@ -313,10 +313,14 @@ def read_paths(paths):
     """
     msgs, fresh = [], []
     for path in paths:
-        unread = unread_at(path)
+        # The window is the RAW tail past the cursor, and the direction test is applied inside
+        # it. Sizing the window with the filtered count instead slides it off the far end as
+        # soon as the tail holds one `sent` record, which silently marks a peer's message read
+        # the moment this agent replies to it.
+        tail = len(tail_at(path))
         records = store.load(path)
         msgs.extend(records)
-        fresh.extend(i >= len(records) - unread and r.get("direction") != "sent"
+        fresh.extend(i >= len(records) - tail and r.get("direction") != "sent"
                      for i, r in enumerate(records))
     if len(paths) > 1:
         order = sorted(range(len(msgs)), key=lambda i: msgs[i].get("at", ""))
