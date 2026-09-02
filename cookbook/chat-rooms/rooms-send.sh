@@ -56,6 +56,16 @@ refuse() {
 	exit 3
 }
 
+# The switcher lists peer conversations beside rooms, so a peer row reaches this script as a
+# --room-file too. There is no reply path for one: answering a peer is a SendMessage, which
+# this recipe cannot make.
+refuse_peer() {
+	printf '\n  %s\n  %s\n\n' \
+		"not typing: that row is a peer conversation, not a room." \
+		"A reply to a peer is a SendMessage, which this recipe cannot make." >&2
+	exit 3
+}
+
 while [ $# -gt 0 ]; do
 	case $1 in
 	--room-file) ROOM_FILE=${2:?--room-file needs a path}; shift 2 ;;
@@ -75,19 +85,34 @@ done
 # A room file names both halves: the directory is the Claude session, and the newest message
 # in it holds the title. The filename cannot, because it is a slug and the title it came from
 # is gone.
+#
+# A peer row is refused here, in both shapes it arrives in. A group of several threads joins
+# its paths on the `.jsonl,` boundary, so it is not a file at all; a single thread is a real
+# file whose records carry `peer` where a room's carry `room`, and it would otherwise get as
+# far as "which room?".
 if [ -n "$ROOM_FILE" ]; then
+	case $ROOM_FILE in
+	*.jsonl,*) refuse_peer ;;
+	esac
 	[ -f "$ROOM_FILE" ] || die "no such room file: $ROOM_FILE"
 	[ -n "$SESSION" ] || SESSION=$(basename "$(dirname "$ROOM_FILE")")
-	[ -n "$ROOM" ] || ROOM=$("$PYTHON" -c '
+	INFO=$("$PYTHON" -c '
 import json, sys
-title = ""
+kind, title = "", ""
 for line in open(sys.argv[1]):
     try:
-        title = json.loads(line).get("room") or title
+        rec = json.loads(line)
     except ValueError:
-        pass
+        continue
+    if rec.get("room"):
+        kind, title = "room", rec["room"]
+    elif rec.get("peer"):
+        kind, title = "peer", rec["peer"]
+print(kind)
 print(title)
 ' "$ROOM_FILE")
+	[ "$(printf '%s\n' "$INFO" | sed -n 1p)" != peer ] || refuse_peer
+	[ -n "$ROOM" ] || ROOM=$(printf '%s\n' "$INFO" | sed -n 2p)
 fi
 
 [ -n "$ROOM" ] || die "which room? pass --room-file FILE or --room TITLE"

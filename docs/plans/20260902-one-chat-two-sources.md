@@ -162,11 +162,11 @@ committed state where a listed peer row's preview and `enter` both fail.
 **Files:**
 - Modify: `cookbook/chat-rooms/rooms-send.sh`
 
-- [ ] ⚠️ there are TWO failure modes, refuse on both. A single-path peer group passes the `-f` test and dies later with "which room?", because a thread record has no `room` key. A multi-path group fails `-f` first with `no such room file: a.jsonl,b.jsonl`
-- [ ] the cheap discriminator is the `.jsonl,` boundary or a missing `room` key in the file's last record
-- [ ] refuse with a message naming the reason: a peer reply is a `SendMessage`, which this recipe cannot make
-- [ ] nothing is written and nothing is typed on that path today, so this is a message change and not a safety fix — keep it that way
-- [ ] run `shellcheck` — must pass before task 5
+- [x] ⚠️ there are TWO failure modes, refuse on both. A single-path peer group passes the `-f` test and dies later with "which room?", because a thread record has no `room` key. A multi-path group fails `-f` first with `no such room file: a.jsonl,b.jsonl`
+- [x] the cheap discriminator is the `.jsonl,` boundary or a missing `room` key in the file's last record
+- [x] refuse with a message naming the reason: a peer reply is a `SendMessage`, which this recipe cannot make
+- [x] nothing is written and nothing is typed on that path today, so this is a message change and not a safety fix — keep it that way
+- [x] run `shellcheck` — must pass before task 5
 
 ### Task 5: Say what the viewer now covers
 
