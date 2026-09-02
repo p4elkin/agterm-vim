@@ -98,14 +98,14 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agterm/Control/ControlServer+Zmx.swift`
 - Modify: `agtermTests/ControlServerZmxTests.swift`
 
-- [ ] write the failing test `testListReportsTheSocketDirectoryTheClientIsUsing` in
+- [x] write the failing test `testListReportsTheSocketDirectoryTheClientIsUsing` in
       `agtermTests/ControlServerZmxTests.swift`; the existing `makeServer(runner:)` helper at line 508
       builds its `ZmxClient` with `socketDirectory: "/tmp/zmx-dir"`, so assert
       `XCTAssertEqual(inventory.socketDirectory, "/tmp/zmx-dir")`
-- [ ] drop `private` from `ZmxClient.socketDirectory`
-- [ ] pass `client.socketDirectory` in `listZmxDaemons()`; read the value the app is using, do not
+- [x] drop `private` from `ZmxClient.socketDirectory`
+- [x] pass `client.socketDirectory` in `listZmxDaemons()`; read the value the app is using, do not
       recompute the hash in a second place
-- [ ] run tests - must pass before task 4: `xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Debug -destination 'platform=macOS' test -only-testing:agtermTests/ControlServerZmxTests/testListReportsTheSocketDirectoryTheClientIsUsing`
+- [x] run tests - must pass before task 4: `xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Debug -destination 'platform=macOS' test -only-testing:agtermTests/ControlServerZmxTests/testListReportsTheSocketDirectoryTheClientIsUsing`
 
 ### Task 4: The documentation mirrors
 
