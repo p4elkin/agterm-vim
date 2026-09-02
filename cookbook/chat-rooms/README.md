@@ -1,6 +1,6 @@
 # Chat rooms
 
-Split one conversation into rooms held as files, read them in the pane next to the agent, and keep the chat carrying one line per room instead of every answer.
+Split one conversation into rooms held as files, read them in the pane next to the agent, and keep the chat carrying one line per room instead of every answer. The same pane lists the conversations other agent sessions send you, so one switcher covers both instead of two.
 
 ## What it does
 
@@ -14,18 +14,18 @@ The agent writes a long answer into a **room**, which is a file, and keeps one l
 [room] "the overlay PATH trap" — msg-142907-3f1a — why the plain revdiff wins
 ```
 
-The pane beside the agent runs a viewer that lists the rooms with their unread counts and previews the selected one. It updates on its own when the agent writes, with no keypress:
+The pane beside the agent runs a viewer that lists the rooms and the conversations with other agent sessions together, with their unread counts, and previews the selected one. A peer conversation is labelled `peer · <name>` and a room carries its bare title. Both kinds sort newest first, so they interleave by time. The list updates on its own when either is written to, with no keypress:
 
 ```
 room >                                        │ the overlay PATH trap
 > the overlay PATH trap            2          │
-  what the cursor file is for      1          │ 19:41:02 claude — why the plain revdiff wins
-  where the follow-up goes                    │ An overlay starts under the app's PATH, which
-                                              │ holds no ~/.local/bin, so the Homebrew build
+  peer · revdiff-markdown          1          │ 19:41:02 claude — why the plain revdiff wins
+  what the cursor file is for                 │ An overlay starts under the app's PATH, which
+  where the follow-up goes                    │ holds no ~/.local/bin, so the Homebrew build
                                               │ wins and it has no markdown preview...
 ```
 
-`enter` reads a room in a pager and marks it read. `ctrl-o` opens it in revdiff, where tables are drawn as tables and a mermaid block as box art. `ctrl-s` replies: your text goes into the room and one line goes into the agent's pane as real keystrokes, so a long reply never lands as a wall of text in the middle of the agent's work.
+`enter` reads the selected row in a pager and marks it read, a peer conversation as readily as a room. `ctrl-o` opens it in revdiff, where tables are drawn as tables and a mermaid block as box art. `ctrl-s` replies in a room: your text goes into the room and one line goes into the agent's pane as real keystrokes, so a long reply never lands as a wall of text in the middle of the agent's work. On a peer row it refuses, because answering another session is a `SendMessage` and this recipe cannot make one.
 
 The agent never reads a room back. The answer was already in its context on the way out, so a re-read would carry the whole file for the rest of the session. The viewer is a separate process reading files, so it costs nothing in tokens.
 
@@ -33,12 +33,13 @@ The agent never reads a room back. The answer was already in its context on the 
 
 - agterm 0.22.0 or later. `tree --json` reports `hasSplit` beside `split` in that release, which is how the restore hook tells a session whose second pane is hidden with ⌘D from one with no split at all — without it the hook opens a second split over a viewer that is already running. Everything else it uses is older: `session split`, `session type --stdin --pane`, and the `pickPending` and `overlay` read-backs on `tree`.
 - Claude Code. The hook is a Claude Code `SessionStart` hook, and rooms are keyed on the Claude session id read from Claude Code's own registry, so another agent needs porting.
+- A writer for `threads/` under `XCHAT_HOME`, if you want peer conversations in the list. This recipe reads them and ships no writer for them, so a home with none lists rooms alone and nothing else changes. The `cross-agent-chat` recipe's message hook is one such writer.
 - Python 3.8 or later, which macOS ships as `/usr/bin/python3`. Standard library only.
 - [fzf](https://github.com/junegunn/fzf) 0.42.0 or later. The viewer is one long-lived fzf; `--listen` with no port and the `$FZF_PORT` it exports are what let the watcher push a reload into it, and both shipped in 0.42.0.
 - `curl`, to post that reload to the port. Both `curl` and `less` come with macOS.
 - [revdiff](https://github.com/umputun/revdiff), optional, for `ctrl-o`. Without it the key falls back to the pager.
 
-`AGTERMCTL`, `PYTHON`, `FZF`, `CURL` and `REVDIFF` each take an absolute path when the binary sits somewhere unusual. `XCHAT_HOME` moves the record off `~/.local/state/agterm-xchat`, which is the same directory the `cross-agent-chat` recipe uses; the two share a home and do not share code.
+`AGTERMCTL`, `PYTHON`, `FZF`, `CURL` and `REVDIFF` each take an absolute path when the binary sits somewhere unusual. `XCHAT_HOME` moves the record off `~/.local/state/agterm-xchat`, which is the same directory the `cross-agent-chat` recipe uses. The two share that home and the viewer reads across it: rooms come from `rooms/` and peer conversations from `threads/`, and this recipe writes only the first of those.
 
 ## Setup
 
@@ -105,10 +106,10 @@ The viewer comes up on its own at session start. In it:
 
 | key | what it does |
 |---|---|
-| ↑ ↓ | move the selection; previewing never marks a room read |
-| enter | read the room in a pager, and mark it read |
-| ctrl-o | open the room in revdiff — real tables, mermaid as box art, annotatable |
-| ctrl-s | reply in the selected room, and type one line into the agent's pane |
+| ↑ ↓ | move the selection; previewing never marks a row read |
+| enter | read the room or peer conversation in a pager, and mark it read |
+| ctrl-o | open it in revdiff — real tables, mermaid as box art, annotatable |
+| ctrl-s | reply in the selected room, and type one line into the agent's pane; refused on a peer row |
 | esc | close the viewer |
 
 The agent writes a room as it writes the answer:
@@ -124,7 +125,7 @@ It prints the pointer line for the chat. `--body-file` reads the answer from a f
 From a shell, the same record without the viewer:
 
 ```sh
-rooms-read.py list                       # rooms of this row, with unread counts
+rooms-read.py list                       # rooms and peer conversations, with unread counts
 rooms-read.py show --room "the trap"     # print one room, wrapped
 rooms-read.py markdown --room "the trap" # write it out as markdown, print the path
 rooms-send.sh --room "the trap" --session <id> --text "why not the other one?"
@@ -163,6 +164,8 @@ Four details cost real time to find:
 - **The reply path types real keystrokes into the agent's pane.** Keystrokes go wherever focus is, so `rooms-send.sh` reads `tree --json` first and refuses when an overlay, the scratch pane or a pending picker covers the target pane. It refuses before writing anything, so a refused reply is not half-sent — but a pane that changes between the check and the keystrokes is a race nothing can close.
 - **The restore hook types into the right pane on a fresh session start.** It fires only when Claude Code reports the start `source` as `startup`, never on a resume, a `/clear` or an auto-compact — those land mid-session, where the pane may hold a half-typed command that the injected line would complete and run. It also refuses when the split is already running the viewer, and when a foreground program is running there. What remains is a shell sitting in that pane, at a prompt, empty or half-typed — it will receive the command line. Note that `startup` is reported for every fresh `claude` launch, not only the first one in a row, and an agterm row outlives the agent process, so this is not limited to the first launch of the day. No tree field reports what is sitting unsent at a prompt, so the hook cannot check for it. Use the right pane for the viewer, or set `XCHAT=off`.
 - **A reply is only sent to a pane that is running something.** `rooms-send.sh` refuses when the target pane is at a bare shell prompt, because the reply is typed with a trailing newline and an ordinary sentence carrying backticks or `$( )` would run as a command there. It proves no more than that: a non-empty `foreground` means some job owns the terminal, so an `ssh` session left in that pane also passes. Deliberate — the recipe does not care which agent you run, so it does not match on one.
+- **`ctrl-s` cannot reply to a peer conversation.** A room takes a reply because the recipe owns its writer; a message to another session is a `SendMessage` made by an agent, and nothing here can make one. The key refuses and says so, on both shapes a peer row arrives in.
+- **A peer's unread count is only what the peer sent.** The message hook appends the sender's own copy into its own thread, so counting every line past the cursor would show new messages for things this session sent. The badge counts records whose `direction` is not `sent`, which means your own half of the conversation never raises it.
 - **Whether an answer deserves a room is a judgment call on the write path**, made by the agent, and nothing checks it. Guessing wrong toward the chat gives you a long inline answer, which is what happens today anyway. Guessing wrong the other way gives you an empty room, which is worse, so the rule in *Setup* is deliberately biased toward answering in the chat.
 - **Every room is on disk in the clear**, under `~/.local/state/agterm-xchat`, twice: once as a line in the room and once as the full body in `msgs/`. Nothing prunes them and nothing expires. Delete the directory to clear it.
 - **The token saving is modest.** The same answer text is written once either way. The chat gains a short index in place of the full answers, which is real but small. What this buys is attention per note, not cost.

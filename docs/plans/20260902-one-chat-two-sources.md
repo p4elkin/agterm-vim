@@ -174,14 +174,14 @@ committed state where a listed peer row's preview and `enter` both fail.
 - Modify: `cookbook/chat-rooms/README.md`
 - Modify: `cookbook/README.md`
 
-- [ ] chat-rooms README: the viewer lists rooms and peer conversations together. The rooms-only statements are the pitch line at the top, the viewer paragraph, the paragraph after it, and the key table. Leave the *Setup* line naming six files alone — it says nothing about rooms versus peers, and editing it invites adding a seventh file that does not exist
-- [ ] chat-rooms README: correct the line claiming the two recipes "share a home and do not share code"
-- [ ] chat-rooms README: if Task 2 dropped `render`'s new-message highlight for a group, say so in *Limits*
-- [ ] chat-rooms README *Requirements*: peer rows appear only when `cross-agent-chat`'s hook is installed, because chat-rooms ships no writer for `threads/`. State it as a dependency, not as a pointer into the other recipe — `cookbook/CONTRIBUTING.md` wants a recipe standing on its own
-- [ ] chat-rooms README *Limits*: `ctrl-s` cannot reply to a peer, and the peer badge counts only messages the peer sent
-- [ ] `cookbook/README.md`: the chat-rooms index row still describes rooms only
-- [ ] leave `cookbook/cross-agent-chat/` untouched and installable on its own — it is published and someone may want only it
-- [ ] run the cookbook CI checks locally: layout, index both directions, kebab-case, six headings, shebangs, `shellcheck`, `ruff check`
+- [x] chat-rooms README: the viewer lists rooms and peer conversations together. The rooms-only statements are the pitch line at the top, the viewer paragraph, the paragraph after it, and the key table. Leave the *Setup* line naming six files alone — it says nothing about rooms versus peers, and editing it invites adding a seventh file that does not exist
+- [x] chat-rooms README: correct the line claiming the two recipes "share a home and do not share code"
+- [x] chat-rooms README: if Task 2 dropped `render`'s new-message highlight for a group, say so in *Limits*
+- [x] chat-rooms README *Requirements*: peer rows appear only when `cross-agent-chat`'s hook is installed, because chat-rooms ships no writer for `threads/`. State it as a dependency, not as a pointer into the other recipe — `cookbook/CONTRIBUTING.md` wants a recipe standing on its own
+- [x] chat-rooms README *Limits*: `ctrl-s` cannot reply to a peer, and the peer badge counts only messages the peer sent
+- [x] `cookbook/README.md`: the chat-rooms index row still describes rooms only
+- [x] leave `cookbook/cross-agent-chat/` untouched and installable on its own — it is published and someone may want only it
+- [x] run the cookbook CI checks locally: layout, index both directions, kebab-case, six headings, shebangs, `shellcheck`, `ruff check`
 
 ### Task 6: Verify what a test can verify
 
