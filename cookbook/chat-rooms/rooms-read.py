@@ -25,7 +25,7 @@ Wrapping is ANSI-aware: markup is applied before wrapping, and the wrapper measu
 width only, so a bolded word does not make its line wrap short.
 
 Usage:
-  rooms-read.py list  [--row ID | --session NAME]   title <TAB> badge <TAB> room file
+  rooms-read.py list  [--row ID | --session NAME]   title <TAB> badge <TAB> file(s)
   rooms-read.py show  (--path FILE | --room TITLE) [--width N] [--no-color] [--mark]
   rooms-read.py markdown (--path FILE | --room TITLE) [--out-dir DIR] [--mark]
   rooms-read.py where                               the rooms directory, for a file watcher
@@ -37,6 +37,10 @@ room's own JSON lines.
 --mark writes the room's cursor forward to the length it had when the read started, so the
 unread badge clears. The preview never passes it: a preview follows the selection, and marking
 there would read every room by walking past it.
+
+`list` prints rooms and peer conversations together, newest first. A peer row carries
+`peer · <name>` in its title field, so the two kinds are told apart without a fourth column
+the viewer would have to render. The third field is what `show` and `markdown` take back.
 
 --path takes one file, or several joined by commas. A peer conversation is one file per session
 id of mine that talked to that peer, so all of them are read, their messages merge in time
@@ -50,6 +54,7 @@ Every field is tab separated and stays that way. Room titles carry spaces, so re
 listing row on whitespace returns the second WORD of a title.
 """
 
+import json
 import os
 import re
 import sys
@@ -77,6 +82,11 @@ UUID_RE = re.compile(r"^[0-9a-f-]{32,40}$", re.IGNORECASE)
 # A peer conversation arrives as several files in one --path value. Its own suffix is the
 # separator, so a comma inside XCHAT_HOME cannot tear a path in two.
 PATH_SEP = ".jsonl,"
+
+# The kind of a row rides in its title rather than in a column of its own. `rooms-view.sh`
+# renders fields 1 and 2 and takes the path from {3} in four separate binds, so any new
+# column either shifts the path off {3} or is never drawn.
+PEER_LABEL = "peer · "
 
 # Use the whole window by default. A long measure does cost you something — the eye has
 # further to travel back to the next line start — so XCHAT_MAX_WIDTH caps it if you want a
@@ -160,22 +170,29 @@ def wrap_body(text, width, color=True):
     return out
 
 
-def render(msgs, title, width, color=True, unread=0):
+def render(msgs, title, width, color=True, fresh=()):
+    """The conversation as text. `fresh` marks each message unread or not, one flag per message.
+
+    A flag per message rather than a count of the last N: a peer conversation merges several
+    files by time, so the unread ones are scattered through the list rather than sitting at
+    the end of it.
+    """
     if not msgs:
         return "This room is empty.\n"
 
     def c(code, s):
         return (code + s + RESET) if color else s
 
+    fresh = list(fresh) + [False] * (len(msgs) - len(fresh))
     body_width = max(30, width - 2)
     plural = "" if len(msgs) == 1 else "s"
     head = f"{len(msgs)} message{plural}"
-    if unread:
-        head += f", {unread} unread"
+    if any(fresh):
+        head += f", {sum(fresh)} unread"
     lines = [f"{c(BOLD, title)}   {c(DIM, head)}"]
 
     for i, m in enumerate(msgs):
-        new = i >= len(msgs) - unread if unread else False
+        new = fresh[i]
         lines.append("")
         lines.append(" ".join([
             c(DIM, m.get("at", "")[-8:]),
@@ -241,6 +258,35 @@ def resolve_path(args):
     return []
 
 
+def tail_at(path):
+    """Every parseable record in this file past its cursor."""
+    out = []
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(store.cursor_at(path))
+            for line in fh:             # bytes, because a byte cursor is not a text one
+                if not line.strip():
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except ValueError:      # a torn line loses one message, not the tail
+                    continue
+    except OSError:
+        return []
+    return out
+
+
+def unread_at(path):
+    """Messages past this file's cursor that the agent did not send itself.
+
+    `store.unread_at` counts raw lines and cannot see a field, so it cannot serve here: the
+    hook appends the sender's own copy of an outgoing message into the sender's own thread,
+    and counting lines reports "N new" for messages this agent wrote. A room record has no
+    `direction` at all and always counts.
+    """
+    return sum(1 for record in tail_at(path) if record.get("direction") != "sent")
+
+
 def sizes_of(paths):
     """[(path, its length now)], captured before anything is read.
 
@@ -257,14 +303,27 @@ def sizes_of(paths):
 
 
 def read_paths(paths):
-    """Every message across these files, oldest first, and the name to title them with.
+    """Every message across these files oldest first, which of them are unread, and the title.
+
+    Unread is decided per file, before the merge, because a merged list interleaves by time
+    and its tail belongs to no single file.
 
     A room record carries `room` and a thread record carries `peer`; the filename is the last
     resort, and for a room it is a slug that has lost the punctuation of the real title.
     """
-    msgs = store.merged(paths) if len(paths) > 1 else store.load(paths[0])
+    msgs, fresh = [], []
+    for path in paths:
+        unread = unread_at(path)
+        records = store.load(path)
+        msgs.extend(records)
+        fresh.extend(i >= len(records) - unread and r.get("direction") != "sent"
+                     for i, r in enumerate(records))
+    if len(paths) > 1:
+        order = sorted(range(len(msgs)), key=lambda i: msgs[i].get("at", ""))
+        msgs = [msgs[i] for i in order]
+        fresh = [fresh[i] for i in order]
     name = (msgs[-1].get("room") or msgs[-1].get("peer") or "") if msgs else ""
-    return msgs, name or os.path.basename(paths[0])[: -len(".jsonl")]
+    return msgs, fresh, name or os.path.basename(paths[0])[: -len(".jsonl")]
 
 
 def cmd_markdown(args):
@@ -272,7 +331,7 @@ def cmd_markdown(args):
     if not paths:
         return 1
     seen = sizes_of(paths)
-    msgs, name = read_paths(paths)
+    msgs, _, name = read_paths(paths)
     if not msgs:
         sys.stderr.write(f"rooms: {','.join(paths)} holds no messages\n")
         return 1
@@ -361,12 +420,22 @@ def badge(count, unread, at):
 
 
 def cmd_list(args):
+    """Rooms and peer conversations in one list, newest first.
+
+    Both kinds are normalized to (label, path field, count, unread, last timestamp) before
+    they are sorted together. A peer group is several files, so its path field joins them and
+    its unread is the sum across them.
+    """
+    sessions = my_sessions(args)
     rows = []
-    for sid in my_sessions(args):
+    for sid in sessions:
         rows.extend(store.rooms(sid))
+    for peer, paths, count, at in store.conversations(sessions):
+        rows.append((f"{PEER_LABEL}{peer}", ",".join(paths), count,
+                     sum(unread_at(p) for p in paths), at))
     rows.sort(key=lambda r: r[4], reverse=True)
-    for title, path, count, unread, at in rows:
-        print(f"{title}\t{badge(count, unread, at)}\t{path}")
+    for label, path, count, unread, at in rows:
+        print(f"{label}\t{badge(count, unread, at)}\t{path}")
     return 0 if rows else 1
 
 
@@ -378,10 +447,9 @@ def cmd_show(args):
     # while the conversation sits open in the pager is not on the screen, so marking to the
     # current size would hide it for good.
     seen = sizes_of(paths)
-    msgs, name = read_paths(paths)
-    unread = sum(store.unread_at(p) for p in paths)
+    msgs, fresh, name = read_paths(paths)
     sys.stdout.write(render(msgs, name or "room", terminal_width(args),
-                            "--no-color" not in args, unread))
+                            "--no-color" not in args, fresh))
     if "--mark" in args:
         for path, offset in seen:
             store.advance_cursor_at(path, offset)

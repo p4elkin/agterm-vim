@@ -12,11 +12,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 SCRIPT = runpy.run_path(Path(__file__).with_name("rooms-read.py"))
+CMD_LIST = SCRIPT["cmd_list"]
 CMD_MARKDOWN = SCRIPT["cmd_markdown"]
 CMD_SHOW = SCRIPT["cmd_show"]
 SPLIT_PATHS = SCRIPT["split_paths"]
 STORE = SCRIPT["store"]
 
+ROW = "agterm-row-1"
 MINE = "11111111-1111-1111-1111-111111111111"
 MINE_RESTARTED = "22222222-2222-2222-2222-222222222222"
 PEER = "33333333-3333-3333-3333-333333333333"
@@ -61,6 +63,14 @@ class ReaderTests(unittest.TestCase):
         with redirect_stdout(buf):
             code = CMD_SHOW(args)
         return code, buf.getvalue()
+
+    def listing(self, *sessions):
+        for sid in sessions:
+            STORE.pair(ROW, sid)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = CMD_LIST(["list", "--row", ROW])
+        return code, [line.split("\t") for line in buf.getvalue().splitlines()]
 
     def markdown(self, path, *extra):
         args = ["markdown", "--path", path, "--out-dir", str(self.out_dir), *extra]
@@ -118,6 +128,49 @@ class PeerThreadTests(ReaderTests):
                          ["/tmp/a,b/threads/me/peer.jsonl"])
         self.assertEqual(SPLIT_PATHS("/tmp/a,b/one.jsonl,/tmp/a,b/two.jsonl"),
                          ["/tmp/a,b/one.jsonl", "/tmp/a,b/two.jsonl"])
+
+
+class ListTests(ReaderTests):
+    def test_a_room_and_a_peer_appear_together_newest_first(self):
+        self.room(MINE, "design-notes", [room_record("2026-09-02 10:00:00", "note", "opening")])
+        self.thread(MINE, PEER, [thread_record("2026-09-02 11:00:00", "hi", "greeting")])
+
+        code, rows = self.listing(MINE)
+
+        self.assertEqual(code, 0)
+        self.assertEqual([row[0] for row in rows], ["peer \u00b7 reviewer", "Design notes"])
+
+    def test_a_peer_across_two_sessions_is_one_row_carrying_both_paths(self):
+        first = self.thread(MINE, PEER, [thread_record("2026-09-02 10:00:00", "earlier", "one")])
+        second = self.thread(MINE_RESTARTED, PEER,
+                             [thread_record("2026-09-02 11:00:00", "later", "two")])
+
+        code, rows = self.listing(MINE, MINE_RESTARTED)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(sorted(SPLIT_PATHS(rows[0][2])), sorted([first, second]))
+        self.assertIn("2 msg", rows[0][1])
+
+    def test_the_agents_own_sent_messages_do_not_count_as_unread(self):
+        self.thread(MINE, PEER, [
+            thread_record("2026-09-02 10:00:00", "asked", "question", direction="sent"),
+            thread_record("2026-09-02 11:00:00", "answered", "answer")])
+
+        code, rows = self.listing(MINE)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(rows[0][1].split(", ")[0], "1 new")
+
+    def test_every_row_is_three_fields_with_the_path_last(self):
+        room = self.room(MINE, "design-notes",
+                         [room_record("2026-09-02 10:00:00", "note", "opening")])
+        thread = self.thread(MINE, PEER, [thread_record("2026-09-02 11:00:00", "hi", "hello")])
+
+        _, rows = self.listing(MINE)
+
+        self.assertEqual([len(row) for row in rows], [3, 3])
+        self.assertEqual(sorted(row[2] for row in rows), sorted([room, thread]))
 
 
 class RoomTests(ReaderTests):

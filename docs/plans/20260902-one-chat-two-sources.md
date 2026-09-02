@@ -131,18 +131,18 @@ committed state where a listed peer row's preview and `enter` both fail.
 - Modify: `cookbook/chat-rooms/rooms-read.py`
 - Modify: `cookbook/chat-rooms/test_rooms_read.py`
 
-- [ ] normalize both kinds to one row shape before sorting, so `store.rooms()` and `store.conversations()` rows unpack identically
-- [ ] ⚠️ write a new unread helper in `rooms-read.py`; `store.unread_at` cannot serve. It counts raw non-blank lines past the byte cursor and cannot see a field. The helper seeks to `store.cursor_at(path)`, parses each line past it, and counts only records whose `direction` is not `sent` — the hook writes the sender's own copy into its own thread, and the key really is `direction` with values `sent` and `received`
-- [ ] a peer group's unread is that helper summed over its paths
-- [ ] ⚠️ `render` highlights new messages as the tail of the list (`new = i >= len(msgs) - unread`). That assumption breaks for a merged group, because records interleave by time across files and the filtered count excludes `sent` records still in the list. Either mark per-record while merging, or drop the highlight for a group and say so in the README
-- [ ] put the label in field 1, `peer · <name>` against a bare room title, and add NO new column
-- [ ] keep the newest-first sort across both kinds so a room and a peer interleave by time
-- [ ] update the `list` output contract in the module docstring, which currently says `title <TAB> badge <TAB> room file`
-- [ ] test: one room and one peer thread both appear, newest first, each labelled
-- [ ] test: a peer grouped across two session ids yields ONE row carrying both paths
-- [ ] test: a peer's own sent messages do not count toward its unread
-- [ ] test: the printed contract is still `title <TAB> badge <TAB> path`, so the viewer's four `{3}` binds keep working
-- [ ] run the tests and `ruff check` — both must pass before task 3
+- [x] normalize both kinds to one row shape before sorting, so `store.rooms()` and `store.conversations()` rows unpack identically
+- [x] ⚠️ write a new unread helper in `rooms-read.py`; `store.unread_at` cannot serve. It counts raw non-blank lines past the byte cursor and cannot see a field. The helper seeks to `store.cursor_at(path)`, parses each line past it, and counts only records whose `direction` is not `sent` — the hook writes the sender's own copy into its own thread, and the key really is `direction` with values `sent` and `received`
+- [x] a peer group's unread is that helper summed over its paths
+- [x] ⚠️ `render` highlights new messages as the tail of the list (`new = i >= len(msgs) - unread`). That assumption breaks for a merged group, because records interleave by time across files and the filtered count excludes `sent` records still in the list. Either mark per-record while merging, or drop the highlight for a group and say so in the README
+- [x] put the label in field 1, `peer · <name>` against a bare room title, and add NO new column
+- [x] keep the newest-first sort across both kinds so a room and a peer interleave by time
+- [x] update the `list` output contract in the module docstring, which currently says `title <TAB> badge <TAB> room file`
+- [x] test: one room and one peer thread both appear, newest first, each labelled
+- [x] test: a peer grouped across two session ids yields ONE row carrying both paths
+- [x] test: a peer's own sent messages do not count toward its unread
+- [x] test: the printed contract is still `title <TAB> badge <TAB> path`, so the viewer's four `{3}` binds keep working
+- [x] run the tests and `ruff check` — both must pass before task 3
 
 ### Task 3: Let the watcher see a peer message
 
