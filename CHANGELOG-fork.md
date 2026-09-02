@@ -100,6 +100,10 @@ publishes an empty body with only a warning on stderr.
 
 ### Improved
 
+- `zmx list` names the socket directory the daemons live in, both in the plain listing's header and as
+  `socketDirectory` in `--json`. A script attaching from outside the app exports that value as `ZMX_DIR`
+  instead of reimplementing the hash of the state directory, and it reads the directory the app is
+  actually using rather than one it guessed
 - `tree` reports `sessionRecency`, the window's jump-back list with the active session dropped and the
   visible navigation scope applied
 - `keymap list` reports the `nmap` binds in their own section, each carrying the mode word only when that

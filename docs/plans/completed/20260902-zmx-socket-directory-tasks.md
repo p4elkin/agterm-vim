@@ -65,16 +65,18 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agtermCore/Sources/agtermCore/ControlPayloads.swift`
 - Create or modify: a test file under `agtermCore/Tests/agtermCoreTests/` covering `ControlPayloads`
 
-- [ ] write the failing test `theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`: encode a
+- [x] write the failing test `theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`: encode a
       `ControlZmxInventory` and assert the wire key `socketDirectory` holds the value passed in
-- [ ] write the failing test `anOlderServerOmittingTheDirectoryStillDecodes`: decode a hand-written
+- [x] write the failing test `anOlderServerOmittingTheDirectoryStillDecodes`: decode a hand-written
       JSON object with no `socketDirectory` key, expect the field nil and the rest of the payload intact
-- [ ] add `public let socketDirectory: String?` to `ControlZmxInventory`
-- [ ] add `socketDirectory: String` to its initializer, last, with no default
-- [ ] check the `agterm-linux` clone for another construction site of `ControlZmxInventory` before
+- [x] add `public let socketDirectory: String?` to `ControlZmxInventory`
+- [x] add `socketDirectory: String` to its initializer, last, with no default
+- [x] check the `agterm-linux` clone for another construction site of `ControlZmxInventory` before
       landing the required parameter; if one exists, note it here with `⚠️` and give the parameter a
-      default instead
-- [ ] run tests - must pass before task 2: `cd agtermCore && swift test --filter theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`
+      default instead — none exists: no `agterm-linux` clone on this machine, no repository of that name,
+      and a GitHub code search for `ControlZmxInventory` returns only `umputun/agterm`, so the parameter
+      stays required
+- [x] run tests - must pass before task 2: `cd agtermCore && swift test --filter theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`
 
 ### Task 2: The CLI prints it
 
@@ -82,12 +84,12 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agtermCore/Sources/agtermctlKit/SocketClient.swift`
 - Modify: `agtermCore/Tests/agtermctlKitTests/ZmxCommandsTests.swift`
 
-- [ ] write the failing test `theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt` asserting
+- [x] write the failing test `theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt` asserting
       `formatZmx` output contains the directory
-- [ ] add a second assertion in that test: a nil directory prints no line rather than an empty one
-- [ ] extend `SocketClient.formatZmx`, putting the directory in the header block with the restore
+- [x] add a second assertion in that test: a nil directory prints no line rather than an empty one
+- [x] extend `SocketClient.formatZmx`, putting the directory in the header block with the restore
       status and before the rows, because it describes the whole listing and not one daemon
-- [ ] run tests - must pass before task 3: `cd agtermCore && swift test --filter ZmxCommandsTests`
+- [x] run tests - must pass before task 3: `cd agtermCore && swift test --filter ZmxCommandsTests`
 
 ### Task 3: The app fills it from the client it already holds
 
@@ -96,14 +98,14 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agterm/Control/ControlServer+Zmx.swift`
 - Modify: `agtermTests/ControlServerZmxTests.swift`
 
-- [ ] write the failing test `testListReportsTheSocketDirectoryTheClientIsUsing` in
+- [x] write the failing test `testListReportsTheSocketDirectoryTheClientIsUsing` in
       `agtermTests/ControlServerZmxTests.swift`; the existing `makeServer(runner:)` helper at line 508
       builds its `ZmxClient` with `socketDirectory: "/tmp/zmx-dir"`, so assert
       `XCTAssertEqual(inventory.socketDirectory, "/tmp/zmx-dir")`
-- [ ] drop `private` from `ZmxClient.socketDirectory`
-- [ ] pass `client.socketDirectory` in `listZmxDaemons()`; read the value the app is using, do not
+- [x] drop `private` from `ZmxClient.socketDirectory`
+- [x] pass `client.socketDirectory` in `listZmxDaemons()`; read the value the app is using, do not
       recompute the hash in a second place
-- [ ] run tests - must pass before task 4: `xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Debug -destination 'platform=macOS' test -only-testing:agtermTests/ControlServerZmxTests/testListReportsTheSocketDirectoryTheClientIsUsing`
+- [x] run tests - must pass before task 4: `xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Debug -destination 'platform=macOS' test -only-testing:agtermTests/ControlServerZmxTests/testListReportsTheSocketDirectoryTheClientIsUsing`
 
 ### Task 4: The documentation mirrors
 
@@ -113,15 +115,15 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `plugins/agterm/skills/agterm/examples.md`
 - Modify: `site/commands.html`
 
-- [ ] `reference.md`, the `zmx list` paragraph at line 1420: one sentence saying the listing names the
+- [x] `reference.md`, the `zmx list` paragraph at line 1420: one sentence saying the listing names the
       socket directory the daemons live in, and that `ZMX_DIR` must carry it for a plain shell or a
       mosh session to reach them
-- [ ] `SKILL.md` at line 606: one clause
-- [ ] `examples.md` at line 43: a worked example reading the directory and a daemon name out of one
+- [x] `SKILL.md` at line 606: one clause
+- [x] `examples.md` at line 43: a worked example reading the directory and a daemon name out of one
       `--json` call and attaching — that example is the reason the field exists
-- [ ] `site/commands.html`, the `zmx list` entry at line 2843: matching wording
-- [ ] state no command total anywhere; `.claude/rules/control-api.md` forbids it and this adds no command
-- [ ] run tests - must pass before task 5: `cd agtermCore && swift test --filter SkillInstallTests`
+- [x] `site/commands.html`, the `zmx list` entry at line 2843: matching wording
+- [x] state no command total anywhere; `.claude/rules/control-api.md` forbids it and this adds no command
+- [x] run tests - must pass before task 5: `cd agtermCore && swift test --filter SkillInstallTests`
 
 ### Task 5: The two fork docs, in the same commit as the code
 
@@ -129,37 +131,37 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `FORK-NOTES.md`
 - Modify: `CHANGELOG-fork.md`
 
-- [ ] `FORK-NOTES.md`: one line under **Control API and tooling** at line 62, beside the
+- [x] `FORK-NOTES.md`: one line under **Control API and tooling** at line 62, beside the
       `sessionRecency` line
-- [ ] `CHANGELOG-fork.md`: a user-facing entry under `## Unreleased` → `### Improved`, saying what it
+- [x] `CHANGELOG-fork.md`: a user-facing entry under `## Unreleased` → `### Improved`, saying what it
       is for — an outside script reads the directory instead of reimplementing the hash
-- [ ] in the commit message, record why no `.claude/rules/fork-merge.md` entry is needed: a merge
+- [x] in the commit message, record why no `.claude/rules/fork-merge.md` entry is needed: a merge
       resolution that took upstream's `ControlPayloads.swift` whole would fail `swift test` on both new
       core tests and the CLI test, and `make test-app` on the app test, so the behaviour is not
       invisible to the gates
-- [ ] run tests - must pass before task 6: `cd agtermCore && swift test --filter ControlPayloads`
+- [x] run tests - must pass before task 6: `cd agtermCore && swift test --filter ControlPayloads`
 
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify `socketDirectory` is optional on the wire and required in the producer's initializer
-- [ ] verify a payload with no `socketDirectory` key still decodes, with the rest intact
-- [ ] verify `formatZmx` prints the directory in the header and prints nothing for a nil one
-- [ ] verify `listZmxDaemons()` reports the client's own value rather than a recomputed hash
-- [ ] verify `ControlTree` was not touched, so `SkillInstallTests`' field count of 16 still holds
-- [ ] run the full host-free suite: `cd agtermCore && swift test`
-- [ ] run lint, zero findings required: `make lint`
-- [ ] run the Release build: `make release`
-- [ ] ⚠️ run the hosted tests: `make test-app` — the only one of the four that compiles `agtermTests`,
+- [x] verify `socketDirectory` is optional on the wire and required in the producer's initializer
+- [x] verify a payload with no `socketDirectory` key still decodes, with the rest intact
+- [x] verify `formatZmx` prints the directory in the header and prints nothing for a nil one
+- [x] verify `listZmxDaemons()` reports the client's own value rather than a recomputed hash
+- [x] verify `ControlTree` was not touched, so `SkillInstallTests`' field count of 16 still holds
+- [x] run the full host-free suite: `cd agtermCore && swift test`
+- [x] run lint, zero findings required: `make lint`
+- [x] run the Release build: `make release`
+- [x] ⚠️ run the hosted tests: `make test-app` — the only one of the four that compiles `agtermTests`,
       where task 3's test lives, so skipping it leaves the test that proves the field is populated
       uncompiled
 
 ### Task 7: [Final] Update documentation
 
-- [ ] confirm `FORK-NOTES.md` and `CHANGELOG-fork.md` both carry the feature, per
+- [x] confirm `FORK-NOTES.md` and `CHANGELOG-fork.md` both carry the feature, per
       `.claude/rules/release.md`
-- [ ] confirm `.claude/rules/control-api.md` needs no change; this adds a read-back field to an
+- [x] confirm `.claude/rules/control-api.md` needs no change; this adds a read-back field to an
       existing command and states no total
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 

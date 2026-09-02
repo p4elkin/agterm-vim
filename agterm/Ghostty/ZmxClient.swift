@@ -26,7 +26,7 @@ final class ZmxClient {
 
     private static let logger = Logger(subsystem: "com.umputun.agterm", category: "ZmxClient")
     private let executablePath: String
-    private let socketDirectory: String
+    let socketDirectory: String
     private let timeout: TimeInterval
     private let runner: Runner
 

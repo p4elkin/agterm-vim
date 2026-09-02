@@ -86,11 +86,16 @@ public struct ControlZmxInventory: Codable, Sendable, Equatable {
     public let restore: ControlRestoreStatus
     public let inventoryComplete: Bool
     public let entries: [ControlZmxEntry]
+    /// Where the daemons' sockets live, so an outside `zmx attach` reads the path instead of recomputing
+    /// the hash of the state directory. Optional on the wire only so a response from an older server still
+    /// decodes; the producer always supplies it.
+    public let socketDirectory: String?
 
-    public init(restore: ControlRestoreStatus, result: ZmxInventoryResult) {
+    public init(restore: ControlRestoreStatus, result: ZmxInventoryResult, socketDirectory: String) {
         self.restore = restore
         inventoryComplete = result.inventoryComplete
         entries = result.rows.map(ControlZmxEntry.init(row:))
+        self.socketDirectory = socketDirectory
     }
 }
 

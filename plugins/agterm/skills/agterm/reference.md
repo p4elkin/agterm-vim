@@ -1422,7 +1422,10 @@ header. `state` is `claimed`, `orphan`, `unknown`, `conflicted`, `pendingClose` 
 `observation` is `running`, `unreadable` or `absent`, separate from the client count because a daemon that
 is gone and one zmx could not read are different answers. A CLOSED window's panes are `claimed` with zero
 clients. That is the resting state after you close a window, not a leak, which is why the owner's window
-state is its own column. `unknown` means the pane inventory was incomplete, so no row can be called an orphan.
+state is its own column. `unknown` means the pane inventory was incomplete, so no row can be called an orphan. The header also
+names `socketDirectory`, the directory the daemons' sockets live in, so a caller attaches to one instead of
+recomputing the hash of the state directory; a plain shell or a mosh session must carry that path in
+`ZMX_DIR` to find them at all.
 
 `agtermctl zmx prune` — kill the daemons no pane claims and nothing is attached to. It refuses outright on
 an incomplete or conflicted inventory. The gate is checked and revalidated rather than atomic: zmx has no

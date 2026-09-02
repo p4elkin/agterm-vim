@@ -20,7 +20,8 @@ extension ControlServer {
         let walk = library.paneClaims()
         let result = ZmxInventory.join(observed: observed, claims: walk.claims,
                                        inventoryComplete: walk.complete)
-        let inventory = ControlZmxInventory(restore: restoreStatus(), result: result)
+        let inventory = ControlZmxInventory(restore: restoreStatus(), result: result,
+                                            socketDirectory: client.socketDirectory)
         return ControlResponse(ok: true, result: ControlResult(zmx: inventory))
     }
 }

@@ -63,6 +63,9 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 
 - `tree` reports `sessionRecency`; `keymap list` reports the `nmap` binds in their own section;
   `agtermctl mode on|off|toggle`; `window.list` reports `normalMode`. `.claude/rules/control-api.md`.
+- `zmx list` reports `socketDirectory`, the private `ZMX_DIR` the app's own client is using, so an
+  outside script exports it instead of recomputing the state-directory hash.
+  `.claude/rules/control-api.md`.
 - `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
   `CHANGELOG-fork.md` as the release body. `.claude/rules/release.md`.
 

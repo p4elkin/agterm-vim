@@ -2847,7 +2847,7 @@
                 Every daemon behind a live session and every pane expecting one, joined, under the restore status as a header. Shows who owns each daemon, how many clients are attached, and which are left over.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                A <em>closed</em> window's panes are claimed with zero clients: that is the resting state after you close a window, not a leak, which is why the owner's window state is its own column. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unknown</span> means the pane inventory was incomplete, so no row can be called an orphan and nothing can be pruned.
+                A <em>closed</em> window's panes are claimed with zero clients: that is the resting state after you close a window, not a leak, which is why the owner's window state is its own column. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">unknown</span> means the pane inventory was incomplete, so no row can be called an orphan and nothing can be pruned. The header also names the socket directory the daemons' sockets live in, so a caller attaches to one instead of recomputing the hash of the state directory; a plain shell or a mosh session must carry that path in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ZMX_DIR</span> to find them at all.
               </p>
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">

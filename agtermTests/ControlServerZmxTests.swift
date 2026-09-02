@@ -64,6 +64,13 @@ final class ControlServerZmxTests: XCTestCase {
                       "only the panes' own claims remain, each with no daemon behind it")
     }
 
+    func testListReportsTheSocketDirectoryTheClientIsUsing() throws {
+        let response = makeServer(list: "").listZmxDaemons()
+
+        let inventory = try XCTUnwrap(response.result?.zmx)
+        XCTAssertEqual(inventory.socketDirectory, "/tmp/zmx-dir")
+    }
+
     func testAFailedListingIsAnErrorRatherThanAnEmptyInventory() {
         let response = makeServer(list: nil).listZmxDaemons()
 

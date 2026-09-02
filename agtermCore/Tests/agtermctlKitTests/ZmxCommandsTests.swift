@@ -8,6 +8,8 @@ import Testing
 /// the point is that the CLI cannot send a kill the server would have to refuse, and that a reader can
 /// tell a closed window's resting state from a leak.
 struct ZmxCommandsTests {
+    private let socketDirectory = "/tmp/agterm-zmx-e37fc371e9dbafce"
+
     @Test func listAndPruneSendTheirCommandWithNothingToResolve() throws {
         let list = try Zmx.List.parse([])
         #expect(try list.makeRequest().cmd == .zmxList)
@@ -70,7 +72,8 @@ struct ZmxCommandsTests {
         let status = ControlRestoreStatus(configured: .live, requestedAtLaunch: .live, active: .live,
                                           unavailableReason: nil)
 
-        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result))
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
 
         #expect(rendered.contains("claimed"))
         #expect(rendered.contains("0 clients"))
@@ -84,12 +87,34 @@ struct ZmxCommandsTests {
         #expect(rendered.contains("win \(claim.windowID.uuidString.prefix(8))"))
     }
 
+    @Test func theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt() throws {
+        let status = ControlRestoreStatus(configured: .live, requestedAtLaunch: .live, active: .live,
+                                          unavailableReason: nil)
+        let result = ZmxInventory.join(observed: [], claims: [], inventoryComplete: true)
+
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
+        #expect(rendered.contains("socket directory: \(socketDirectory)"))
+
+        let older = """
+        {"restore":{"configured":"live","requestedAtLaunch":"live","active":"live","restartRequired":false},
+         "inventoryComplete":true,"entries":[]}
+        """
+        let withoutDirectory = try JSONDecoder().decode(ControlZmxInventory.self, from: Data(older.utf8))
+
+        let sparse = SocketClient.formatZmx(withoutDirectory)
+        #expect(!sparse.contains("socket directory"))
+        #expect(!sparse.split(separator: "\n", omittingEmptySubsequences: false).contains(""),
+                "an unknown directory prints no line at all, not an empty one")
+    }
+
     @Test func anIncompleteInventorySaysSoBeforeItsRows() {
         let status = ControlRestoreStatus(configured: .none, requestedAtLaunch: .none, active: .none,
                                           unavailableReason: nil)
         let result = ZmxInventory.join(observed: [], claims: [], inventoryComplete: false)
 
-        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result))
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
         #expect(rendered.contains("inventory incomplete"))
         #expect(rendered.contains("no daemons"))
     }

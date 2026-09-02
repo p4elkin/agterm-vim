@@ -604,7 +604,8 @@ NEXT launch; setting it changes nothing in the running app, because a pane is wr
 at the moment it is created.
 
 **zmx** - `zmx list` - every daemon behind a live session joined against the pane that claims it, under the
-restore status as a header; a CLOSED window's panes are claimed with zero clients, which is a resting
+restore status as a header, which also names the socket directory the daemons live in, the path `ZMX_DIR`
+must carry for a plain shell or a mosh session to reach them; a CLOSED window's panes are claimed with zero clients, which is a resting
 state rather than a leak · `zmx prune` - kill the daemons no pane claims and nothing is attached to,
 refusing outright on an incomplete or conflicted inventory, and reporting each daemon separately since a
 stale-socket cleanup is not a kill · `zmx kill --target ID --pane left|right --force` - destroy one pane's

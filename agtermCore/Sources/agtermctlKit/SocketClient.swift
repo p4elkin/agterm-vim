@@ -266,6 +266,11 @@ struct SocketClient {
     /// only the count would read that as a leak.
     static func formatZmx(_ inventory: ControlZmxInventory) -> String {
         var lines = [formatRestoreStatus(inventory.restore)]
+        if let directory = inventory.socketDirectory {
+            // beside the restore status rather than on a row: it describes the whole listing, and it is
+            // what an outside `zmx attach` needs before any daemon name is useful
+            lines.append("socket directory: \(directory)")
+        }
         if !inventory.inventoryComplete {
             lines.append("inventory incomplete: some pane is unaccounted for, so nothing can be pruned")
         }

@@ -149,7 +149,8 @@ struct ControlDispatcherZmxTests {
         let status = ControlRestoreStatus(configured: .live, requestedAtLaunch: .live, active: .live,
                                           unavailableReason: nil)
 
-        let payload = ControlZmxInventory(restore: status, result: result)
+        let payload = ControlZmxInventory(restore: status, result: result,
+                                            socketDirectory: "/tmp/agterm-zmx-e37fc371e9dbafce")
         // through the whole response, which is the boundary a caller actually reads `result.zmx` from
         let response = ControlResponse(ok: true, result: ControlResult(zmx: payload))
         let encoded = try JSONEncoder().encode(response)
