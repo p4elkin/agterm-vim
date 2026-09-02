@@ -53,9 +53,19 @@ then looks in its own default directory, which holds none of these daemons:
 
 ```bash
 listing=$(agtermctl zmx list --json)
-export ZMX_DIR=$(printf '%s' "$listing" | jq -r '.result.zmx.socketDirectory')
+# `// empty` rather than a bare `-r`: the field is optional on the wire, so an OLDER agterm omits it and
+# `jq -r` would print the string `null`. `ZMX_DIR=null` is a namespace that does not exist, and `zmx
+# attach` creates rather than fails, so the shell would land in a fresh daemon reporting success.
+ZMX_DIR=$(printf '%s' "$listing" | jq -r '.result.zmx.socketDirectory // empty')
+[ -n "$ZMX_DIR" ] || { echo "this agterm does not report the socket directory" >&2; exit 1; }
+export ZMX_DIR
+# Both fields, because each one alone picks a wrong row. `state` alone admits a `claimed` pane whose
+# daemon is gone (`observation: absent`), and attaching would CREATE one. `observation` alone admits a
+# `foreign` daemon — a zmx session agterm did not start, which carries no claim at all.
 daemon=$(printf '%s' "$listing" |
-  jq -r 'first(.result.zmx.entries[] | select(.state == "claimed") | .daemon)')
+  jq -r 'first(.result.zmx.entries[]
+           | select(.state == "claimed" and .observation == "running") | .daemon)')
+[ -n "$daemon" ] || { echo "no live agterm daemon to attach to" >&2; exit 1; }
 zmx attach "$daemon"
 ```
 

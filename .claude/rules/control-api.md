@@ -861,6 +861,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   running/unreadable/absent — separate, because `clients == nil` alone cannot tell a gone daemon from one
   zmx failed to read. A closed window's panes are claimed with ZERO clients: that is the resting state,
   not a leak, so the client count alone never implies an orphan.
+- `socketDirectory` rides the listing beside `restore`, because a caller holding a daemon name still
+  cannot reach it without the namespace, and recomputing that path outside the app gets it WRONG:
+  `ZmxSupport.socketDirectory` hashes after `standardizedFileURL` and `resolvingSymlinksInPath`, whose
+  pair strips `/private`, so a `realpath`-based hash names a directory zmx creates and reports empty
+  rather than one that fails. Optional on the wire so an older server still decodes, always supplied by
+  the producer, and read from `ZmxClient.socketDirectory` rather than recomputed a second time.
 - The claim walk never writes. It is its own non-mutating pass rather than `PaneIdentityInventory.upgrade`,
   which mints missing identities and whose every caller saves; a missing identity makes the walk incomplete
   instead. It enumerates `windows/*.json` and compares against the index, because `bootstrap()` only scans
