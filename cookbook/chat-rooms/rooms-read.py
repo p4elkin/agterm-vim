@@ -38,6 +38,10 @@ room's own JSON lines.
 unread badge clears. The preview never passes it: a preview follows the selection, and marking
 there would read every room by walking past it.
 
+--path takes one file, or several joined by commas. A peer conversation is one file per session
+id of mine that talked to that peer, so all of them are read, their messages merge in time
+order, and --mark marks each one to its own length.
+
 --row is an agterm session id and defaults to $AGTERM_SESSION_ID. --session names a Claude
 session instead, for a shell that is not inside agterm. Rooms are keyed on the Claude session
 id, never on its name, because Claude Code rewrites the name as the work changes.
@@ -69,6 +73,10 @@ PREFORMATTED = re.compile(r"^(\s{4,}|\t)")
 TABLE = re.compile(r"^\s*\|")
 HEADING = re.compile(r"^\s*(#{1,6})\s+(.*)$")
 UUID_RE = re.compile(r"^[0-9a-f-]{32,40}$", re.IGNORECASE)
+
+# A peer conversation arrives as several files in one --path value. Its own suffix is the
+# separator, so a comma inside XCHAT_HOME cannot tear a path in two.
+PATH_SEP = ".jsonl,"
 
 # Use the whole window by default. A long measure does cost you something — the eye has
 # further to travel back to the next line start — so XCHAT_MAX_WIDTH caps it if you want a
@@ -201,42 +209,81 @@ def markdown(msgs, title):
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def split_paths(value):
+    """Several files in one --path value, split on the `.jsonl,` boundary.
+
+    A bare comma is not the separator. A slug and a session id cannot hold one, but the
+    XCHAT_HOME prefix in front of them is unconstrained and a directory name may well.
+    """
+    parts = value.split(PATH_SEP)
+    paths = [p + ".jsonl" for p in parts[:-1]] + [parts[-1]]
+    return [p for p in paths if p]
+
+
 def resolve_path(args):
-    """The room file this invocation is about, from --path or from --room plus the session."""
+    """The files this invocation is about, always a list, from --path or --room.
+
+    A room is one file and a peer conversation is one per session id of mine, so both callers
+    take a list and neither needs to know which kind it was handed.
+    """
     path = opt(args, "--path")
     if path:
-        return path
+        return split_paths(path)
     title = opt(args, "--room")
     if not title:
         sys.stderr.write("rooms: pass --path FILE or --room TITLE\n")
-        return ""
+        return []
     for sid in my_sessions(args):
         candidate = store.room_path(sid, title)
         if os.path.exists(candidate):
-            return candidate
+            return [candidate]
     sys.stderr.write(f"rooms: no room named {title!r} in this session\n")
-    return ""
+    return []
+
+
+def sizes_of(paths):
+    """[(path, its length now)], captured before anything is read.
+
+    Each file is marked to its own captured length. Taking the size again at --mark time would
+    swallow a message appended while the pager was open.
+    """
+    out = []
+    for path in paths:
+        try:
+            out.append((path, os.path.getsize(path)))
+        except OSError:
+            out.append((path, 0))
+    return out
+
+
+def read_paths(paths):
+    """Every message across these files, oldest first, and the name to title them with.
+
+    A room record carries `room` and a thread record carries `peer`; the filename is the last
+    resort, and for a room it is a slug that has lost the punctuation of the real title.
+    """
+    msgs = store.merged(paths) if len(paths) > 1 else store.load(paths[0])
+    name = (msgs[-1].get("room") or msgs[-1].get("peer") or "") if msgs else ""
+    return msgs, name or os.path.basename(paths[0])[: -len(".jsonl")]
 
 
 def cmd_markdown(args):
-    path = resolve_path(args)
-    if not path:
+    paths = resolve_path(args)
+    if not paths:
         return 1
-    try:
-        seen = os.path.getsize(path)
-    except OSError:
-        seen = 0
-    msgs = store.load(path)
+    seen = sizes_of(paths)
+    msgs, name = read_paths(paths)
     if not msgs:
-        sys.stderr.write(f"rooms: {path} holds no messages\n")
+        sys.stderr.write(f"rooms: {','.join(paths)} holds no messages\n")
         return 1
-    name = msgs[-1].get("room") or os.path.basename(path)[: -len(".jsonl")]
     out_dir = opt(args, "--out-dir") or os.path.join(tempfile.gettempdir(), "agterm-rooms")
     # Named after the room file under its session, so re-opening one room rewrites its
     # document instead of leaving a new one behind on every read, and two sessions that named
-    # a room the same way do not overwrite each other.
-    out_dir = os.path.join(out_dir, os.path.basename(os.path.dirname(path)))
-    dest = os.path.join(out_dir, os.path.basename(path)[: -len(".jsonl")] + ".md")
+    # a room the same way do not overwrite each other. A peer spans several files under
+    # several session directories, so it is named after the peer under the first of them.
+    out_dir = os.path.join(out_dir, os.path.basename(os.path.dirname(paths[0])))
+    leaf = store.slug(name) if len(paths) > 1 else os.path.basename(paths[0])[: -len(".jsonl")]
+    dest = os.path.join(out_dir, leaf + ".md")
     try:
         os.makedirs(out_dir, exist_ok=True)
         with open(dest, "w") as fh:
@@ -245,7 +292,8 @@ def cmd_markdown(args):
         sys.stderr.write(f"rooms: cannot write {dest}: {exc}\n")
         return 1
     if "--mark" in args:
-        store.advance_cursor_at(path, seen)
+        for path, offset in seen:
+            store.advance_cursor_at(path, offset)
     print(dest)
     return 0
 
@@ -323,22 +371,20 @@ def cmd_list(args):
 
 
 def cmd_show(args):
-    path = resolve_path(args)
-    if not path:
+    paths = resolve_path(args)
+    if not paths:
         return 1
-    # Read the length before rendering, and mark to that. A message appended while the room
-    # sits open in the pager is not on the screen, so marking to the current size would hide
-    # it for good.
-    try:
-        seen = os.path.getsize(path)
-    except OSError:
-        seen = 0
-    msgs = store.load(path)
-    name = msgs[-1].get("room") if msgs else os.path.basename(path)[: -len(".jsonl")]
+    # Read the lengths before rendering, and mark each file to its own. A message appended
+    # while the conversation sits open in the pager is not on the screen, so marking to the
+    # current size would hide it for good.
+    seen = sizes_of(paths)
+    msgs, name = read_paths(paths)
+    unread = sum(store.unread_at(p) for p in paths)
     sys.stdout.write(render(msgs, name or "room", terminal_width(args),
-                            "--no-color" not in args, store.unread_at(path)))
+                            "--no-color" not in args, unread))
     if "--mark" in args:
-        store.advance_cursor_at(path, seen)
+        for path, offset in seen:
+            store.advance_cursor_at(path, offset)
     return 0
 
 

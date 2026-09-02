@@ -111,19 +111,19 @@ committed state where a listed peer row's preview and `enter` both fail.
 - Modify: `cookbook/chat-rooms/rooms-read.py`
 - Create: `cookbook/chat-rooms/test_rooms_read.py`
 
-- [ ] in `resolve_path`, accept a comma-separated value and always return a LIST of paths, so both callers take one type. ⚠️ Split on the `.jsonl,` boundary rather than a bare comma: `slug()` and the UUID leaf cannot contain one, but the prefix comes from `XCHAT_HOME` and is unconstrained
-- [ ] in `cmd_show`, render a group through `store.merged(paths)` and a single path through `store.load` as now
-- [ ] ⚠️ in `cmd_markdown`, handle a list at EVERY site, not only the title. Five lines there take a `str` today: `getsize`, `store.load`, the two `basename`/`dirname` calls that build the output name, and `advance_cursor_at`. A list raises `TypeError`, which `store.load` does not catch and `rooms-view.sh` swallows with `|| exit 0`, so `ctrl-o` fails silently
-- [ ] decide the group's `.md` destination: several paths, one document. Name it after the peer, under the session directory of the first path, so re-opening rewrites one file
-- [ ] title from `room` when present, falling back to `peer`, then to the filename — at BOTH the `cmd_show` and `cmd_markdown` sites
-- [ ] ⚠️ capture each path's size BEFORE loading and mark each to its own captured size. The current code reads `getsize` before `load` deliberately, so a message appended while the pager is open is not marked read; calling `advance_cursor_at(p)` with the default offset reintroduces that bug
-- [ ] write `test_rooms_read.py` in the `two-agent-chat/test_peer_chat.py` shape, loading `rooms-read.py` with `runpy.run_path`, with a shebang, and pointing `XCHAT_HOME` at a tmpdir so the tests never read or mark the real store
-- [ ] test: a peer thread renders with the peer as its title
-- [ ] test: a two-file group renders both files' messages in time order
-- [ ] test: `markdown` on a group writes one document and exits 0 — the bind that silently did nothing
-- [ ] test: marking a group clears the badge for every path in it
-- [ ] test: a room still renders, marks and writes markdown exactly as before
-- [ ] run the tests and `ruff check` — both must pass before task 2
+- [x] in `resolve_path`, accept a comma-separated value and always return a LIST of paths, so both callers take one type. ⚠️ Split on the `.jsonl,` boundary rather than a bare comma: `slug()` and the UUID leaf cannot contain one, but the prefix comes from `XCHAT_HOME` and is unconstrained
+- [x] in `cmd_show`, render a group through `store.merged(paths)` and a single path through `store.load` as now
+- [x] ⚠️ in `cmd_markdown`, handle a list at EVERY site, not only the title. Five lines there take a `str` today: `getsize`, `store.load`, the two `basename`/`dirname` calls that build the output name, and `advance_cursor_at`. A list raises `TypeError`, which `store.load` does not catch and `rooms-view.sh` swallows with `|| exit 0`, so `ctrl-o` fails silently
+- [x] decide the group's `.md` destination: several paths, one document. Name it after the peer, under the session directory of the first path, so re-opening rewrites one file
+- [x] title from `room` when present, falling back to `peer`, then to the filename — at BOTH the `cmd_show` and `cmd_markdown` sites
+- [x] ⚠️ capture each path's size BEFORE loading and mark each to its own captured size. The current code reads `getsize` before `load` deliberately, so a message appended while the pager is open is not marked read; calling `advance_cursor_at(p)` with the default offset reintroduces that bug
+- [x] write `test_rooms_read.py` in the `two-agent-chat/test_peer_chat.py` shape, loading `rooms-read.py` with `runpy.run_path`, with a shebang, and pointing `XCHAT_HOME` at a tmpdir so the tests never read or mark the real store
+- [x] test: a peer thread renders with the peer as its title
+- [x] test: a two-file group renders both files' messages in time order
+- [x] test: `markdown` on a group writes one document and exits 0 — the bind that silently did nothing
+- [x] test: marking a group clears the badge for every path in it
+- [x] test: a room still renders, marks and writes markdown exactly as before
+- [x] run the tests and `ruff check` — both must pass before task 2
 
 ### Task 2: List peer conversations beside rooms
 
