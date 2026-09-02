@@ -143,15 +143,15 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify `socketDirectory` is optional on the wire and required in the producer's initializer
-- [ ] verify a payload with no `socketDirectory` key still decodes, with the rest intact
-- [ ] verify `formatZmx` prints the directory in the header and prints nothing for a nil one
-- [ ] verify `listZmxDaemons()` reports the client's own value rather than a recomputed hash
-- [ ] verify `ControlTree` was not touched, so `SkillInstallTests`' field count of 16 still holds
-- [ ] run the full host-free suite: `cd agtermCore && swift test`
-- [ ] run lint, zero findings required: `make lint`
-- [ ] run the Release build: `make release`
-- [ ] ⚠️ run the hosted tests: `make test-app` — the only one of the four that compiles `agtermTests`,
+- [x] verify `socketDirectory` is optional on the wire and required in the producer's initializer
+- [x] verify a payload with no `socketDirectory` key still decodes, with the rest intact
+- [x] verify `formatZmx` prints the directory in the header and prints nothing for a nil one
+- [x] verify `listZmxDaemons()` reports the client's own value rather than a recomputed hash
+- [x] verify `ControlTree` was not touched, so `SkillInstallTests`' field count of 16 still holds
+- [x] run the full host-free suite: `cd agtermCore && swift test`
+- [x] run lint, zero findings required: `make lint`
+- [x] run the Release build: `make release`
+- [x] ⚠️ run the hosted tests: `make test-app` — the only one of the four that compiles `agtermTests`,
       where task 3's test lives, so skipping it leaves the test that proves the field is populated
       uncompiled
 
