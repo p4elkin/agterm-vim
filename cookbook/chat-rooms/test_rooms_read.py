@@ -15,6 +15,7 @@ SCRIPT = runpy.run_path(Path(__file__).with_name("rooms-read.py"))
 CMD_LIST = SCRIPT["cmd_list"]
 CMD_MARKDOWN = SCRIPT["cmd_markdown"]
 CMD_SHOW = SCRIPT["cmd_show"]
+CMD_WHERE = SCRIPT["cmd_where"]
 SPLIT_PATHS = SCRIPT["split_paths"]
 STORE = SCRIPT["store"]
 
@@ -216,6 +217,16 @@ class RoomTests(ReaderTests):
 
         self.assertEqual(STORE.cursor_at(self.path), original)
         self.assertEqual(STORE.unread_at(self.path), 1)
+
+
+class WatchRootTests(ReaderTests):
+    def test_where_prints_both_roots(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = CMD_WHERE(["where"])
+        self.assertEqual(code, 0)
+        self.assertEqual(buf.getvalue().split(),
+                         [str(self.home / "rooms"), str(self.home / "threads")])
 
 
 if __name__ == "__main__":

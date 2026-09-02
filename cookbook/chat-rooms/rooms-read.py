@@ -28,7 +28,7 @@ Usage:
   rooms-read.py list  [--row ID | --session NAME]   title <TAB> badge <TAB> file(s)
   rooms-read.py show  (--path FILE | --room TITLE) [--width N] [--no-color] [--mark]
   rooms-read.py markdown (--path FILE | --room TITLE) [--out-dir DIR] [--mark]
-  rooms-read.py where                               the rooms directory, for a file watcher
+  rooms-read.py where                               the directories to watch, one per line
 
 `markdown` writes the room out as plain markdown and prints the file it wrote. That file is
 what the viewer's full-read key hands to revdiff, which renders markdown and cannot render a
@@ -456,6 +456,20 @@ def cmd_show(args):
     return 0
 
 
+def cmd_where(_args):
+    """The roots a file watcher has to look at, one per line.
+
+    Both kinds are listed together, so both roots are watched: a peer message lands under
+    `threads/` and would otherwise never reload the list. The two are named rather than
+    replaced by the store root above them, because that root also holds `msgs/`, which the
+    watcher would then walk once a second. A name filter keeps those files out of `stat`,
+    not out of the traversal.
+    """
+    print(store.rooms_dir())
+    print(store.threads_dir())
+    return 0
+
+
 def main():
     args = sys.argv[1:]
     sub = args[0] if args else ""
@@ -466,8 +480,7 @@ def main():
     if sub == "markdown":
         return cmd_markdown(args)
     if sub == "where":
-        print(store.rooms_dir())
-        return 0
+        return cmd_where(args)
     sys.stderr.write(__doc__.split("Usage:", 1)[-1].lstrip("\n"))
     return 2
 

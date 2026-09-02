@@ -150,12 +150,12 @@ committed state where a listed peer row's preview and `enter` both fail.
 - Modify: `cookbook/chat-rooms/rooms-read.py`
 - Modify: `cookbook/chat-rooms/rooms-view.sh`
 
-- [ ] `where` currently prints `store.rooms_dir()`, so the viewer watches only `rooms/`. Print both roots instead — the rooms directory and the threads directory — so `threads/` is covered
-- [ ] ⚠️ give `find` the two roots explicitly rather than widening to `home()`. Widening walks `msgs/` once a second, and nothing prunes it: the name filter keeps those files out of `stat`, not out of the traversal
-- [ ] `where`'s own docstring line says "the rooms directory, for a file watcher" — correct it
-- [ ] rename `ROOMS_DIR` in the viewer and fix the comment above it, both now stale
-- [ ] test: `rooms-read.py where` prints both roots. Do NOT test `signature()` — it is a shell function inside a script that ends by launching fzf under `set -eu`, so it cannot be sourced, and CI runs `test_*.py` only
-- [ ] run the tests, `ruff check` and `shellcheck` — all must pass before task 4
+- [x] `where` currently prints `store.rooms_dir()`, so the viewer watches only `rooms/`. Print both roots instead — the rooms directory and the threads directory — so `threads/` is covered
+- [x] ⚠️ give `find` the two roots explicitly rather than widening to `home()`. Widening walks `msgs/` once a second, and nothing prunes it: the name filter keeps those files out of `stat`, not out of the traversal
+- [x] `where`'s own docstring line says "the rooms directory, for a file watcher" — correct it
+- [x] rename `ROOMS_DIR` in the viewer and fix the comment above it, both now stale
+- [x] test: `rooms-read.py where` prints both roots. Do NOT test `signature()` — it is a shell function inside a script that ends by launching fzf under `set -eu`, so it cannot be sourced, and CI runs `test_*.py` only
+- [x] run the tests, `ruff check` and `shellcheck` — all must pass before task 4
 
 ### Task 4: Refuse a reply on a peer row
 

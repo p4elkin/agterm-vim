@@ -21,8 +21,8 @@
 # the annotate recipe's annotate-extract.py:179 skips every block whose type is not
 # `text`, and a room answer is written through a tool call. A room file opened directly needs
 # no extraction, so nothing has to change there.
-# A background loop watches the room files and pushes both sides forward on its own, so a
-# room the agent writes to appears with no keypress.
+# A background loop watches the room and thread files and pushes both sides forward on its
+# own, so a room or a peer message the agent writes appears with no keypress.
 #
 # This is a separate process reading files. It costs the agent nothing, and the agent never
 # reads a room back.
@@ -45,7 +45,7 @@ FZF=${FZF:-fzf}
 CURL=${CURL:-curl}
 REVDIFF=${REVDIFF:-revdiff}
 SELF=$DIR/$(basename -- "$0")
-# How often the watcher looks at the room files. Cheap: one find over one directory.
+# How often the watcher looks at those files. Cheap: one find over two directories.
 INTERVAL=${XCHAT_VIEW_INTERVAL:-1}
 
 # Width from the pane we actually got. `tput cols` reports 79 inside an agterm overlay
@@ -110,7 +110,10 @@ SEND_TARGET=""
 # drift, and the drift only shows up after the first append.
 LIST="'$PYTHON' '$READ_PY' list $SEL_FLAG '$SEL_VAL'"
 
-ROOMS_DIR=$("$PYTHON" "$READ_PY" where)
+# The roots to watch, one per line: rooms/ and threads/. Named explicitly rather than
+# widened to the store root above them, which also holds msgs/ and would be walked in full
+# once a second.
+WATCH_ROOTS=$("$PYTHON" "$READ_PY" where)
 STATE=$(mktemp -d "${TMPDIR:-/tmp}/agterm-rooms.XXXXXX")
 PORT_FILE=$STATE/port
 WATCHER=""
@@ -121,15 +124,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Room files and their cursors, with size and modification time. The cursors are in here
-# because reading a room changes only the cursor, and the unread count in the list has to
-# follow that too.
+# Room and thread files and their cursors, with size and modification time. The cursors are
+# in here because reading a conversation changes only the cursor, and the unread count in the
+# list has to follow that too.
+#
+# The roots arrive one per line, so they are split on newlines alone: a directory name may
+# carry a space, and globbing is off while they are split so it cannot carry a wildcard
+# either. Positional parameters are the function's own, so the script's are untouched.
 signature() {
-	find "$ROOMS_DIR" -type f \( -name '*.jsonl' -o -name '*.cursor' \) \
+	IFS='
+'
+	set -f
+	# shellcheck disable=SC2086  # deliberate split of one root per line
+	set -- $WATCH_ROOTS
+	set +f
+	unset IFS
+	find "$@" -type f \( -name '*.jsonl' -o -name '*.cursor' \) \
 		-exec stat -f '%m %z %N' {} + 2>/dev/null | sort || true
 }
 
-# Push both sides of the viewer forward when a room file moves. fzf's --listen port is the
+# Push both sides of the viewer forward when a room or thread file moves. fzf's --listen port is the
 # only way in from outside the process; it is written out at start because fzf picks it.
 watch_rooms() {
 	last=$(signature)
