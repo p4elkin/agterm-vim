@@ -157,11 +157,11 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 
 ### Task 7: [Final] Update documentation
 
-- [ ] confirm `FORK-NOTES.md` and `CHANGELOG-fork.md` both carry the feature, per
+- [x] confirm `FORK-NOTES.md` and `CHANGELOG-fork.md` both carry the feature, per
       `.claude/rules/release.md`
-- [ ] confirm `.claude/rules/control-api.md` needs no change; this adds a read-back field to an
+- [x] confirm `.claude/rules/control-api.md` needs no change; this adds a read-back field to an
       existing command and states no total
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
