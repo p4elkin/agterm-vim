@@ -131,15 +131,15 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `FORK-NOTES.md`
 - Modify: `CHANGELOG-fork.md`
 
-- [ ] `FORK-NOTES.md`: one line under **Control API and tooling** at line 62, beside the
+- [x] `FORK-NOTES.md`: one line under **Control API and tooling** at line 62, beside the
       `sessionRecency` line
-- [ ] `CHANGELOG-fork.md`: a user-facing entry under `## Unreleased` → `### Improved`, saying what it
+- [x] `CHANGELOG-fork.md`: a user-facing entry under `## Unreleased` → `### Improved`, saying what it
       is for — an outside script reads the directory instead of reimplementing the hash
-- [ ] in the commit message, record why no `.claude/rules/fork-merge.md` entry is needed: a merge
+- [x] in the commit message, record why no `.claude/rules/fork-merge.md` entry is needed: a merge
       resolution that took upstream's `ControlPayloads.swift` whole would fail `swift test` on both new
       core tests and the CLI test, and `make test-app` on the app test, so the behaviour is not
       invisible to the gates
-- [ ] run tests - must pass before task 6: `cd agtermCore && swift test --filter ControlPayloads`
+- [x] run tests - must pass before task 6: `cd agtermCore && swift test --filter ControlPayloads`
 
 ### Task 6: Verify acceptance criteria
 
