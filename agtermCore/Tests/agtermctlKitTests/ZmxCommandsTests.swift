@@ -8,6 +8,8 @@ import Testing
 /// the point is that the CLI cannot send a kill the server would have to refuse, and that a reader can
 /// tell a closed window's resting state from a leak.
 struct ZmxCommandsTests {
+    private let socketDirectory = "/tmp/agterm-zmx-e37fc371e9dbafce"
+
     @Test func listAndPruneSendTheirCommandWithNothingToResolve() throws {
         let list = try Zmx.List.parse([])
         #expect(try list.makeRequest().cmd == .zmxList)
@@ -70,7 +72,8 @@ struct ZmxCommandsTests {
         let status = ControlRestoreStatus(configured: .live, requestedAtLaunch: .live, active: .live,
                                           unavailableReason: nil)
 
-        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result))
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
 
         #expect(rendered.contains("claimed"))
         #expect(rendered.contains("0 clients"))
@@ -89,7 +92,8 @@ struct ZmxCommandsTests {
                                           unavailableReason: nil)
         let result = ZmxInventory.join(observed: [], claims: [], inventoryComplete: false)
 
-        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result))
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
         #expect(rendered.contains("inventory incomplete"))
         #expect(rendered.contains("no daemons"))
     }

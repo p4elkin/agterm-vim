@@ -65,16 +65,18 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agtermCore/Sources/agtermCore/ControlPayloads.swift`
 - Create or modify: a test file under `agtermCore/Tests/agtermCoreTests/` covering `ControlPayloads`
 
-- [ ] write the failing test `theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`: encode a
+- [x] write the failing test `theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`: encode a
       `ControlZmxInventory` and assert the wire key `socketDirectory` holds the value passed in
-- [ ] write the failing test `anOlderServerOmittingTheDirectoryStillDecodes`: decode a hand-written
+- [x] write the failing test `anOlderServerOmittingTheDirectoryStillDecodes`: decode a hand-written
       JSON object with no `socketDirectory` key, expect the field nil and the rest of the payload intact
-- [ ] add `public let socketDirectory: String?` to `ControlZmxInventory`
-- [ ] add `socketDirectory: String` to its initializer, last, with no default
-- [ ] check the `agterm-linux` clone for another construction site of `ControlZmxInventory` before
+- [x] add `public let socketDirectory: String?` to `ControlZmxInventory`
+- [x] add `socketDirectory: String` to its initializer, last, with no default
+- [x] check the `agterm-linux` clone for another construction site of `ControlZmxInventory` before
       landing the required parameter; if one exists, note it here with `⚠️` and give the parameter a
-      default instead
-- [ ] run tests - must pass before task 2: `cd agtermCore && swift test --filter theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`
+      default instead — none exists: no `agterm-linux` clone on this machine, no repository of that name,
+      and a GitHub code search for `ControlZmxInventory` returns only `umputun/agterm`, so the parameter
+      stays required
+- [x] run tests - must pass before task 2: `cd agtermCore && swift test --filter theSocketDirectoryRidesTheInventorySoAnOutsideAttachCanFindIt`
 
 ### Task 2: The CLI prints it
 
