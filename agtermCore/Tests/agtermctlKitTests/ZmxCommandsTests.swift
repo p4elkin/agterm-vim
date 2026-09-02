@@ -87,6 +87,27 @@ struct ZmxCommandsTests {
         #expect(rendered.contains("win \(claim.windowID.uuidString.prefix(8))"))
     }
 
+    @Test func theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt() throws {
+        let status = ControlRestoreStatus(configured: .live, requestedAtLaunch: .live, active: .live,
+                                          unavailableReason: nil)
+        let result = ZmxInventory.join(observed: [], claims: [], inventoryComplete: true)
+
+        let rendered = SocketClient.formatZmx(ControlZmxInventory(restore: status, result: result,
+                                                                  socketDirectory: socketDirectory))
+        #expect(rendered.contains("socket directory: \(socketDirectory)"))
+
+        let older = """
+        {"restore":{"configured":"live","requestedAtLaunch":"live","active":"live","restartRequired":false},
+         "inventoryComplete":true,"entries":[]}
+        """
+        let withoutDirectory = try JSONDecoder().decode(ControlZmxInventory.self, from: Data(older.utf8))
+
+        let sparse = SocketClient.formatZmx(withoutDirectory)
+        #expect(!sparse.contains("socket directory"))
+        #expect(!sparse.split(separator: "\n", omittingEmptySubsequences: false).contains(""),
+                "an unknown directory prints no line at all, not an empty one")
+    }
+
     @Test func anIncompleteInventorySaysSoBeforeItsRows() {
         let status = ControlRestoreStatus(configured: .none, requestedAtLaunch: .none, active: .none,
                                           unavailableReason: nil)

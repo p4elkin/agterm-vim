@@ -84,12 +84,12 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `agtermCore/Sources/agtermctlKit/SocketClient.swift`
 - Modify: `agtermCore/Tests/agtermctlKitTests/ZmxCommandsTests.swift`
 
-- [ ] write the failing test `theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt` asserting
+- [x] write the failing test `theDirectoryIsPrintedBecauseAttachingFromOutsideNeedsIt` asserting
       `formatZmx` output contains the directory
-- [ ] add a second assertion in that test: a nil directory prints no line rather than an empty one
-- [ ] extend `SocketClient.formatZmx`, putting the directory in the header block with the restore
+- [x] add a second assertion in that test: a nil directory prints no line rather than an empty one
+- [x] extend `SocketClient.formatZmx`, putting the directory in the header block with the restore
       status and before the rows, because it describes the whole listing and not one daemon
-- [ ] run tests - must pass before task 3: `cd agtermCore && swift test --filter ZmxCommandsTests`
+- [x] run tests - must pass before task 3: `cd agtermCore && swift test --filter ZmxCommandsTests`
 
 ### Task 3: The app fills it from the client it already holds
 
