@@ -115,15 +115,15 @@ namespace) is done by hand by the maintainer. Section 5 (repairing the scripts i
 - Modify: `plugins/agterm/skills/agterm/examples.md`
 - Modify: `site/commands.html`
 
-- [ ] `reference.md`, the `zmx list` paragraph at line 1420: one sentence saying the listing names the
+- [x] `reference.md`, the `zmx list` paragraph at line 1420: one sentence saying the listing names the
       socket directory the daemons live in, and that `ZMX_DIR` must carry it for a plain shell or a
       mosh session to reach them
-- [ ] `SKILL.md` at line 606: one clause
-- [ ] `examples.md` at line 43: a worked example reading the directory and a daemon name out of one
+- [x] `SKILL.md` at line 606: one clause
+- [x] `examples.md` at line 43: a worked example reading the directory and a daemon name out of one
       `--json` call and attaching — that example is the reason the field exists
-- [ ] `site/commands.html`, the `zmx list` entry at line 2843: matching wording
-- [ ] state no command total anywhere; `.claude/rules/control-api.md` forbids it and this adds no command
-- [ ] run tests - must pass before task 5: `cd agtermCore && swift test --filter SkillInstallTests`
+- [x] `site/commands.html`, the `zmx list` entry at line 2843: matching wording
+- [x] state no command total anywhere; `.claude/rules/control-api.md` forbids it and this adds no command
+- [x] run tests - must pass before task 5: `cd agtermCore && swift test --filter SkillInstallTests`
 
 ### Task 5: The two fork docs, in the same commit as the code
 

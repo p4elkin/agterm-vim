@@ -47,6 +47,18 @@ the pane that claims each one:
 agtermctl zmx list
 ```
 
+One `--json` call carries the socket directory beside the rows, so an outside shell attaches to a daemon
+without recomputing the hash of the state directory. A shell agterm did not spawn has no `ZMX_DIR`, and zmx
+then looks in its own default directory, which holds none of these daemons:
+
+```bash
+listing=$(agtermctl zmx list --json)
+export ZMX_DIR=$(printf '%s' "$listing" | jq -r '.result.zmx.socketDirectory')
+daemon=$(printf '%s' "$listing" |
+  jq -r 'first(.result.zmx.entries[] | select(.state == "claimed") | .daemon)')
+zmx attach "$daemon"
+```
+
 A `claimed` row with zero clients is a CLOSED window's pane, which is its resting state, not a leak. Only
 `orphan` rows are eligible for cleanup, and prune refuses entirely if the pane inventory is incomplete:
 
