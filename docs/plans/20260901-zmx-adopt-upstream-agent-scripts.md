@@ -77,9 +77,18 @@ them, until someone deals with them by hand. Section 4 is that step.
 `restoreRunningCommand`. `AppSettings.effectiveRestoreMode` at `AppSettings.swift:412` therefore
 resolves to `.none`, which is `Fresh shells`.
 
-⚠️ So after the new build is deployed and restarted, no pane is wrapped at all. The mode has to be set
-to `live` and the app restarted a second time. That is a deliberate manual step in section 4, not a
-defect.
+So a plain deploy-and-restart wraps nothing, and the mode then needs setting and a second restart.
+
+**That second restart is avoidable, and section 4 avoids it.** `GhosttyApp.init` freezes the launch
+decision from `settingsStore().load()` before any surface is built, so a `settings.json` that already
+says `live` when the new build first launches makes that first launch live. Write the key while agterm
+is QUIT — the old build cannot re-encode the file and drop the unknown key if it is not running — and
+`migrateRestoreMode()` preserves it, because `effectiveRestoreMode` is `restoreMode ?? …` and a
+present `.live` wins. One restart, no fork patch.
+
+Seeding `.live` as the default in `AppSettings` or `SettingsStore.seededDefault` would also work, and
+is rejected: it is a fork edit to a file upstream touches, so it conflicts at every merge, for a need
+that arises exactly once.
 
 **But `agtermctl zmx list` does NOT report an empty inventory in that state, and a script must not
 assume it does.** Measured in the isolated rehearsal: with `active none`, the inventory carries one row
@@ -323,15 +332,16 @@ This step comes before the deploy, and nothing in it is automated. Sasha decides
 
 The situation, in order:
 
-1. Right now the deployed old build has 114 daemons in `/var/folders/cf/.../T/zmx-501`, 113 with one
+What goes wrong if the order is not followed:
+
+1. Right now the deployed old build has 113 daemons in `/var/folders/cf/.../T/zmx-501`, 112 with one
    client each. Each holds whatever was running in one pane, mostly parked or live Claude
    conversations.
-2. The new build is deployed. Files change under the running app; nothing happens yet.
-3. The app is restarted. It wraps nothing, because the restore mode resolves to Fresh shells. It reaps
-   in `/tmp/agterm-zmx-f091808f6c0a80d0`, which is empty. The 114 old daemons lose their clients and
-   keep running, unclaimed, invisible to every command in the new build.
-4. Nothing ever collects them. They are not orphans as far as agterm is concerned, because agterm no
-   longer looks in that directory at all.
+2. The new build is deployed and restarted. It reaps in `/tmp/agterm-zmx-<hash>`, which is empty, so
+   nothing is destroyed — but the 113 old daemons lose their clients and keep running, unclaimed and
+   invisible to every command in the new build.
+3. Nothing ever collects them. They are not orphans as far as agterm is concerned, because agterm no
+   longer looks in that directory at all. They sit there holding memory until the machine reboots.
 
 So, in this order:
 
@@ -339,19 +349,31 @@ So, in this order:
 The `agterm_name` label is the human name of each pane, and it is the last time that mapping exists —
 the label is gone from the new build and nothing rewrites it. Keep the file.
 
-**Decide, per daemon.** Three outcomes: finish the work in it now, let `agterm-park` archive the
-conversation, or discard it. `bin/agterm-park` reads park files rather than daemons, so a parked
-conversation survives this independently of its daemon.
+**Park them all.** `agterm-park park-all`. This is the step that makes the whole migration cheap, and
+it works on the OLD build: `bin/agterm-park` never calls `zmx` and never parses a daemon key — its ten
+mentions of zmx are all comments — so it needs nothing from the new build. It SIGTERMs each Claude
+process and keeps the conversation id for `--resume`.
 
-**Only then kill what is discarded.** ⚠️ Do this yourself, with the daemon names from the stock-take,
-after the app is stopped by hand. Do not write a loop that kills everything the listing returns:
-113 of these have a live process in them, and `zmx kill` on the wrong name ends an agent mid-turn with
-no undo. The plan does not include a script for this step, on purpose.
+The point is what that converts. Before parking, these are 113 running processes agterm can never
+reattach: the new daemon names come from a per-pane UUID that did not exist when these daemons were
+created, and they sit in a different socket directory, so there is no mapping to compute. It is the
+MECHANISM that cannot bridge them, not a lost conversation. After parking, each row holds a saved
+conversation id and its daemon holds an idle shell, and the daemons become genuinely disposable.
 
-**Deploy, restart, then turn Live sessions on.** `agtermctl restore mode live`, then restart again.
-Only after that second restart does `agtermctl zmx list` report anything, and only then can piece two
-be tested against real daemons. Two restarts, not one: setting the mode changes nothing in the running
-process, because a pane is wrapped or not at the moment it is created.
+⚠️ Read the park-all report before going further. A row whose Claude process did not stop, or whose
+park file did not get a conversation id, is one you finish by hand — parking is per-row best-effort,
+and this is the only point at which a missed row is still recoverable.
+
+**Then quit agterm and clear the old namespace.** With the app stopped, the daemons hold nothing but
+shells, so `ZMX_DIR=/var/folders/.../T/zmx-501 zmx kill <name>` over the stock-take list is safe now
+in a way it was not before parking. Anything you chose NOT to park stays reachable by hand with the
+same `ZMX_DIR` and `zmx attach <old-key>`, indefinitely — nothing reaps the old namespace.
+
+**Write the mode, then deploy and launch once.** With agterm still quit, put `"restoreMode": "live"`
+into `settings.json`, then `make deploy` and launch. That launch is already live, per the reasoning in
+section 1, and `agtermctl zmx list` reports the new namespace on the first try. Then unpark and
+resume the rows you care about, at your own pace. Piece two can be tested against real daemons from
+this point on.
 
 **Check the new namespace is the live one.** `agtermctl zmx list --json` and confirm
 `result.zmx.socketDirectory` is `/tmp/agterm-zmx-f091808f6c0a80d0` and the entries have `agterm-`
@@ -360,6 +382,30 @@ names. That is also the first real read of the field piece one adds.
 ---
 
 ## 5. Piece two: repair three scripts, delete three
+
+### Step zero: work in a clone, because the installed scripts ARE the repo
+
+⚠️ `~/.local/bin/agterm-zmx*` are symlinks into `~/dev/agterm-agents/bin/`, written by `install.sh`
+line 87 (`ln -sfn "$REPO/bin/$f"`). So editing a script in that checkout changes the live tool at
+once, with no install step in between. Measured the hard way during the rehearsal: a rewritten
+`agterm-zmx-status` became the live tool immediately and printed "no answer from agterm" against the
+deployed pre-merge build, until it was reverted.
+
+So piece two runs in a second checkout, and `~/dev/agterm-agents` is not touched until deploy day:
+
+- Clone to `~/dev/agterm-agents-zmx`, on its own branch. A clone rather than a worktree, because
+  `install.sh` resolves `$REPO` from its own location and a worktree shares the ignored state a
+  worktree of this repo would not want to share.
+- agterm-vim's piece one runs in a native worktree, per the worktree rules in `CLAUDE.md`: fetch
+  `origin master` first, then symlink the six ignored artifacts rather than rebuilding, and check the
+  two stamps still match the revisions in that worktree's `setup.sh`.
+- Test the clone's scripts against the isolated rehearsal instance with `--socket`, never against the
+  default socket.
+- Install nothing until the migration in section 4 runs. Then merge the branch and re-run
+  `install.sh`, which refreshes the symlinks in place.
+
+This is also what lets the two pieces land together while the old deployed build keeps working: the
+live tooling and the live app stay a matched pair until you choose to move both.
 
 ### Delete the three retired scripts
 
