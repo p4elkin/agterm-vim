@@ -149,7 +149,7 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
-`{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position}`
+`{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?}`
 object: `detail`, `backgroundColor` and `textColor` are omitted when the caller set none, `sizePercent` is the EFFECTIVE
 10–80 share of the pane's WIDTH the panel takes (the app's measurement of the message, or the caller's
 `--size-percent` override, either way bounded so a message never covers the session; always present for a
@@ -160,7 +160,8 @@ them never has to know the defaults. `position` always names one of the nine CAN
 who sent the `top`/`bottom` alias reads `top-center`/`bottom-center` back. The two colors differ in
 lifetime: `backgroundColor` is what the panel was CREATED with and survives every update, while `textColor`
 tracks the latest update. `spinner` names the STYLE, a string, so a static panel reads back as
-`"none"` rather than `false`. `hud` and `overlay` are mutually exclusive — one slot — and a HUD reports `overlay`
+`"none"` rather than `false`. A pane-scoped HUD also reports its target identity's current role as `pane`;
+session-wide placement omits it. `hud` and `overlay` are mutually exclusive because they share one slot, and a HUD reports `overlay`
 FALSE with `overlaySizePercent` omitted, so a poll for "is a program covering this session" cannot mistake
 a message for one. No event announces a HUD; poll `tree` for it),
 `scratch` (scratch shown), `flagged` (in the
@@ -462,7 +463,8 @@ error keeps those names for compatibility.
   `--pane left` types into the main pane (the default when omitted), `--pane right` into the split pane
   (errors with `session has no split pane` when the session has no split), `--pane scratch` into the
   session's scratch terminal even while it is hidden (`session has no scratch terminal` when none opened);
-  like `session text`, no `other` value. `--select` realizes the MAIN pane only — a split pane must
+  the role and position aliases (`primary`/`top`, `split`/`bottom`) resolve to the same panes; like
+  `session text`, no `other` value. `--select` realizes the MAIN pane only — a split pane must
   already exist. Also like `session text`, there is no overlay value: every `--pane` types into the surface
   UNDER a covering overlay, so the keystrokes reach the hidden shell and run there unseen until the overlay
   closes — the call still answers `ok`. That is deliberate: the panes stay drivable whatever is drawn over
@@ -474,10 +476,16 @@ error keeps those names for compatibility.
   selection → `no selection` error. Selection is readable on any realized session regardless of focus, but
   always from the main PANE — a selection made in a covering overlay is `session overlay copy`'s, not this
   command's. A never-shown session → `session not realized`, as with `session select-all`.
-- `session paste [--target] [--window W]` — paste the system clipboard (`NSPasteboard.general`) into the
-  session's main pane, the socket analogue of ⌘V / Edit ▸ Paste. Runs libghostty's `paste_from_clipboard`
-  (bracketed paste, no prompt), so the text lands at the prompt without auto-submitting. Read it back with
-  `session text`. A never-shown session → `session not realized`.
+- `session paste [--pane left|right|scratch] [--target] [--window W]` — paste the system clipboard
+  (`NSPasteboard.general`) into a pane of the session, the socket analogue of ⌘V / Edit ▸ Paste. Runs
+  libghostty's `paste_from_clipboard` (bracketed paste, no prompt), so the text lands at the prompt without
+  auto-submitting. `--pane` (canonical `left`|`right`|`scratch`; role and position aliases above are also
+  accepted) picks the pane: `right` is the split pane (`session has no split pane` when there is none),
+  `scratch` the scratch terminal even while hidden (`session has no scratch terminal` when none opened);
+  omitted and `left` are the main pane, which still reaches a promoted split survivor. An unparseable value
+  is `--pane must be left, right, or scratch`, rejected in the dispatcher so a raw socket client gets it too.
+  Read it back with `session text --pane` naming the same pane. A never-shown session →
+  `session not realized`.
 - `session select-all [--target] [--window W]` — select the session's entire terminal buffer (main pane),
   the socket analogue of ⌘A / Edit ▸ Select All (libghostty `select_all`). Read the resulting selection
   back with `session copy`. A never-shown session → `session not realized`.
@@ -488,7 +496,8 @@ error keeps those names for compatibility.
   are mutually exclusive and `--lines` must be > 0 — enforced server-side too). `--pane left` reads the
   main pane, `--pane right` the split pane (errors if the session has no split), `--pane scratch` the
   session's scratch terminal even while it is hidden (its buffer is kept alive; `session has no scratch
-  terminal` when none opened); omit `--pane` for the visible pane (the scratch terminal when it covers the
+  terminal` when none opened); the role and position aliases (`primary`/`top`, `split`/`bottom`) resolve to
+  the same panes; omit `--pane` for the visible pane (the scratch terminal when it covers the
   session, else the focused pane). `--pane-id` accepts the shell's stable `$AGTERM_PANE_ID`, resolves its
   current live slot and overrides `--pane` when found. An absent or unknown token falls back to `--pane`,
   then to the visible pane. Use it for a long-running watcher because `$AGTERM_PANE` is a spawn role and can
@@ -746,8 +755,8 @@ error keeps those names for compatibility.
   the overlay has closed. Errors `overlay still running` while up, `no overlay result` if none ran.
   `--pane` reads that pane's overlay; omit it for the session-wide one. A HUD runs the app's own painter,
   not a caller's program, so there is no status to report and the session-wide arm errors
-  `no overlay result: the slot holds a hud`; the `--pane` arm is unaffected, since a HUD only ever takes
-  the session-wide slot.
+  `no overlay result: the slot holds a hud`; the `--pane` arm still reads the separate pane-overlay slot,
+  since HUD pane scope changes placement without changing slot ownership.
 - `session overlay copy [--pane left|right] [--target] [--window W]` — returns `result.text` with the
   selection made INSIDE the overlay. `session copy` cannot reach it: that one addresses the pane the overlay
   covers, so a selection the user made in the overlay reads as `no selection` there. Does NOT touch the
@@ -763,7 +772,7 @@ error keeps those names for compatibility.
   file. Errors `no overlay`, `overlay not realized` and `no overlay to read: the slot holds a hud` as
   `session overlay copy` does, plus `failed to read surface buffer` on a real read failure. It has no
   `no selection`: a blank realized screen is `ok` with an empty string.
-- `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--target] [--window W]`
+- `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--pane P] [--pane-id ID] [--target] [--window W]`
   — post a PASSIVE message panel over the session and return its id. It occupies the same session-wide slot
   as `session overlay open`, but carries a message rather than a program: it takes no input, the session
   keeps first responder and stays typable, and the terminal behind it is neither dimmed nor click-blocked.
@@ -779,6 +788,11 @@ error keeps those names for compatibility.
   the nine `top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right`
   (default `center`), the same anchors `session background` takes; every anchor off center holds a fixed
   margin off that pane edge on each axis it names, so a panel at the largest allowed size never overhangs.
+  `--pane primary|left|top|split|right|bottom` makes the selected pane the bounds for measurement, explicit
+  size, anchor, and margin. `--pane-id` takes the shell's stable `$AGTERM_PANE_ID`; a live token overrides
+  `--pane`, while an unknown token uses that role as fallback or errors without one. The stored identity follows
+  pane swap and promotion. Open refuses a pane that is not rendered. Hiding the target suppresses the panel
+  without stopping its helper, and showing it restores the panel. Destroying the target closes the HUD.
   A corner is what keeps a long-lived panel out of the text the user is reading. The bare `top`/`bottom`
   this argument shipped with are still accepted for `top-center`/`bottom-center`, and `hud.position` reports
   the canonical anchor whichever spelling was sent. The panel is measured from the message against the session's terminal font on BOTH
@@ -798,17 +812,21 @@ error keeps those names for compatibility.
   `invalid text color: <value> (#rrggbb)`,
   `invalid position: <value> (top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right|top|bottom)`,
   `invalid spinner: <value> (bar|braille|circle|blocks|dot|none)`,
+  `--pane must be left or right`, `hud pane must be left or right` when a pane ID resolves to scratch,
+  `pane not visible`, `unknown pane id: <token>`,
   and `session.hud.open: --size-percent must be 1...100`.
   A second `hud` replaces the first; a `session overlay open` replaces a HUD, while a HUD over a RUNNING
   program is refused with `overlay already open` — a message is replaceable, a program is not.
-- `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--target] [--window W]`
+- `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--pane P] [--pane-id ID] [--target] [--window W]`
   — repaint the live panel in place: no re-spawn, no blink, the panel does not flicker. It REPLACES the
-  whole spec rather than patching it, so `--detail`, the spinner, `--position` and `--text-color` must be
+  whole spec rather than patching it, so `--detail`, the spinner, `--position`, `--text-color`, and pane selectors must be
   repeated to survive and an omitted one drops. `--spinner-style` may name a DIFFERENT style than the panel
   opened with, and `--text-color` a different color; both ride the message file, so the look changes on the
-  next tick with no re-spawn. Same required message and same rejections as `open`. There is no
-  `--background-color`: the surface reads that once at creation, so only a fresh `session hud` can change
-  it, and `tree` keeps reporting the creation color across updates. Errors `no hud` when none is up.
+  next tick with no re-spawn. It shares `open`'s message, text, color, position, spinner, and pane-spelling
+  validation. Pane lifecycle differs: update accepts a hidden target, while a missing split errors
+  `session has no split` instead of `pane not visible`. There is no `--background-color`: the surface reads
+  that once at creation, so only a fresh `session hud` can change it, and `tree` keeps reporting the creation
+  color across updates. Errors `no hud` when none is up.
 - `session hud close [--target] [--window W]` — take the panel down and delete its message file. Errors
   `no hud` when none is up, so it is not idempotent. A program overlay in the same slot is left alone;
   `session overlay close`, ⌘W, and closing the session or its window also tear a HUD down and delete that
@@ -1183,7 +1201,8 @@ attention list, the title-bar bell, and attention navigation (`session go --to n
 reset the font size of a session pane. `--pane` picks which surface's font to change, like `session type`
 and `session text`: omitted or `left` is the main pane, `right` the split pane (errors with `session has
 no split pane` when the session has no split), `scratch` the session's scratch terminal (settable even
-while hidden). No `other` value. Only the MAIN pane's size is persisted across relaunch; a split/scratch
+while hidden). The role and position aliases (`primary`/`top`, `split`/`bottom`) resolve to the same panes.
+No `other` value. Only the MAIN pane's size is persisted across relaunch; a split/scratch
 pane's font change is live-only, matching a GUI cmd +/- on those panes. Read the resulting size back from
 `tree` — `fontSize` (main), `splitFontSize`, `scratchFontSize`, each in points and omitted when that pane
 isn't realized.
@@ -1545,10 +1564,12 @@ a terminal surface's.
 ## Errors you may see
 
 `notFound` / `ambiguous` (target resolution), `no such session`, `invalid split mode` /
-`invalid scratch mode`, `session has no split` (focus), `no selection` (copy), `overlay already open` /
+`invalid scratch mode`, `session has no split` (focus, restore, or HUD update), `no selection` (copy),
+`overlay already open` /
 `no overlay` / `overlay still running` / `no overlay result` / `pane overlay already open` /
-`pane not visible` (overlay),
+`pane not visible` (pane overlay or HUD open),
 `no hud` (session hud update/close with none up) /
+`hud pane must be left or right` (a HUD pane ID resolved to scratch) /
 `no overlay result: the slot holds a hud` (session overlay result over a HUD) /
 `a hud is always floating: pass --size-percent, not --full` (session overlay resize over a HUD) /
 `session.hud.open requires a message` (also for a blank one) / `session.hud.update requires a message` /
@@ -1584,7 +1605,8 @@ locally with `mode must be on, off, or toggle`),
 `failed to read surface buffer` (quick text / session text),
 `text must not contain a NUL byte` (session type / quick type),
 `invalid restore mode` / `session.restore set requires a command` / `command must not contain control characters` /
-`command too long (max 1024 bytes)` / `the scratch terminal is never restored` / `unknown pane id` /
+`command too long (max 1024 bytes)` / `the scratch terminal is never restored` /
+`unknown pane id: <token>` (restore or HUD) /
 `failed to save the restore override, the previous value is still in effect` (session
 restore; a `session restore --pane right` on a session with no split also returns `session has no split`),
 `window not open`
@@ -1595,9 +1617,9 @@ raw socket; the `agtermctl` CLI rejects the same value locally with
 `shape must be one of: circle, square, triangle, diamond, capsule, star`),
 `--pane must be left, right, or scratch` (the `--pane` value check; the message intentionally lists the
 canonical read-back names while the role and position aliases documented above are accepted. The
-`agtermctl` CLI rejects a bad pane with this for session status/type/text, and over the raw socket
-`session.status` returns this same string;
-`session.type`/`session.text` over the raw socket instead return `invalid pane: <value>`),
+`agtermctl` CLI rejects a bad pane with this for session status/type/text/paste, and over the raw socket
+`session.status`, `session.restore` and `session.paste` return this same string;
+`session.type`, `session.text` and `font.*` over the raw socket instead return `invalid pane: <value>`),
 `blocked status owned by pane <pane> (write from that pane to change it)` (session status,
 the pane-precedence refusal — the one `session status` error a well-formed call can hit, so retry from the
 owning pane rather than treating it as a bad argument). Unknown commands fail to decode and return a structured error, never a crash.

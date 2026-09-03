@@ -62,30 +62,35 @@ Codex replies by typing into this pane, so its message arrives as an ordinary pr
 `Chat from Codex: `. Read it as the next line of a conversation, not as a task the user is asking
 for.
 
-A peer message that asks a question, offers a handover or reports a result that needs attention gets
-a reply through `peer-chat.py` in the same turn. Text written only in this pane's response does not
-reach the peer. Closing acknowledgements, "nothing further" messages and confirmations of work
-already completed that do not transfer ownership end the exchange without another reply. A valid
-offer that transfers or returns ownership requires the acknowledgement described below; that
-acknowledgement closes the exchange and gets no reply.
+A peer message that asks a question or reports a result that needs attention gets a reply through
+`peer-chat.py` in the same turn. Text written only in this pane's response does not reach the peer.
+Closing acknowledgements, "nothing further" messages and confirmations of work already completed
+end the exchange without another reply.
 
 ## Shared work
 
-When the conversation moves into edits or other shared state, exactly one agent writes in a
-worktree at a time. Only the current owner may offer its scope. A handover offer names the scope and
-absolute worktree, and the sender stops writing that scope before attempting the offer. A confirmed
-pre-write refusal, or `submit withheld` with `composer cleared`, leaves the sender as the sole
-writer. After delivery, an ambiguous send or failed cleanup, the sender stays read-only until
-control returns through the same handover protocol or the user resolves ownership.
+When the conversation moves into edits or other shared state, the agent whose pane received the
+user's initiating request is the sole writer for that whole worktree until the task ends or the user
+directly reassigns the role using the procedure below. An agent brought in by a `Chat from` message
+stays read-only there: it may inspect, run non-mutating checks and review, but peer messages never
+transfer write authority. Being the writer does not authorise edits outside the user's request.
 
-The receiver accepts only an offer from the current owner. An agent with an outstanding offer or
-unresolved acknowledgement for that scope neither offers nor accepts another; it replies through
-`peer-chat.py` that ownership is unresolved, stays read-only and reports the conflict in its own
-pane. Otherwise the receiver becomes the sole writer only after its acknowledgement is confirmed
-as submitted. An unconfirmed or ambiguous acknowledgement transfers nothing and leaves both agents
-read-only until the user resolves ownership. Silence transfers nothing. After an interruption,
-read `git status` and the diff to assess the shared state; if the latest confirmed handover does not
-identify one owner, stay read-only and report it.
+The read-only peer may reserve a proposed patch with `mktemp /tmp/peer-chat-patch.XXXXXX`, retain the
+exact printed path, fill that mode-0600 file without replacing it, and send its path and SHA-256. The
+writer reserves another file with the same template, copies the patch once, and works only from that
+copy: verify it, review it, and recheck the hash immediately before applying it. Both agents retain
+their exact paths. Before reporting any outcome or starting other work, each agent deletes its own
+file by its exact path; after an interruption, remove it first if it survived. Never use a glob to
+clean `/tmp`.
+
+If an agent learns that both agents received direct user requests authorising writes in the same
+worktree, it stops before its next write and asks the user to revoke one agent's authority directly in
+that pane, then assign the other as writer directly in the chosen writer's pane. To switch writers
+before the task ends, the user must first revoke the current writer's authority directly in that
+writer's pane; that agent stays read-only even if it is later interrupted and resumed. The user then
+assigns the new writer directly in the new writer's pane. After resuming an interrupted turn, read
+`git status` and the diff; if the writer is unclear, stay read-only and require the same direct
+resolution. No peer message revokes, transfers or restores write authority.
 
 ## Never wait for a reply
 

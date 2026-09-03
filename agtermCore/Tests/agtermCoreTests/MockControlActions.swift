@@ -49,7 +49,7 @@ final class MockControlActions: ControlActions {
         case surfaceZoom(target: String?, window: String?, ControlToggleMode)
         case surfaceCursor(target: String?, window: String?)
         case dashboard(targets: [String], window: String?, close: Bool, fontMode: DashboardFontMode, mru: Bool)
-        case font(target: String?, window: String?, pane: String?, String)
+        case font(target: String?, window: String?, pane: StatusPane?, String)
         case keymapReload
         case keymapList
         case version
@@ -78,7 +78,7 @@ final class MockControlActions: ControlActions {
         case quickText(all: Bool, lines: Int?)
         case sessionType(target: String?, window: String?, ControlSessionTypeOptions)
         case sessionCopy(target: String?, window: String?)
-        case sessionPaste(target: String?, window: String?)
+        case sessionPaste(target: String?, window: String?, pane: StatusPane?)
         case sessionSelectAll(target: String?, window: String?)
         case sessionSearch(target: String?, window: String?, text: String?, to: String?)
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
@@ -87,8 +87,8 @@ final class MockControlActions: ControlActions {
         case overlayResult(target: String?, window: String?, pane: OverlayPane?)
         case overlayCopy(target: String?, window: String?, pane: OverlayPane?)
         case overlayText(target: String?, window: String?, ControlSessionOverlayTextOptions)
-        case hudOpen(target: String?, window: String?, HudSpec)
-        case hudUpdate(target: String?, window: String?, HudSpec)
+        case hudOpen(target: String?, window: String?, HudSpec, ControlHudPlacement)
+        case hudUpdate(target: String?, window: String?, HudSpec, ControlHudPlacement)
         case hudClose(target: String?, window: String?)
         case sessionBackground(target: String?, window: String?, ControlSessionBackgroundOptions)
         case sessionText(target: String?, window: String?, ControlSessionTextOptions)
@@ -421,7 +421,7 @@ final class MockControlActions: ControlActions {
         return nextDashboardResponse
     }
 
-    func font(_ target: String?, window: String?, pane: String?, action: String) -> ControlResponse {
+    func font(_ target: String?, window: String?, pane: StatusPane?, action: String) -> ControlResponse {
         calls.append(.font(target: target, window: window, pane: pane, action))
         return nextFontResponse
     }
@@ -583,8 +583,8 @@ final class MockControlActions: ControlActions {
         return nextSessionCopyResponse
     }
 
-    func pasteSession(_ target: String?, window: String?) -> ControlResponse {
-        calls.append(.sessionPaste(target: target, window: window))
+    func pasteSession(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse {
+        calls.append(.sessionPaste(target: target, window: window, pane: pane))
         return nextSessionPasteResponse
     }
 
@@ -632,12 +632,22 @@ final class MockControlActions: ControlActions {
     }
 
     func openHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse {
-        calls.append(.hudOpen(target: target, window: window, spec))
+        openHud(target, window: window, spec: spec, placement: ControlHudPlacement())
+    }
+
+    func openHud(_ target: String?, window: String?, spec: HudSpec,
+                 placement: ControlHudPlacement) -> ControlResponse {
+        calls.append(.hudOpen(target: target, window: window, spec, placement))
         return nextHudOpenResponse
     }
 
     func updateHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse {
-        calls.append(.hudUpdate(target: target, window: window, spec))
+        updateHud(target, window: window, spec: spec, placement: ControlHudPlacement())
+    }
+
+    func updateHud(_ target: String?, window: String?, spec: HudSpec,
+                   placement: ControlHudPlacement) -> ControlResponse {
+        calls.append(.hudUpdate(target: target, window: window, spec, placement))
         return nextHudUpdateResponse
     }
 
