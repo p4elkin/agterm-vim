@@ -6,6 +6,28 @@ import agtermCore
 
 @MainActor
 final class AppDelegateCaptureTests: XCTestCase {
+    func testARemoteSessionIsNeitherReadNorCounted() {
+        let local = Session(initialCwd: "/tmp")
+        local.surface = GhosttySurfaceView(workingDirectory: "/tmp")
+        let remote = Session(initialCwd: "/tmp", remoteHost: "buildbox")
+        remote.surface = GhosttySurfaceView(workingDirectory: "/tmp")
+        var read: [Session] = []
+
+        let count = AppDelegate.captureForegroundCommands(
+            sessions: [local, remote],
+            commandReader: { view, _, _ in
+                read.append(view === local.surface ? local : remote)
+                return ["worker"]
+            })
+
+        // its foreground is an ssh client the save drops, so reading it inflates the count and spends the
+        // exit budget on a pane nothing will persist
+        XCTAssertEqual(count, 1)
+        XCTAssertTrue(read.allSatisfy { $0 === local })
+        XCTAssertNil(remote.foregroundCommand)
+        XCTAssertEqual(local.foregroundCommand, ["worker"])
+    }
+
     func testLivePrimaryAndHiddenSplitUseOneFreshSnapshot() throws {
         let primaryID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
         let splitID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
@@ -316,6 +338,44 @@ final class AppDelegateCaptureTests: XCTestCase {
             commandReader: { _, _, _ in nil })
 
         XCTAssertNil(session.foregroundCommand)
+    }
+
+    // a paced pane mounts its surface seconds before it spawns; the argv must survive a quit landing in that
+    // window, in both replaying modes.
+    func testCleanQuitKeepsTheArgvOfAMountedButUnspawnedPane() throws {
+        let rerun = Session(initialCwd: "/tmp")
+        rerun.surface = GhosttySurfaceView(workingDirectory: "/tmp")
+        rerun.pendingForegroundCommand = ["npm", "run", "dev"]
+
+        _ = AppDelegate.captureForegroundCommands(sessions: [rerun], preserveUnconsumedPending: true)
+
+        XCTAssertFalse(try XCTUnwrap(rerun.surface).isRealized)
+        XCTAssertEqual(rerun.foregroundCommand, ["npm", "run", "dev"])
+
+        let paneID = UUID()
+        let live = Session(initialCwd: "/tmp", paneIdentity: paneID)
+        live.surface = GhosttySurfaceView(
+            workingDirectory: "/tmp", env: ["AGTERM_PANE_ID": paneID.uuidString], backedByZmx: true)
+        live.pendingForegroundCommand = ["npm", "run", "dev"]
+        // the daemon this pane would attach to does not exist yet, which is why the pane is paced at all.
+        let resolver = ZmxForegroundResolver(leaderProvider: { _ in [:] }, leaderProbe: { .foreground($0) })
+
+        _ = AppDelegate.captureForegroundCommands(
+            sessions: [live], zmxResolver: resolver, preserveUnconsumedPending: true)
+
+        XCTAssertEqual(live.foregroundCommand, ["npm", "run", "dev"])
+    }
+
+    func testOnDemandCapturePersistsNothingForAMountedButUnspawnedPane() {
+        let session = Session(initialCwd: "/tmp")
+        session.surface = GhosttySurfaceView(workingDirectory: "/tmp")
+        session.pendingForegroundCommand = ["npm", "run", "dev"]
+
+        let count = AppDelegate.captureForegroundCommands(sessions: [session])
+
+        XCTAssertEqual(count, 0)
+        XCTAssertNil(session.foregroundCommand)
+        XCTAssertEqual(session.pendingForegroundCommand, ["npm", "run", "dev"])
     }
 
     // restore.capture persisting an unconsumed slot while it stays armed lets a later show replay it once and

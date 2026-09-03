@@ -102,6 +102,24 @@ paths:
   nil every store-capturing callback to break the store/session/surface/closure cycle.
 - Create surfaces only with nonzero backing size; otherwise Metal stays blank. Defer through
   `pendingSurfaceCreation` until `setFrameSize`.
+- After the size guard `createSurface()` asks the launch `SpawnPacer` for a permit, then resolves the
+  launch seed, in that order. A launch that replays commands arms the pacer before any window mounts with
+  every open window's restored primary and shown split. Among those keys, a pane whose seed would start a
+  program is denied unless it is in the burst (each window's selected panes) or was expedited before it
+  asked; a key outside the armed order, a hidden split shown later for one, is granted synchronously; a
+  denied pane is resumed by its grant, which
+  re-enters `createSurface()` against the bounds the view has THEN, so the wait cannot race layout: a
+  zero-size pane never asks, and its later `setFrameSize` retry is the request. The seed resolves on the
+  first PERMITTED creation attempt, right before `ghostty_surface_config_new`, and stays cached on the view
+  when `ghostty_surface_new` fails, so until then the captured argv and restore pin stay on the session.
+  Only a burst or pre-expedited key is granted inside `request` itself; `SpawnRegistry.grant` resumes only
+  a pane already denied, because re-entering under the requester spawned the surface twice.
+- The pacer never jumps an expected key, and only a built view cancels one, so a pane leaving the visible
+  model before its window mounts would hold the queue at the head forever and silence `onDrain`. Every
+  hard or soft session close, workspace removal, shown-split hide or close, and loaded-window close or
+  delete therefore calls the store's `launchPaneDrop`, wired to `SpawnPacer.discard`, so the key is
+  dropped even when no view exists. A new removal path owes the same call; a drop after a view's teardown
+  is harmless.
 - `ghostty_surface_new` returns NULL for as long as the DISPLAY is asleep, with a valid backing size —
   measured 21 consecutive failures over 40s, then success within ~2s of wake while the screen was still
   LOCKED. Unlock is irrelevant; display wake is the earliest moment creation can succeed, so retrying

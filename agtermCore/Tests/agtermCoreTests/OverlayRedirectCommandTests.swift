@@ -14,7 +14,7 @@ struct OverlayRedirectCommandTests {
 
         let response = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionPairing, target: "s1",
-            args: ControlArgs(name: "remoteSession", mode: "mirrors", host: "p4studio.local")
+            args: ControlArgs(name: "remoteSession", host: "p4studio.local", mode: "mirrors")
         ))
 
         #expect(response == ControlResponse(ok: true, result: ControlResult(id: "s1")))
@@ -32,7 +32,7 @@ struct OverlayRedirectCommandTests {
 
         _ = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionPairing, target: "s1",
-            args: ControlArgs(name: "remoteSession", cwd: "/w/agterm", mode: "mirrors", host: "p4studio.local")
+            args: ControlArgs(name: "remoteSession", cwd: "/w/agterm", host: "p4studio.local", mode: "mirrors")
         ))
 
         #expect(actions.calls == [
@@ -48,7 +48,7 @@ struct OverlayRedirectCommandTests {
 
         _ = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionPairing, target: "s1",
-            args: ControlArgs(name: "remoteSession", cwd: "  ", mode: "mirrors", host: "p4studio.local")
+            args: ControlArgs(name: "remoteSession", cwd: "  ", host: "p4studio.local", mode: "mirrors")
         ))
 
         #expect(actions.calls == [
@@ -65,7 +65,7 @@ struct OverlayRedirectCommandTests {
 
         _ = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionPairing, target: "s1",
-            args: ControlArgs(name: "r7", cwd: "/w/agterm", mode: "viewer", host: "p4air.local")
+            args: ControlArgs(name: "r7", cwd: "/w/agterm", host: "p4air.local", mode: "viewer")
         ))
 
         #expect(actions.calls == [.overlayPairing(target: "s1", window: nil,
@@ -77,7 +77,7 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         _ = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", mode: "viewer", host: "p4air.local")
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", host: "p4air.local", mode: "viewer")
         ))
 
         #expect(actions.calls == [
@@ -106,11 +106,11 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         _ = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(mode: "mirrors", host: "")
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(host: "", mode: "mirrors")
         ))
         _ = await dispatcher.dispatch(ControlRequest(
             // `name` present but ignored: an empty host always clears, whatever else rode along.
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", mode: "viewer", host: "")
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", host: "", mode: "viewer")
         ))
 
         #expect(actions.calls == [
@@ -124,7 +124,7 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         let response = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(mode: "mirrors", host: "p4studio.local")
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(host: "p4studio.local", mode: "mirrors")
         ))
 
         #expect(response?.ok == false)
@@ -136,7 +136,7 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         let response = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(mode: "bogus", host: "p4studio.local")
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(host: "p4studio.local", mode: "bogus")
         ))
 
         #expect(response?.ok == false)
@@ -149,7 +149,7 @@ struct OverlayRedirectCommandTests {
 
         _ = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionPairing, target: "s1",
-            args: ControlArgs(name: "remoteSession", mode: "mirrors", host: "p4studio.local", window: "win1")
+            args: ControlArgs(name: "remoteSession", host: "p4studio.local", mode: "mirrors", window: "win1")
         ))
 
         #expect(actions.calls == [
@@ -200,9 +200,9 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         _ = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", mode: "viewer", host: "   ")))
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", host: "   ", mode: "viewer")))
         _ = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "abc", mode: "mirrors", host: " \t")))
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "abc", host: " \t", mode: "mirrors")))
 
         #expect(actions.calls == [.overlayPairing(target: "s1", window: nil, .clearViewer),
                                   .overlayPairing(target: "s1", window: nil, .clearMirrors)])
@@ -213,7 +213,7 @@ struct OverlayRedirectCommandTests {
         let dispatcher = ControlDispatcher(actions: actions)
 
         _ = await dispatcher.dispatch(ControlRequest(
-            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", mode: "viewer", host: " air ")))
+            cmd: .sessionPairing, target: "s1", args: ControlArgs(name: "r7", host: " air ", mode: "viewer")))
 
         #expect(actions.calls == [.overlayPairing(target: "s1", window: nil,
                                                   .setViewer(host: "air", row: "r7"))])

@@ -18,6 +18,14 @@ enum ZmxLaunch {
         let allowDebugOverride: Bool
     }
 
+    /// Whether this pane may be wrapped in a LOCAL zmx daemon; both surface factories gate on it. A remote
+    /// session never is — a wrapper would keep its ssh alive inside a surviving daemon after a window
+    /// close, with no UI showing it.
+    @MainActor
+    static func wrapsLocally(mode: RestoreMode, session: Session) -> Bool {
+        mode == .live && session.remoteHost == nil
+    }
+
     static let uiTestOptInKey = "AGTERM_UITEST_ENABLE_ZMX"
     static let uiTestBypassReason = "Live sessions are disabled for default UI tests."
     private static let logger = Logger(subsystem: "com.umputun.agterm", category: "ZmxLaunch")
@@ -86,21 +94,18 @@ enum ZmxLaunch {
                             denylist: Set<String>) -> SurfaceSeed? {
         guard case .wrapped(let configuration) = disposition else { return nil }
         let replay = session.takePendingForegroundCommand(pane: pane)
-        let creationCommand: String? = if session.wasRestored, replay == nil {
+        let creationCommand: String? = if replay == nil {
             switch pane {
             case .left: session.initialCommand
             case .right: session.splitInitialCommand
             case .scratch: nil
             }
         } else { nil }
-        let initialInput = pane == .left && !session.wasRestored
-            ? session.initialCommand.map { $0 + "\n" }
-            : nil
         return SurfaceSeed(
             command: ZmxSupport.attachCommand(
                 configuration, replaying: replay, creationCommand: creationCommand, denylist: denylist
             ),
-            initialInput: initialInput
+            initialInput: nil
         )
     }
 

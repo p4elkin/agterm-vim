@@ -286,4 +286,310 @@ final class GhosttySurfaceViewTrackingTests: XCTestCase {
         XCTAssertFalse(view.layer === stale, "a torn-down surface must not keep the layer libghostty installed")
         XCTAssertEqual(view.layer?.contentsScale, 3, "the replacement carries the last frame, so nothing blanks")
     }
+
+    // MARK: - launch seed
+
+    func testResolvingTheDeferredSeedRunsOnceAndLatchesTheValues() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        var resolves = 0
+        view.launchSeed = LaunchSeedProvider(shouldPace: true) { _ in
+            resolves += 1
+            return LaunchSeed(command: nil, initialInput: "npm run dev\n", waitAfterCommand: false)
+        }
+
+        let first = view.resolveLaunchSeed()
+        let second = view.resolveLaunchSeed()
+
+        XCTAssertEqual(resolves, 1, "a retried creation must not consume the pending slots a second time")
+        XCTAssertEqual(first, LaunchSeed(command: nil, initialInput: "npm run dev\n", waitAfterCommand: false))
+        XCTAssertEqual(second, first)
+        XCTAssertNil(view.launchSeed)
+    }
+
+    func testResolvingPassesTheSurfacesLivePaneRole() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.setPaneRole(.split)
+        var asked: StatusPane?
+        view.launchSeed = LaunchSeedProvider(shouldPace: true) { pane in
+            asked = pane
+            return LaunchSeed(command: nil, initialInput: nil, waitAfterCommand: false)
+        }
+
+        view.resolveLaunchSeed()
+
+        XCTAssertEqual(asked, .right)
+    }
+
+    func testAViewWithoutAProviderKeepsItsConstructorValues() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(),
+                                      command: "revdiff", waitAfterCommand: true)
+
+        XCTAssertEqual(view.resolveLaunchSeed(),
+                       LaunchSeed(command: "revdiff", initialInput: nil, waitAfterCommand: true))
+        XCTAssertNil(view.launchSeed)
+    }
+
+    func testTeardownDropsTheUnresolvedProvider() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.launchSeed = LaunchSeedProvider(shouldPace: true) { _ in
+            XCTFail("a torn-down surface must not consume its pending slots")
+            return LaunchSeed(command: nil, initialInput: nil, waitAfterCommand: false)
+        }
+
+        view.destroySurface()
+
+        XCTAssertNil(view.launchSeed)
+    }
+
+    /// A provider holding its session strongly would close the `Session -> surface -> provider -> Session`
+    /// cycle and leak every pane destroyed before it spawned.
+    func testAViewDestroyedBeforeResolutionDeallocates() {
+        let session = Session(initialCwd: "/tmp")
+        weak var released: GhosttySurfaceView?
+        autoreleasepool {
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.session = session
+            view.launchSeed = LaunchSeedProvider.pane(
+                session: session, pane: .left, disposition: .ordinary,
+                policy: .init(restoreEnabled: true, denylist: [], runningNames: nil))
+            session.surface = view
+            released = view
+            session.surface = nil
+        }
+
+        XCTAssertNil(released)
+    }
+
+    // MARK: - spawn permit
+
+    /// Every paced pane in these tests is DENIED its permit: a granted one at a real size would spawn the
+    /// user's login shell inside the test host, which is why the granted side is driven through
+    /// `requestSpawnPermit()` rather than through `createSurface()`.
+    private func makeQueuedPane(size: NSSize = NSSize(width: 240, height: 160))
+        -> (view: GhosttySurfaceView, pacer: SpawnPacer, key: UUID) {
+        let pacer = SpawnPacer()
+        let key = UUID()
+        pacer.arm(order: [key], burst: [])
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.useSpawnPacer(pacer, key: key)
+        view.launchSeed = LaunchSeedProvider(shouldPace: true) { _ in
+            XCTFail("a queued pane must not consume its seed before the permit")
+            return LaunchSeed(command: nil, initialInput: nil, waitAfterCommand: false)
+        }
+        view.setFrameSize(size)
+        return (view, pacer, key)
+    }
+
+    private func assertStillQueued(_ view: GhosttySurfaceView, _ path: String,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(view.isRealized, "\(path) spawned a surface without a permit", file: file, line: line)
+        XCTAssertTrue(view.awaitingSpawnPermit, "\(path) never reached the gate", file: file, line: line)
+        XCTAssertNotNil(view.launchSeed, "\(path) consumed the pending slots before the permit",
+                        file: file, line: line)
+    }
+
+    func testADeniedPaneCreatesNoSurfaceAndKeepsItsSeedArmed() {
+        let paned = makeQueuedPane()
+
+        paned.view.createSurface()
+
+        assertStillQueued(paned.view, "updateNSView")
+    }
+
+    func testTheWindowAttachEntryPathReachesTheGate() {
+        let paned = makeQueuedPane()
+
+        content.addSubview(paned.view)
+
+        assertStillQueued(paned.view, "viewDidMoveToWindow")
+        paned.view.removeFromSuperview()
+    }
+
+    func testTheDeferredSizeRetryEntryPathReachesTheGate() {
+        let paned = makeQueuedPane(size: .zero)
+
+        paned.view.createSurface()
+        XCTAssertFalse(paned.view.awaitingSpawnPermit, "a zero-size pane asks for nothing")
+        paned.view.setFrameSize(NSSize(width: 240, height: 160))
+
+        assertStillQueued(paned.view, "setFrameSize")
+    }
+
+    func testTheDisplayWakeRetryEntryPathReachesTheGate() async throws {
+        let paned = makeQueuedPane()
+
+        NotificationCenter.default.post(name: .agtermScreensDidWake, object: nil)
+
+        try await waitUntil("the wake retry reaches the gate") { paned.view.awaitingSpawnPermit }
+        assertStillQueued(paned.view, "retryCreationAfterWake")
+    }
+
+    /// A pane deferred on a zero size must not hold a token: the queue would spend an interval on a view
+    /// that still cannot spawn, and the token would be waiting for it when a later layout burst arrives.
+    func testAZeroSizedPaneAsksForNoPermit() {
+        let paned = makeQueuedPane(size: .zero)
+        var granted: [UUID] = []
+        paned.pacer.onGrant = { granted.append($0) }
+
+        paned.view.createSurface()
+        paned.pacer.expedite(paned.key)
+
+        XCTAssertFalse(paned.view.awaitingSpawnPermit)
+        XCTAssertTrue(granted.isEmpty, "expedite grants a READY key, so a token means the view had requested")
+    }
+
+    func testAGrantedKeyPassesTheGate() {
+        let paned = makeQueuedPane()
+
+        XCTAssertFalse(paned.view.requestSpawnPermit())
+        XCTAssertTrue(paned.view.awaitingSpawnPermit)
+        paned.pacer.expedite(paned.key)
+
+        XCTAssertTrue(paned.view.requestSpawnPermit())
+        XCTAssertFalse(paned.view.awaitingSpawnPermit)
+    }
+
+    func testAnUnarmedPacerGrantsOnRequest() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.useSpawnPacer(SpawnPacer(), key: UUID())
+
+        XCTAssertTrue(view.requestSpawnPermit())
+        XCTAssertFalse(view.awaitingSpawnPermit)
+    }
+
+    func testAPaneOutsideTheLaunchQueueNeedsNoPermit() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+
+        XCTAssertTrue(view.requestSpawnPermit())
+    }
+
+    func testTeardownLeavesTheQueueAndTheLaterGrantDoesNothing() {
+        let paned = makeQueuedPane()
+        paned.view.createSurface()
+
+        paned.view.destroySurface()
+
+        XCTAssertTrue(paned.pacer.isPassthrough, "a torn-down pane must not hold the rest of the queue")
+        paned.view.unregisterDraggedTypes()
+        paned.view.createSurface()
+        XCTAssertTrue(paned.view.registeredDraggedTypes.isEmpty,
+                      "a grant reaching a torn-down pane must not re-enter creation")
+    }
+
+    /// The safety net for a queued pane dropped without a teardown: `deinit` is nonisolated, so it schedules
+    /// a key-only cancellation instead of touching the pacer inline.
+    func testDeinitCancelsTheQueuedPermit() async throws {
+        let pacer = SpawnPacer()
+        let key = UUID()
+        pacer.arm(order: [key], burst: [])
+        autoreleasepool {
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.useSpawnPacer(pacer, key: key)
+            _ = view.requestSpawnPermit()
+        }
+        XCTAssertFalse(pacer.isPassthrough)
+
+        try await waitUntil("deinit cancels the permit") { pacer.isPassthrough }
+    }
+
+    // MARK: - selection preemption
+
+    private func queuedPair() -> (pacer: SpawnPacer, keys: [UUID], views: [GhosttySurfaceView]) {
+        let pacer = SpawnPacer()
+        let keys = [UUID(), UUID()]
+        pacer.arm(order: keys, burst: [])
+        let views = keys.map { key -> GhosttySurfaceView in
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.useSpawnPacer(pacer, key: key)
+            XCTAssertFalse(view.requestSpawnPermit())
+            return view
+        }
+        return (pacer, keys, views)
+    }
+
+    func testSelectingAQueuedPaneGrantsItBeforeTheQueueReachesIt() {
+        let pair = queuedPair()
+
+        pair.views[1].deckVisible = true
+
+        XCTAssertTrue(pair.views[1].requestSpawnPermit(), "the selected pane jumps the queue")
+        XCTAssertFalse(pair.views[0].requestSpawnPermit(), "the head of the queue still waits its interval")
+    }
+
+    /// The deck and the zoom host both set `deckVisible` before the first `createSurface`, so a selected pane
+    /// is granted on that first request rather than one interval later.
+    func testAPaneActiveBeforeItsFirstRequestIsGrantedOnThatRequest() {
+        let pacer = SpawnPacer()
+        let key = UUID()
+        pacer.arm(order: [UUID(), key], burst: [])
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        view.useSpawnPacer(pacer, key: key)
+
+        view.deckVisible = true
+
+        XCTAssertTrue(view.requestSpawnPermit())
+        XCTAssertFalse(view.awaitingSpawnPermit)
+    }
+
+    func testSelectingAPaneTwiceMintsOneToken() {
+        let pair = queuedPair()
+        var granted: [UUID] = []
+        pair.pacer.onGrant = { granted.append($0) }
+
+        pair.views[0].deckVisible = true
+        pair.views[0].deckVisible = true
+
+        XCTAssertEqual(granted, [pair.keys[0]])
+        XCTAssertFalse(pair.views[1].requestSpawnPermit(), "a repeated selection must not release the next pane")
+    }
+
+    /// Both panes of a shown split are on screen, so selecting the session brings both up, whichever half
+    /// holds split focus.
+    func testSelectingAShownSplitBringsUpBothPanes() {
+        let pair = queuedPair()
+
+        pair.views[0].deckVisible = true
+        pair.views[1].deckVisible = true
+
+        XCTAssertTrue(pair.views[0].requestSpawnPermit())
+        XCTAssertTrue(pair.views[1].requestSpawnPermit())
+    }
+
+    func testFocusAloneExpeditesNothing() {
+        let pair = queuedPair()
+
+        pair.views[1].deckActive = true
+
+        XCTAssertFalse(pair.views[1].requestSpawnPermit(), "focus is not visibility")
+    }
+
+    func testAnUnpacedPaneIgnoresSelection() {
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+
+        view.deckVisible = true
+
+        XCTAssertTrue(view.requestSpawnPermit())
+    }
+
+    func testPrioritizeReleasesNothing() {
+        let pair = queuedPair()
+        var granted: [UUID] = []
+        pair.pacer.onGrant = { granted.append($0) }
+
+        GhosttySurfaceView.prioritizeSpawn([pair.views[1], pair.views[0]])
+
+        XCTAssertTrue(granted.isEmpty, "prioritize reorders; only the timer or an expedite grants")
+        XCTAssertFalse(pair.views[1].requestSpawnPermit())
+    }
+
+    func testPrioritizeSkipsUnpacedViews() {
+        let pair = queuedPair()
+        let plain = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+
+        GhosttySurfaceView.prioritizeSpawn([plain])
+        GhosttySurfaceView.prioritizeSpawn([plain, pair.views[1]])
+
+        XCTAssertTrue(plain.requestSpawnPermit())
+        XCTAssertFalse(pair.views[1].requestSpawnPermit(), "an unpaced view never picks a pacer for the rest")
+    }
 }

@@ -136,6 +136,11 @@ public final class AppStore {
     /// discards per-session state must hang off this, or an undone close silently loses it.
     @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
+
+    /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
+    /// can happen before any view was built for them. The launch spawn pacer discards those keys, or an
+    /// expected key nobody can claim holds its queue at the head forever.
+    @ObservationIgnored let launchPaneDrop: (([UUID]) -> Void)?
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp writes once after the
     /// burst settles instead of hitting disk per event.
     @ObservationIgnored private let saveDebouncer = Debouncer()
@@ -190,7 +195,8 @@ public final class AppStore {
                 recentClosedDidChange: (() -> Void)? = nil,
                 controlEventSink: ((ControlEventDraft) -> Void)? = nil,
                 sessionDidFinalize: ((UUID) -> Void)? = nil,
-                paneFinalizer: (([UUID]) -> Void)?) {
+                paneFinalizer: (([UUID]) -> Void)?,
+                launchPaneDrop: (([UUID]) -> Void)? = nil) {
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
@@ -199,6 +205,7 @@ public final class AppStore {
         self.controlEventSink = controlEventSink
         self.sessionDidFinalize = sessionDidFinalize
         self.paneFinalizer = paneFinalizer
+        self.launchPaneDrop = launchPaneDrop
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -354,7 +361,7 @@ public final class AppStore {
                                           // no app-side closure like the font sizes above. An empty slot is
                                           // false, not omitted — "no terminal" either way to a caller.
                                           realized: session.surface?.isRealized ?? false,
-                                          context: session.context)
+                                          context: session.context, remoteHost: session.remoteHost)
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -441,13 +448,15 @@ public final class AppStore {
     /// workspace matches.
     @discardableResult
     public func addSession(toWorkspace workspaceID: UUID, cwd: String, command: String? = nil,
-                           name: String? = nil, wait: Bool = false,
-                           at index: Int? = nil, select: Bool = true) -> Session? {
+                           name: String? = nil, wait: Bool = false, at index: Int? = nil, select: Bool = true,
+                           remoteHost: String? = nil) -> Session? {
         guard let wsIndex = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // both reach a custom command's expansion — cwd through initialCwd, name through customName — so
         // both are sanitized here. See TerminalText.
+        // `remoteHost` arrives here rather than being assigned after, because this call saves.
         let session = Session(initialCwd: TerminalText.sanitized(cwd),
-                              customName: name.map(TerminalText.sanitized)?.trimmedOrNil)
+                              customName: name.map(TerminalText.sanitized)?.trimmedOrNil,
+                              remoteHost: remoteHost)
         session.initialCommand = command
         session.commandWait = wait
         if let index {
@@ -557,6 +566,7 @@ public final class AppStore {
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
+        dropLaunchPanes([removed])
         recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
                                   workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex)
         finalizePaneIdentities([removed], alreadyFinalized: alreadyFinalized)
@@ -597,6 +607,7 @@ public final class AppStore {
         for session in workspace.sessions { emitSessionClosed(session, workspace: workspace.id) }
         if workspace.sessions.isEmpty { scheduleTreeChanged() }
         finalizePaneIdentities(workspace.sessions)
+        dropLaunchPanes(workspace.sessions)
         for session in workspace.sessions {
             session.surface?.teardown()
             session.splitSurface?.teardown()

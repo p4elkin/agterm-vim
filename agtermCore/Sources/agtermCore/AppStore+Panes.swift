@@ -31,6 +31,13 @@ extension AppStore {
         if !identities.isEmpty { paneFinalizer?(identities) }
     }
 
+    /// Every pane identity of `sessions` leaves mount eligibility. A hidden split's identity is included;
+    /// the pacer ignores a key outside its armed order.
+    func dropLaunchPanes(_ sessions: [Session]) {
+        let identities = PaneIdentityInventory.identities(in: sessions)
+        if !identities.isEmpty { launchPaneDrop?(identities) }
+    }
+
     /// Toggles the one-level split. With no axis this is the legacy preserve-axis hide/show operation. With
     /// an axis it is the axis-specific UI command: the same shown axis hides, another shown axis transposes,
     /// and a hidden or absent split is shown in the requested arrangement.
@@ -55,6 +62,8 @@ extension AppStore {
     }
 
     private func setSplitVisibility(_ session: Session, shown: Bool) {
+        // hiding a shown split unmounts its right host, so the pacer must stop expecting that key
+        if !shown, session.isSplit, let split = session.splitPaneIdentity { launchPaneDrop?([split]) }
         session.isSplit = shown
         // a NEW split focuses the new (right) pane; RE-showing a hidden one keeps the pane focused before
         // hiding, so a hide/show round-trip (the tmux-style zoom script) doesn't jerk focus right. hiding
@@ -165,9 +174,13 @@ extension AppStore {
     /// resets `splitFocused`, else it points the collapsed view at the gone pane.
     public func closeSplit(_ sessionID: UUID, alreadyFinalized: UUID? = nil) {
         guard let session = session(withID: sessionID) else { return }
-        if let splitPaneIdentity = session.splitPaneIdentity, splitPaneIdentity != alreadyFinalized {
+        // through the ownership projection, not the raw identity: a remote split's daemon is on another
+        // machine and this finalizer only ever kills local ones
+        if let splitPaneIdentity = session.splitPaneIdentity, splitPaneIdentity != alreadyFinalized,
+           session.locallyManagedPaneIdentities.contains(splitPaneIdentity) {
             paneFinalizer?([splitPaneIdentity])
         }
+        if let split = session.splitPaneIdentity { launchPaneDrop?([split]) }
         session.isSplit = false
         session.hasSplit = false
         session.splitFocused = false

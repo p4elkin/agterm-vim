@@ -91,6 +91,7 @@ public final class WindowLibrary {
     /// One bounded run-identified ring shared by every window store for this library/app lifetime.
     @ObservationIgnored private let controlEventRing: ControlEventRing
     @ObservationIgnored private let paneFinalizer: (([UUID]) -> Void)?
+    @ObservationIgnored private let launchPaneDrop: (([UUID]) -> Void)?
     @ObservationIgnored private let launchInventorySink: ((Set<UUID>?) -> Void)?
     @ObservationIgnored private var launchInventoryComplete = true
     @ObservationIgnored private var treeEventDebouncers: [UUID: Debouncer]
@@ -130,6 +131,7 @@ public final class WindowLibrary {
     public init(directory: URL = PersistenceStore.defaultDirectory,
                 paneFinalizer: (([UUID]) -> Void)?,
                 launchInventorySink: ((Set<UUID>?) -> Void)? = nil,
+                launchPaneDrop: (([UUID]) -> Void)? = nil,
                 controlEventRing: ControlEventRing? = nil) {
         self.directory = directory
         self.recentClosedStore = RecentClosedStore(directory: directory)
@@ -137,6 +139,7 @@ public final class WindowLibrary {
         self.controlEventRing = controlEventRing ?? ControlEventRing()
         self.paneFinalizer = paneFinalizer
         self.launchInventorySink = launchInventorySink
+        self.launchPaneDrop = launchPaneDrop
         self.treeEventDebouncers = [:]
         self.stores = [:]
         self.windows = []
@@ -459,6 +462,7 @@ public final class WindowLibrary {
         // the undo window dies with the store, so a soft-closed session left pending here would keep its
         // daemon with nothing able to finalize it. `WindowAccessor` already does this, so it is idempotent.
         store.finalizeAllPendingCloses()
+        store.dropLaunchPanes(store.workspaces.flatMap(\.sessions))
         for workspace in store.workspaces {
             for session in workspace.sessions { store.emitSessionClosed(session, workspace: workspace.id) }
         }
@@ -498,6 +502,7 @@ public final class WindowLibrary {
         stores[id]?.finalizeAllPendingCloses()
         finalizeWindowPanes(id)
         if let store = stores[id] {
+            store.dropLaunchPanes(store.workspaces.flatMap(\.sessions))
             for workspace in store.workspaces {
                 for session in workspace.sessions { store.emitSessionClosed(session, workspace: workspace.id) }
             }
@@ -726,7 +731,8 @@ public final class WindowLibrary {
             // that closes while keeping its sessions never reaches here, which is what lets their bookmarks
             // survive for a later reopen.
             sessionDidFinalize: { [weak self] id in self?.bookmarks.dropSession(id) },
-            paneFinalizer: paneFinalizer
+            paneFinalizer: paneFinalizer,
+            launchPaneDrop: launchPaneDrop
         )
     }
 
@@ -907,9 +913,14 @@ public final class WindowLibrary {
         var claims: [ZmxPaneClaim] = []
         var complete = true
         for (site, session) in pairs {
-            claims.append(site.claim(.left, identity: session.paneIdentity))
+            // through the ownership projection, so this stays one predicate: an empty list is a session
+            // whose daemons are not ours to claim, and inventing rows for it would name daemons that do
+            // not exist here
+            var owned = session.locallyManagedPaneIdentities.makeIterator()
+            guard let primary = owned.next() else { continue }
+            claims.append(site.claim(.left, identity: primary))
             guard session.hasSplit else { continue }
-            guard let split = session.splitPaneIdentity else {
+            guard let split = owned.next() else {
                 complete = false
                 continue
             }

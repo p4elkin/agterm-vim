@@ -106,8 +106,8 @@ struct Pairing: ParsableCommand {
             ControlRequest(cmd: .sessionPairing, target: target.target,
                            args: options.withWindow(ControlArgs(name: clear ? nil : session,
                                                                  cwd: clear ? nil : cwd,
-                                                                 mode: "mirrors",
-                                                                 host: clear ? "" : host)))
+                                                                 host: clear ? "" : host,
+                                                                 mode: "mirrors")))
         }
     }
 
@@ -148,8 +148,8 @@ struct Pairing: ParsableCommand {
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionPairing, target: target.target,
                            args: options.withWindow(ControlArgs(name: clear ? nil : row,
-                                                                 mode: "viewer",
-                                                                 host: clear ? "" : host)))
+                                                                 host: clear ? "" : host,
+                                                                 mode: "viewer")))
         }
     }
 }
@@ -503,7 +503,7 @@ extension Session.Overlay.Open {
     /// `overlay-redirect pairing viewer --clear`'s wire form: mode `viewer` with an empty host.
     private func clearViewerRequest(id: String) -> ControlRequest {
         ControlRequest(cmd: .sessionPairing, target: id,
-                       args: options.withWindow(ControlArgs(mode: "viewer", host: "")))
+                       args: options.withWindow(ControlArgs(host: "", mode: "viewer")))
     }
 
     /// The fallback: the caller's own command, opened here, with `resolved` set so the app does not decide

@@ -176,6 +176,12 @@ public protocol ControlActions {
     /// Destroy ONE pane's daemon. The host resolves the owner against the inventory rather than the open
     /// stores, since this reaches closed and unindexed claims the target resolver cannot see.
     func killZmxDaemon(target: String, window: String?, pane: ZmxPaneRole) -> ControlResponse
+    /// Another machine's attachable sessions. Async because it runs ssh: a blocking wait here would hold
+    /// the main actor for the whole network deadline.
+    func remoteTree(host: String?) async -> ControlResponse
+    /// Create a local session attached to `session` on `host`. Resolves the remote itself before inserting
+    /// anything, so a session that has gone since the tree was read creates nothing.
+    func attachRemoteSession(host: String, session: String) async -> ControlResponse
 }
 
 /// The parsed `session.pairing` update: which field to touch and what to set it to, or that it should be
@@ -227,9 +233,10 @@ public struct ControlDispatcher {
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
                 .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear, .restoreCapture,
-                .restoreMode, .zmxList, .zmxPrune, .zmxKill,
                 .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
+        case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxTree, .zmxAttach:
+            return await dispatchZmxCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
         case .windowNew, .windowList, .windowSelect, .windowClose, .windowRename,
@@ -811,8 +818,6 @@ public struct ControlDispatcher {
                 return ControlResponse(ok: false, error: "invalid mode: \(request.args?.mode ?? "toggle")")
             }
             return actions.setOverlayRedirectToggle(mode)
-        case .restoreMode, .zmxList, .zmxPrune, .zmxKill:
-            return dispatchZmxCommand(request)
         default:
             preconditionFailure("unexpected app command: \(request.cmd.rawValue)")
         }

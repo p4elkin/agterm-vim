@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.26.1 - 2026-09-02
+
+### Improved
+
+- the bundled agent skill's description is less than half the size. Most of what it held sat past the 1536-character cap an agent listing applies, so nothing ever read it, and the trigger list that made up the bulk repeated the prose above it word for word. What reaches the model is now the whole of it #528 @umputun
+
+### Bug Fixes
+
+- in Live sessions mode a `session new --command` longer than 1024 bytes arrived truncated and was never submitted, leaving the command half-typed at a shell prompt. A freshly created live pane fed its command through the pty, where macOS keeps 1024 bytes of a line and silently drops the rest along with the newline that would have run it. The command now goes to zmx as a create-only payload, the route a restored pane already took, which also gives a fresh split pane the command that previously never ran at all #533 @umputun
+
+## v0.26.0 - 2026-09-02
+
+### New Features
+
+- **Live sessions, an experimental restore mode.** Sessions have always come back after a restart with their directory, font size and split state, but what comes back is a fresh shell, so whatever was running is gone. Live mode keeps the process instead: each local primary and split pane runs through the bundled zmx multiplexer, so quitting agterm ends the connection to the pane while the process itself keeps running, and the next launch reattaches to it. A build still compiling or an agent halfway through a task is still there. Turn it on in Settings ▸ General ▸ Sessions, where **Restore sessions** now offers **Live sessions** beside the existing Fresh shells and Re-run commands, or with `agtermctl restore mode live`. The mode is frozen for the life of the process, so it takes effect after restarting agterm. It needs zsh as the macOS login shell; an unsupported shell falls back to fresh shells and Settings says why. Experimental because this is its first release and it changes what a quit means: `agtermctl zmx list` shows every daemon and the pane holding it, `agtermctl zmx prune` clears unclaimed daemons with no attached clients, and switching back to Fresh shells or Re-run commands and restarting reaps every detached agterm daemon in that state directory #515 @umputun
+- **Remote sessions, a first and deliberately limited version.** A session running on another Mac can be attached here, where it appears in the sidebar as an ordinary session marked remote, its split included. `agtermctl zmx tree HOST` lists what that machine has to offer and `agtermctl zmx attach HOST SESSION` grabs one of them. Everything goes over ssh and nothing else: no agterm-to-agterm protocol, no port, no listener. Each attached pane is an ssh process holding a connection for as long as the session is open, so closing it here ends your side while the far-side processes carry on. What this version does not do: one attach imports one session rather than a whole workspace, and because the attach is a follower the remote screen arrives at the far side's geometry and does not reflow until the first classified keystroke reaches it, which also means mouse input and Ctrl-L do nothing until then. The requirements sit on the far side rather than this one: it runs 0.26.0 too, its restore mode is Live sessions since that is what puts a daemon behind each pane, and it has `agtermctl` on the PATH that ssh gives a remote command. Key-based ssh auth is a precondition, because a non-interactive connection has nobody to answer a password prompt #524 @umputun
+- no built-in remote picker ships with this yet. The two commands are the whole feature, and the cookbook's `remote-session-picker` recipe is what turns them into something to use: it lists the far side, puts the rows through agterm's own picker with each one's window, workspace, purpose, directory and running command underneath, then attaches whatever you choose. Wire it to a chord or a palette entry in `keymap.conf`. Building a selector into the app is deliberately left until the shape settles #524 @umputun
+- `session.context` sets a per-session line saying what a session is for, shown in the title bar and carried on the tree. It survives relaunch and restore, and `session.duplicate` does not copy it #522 @umputun
+- `session.swap` exchanges a split's two panes, moving the terminals rather than the layout: axis and ratio stay put while focus, overlays, status ownership and wait policy follow their terminal #513 @umputun
+- `sidebar.width` sets the sidebar divider position from the control API, per window, and echoes the stored width so a clamped request is distinguishable from an honored one #512 @umputun
+- `restore.capture` fills the captured-command slots on demand instead of only at exit, for the cases where an orderly quit never happens #452 @ssgreg
+- cursor shape and blink are settable in Settings ▸ Appearance, which also gets its cursor and font controls rearranged #487 @s1ovac #489 @umputun
+- the tree names the shell holding a pane's foreground, so a caller can tell a pane held by a recognized shell from one whose foreground state could not be read. It is not a prompt signal: a shell builtin or a loop runs inside the shell process, so a pane blocked on input looks the same #525 @umputun
+
+### Improved
+
+- hidden panes release their GPU buffers instead of holding them for the life of the app. agterm reports occlusion for panes that are not on screen, so a hidden shell stays live while its Metal swap chain is freed after a short grace. Measured on a Debug build with 12 sessions all printing output: 1.1 GB peak with every surface realized, settling to 199 MB once the 11 hidden ones released. It comes with a libghostty pin bump to 683d8db, which carries upstream's hidden-surface GPU work #492 @paul-nameless
+- a launch that replays commands paces its pane startup rather than spawning everything at once, which was enough to make a large window's restore stutter #526 @umputun
+- a sidebar row whose name is truncated reveals it on hover #520 @umputun
+- `session.restore` reports which pane it actually wrote, which a caller addressing by pane token could not otherwise work out #495 @ssgreg
+- a cookbook recipe closing a session automatically once the command in it finishes #488 @andr81
+- the bundled agent skill writes every command with its area prefix. Six families were missing it, so an agent copying a command out of the summary ran something that does not exist #507 @umputun
+- the two-agent chat recipe survives labelled Claude composers, multi-agent Codex resume, and transcripts recovered from a bridge #496 #505 #509 #514 @paskal #506 @umputun
+
+### Bug Fixes
+
+- an agent spawned from another agent's session repainted the spawner's sidebar row, so the wrong session showed the status #461 @x9x9x9x9x9x91
+- one split pane's agent status could erase the other pane's block. A blocked pane now owns the status until it is answered, and a write from the sibling is refused whole rather than half-applied #523 @umputun
+- the agent-hooks installer overwrote existing Claude hook data it could not read, and a bad custom regex printed a compile error before every zsh prompt #500 @umputun
+- a failed restore save was acknowledged as ok, so a pin the disk had rejected read back as if it were in place #485 @umputun
+- `session.overlay.open` accepted a `--size-percent` outside 1 to 100 instead of refusing it #498 @ssgreg
+- the cookbook's session-badging recipe failed open when it could not badge an armed session #491 @andr81
+- `session type --stdin` and `quick type --stdin` emptied the whole payload on one invalid UTF-8 byte and still answered ok, having typed nothing. Both refuse now. CI jobs also run under timeouts, where all six previously inherited GitHub's 360-minute default #521 @umputun
+
 ## v0.25.0 - 2026-08-25
 
 ### New Features

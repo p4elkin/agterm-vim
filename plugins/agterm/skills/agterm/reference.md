@@ -15,7 +15,8 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
 - **Response shape**: `{"ok": true, "result": {…}}` or `{"ok": false, "error": "<message>"}`.
   `result` carries one of: `id` (affected/new session/workspace/window), `text` (session copy/text),
   `exitCode` (overlay result), `count` (diagnostics/search), `restore` (the restore-mode policy),
-  `zmx` (the daemon inventory), `affected` (things actually changed: sessions
+  `zmx` (the daemon inventory), `remote` (another Mac's attachable sessions, for `zmx tree`),
+  `affected` (things actually changed: sessions
   for a batch close/move, daemons killed for `zmx prune`), `tree` (the tree), `windows` (window list), `app` (the serving app's identity, for
   `version`). The process exit code is non-zero when
   `ok` is false.
@@ -111,14 +112,20 @@ SIGTERM use normal process behavior.
 `id`, `name`, `cwd`, `title` (the raw OSC terminal title — e.g. a remote host over SSH — omitted
 when none reported; distinct from `name`, the derived sidebar label), `active` (selected),
 `split` (split SHOWN side by side, the read side of `session split on|off`),
-`realized` (whether the session's MAIN pane has a live terminal — `false` means no shell was spawned, a
-`--command` has not run, and `session type`/`session text` will answer `session not realized`. `session
-new` returns `ok` for a session that exists in the model, which is not the same thing: libghostty refuses
-to create a surface while the DISPLAY is asleep, so a session a scheduled job creates overnight stays
-unrealized until the displays wake, at which point it recovers on its own. Poll this after creating a
-session unattended; `agtermctl tree` also tags the row `(not realized)`),
+`realized` (whether the session's MAIN pane has a live terminal — `false` means no shell was spawned and a
+`--command` has not run. `session text` then answers `session not realized` without realizing anything;
+`session type` brings up a restored main pane still waiting its turn in a launch that replays commands,
+while any other unrealized cause can still exhaust its poll and fail the same way; `session search`
+expedites such a pane too.
+`session new` returns `ok` for a session that exists in the model, which is not the same thing: libghostty
+refuses to create a surface while the DISPLAY is asleep, so a session a scheduled job creates overnight
+stays unrealized until the displays wake, at which point it recovers on its own. A queued right pane shows
+nothing here. Poll this after creating a session unattended; `agtermctl tree` also tags the row
+`(not realized)`),
 `backedByZmx` (true only when every existing primary/split pane is currently zmx-backed; older servers omit
 it),
+`remoteHost` (the machine an attached session came from — the read side of `zmx attach`; omitted for a
+local session, and never present after a relaunch because a remote session is never written to disk),
 `hasSplit` (whether a second pane exists at all, shown or hidden with ⌘D; omitted when there is none —
 read THIS to decide whether a session has a split, because a hidden split reports `split: false` while
 its pane stays alive, and it is present exactly when `splitRatio`/`splitFocused` can be),
@@ -367,14 +374,18 @@ buys nothing. A caller with no tree uses `version`.
   `&&`, `$VAR`, redirects, globs) are not interpreted, and it inherits the app's GUI `PATH` (the launchd
   default — no `/opt/homebrew/bin`), so a bare Homebrew or other non-default binary fails with exit 127.
   Wrap in a login shell for both — `--command "zsh -lc 'htop'"` — or give an absolute path
-  (`/opt/homebrew/bin/htop`).
+  (`/opt/homebrew/bin/htop`). All of that describes Fresh shells and Re-run commands. In Live sessions
+  mode the command is instead a create-only zmx payload the persistent shell runs as a login shell, so
+  shell operators are interpreted, the `PATH` is that shell's rather than the launchd default, and the
+  session stays open after the command exits.
   `--wait` (only with `--command`, else an error) HOLDS the session open after the command exits —
   showing libghostty's press-any-key prompt with the final output intact instead of closing immediately —
   so you can read a build/test/deploy's final output or an early failure that would otherwise flash and
   vanish. In Re-run commands mode it persists across restart (unlike an overlay's live-only `--wait`),
   so a restored command session that starts its command again also holds; read it back on `tree`'s
-  `commandWait`. Live sessions mode types the command into the persistent zmx shell only on first creation.
-  The shell stays open when it exits, and `--wait` adds no hold prompt. After a clean quit, a missing daemon
+  `commandWait`. Live sessions mode passes the command as a create-only zmx payload, which bypasses the
+  1,024-byte PTY input cap. A surviving daemon ignores the payload; a new daemon runs it, then starts the persistent
+  shell. The shell stays open when it exits, and `--wait` adds no hold prompt. After a clean quit, a missing daemon
   is recreated running whatever that pane's foreground command was; if the command had already exited, or the
   quit never happened, the pane comes back as a fresh shell.
   The command is persisted (`SessionSnapshot.initialCommand`) and starts again on restore in Re-run commands
@@ -1422,10 +1433,12 @@ header. `state` is `claimed`, `orphan`, `unknown`, `conflicted`, `pendingClose` 
 `observation` is `running`, `unreadable` or `absent`, separate from the client count because a daemon that
 is gone and one zmx could not read are different answers. A CLOSED window's panes are `claimed` with zero
 clients. That is the resting state after you close a window, not a leak, which is why the owner's window
-state is its own column. `unknown` means the pane inventory was incomplete, so no row can be called an orphan. The header also
-names `socketDirectory`, the directory the daemons' sockets live in, so a caller attaches to one instead of
-recomputing the hash of the state directory; a plain shell or a mosh session must carry that path in
-`ZMX_DIR` to find them at all.
+state is its own column. `unknown` means the pane inventory was incomplete, so no row can be called an orphan.
+The header also carries `endpoint.executable` and `endpoint.socketDirectory`, which is what another machine
+needs to reach these daemons; a server older than remote sessions omits the key. It repeats the socket
+directory as the top-level `socketDirectory` too, so a caller attaches to a daemon instead of recomputing the
+hash of the state directory; a plain shell or a mosh session must carry that path in `ZMX_DIR` to find them
+at all.
 
 `agtermctl zmx prune` — kill the daemons no pane claims and nothing is attached to. It refuses outright on
 an incomplete or conflicted inventory. The gate is checked and revalidated rather than atomic: zmx has no
@@ -1447,6 +1460,47 @@ daemon of the pane you are typing in can kill the calling `agtermctl` before it 
 Omit it to search every window, closed and unindexed ones included; `active` is not accepted, and neither
 is it for `--target`. Without it an ambiguous prefix reports `no left pane daemon for session ID`, the
 same answer a target that does not exist gets.
+
+`agtermctl zmx tree [HOST]` — attachable sessions across EVERY open window. With a `HOST` it reads another
+Mac over ssh; with none it reports this app's own, which is exactly the form the remote call runs on the
+far side, so it is also how to see what another machine would answer without sshing anywhere.
+`result.remote` carries `endpoint` (the zmx `executable` and `socketDirectory`), `host` when one was given,
+and `sessions`, each with `id`, `name`, `windowID`/`windowName` and `workspaceID`/`workspaceName` (show the
+names, group by the ids — neither is unique, so two windows called `main` merge if you group by name),
+`context` when its owner set one, `cwd`, `splitAxis` when it has a split, and `panes`
+(`{pane, daemon, foreground}`, the last being the argv that pane is running and omitted when none is
+reported). `host` is the ssh destination the REQUESTING app was given, stamped on after decoding: the far
+side has no idea which name reached it.
+
+Only a session whose every pane still has a live daemon is listed: attaching to a name that no longer
+exists would CREATE a daemon and hand back a fresh shell wearing it, so an incomplete one is omitted
+rather than offered half. An empty list is a successful answer and does NOT diagnose the restore mode —
+`zmx list` does that. The far side must be running in `live` mode, which is what puts a daemon behind each
+pane, and be new enough to answer `zmx tree` at all; an older one is refused by name rather than
+half-attached. It also needs `agtermctl` installed by the cask or the Help action: a machine merely
+running agterm has no CLI an ssh command can find, and the read fails with exit 127.
+
+`agtermctl zmx attach HOST SESSION` — open one of those sessions here, marked remote, in the current
+window's current workspace, selected, with the remote session's split when it has one. `SESSION` is the
+`id` from `zmx tree`, never the name: remote names are editable and repeat across workspaces. Returns the
+new local session's `id`; read `remoteHost` on its tree node. The remote is resolved AGAIN before anything
+is created, so a session that has gone since the listing fails and creates nothing. Everything reported
+here is a failure found before that point — a connection that starts and later drops is an ordinary pane
+exit, which holds on Ghostty's press-any-key prompt under one line naming the host, the session, the pane
+and the exit status.
+
+Closing a remote session here ends only this side's connection: the far-side processes keep running and
+nothing agterm does from this end can kill them. It is never written to disk, so it does not come back
+after a relaunch whatever the restore mode is.
+
+Both commands run ssh non-interactively (`BatchMode`), so key-based auth must already work for the host —
+a password or host-key prompt is a failure, not a question. An attach joins as a follower and pinned zmx
+keeps one leader per pane, so the pane arrives at the OTHER machine's window size and drops input until
+the first CLASSIFIED key (a printable character, Return, Tab or Backspace) takes the lead and reflows
+it. Until then the mouse, focus reporting and Ctrl-L do not reach the far side, so a mouse-driven TUI looks
+dead, and an ordinary control key may not wake it. Because the lead is per pane, typing in one half of a split leaves the other at the
+remote's geometry, and after the session closes the far side keeps that size until something there resizes
+it.
 
 Every zmx command needs a running agterm: only the app can join its live windows, its pending closes and
 its persisted snapshots against what zmx reports. With agterm stopped there is nothing to ask.

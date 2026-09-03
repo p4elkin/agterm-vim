@@ -38,33 +38,50 @@ final class ZmxClient {
         self.runner = runner
     }
 
+    /// What the launch reap learned. `runningNames` is every daemon whose client count the listing could
+    /// read, alive with or without a client, so an unreadable `err=` row is absent and its pane paces like
+    /// a missing daemon; nil when the list was skipped, failed or did not parse. `killedAll` is whether
+    /// every orphan it chose to kill was confirmed gone.
+    struct ReapOutcome: Equatable {
+        let runningNames: Set<String>?
+        let killedAll: Bool
+    }
+
+    /// What a caller on another machine needs to reach these daemons. Read from the injected client so a
+    /// hosted test answers for the client it built, not for whatever the process environment happens to
+    /// select.
+    var endpoint: ControlZmxEndpoint {
+        ControlZmxEndpoint(executable: executablePath, socketDirectory: socketDirectory)
+    }
+
     @discardableResult
-    func reap(knownPaneIdentities: Set<UUID>?, launchDecision: RestoreLaunchDecision) -> Bool {
+    func reap(knownPaneIdentities: Set<UUID>?, launchDecision: RestoreLaunchDecision) -> ReapOutcome {
         let requestedMode = launchDecision.requested
         if requestedMode == .live, knownPaneIdentities == nil {
             Self.logger.error("skipping live zmx reap because the persisted pane inventory is incomplete")
-            return true
+            return ReapOutcome(runningNames: nil, killedAll: true)
         }
         let output: String
         do {
             output = try invoke(["list"])
         } catch {
             Self.logger.error("zmx list failed during launch reap: \(String(describing: error), privacy: .public)")
-            return false
+            return ReapOutcome(runningNames: nil, killedAll: false)
         }
         let sessions: [ZmxSessionRecord]
         do {
             sessions = try ZmxListParser.parse(output)
         } catch {
             Self.logger.error("zmx list output was incomplete: \(String(describing: error), privacy: .public)")
-            return false
+            return ReapOutcome(runningNames: nil, killedAll: false)
         }
+        let running = Set(sessions.filter { $0.clients != nil }.map(\.name))
         let knownNames = knownPaneIdentities.map { Set($0.map(ZmxSupport.daemonName(for:))) }
         guard let names = ZmxReapPolicy.namesToKill(
             sessions: sessions, requestedMode: requestedMode, knownNames: knownNames) else {
-            return true
+            return ReapOutcome(runningNames: running, killedAll: true)
         }
-        return kill(names: names)
+        return ReapOutcome(runningNames: running, killedAll: kill(names: names))
     }
 
     @discardableResult
