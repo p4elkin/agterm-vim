@@ -37,6 +37,7 @@ SUMMARY_COLS=160
 
 ROOM_FILE=""
 ROOM=""
+LAST=""
 SESSION=""
 TEXT=""
 HAVE_TEXT=0
@@ -98,7 +99,7 @@ if [ -n "$ROOM_FILE" ]; then
 	[ -n "$SESSION" ] || SESSION=$(basename "$(dirname "$ROOM_FILE")")
 	INFO=$("$PYTHON" -c '
 import json, sys
-kind, title = "", ""
+kind, title, last = "", "", ""
 for line in open(sys.argv[1]):
     try:
         rec = json.loads(line)
@@ -108,11 +109,16 @@ for line in open(sys.argv[1]):
         kind, title = "room", rec["room"]
     elif rec.get("peer"):
         kind, title = "peer", rec["peer"]
+    else:
+        continue
+    last = "%s: %s" % (rec.get("from", "?"), rec.get("summary", ""))
 print(kind)
 print(title)
+print(last)
 ' "$ROOM_FILE")
 	[ "$(printf '%s\n' "$INFO" | sed -n 1p)" != peer ] || refuse_peer
 	[ -n "$ROOM" ] || ROOM=$(printf '%s\n' "$INFO" | sed -n 2p)
+	LAST=$(printf '%s\n' "$INFO" | sed -n 3p)
 fi
 
 [ -n "$ROOM" ] || die "which room? pass --room-file FILE or --room TITLE"
@@ -124,7 +130,14 @@ fi
 # eats them. `tree` is read-only and safe on any socket; the write below is not, which is why
 # this check comes first and refuses rather than guesses.
 TREE=$(mktemp "${TMPDIR:-/tmp}/agterm-rooms-tree.XXXXXX")
-trap 'rm -f "$TREE"' EXIT INT TERM
+ALT=0
+cleanup() {
+	rm -f "$TREE"
+	if [ "$ALT" -eq 1 ]; then
+		printf '\033[?1049l' >/dev/tty
+	fi
+}
+trap cleanup EXIT INT TERM
 "$AGTERMCTL" tree --json >"$TREE" 2>/dev/null || refuse "agtermctl could not read the tree"
 
 BLOCKED=$("$PYTHON" - "$ROW" "$PANE" "$TREE" <<'PY'
@@ -176,14 +189,24 @@ PY
 
 if [ "$HAVE_TEXT" -eq 0 ]; then
 	if [ -t 0 ]; then
-		printf '\n  reply in "%s" — one line, empty cancels\n  > ' "$ROOM" >/dev/tty
+		# fzf runs full-screen, so its `execute` hands this script the NORMAL screen, which
+		# still holds whatever the pane was showing before the viewer opened. A prompt
+		# painted there reads as the chat having vanished behind an old build log. The read
+		# path looks right for the opposite reason: `less` takes an alternate screen of its
+		# own. So take one here too, and give the reply back the room it is answering.
+		printf '\033[?1049h\033[H\033[2J' >/dev/tty
+		ALT=1
+		printf '\n  reply in "%s"\n' "$ROOM" >/dev/tty
+		[ -z "$LAST" ] || printf '  last was — %s\n' "$LAST" >/dev/tty
+		printf '\n  one line. an empty line cancels, Esc does too.\n  > ' >/dev/tty
 		IFS= read -r TEXT </dev/tty || TEXT=""
 	else
 		TEXT=$(cat)
 	fi
 fi
+ESC=$(printf '\033')
 case $TEXT in
-'' | ' ') exit 0 ;;
+'' | ' ' | "$ESC"*) exit 0 ;;
 esac
 
 # The first line, which is the convention the whole recipe reads summaries by.
