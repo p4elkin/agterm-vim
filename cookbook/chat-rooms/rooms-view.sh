@@ -55,6 +55,22 @@ INTERVAL=${XCHAT_VIEW_INTERVAL:-1}
 # wrapped in braces rather than just the stty.
 cols=$( { stty size </dev/tty; } 2>/dev/null | awk '{print $2}' )
 [ -n "${cols:-}" ] || cols=$(tput cols 2>/dev/null || echo 100)
+# `-ge` below is an arithmetic test, so anything non-numeric that reached here would abort
+# the viewer rather than degrade it
+case $cols in
+'' | *[!0-9]*) cols=100 ;;
+esac
+
+# Side by side needs width for both halves at once. A right pane is often around 48 columns,
+# where `right,60%` leaves the list 19 and the message 29 — narrow enough that the chat reads
+# as missing rather than cramped. Below the cut the preview goes underneath instead, which
+# gives the message the pane's whole width. 100 is where `right,60%` first leaves the message
+# 60 columns, which is about the narrowest prose stays comfortable at.
+if [ "$cols" -ge 100 ]; then
+	preview_window=right,60%,wrap
+else
+	preview_window=down,65%,wrap
+fi
 
 # --full-read FILE is the ctrl-o key coming back into this script. It re-enters rather than
 # inlining the whole thing in an fzf bind string, where a room file's own quoting is hazard
@@ -177,7 +193,7 @@ WATCHER=$!
 	--prompt="room > " \
 	--header="enter reads, ctrl-o opens in revdiff, ctrl-s replies, esc closes" \
 	--preview="'$PYTHON' '$READ_PY' show --path {3} --width \${FZF_PREVIEW_COLUMNS:-80} 2>/dev/null" \
-	--preview-window=right,60%,wrap \
+	--preview-window="$preview_window" \
 	--bind "start:reload($LIST)+execute-silent(printf '%s' \$FZF_PORT > '$PORT_FILE')" \
 	--bind "ctrl-o:execute('$SELF' --full-read {3})+reload($LIST)" \
 	--bind "ctrl-s:execute('$SEND_SH' --room-file {3}$SEND_TARGET)+reload($LIST)" \
