@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.26.2 - 2026-09-03
+
+### Improved
+
+- `session.paste` takes `--pane`, so a split or scratch pane can be written to as well as read from. It was main-pane only while its documented read-back `session.text` already took `--pane`, so scripting a split meant writing one pane and reading another, and multi-line text could not reach a split at all: `session.type` sends a real Return per newline, which submits the text line by line #529 @ssgreg
+- the two-agent-chat recipe survives a freshly started Claude Code, whose empty composer draws a `Try "..."` suggestion built from the user's own frequently-edited files. The recipe read that as a draft and refused the first send of every exchange. It also gets more reliable delivery, a stated rule for who writes when both agents are asked to work in one worktree, and a setup step that no longer tells the reader to edit a path the skill files do not contain #527 #534 #535 #538 #541 @paskal #543 @umputun
+- `session.hud` can be placed in one pane of a split. `hud open` and `hud update` take `--pane` and `--pane-id`, resolved the way `session restore` resolves them, and the resolved pane identity is stored so a pane swap or a split-survivor promotion carries the panel with its shell. Anchors and `--size-percent` measure against that pane's live bounds, where before they measured the whole session rect, so an agent asking for `bottom-right` got the panel over the other pane and a long message could cross the divider. The pane comes back on the tree #536 @umputun
+- the repeating "would like to access data from other apps" prompt is explained, and it now carries agterm's own wording through `NSAppDataUsageDescription`. macOS calls this App Data, holds the consent against a running process rather than storing it as a setting, and charges it to the process it holds responsible. A pane carried across a restart by Live sessions mode was started by an agterm that has since exited, so every command in it answers as its own responsible process and the dialog returns on the next one. Nothing here stops it coming back: App Data has no entry of its own in System Settings, and Full Disk Access is the only permanent answer #537 @umputun
+
+### Bug Fixes
+
+- a session restored in the background laid its split out against a stale 1pt safe-area inset, and the divider was never re-applied when the real inset arrived. The next window resize then fell back to SwiftUI's own even split, and the same reveal step grew the primary wrapper by 31pt, which is what showed as a top pane drawn under the compact titlebar. The split ratio is now measured below the titlebar, so an even ratio also renders even in compact mode #542 @umputun #539 @p1gmale0n
+- `session.type`, `session.text` and the `font` commands refused the pane aliases they document. The shared CLI accepted `primary`, `split`, `bottom` and the rest, then the app matched raw spellings and rejected them, so `agtermctl session text --pane split` failed against 0.26.0 while `--pane right` worked. The spelling is parsed once in the dispatcher now #530 @ssgreg
+
 ## v0.26.1 - 2026-09-02
 
 ### Improved

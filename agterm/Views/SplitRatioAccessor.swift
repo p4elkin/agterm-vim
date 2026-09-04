@@ -21,9 +21,13 @@ extension NSView {
 /// (4) restore an even split on a divider double-click. Attached as a `.background` on the primary pane so
 /// its `NSView` lives inside the split's view tree without becoming a third arranged pane.
 ///
-/// (1) Once the split has a real axis extent it restores `session.splitRatio` via `setPosition`; on each divider
-/// resize it writes the current primary-pane fraction back to the session, which the next `save()` (or the
-/// quit-flush) persists, like a live cwd change.
+/// (1) Once the split has a real axis extent it restores `session.splitRatio` via `setPosition`, seeding
+/// `splitRatioDefault` when none is stored. The fraction is of the pane area BELOW the titlebar band, which is
+/// where SwiftUI lays the panes out; measuring against the full split height instead makes an even ratio render
+/// uneven in compact mode. Only a divider DRAG captures the live divider back; `session.resize`, the
+/// double-click reset and that seed write the session directly, while every other resize notification is a
+/// layout pass whose transient frames (a collapsed pane, a stale inset) must not become the ratio. The next
+/// `save()` (or the quit-flush) persists it, like a live cwd change.
 ///
 /// (2) In COMPACT mode the SwiftUI `.padding(.top, titlebarHeight)` (30px) lands inside the window's
 /// safe-area band, so the AppKit `NSSplitView` ignores it and grows to the FULL window height (verified:
@@ -89,10 +93,17 @@ struct SplitRatioAccessor: NSViewRepresentable {
         private var dividerClipMask: CALayer?
         private var dividerTracking: NSTrackingArea?
         private var restored = false
+        /// The split's top safe-area inset when the ratio was last applied; a change re-arms `restored`.
+        private var restoredSafeAreaTop: CGFloat = 0
         /// Primary-pane extent at the previous in-band press, nil when that press missed the band.
         private var lastPressPrimaryExtent: CGFloat?
         /// A press was swallowed and its release is still to come.
         private var swallowedPress = false
+        /// The last press landed in this split's divider band. With the button still down at notification
+        /// time this is a drag; a press that never dragged leaves it set, which is why `capture()` also
+        /// requires the button down rather than clearing on the paired release — whether the local monitor
+        /// sees that release from inside `NSSplitView`'s own tracking loop is not something to depend on.
+        private var dividerPressed = false
 
         init(session: Session) {
             self.session = session
@@ -118,14 +129,20 @@ struct SplitRatioAccessor: NSViewRepresentable {
             updateDividerTracking()
             Self.addClaimant(self)
             updateDividerClip() // keep the titlebar-strip clip sized to the current split bounds
-            guard !suspended else { return }
-            guard !restored, let split = splitView else { return }
-            if let ratio = session.splitRatio {
-                let total = axisLength(of: split)
-                guard total > 1 else { return } // wait for a real extent; retried on each layout pass
-                split.setPosition(total * CGFloat(ratio), ofDividerAt: 0)
-            }
+            guard !suspended, let split = splitView else { return }
+            // A background split first lays out at a stale 1pt safe-area inset;
+            // when the real one arrives the divider has to be re-applied, or the next window resize falls back
+            // to SwiftUI's own even split of the content space (#539).
+            let safeAreaTop = split.safeAreaInsets.top
+            if restored, safeAreaTop != restoredSafeAreaTop { restored = false }
+            guard !restored else { return }
+            guard axisLength(of: split) > 1 else { return } // wait for a real extent; retried on each pass
+            // a never-set ratio is seeded rather than left to the mount, which is uneven in content space
+            let ratio = session.splitRatio ?? AppStore.splitRatioDefault
+            split.setPosition(dividerPosition(for: ratio, in: split), ofDividerAt: 0)
+            session.splitRatio = ratio
             restored = true
+            restoredSafeAreaTop = safeAreaTop
         }
 
         /// Find the enclosing `NSSplitView` once it's in the tree, then observe divider moves.
@@ -164,6 +181,28 @@ struct SplitRatioAccessor: NSViewRepresentable {
 
         private func axisLength(of split: NSSplitView) -> CGFloat {
             split.isVertical ? split.bounds.width : split.bounds.height
+        }
+
+        /// The band a compact-mode split overruns into, which SwiftUI lays the primary pane out below.
+        /// Top/bottom only: a TOP inset does not touch width, so a left/right ratio is content space already.
+        private func contentInset(of split: NSSplitView) -> CGFloat {
+            split.isVertical ? 0 : split.safeAreaInsets.top
+        }
+
+        /// Where the divider goes for a stored ratio, which is a fraction of the pane area BELOW the band.
+        private func dividerPosition(for ratio: Double, in split: NSSplitView) -> CGFloat {
+            let inset = contentInset(of: split)
+            return inset + CGFloat(ratio) * (axisLength(of: split) - inset)
+        }
+
+        /// The primary pane's current fraction of that same content area, nil while it has no real extent.
+        private func contentRatio(in split: NSSplitView) -> Double? {
+            guard let first = split.arrangedSubviews.first else { return nil }
+            let inset = contentInset(of: split)
+            let content = axisLength(of: split) - inset
+            guard content > 1 else { return nil }
+            let extent = (split.isVertical ? first.frame.width : first.frame.height) - inset
+            return Double(extent / content)
         }
 
         private func primaryExtent(in split: NSSplitView) -> CGFloat {
@@ -254,6 +293,7 @@ struct SplitRatioAccessor: NSViewRepresentable {
             }
             guard split.arrangedSubviews.count == 2 else { return false }
             let onDivider = dividerOwns(event.locationInWindow)
+            dividerPressed = onDivider
             let primaryExtent = primaryExtent(in: split)
             defer { lastPressPrimaryExtent = onDivider ? primaryExtent : nil }
             guard onDivider, event.clickCount == 2,
@@ -274,8 +314,9 @@ struct SplitRatioAccessor: NSViewRepresentable {
         }
 
         /// Move the live divider to the session's stored `splitRatio` (set by `session.resize` just before
-        /// it posts `.agtermApplySplitRatio`). The follow-on `didResizeSubviews` → `capture()` is a no-op:
-        /// the captured fraction equals what was just set, so `capture()`'s near-equal guard skips it.
+        /// it posts `.agtermApplySplitRatio`). The follow-on `didResizeSubviews` → `capture()` writes nothing:
+        /// `session.resize` holds no mouse button, so it stops at the drag gate. The double-click reset does
+        /// hold one, and there the near-equal guard is what skips the write.
         private func applyRatio() {
             guard !suspended else { restored = false; return }
             guard let split = splitView, let ratio = session.splitRatio else { return }
@@ -283,7 +324,7 @@ struct SplitRatioAccessor: NSViewRepresentable {
             // no real extent yet (mid-relayout): re-arm the one-shot `layout()` restore so it applies the
             // new fraction on the next pass instead of leaving the model ahead of the divider.
             guard total > 1 else { restored = false; return }
-            split.setPosition(total * CGFloat(ratio), ofDividerAt: 0)
+            split.setPosition(dividerPosition(for: ratio, in: split), ofDividerAt: 0)
         }
 
         /// Mask the split's divider out of the titlebar zone — the strip ABOVE the window's titlebar
@@ -326,15 +367,15 @@ struct SplitRatioAccessor: NSViewRepresentable {
             split.layer?.mask = mask // re-assert (SwiftUI may rebuild the split's layer)
         }
 
-        /// Record the current primary-pane fraction onto the session, skipping no-op and degenerate values so
-        /// a window resize that keeps the ratio doesn't churn it.
+        /// Record the dragged primary-pane fraction onto the session. A resize notification outside a drag
+        /// never reaches here, so the near-equal and degenerate guards only filter the drag stream itself.
         private func capture() {
             guard !suspended else { return }
-            guard restored, let split = splitView, let first = split.arrangedSubviews.first else { return }
-            let total = axisLength(of: split)
-            guard total > 1 else { return }
-            let extent = split.isVertical ? first.frame.width : first.frame.height
-            let ratio = Double(extent / total)
+            guard restored, let split = splitView else { return }
+            // only a drag is intent. Every other resize notification is a layout pass, and those carry
+            // transient frames — a collapsed pane, a stale inset — that would be persisted as the ratio.
+            guard dividerPressed, NSEvent.pressedMouseButtons & 1 != 0 else { return }
+            guard let ratio = contentRatio(in: split) else { return }
             guard ratio > AppStore.splitRatioMin, ratio < AppStore.splitRatioMax else { return }
             if let current = session.splitRatio, abs(current - ratio) < 0.004 { return }
             session.splitRatio = ratio
