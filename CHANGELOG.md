@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.26.3 - 2026-09-04
+
+### Bug Fixes
+
+- a session restored by Live sessions mode could show its full path in the sidebar instead of its name. libghostty answers an OSC 7 with a synthetic title equal to the working directory, and that title does not reliably reach the app after the directory report it belongs to, so the guard meant to drop it was armed only some of the time. Measured across a restore of 60 sessions it hit about a third of the panes. Live restore is what made it stick rather than flicker: a reattached shell draws no new prompt, so nothing wrote a real title over the wrong one, and the path stayed until the pane was typed into. The title is now compared against the pane's own directory, which needs no ordering, and the split pane is compared against its own #544 @umputun
+
 ## v0.26.2 - 2026-09-03
 
 ### Improved

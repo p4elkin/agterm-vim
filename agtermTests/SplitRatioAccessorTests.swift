@@ -142,6 +142,44 @@ final class SplitRatioAccessorTests: XCTestCase {
         XCTAssertEqual(split.arrangedSubviews[0].frame.width, 200, accuracy: 1)
     }
 
+    /// Resume after the blocks already on the main queue, so a re-apply deferred by one turn has run.
+    private func runloopTurn() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
+    // pins #539 geometry; layout() re-applies first here, so the notification path needs SplitRatioUITests
+    func testATopBottomSafeAreaInsetChangeReappliesTheStoredRatio() async {
+        probe.removeFromSuperview()
+        split.isVertical = false
+        split.arrangedSubviews[0].addSubview(probe)
+        session.splitRatio = 0.5
+        probe.layout()
+        split.layoutSubtreeIfNeeded()
+
+        session.splitRatio = 0.3
+        split.additionalSafeAreaInsets.top = 32
+        // the reveal delivers two, and the second must not queue a second apply
+        NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: split)
+        NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: split)
+        await runloopTurn()
+
+        XCTAssertEqual(split.arrangedSubviews[0].frame.height, 82.4, accuracy: 1)
+    }
+
+    func testAResizeNotificationAtAnUnchangedInsetChangesNothing() async {
+        session.splitRatio = 0.5
+        probe.layout()
+        split.layoutSubtreeIfNeeded()
+
+        session.splitRatio = 0.3
+        NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: split)
+        await runloopTurn()
+
+        XCTAssertEqual(split.arrangedSubviews[0].frame.width, 200, accuracy: 1)
+    }
+
     private func move(toX x: CGFloat) throws {
         split.setPosition(200, ofDividerAt: 0)
         split.layoutSubtreeIfNeeded()
