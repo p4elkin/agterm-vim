@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.26.4 - 2026-09-04
+
+### Bug Fixes
+
+- a pane-scoped `session.hud` drew one detail-column origin off whenever the session was split: shifted right by the sidebar plus divider and up by the titlebar plus its hairline, with the width correct. `HSplitView` hosts its arranged subviews across an AppKit bridge that a SwiftUI named coordinate space does not cross, so inside a split the pane measured itself in window coordinates and the overlay layer applied that origin a second time. A lone pane sits outside the split, which is why only split sessions were wrong. The pane bounds now travel as anchors that the overlay layer resolves in its own space, on either split axis #545 @umputun #384
+- a top/bottom split restored in the background laid its top pane under the compact titlebar on macOS 27 and stayed there until the window was resized. The pane was laid out at a stale 1pt safe-area inset, and on reveal macOS 27 never re-entered the layout pass that re-applied the divider at the real one. The divider is now also re-applied from the split's own resize notification. An inset change during a divider drag no longer snaps the divider back to the stored ratio under the pointer #546 @umputun #539
+- a session whose program animates its title through OSC 2 made the sidebar rebuild that row's cell on every tick and re-ran the whole window body for the title bar. A label-only change now writes the live cell's text in place, and the OS title and the visible title row are read by two small child views, so a title tick no longer invalidates the window's view graph. Measured with a title changing at about 10 Hz, the parent body's main-thread samples went to zero #547 #548 @umputun #516
+
 ## v0.26.3 - 2026-09-04
 
 ### Bug Fixes

@@ -86,6 +86,14 @@ final class WindowLibraryTests {
         #expect(library.bookmarks.list(sessionID: session.id).map(\.prompt) == ["survives the undo"])
     }
 
+    @Test func customWindowNameSkipsAutoNamesAndUnknownIDs() {
+        let library = WindowLibrary(directory: directory)
+        #expect(library.customWindowName(for: library.windows[0].id) == nil)
+        let work = library.newWindow(name: "work")
+        #expect(library.customWindowName(for: work.id) == "work")
+        #expect(library.customWindowName(for: UUID()) == nil)
+    }
+
     @Test func allOpenSessionsFlattensEverySessionAcrossWindows() {
         let library = WindowLibrary(directory: directory)
         #expect(library.allOpenSessions().count == 1)
