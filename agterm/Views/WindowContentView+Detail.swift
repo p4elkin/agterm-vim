@@ -146,8 +146,24 @@ extension WindowContentView {
             }
         }
         .overlayPreferenceValue(HudPaneAnchorsPreferenceKey.self) { anchors in
-            overlayPanel(session: session, isActive: focusable,
-                         onScreen: deckInteractive && isActive, paneAnchors: anchors)
+            ZStack {
+                overlayPanel(session: session, isActive: focusable,
+                             onScreen: deckInteractive && isActive, paneAnchors: anchors)
+                GeometryReader { geo in
+                    SessionAskOverlay(session: session, store: store, actions: actions, windowID: windowID,
+                                      detailFrame: CGRect(origin: .zero, size: geo.size), paneFrames: anchors.frames(in: geo),
+                                      font: askFont, foreground: chromeText, background: terminalColor)
+                }
+                .allowsHitTesting(session.askPending != nil && deckInteractive && isActive)
+            }
+        }
+        .transformAnchorPreference(key: AskAnchorPreferenceKey.self, value: .bounds) { value, anchor in
+            if isActive {
+                value.sessionID = session.id
+                value.container = anchor
+            } else {
+                value = AskAnchorPreferences()
+            }
         }
         // on PROGRAM overlay close refocus the topmost remaining surface via `topmostSurface` — never a pane
         // hidden under the scratch. One makeFirstResponder loses the race with the overlay's teardown/re-host,
@@ -224,6 +240,7 @@ extension WindowContentView {
     /// which therefore renders only on the unfocused pane of a shown split.
     @ViewBuilder private func deckPane(_ session: Session, pane: OverlayPane, focused: Bool,
                                        gates: DeckPaneGates) -> some View {
+        let publishesAskAnchor = store.selectedSessionID == session.id
         // a pane hidden under its OWN overlay is not on screen: it registers no drag types and sets no mouse
         // cursor (the `deckVisible` note in libghostty.md, issue #225 class), and never takes first responder.
         let covered = session.paneOverlay(pane) != nil
@@ -252,6 +269,11 @@ extension WindowContentView {
             paneOverlayPanel(session: session, pane: pane, focused: focused, gates: gates)
         }
         .hudPaneAnchor(pane)
+        .anchorPreference(key: AskAnchorPreferenceKey.self, value: .bounds) { anchor in
+            publishesAskAnchor
+                ? AskAnchorPreferences(sessionID: session.id, panes: [pane: anchor])
+                : AskAnchorPreferences()
+        }
     }
 
     /// FULL, FLOATING, and HUD overlays render in `sessionDetail`'s always-present preference layer. Content
@@ -514,7 +536,7 @@ struct OverlayPanelStyle: Equatable {
     }
 }
 
-private extension CGRect {
+extension CGRect {
     init(_ frame: HudPaneFrame) {
         self.init(x: CGFloat(frame.x), y: CGFloat(frame.y),
                   width: CGFloat(frame.width), height: CGFloat(frame.height))

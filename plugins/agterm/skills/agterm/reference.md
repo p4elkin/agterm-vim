@@ -165,7 +165,8 @@ tracks the latest update. `spinner` names the STYLE, a string, so a static panel
 session-wide placement omits it. `hud` and `overlay` are mutually exclusive because they share one slot, and a HUD reports `overlay`
 FALSE with `overlaySizePercent` omitted, so a poll for "is a program covering this session" cannot mistake
 a message for one. No event announces a HUD; poll `tree` for it),
-`scratch` (scratch shown), `flagged` (in the
+`ask` (the pending terminal question as `{id, pane?}`, with `pane` omitted for session-wide placement;
+omitted when no terminal ask is pending), `scratch` (scratch shown), `flagged` (in the
 flagged working-set), `parked` (the row is kept, its agent is not — true-only, so an unparked session
 carries no field; the read side of `session park`), `context` (what the session is about — the
 `session context` value, persisted and omitted when unset), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
@@ -231,7 +232,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries sixteen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries seventeen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -267,14 +268,15 @@ title-bar recent popover's filtering but uncapped, where that popover shows at m
 a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
 `pickPending` (the id of the native picker currently awaiting an answer in this
-window, omitted when none is pending), and `app` (which agterm is serving this socket: `version`, plus
+window, omitted when none is pending), `askPending` (the pending GUI question's id, omitted when absent),
+and `app` (which agterm is serving this socket: `version`, plus
 `commit` when the build recorded one — the same value `agtermctl version` returns, so an agent already
 reading the tree gets its version floor without a second round-trip; it is not duplicated onto
 `window.list`, where a caller uses `version` instead). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four
-`dashboard*` fields, `sessionRecency`, and `pickPending`
+`dashboard*` fields, `sessionRecency`, `pickPending`, and `askPending`
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale). All of those are read-only
 projections of live GUI state. `app` is the one CONSTANT among them, and is absent from `window.list`
 for a different reason: it describes the serving app rather than a window, so repeating it on every row
@@ -1042,8 +1044,9 @@ by match score and so does not preserve the supplied order; the seeded text open
 keystroke replaces it rather than appending. `--allow-custom` adds a row for a nonmatching
 query and returns it as a custom result; with an empty item list that row is the only possible one, and it
 appears as soon as the query is nonblank, prefilled or typed; whitespace and newlines are trimmed first.
-A background `--window` target is not raised by default; `--follow` raises it. Only one picker can be
-pending in a window, and a second open fails with `pick already pending`.
+A background `--window` target is raised only with `--follow`. Pick shares its window modal slot with
+GUI asks. A competing open fails with `pick already pending`, or `ask already pending` when a GUI ask
+owns the slot. Terminal asks use separate session slots.
 
 The default call polls until the user answers and prints one bare JSON result:
 
@@ -1071,6 +1074,53 @@ whose next poll races process shutdown may observe a transport failure instead o
 A terminal result stays readable by its own id after the next picker opens in that window, and after the
 window closes — including permanent window deletion — so a blocking caller always reads back the answer
 it waited for. Results age out oldest-first: the 8 most recent per open window, and 32 across closed ones.
+
+## ask
+
+`agtermctl ask [open] TITLE --button ID=LABEL [--button ...] [--message TEXT]` opens a question without
+reading stdin. Use explicit `ask open` when the title is `open`, `result`, or `cancel`.
+
+`--style terminal` is the default and uses the window's selected session, with one pending ask per
+session. `--target` can name an unselected session without selecting it; its ask waits hidden.
+`--pane left|right` and `--pane-id TOKEN` narrow placement without requiring a target. A live token takes
+precedence over the role, and the pane must be laid out by its session at open.
+`--style gui` uses the window modal slot shared with pick. Without a target, it centers over the
+terminal area, excluding the sidebar. An explicit GUI target must be selected in its window;
+GUI pane selectors require it. Terminal asks can coexist with GUI asks and picks.
+`--window W` selects the window; `--follow` raises it without changing session selection.
+
+Supply one to six buttons with unique ids and nonempty labels. A token without `=` is both id and label;
+otherwise the first `=` separates them. Title, message, and labels reject control characters.
+`--default ID` sets the initial highlight; otherwise the first non-destructive button is highlighted,
+or the first button if it is the only choice. Tab/arrows move the highlight, Return answers, and
+`--hotkey ID=LETTER` assigns a unique ASCII letter shortcut. `--destructive ID` cannot name the default.
+`--align left|center|right` defaults to right. `--width N` fixes the width to 10...100 percent of the
+region; omitted means content sizing. Invalid style, alignment, and width return `unknown style`,
+`unknown align`, and `width must be 10 to 100` respectively.
+
+The blocking call prints one bare result:
+
+```json
+{"result":"answered","id":"yes","label":"Yes","index":0}
+{"result":"escaped"}
+{"result":"cancelled"}
+```
+
+Index follows caller order. An answer exits 0, including a named No button; inspect `id` before acting.
+Esc/Command-W on the interactive ask return `escaped` with exit 3. Cancellation exits 2; failure exits 1.
+`--no-block` prints `{"id":"<ask-id>"}`. `ask result ID [--window W]` prints the current or finished result,
+including `{"result":"pending"}` with exit 1. `ask cancel ID [--window W]` cancels a pending question and
+returns `ok`; cancelling a retained finished result is a successful no-op. Both commands use the exact
+global id and reject a mismatched explicit window.
+
+Session nodes expose terminal asks as `ask: {id, pane?}`; `pane` follows the current left/right role and
+is omitted for session-wide placement. Top-level `askPending` is GUI-only. Resolution removes the field
+for that slot. The raw open reply echoes `result.pane` for pane placement. The latest 32 finished results
+are retained across both styles, including after owner closure; pending requests are never evicted.
+App shutdown can interrupt polling. Ask emits no events.
+
+See the [ask command reference](https://agterm.com/commands#ask) for appearance, input priority,
+hiding under covers, and cancellation rules.
 
 ## quick
 

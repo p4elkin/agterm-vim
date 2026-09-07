@@ -123,8 +123,8 @@ paths:
   that way. One that changes WHERE a mutation lands is not: give it a read-back so a caller can see what the
   server did, rather than leaving the two outcomes indistinguishable. A read-back is any observable read, not
   necessarily a response field: `session.paste --pane` is covered by `session.text --pane`, its documented
-  read-back command, as `session.type` and `font.*` are, and only `session.restore` carries `result.pane`,
-  for the token reason below. Since `agtermctl` ships inside the
+  read-back command, as `session.type` and `font.*` are, and `result.pane` is carried by `session.restore`,
+  for the token reason below, and by `ask.open` for its resolved pane anchor. Since `agtermctl` ships inside the
   bundle, the CLI that sends a field and the app that reads it are the same build, so the exposure is a
   stale RUNNING process across an upgrade, not a mismatched install. Only an app predating `result.pane`
   omits it from a successful `session.restore`; treat absence as UNKNOWN, never as the default pane.
@@ -152,7 +152,8 @@ renumbering. Do not reintroduce a count anywhere.
   `.flag`, `.park`, `.seen`, `.restore`, `.background`, `.overlay.open`, `.overlay.close`,
   `.overlay.resize`, `.overlay.result`, `.overlay.copy`, `.overlay.text`, `.hud.open`, `.hud.update`,
   `.hud.close`, `.pairing`
-- `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`
+- `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
+  `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
 - `sidebar`, `sidebar.mode`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
 - `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `sidebar.width`, `notify`
@@ -348,7 +349,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   read failure, and no open window. Hidden previously shown quick remains addressable (#170).
   Text is type's read-back.
 
-## Overlay, zoom, dashboard, and picker
+## Overlay, zoom, dashboard, pick, and ask
 
 - Overlay open runs one shell-wrapped program in a nonpersisted per-session surface. Size nil is full;
   1...100 is floating; values outside that range are refused. Optional color uses shared validated
@@ -564,8 +565,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   without `allowCustom` returns `pick.open requires at least one item`.
   Optional subtitle/prompt/query/custom/follow; `query` prefills the field so the picker opens filtered.
   Reject duplicate IDs and control characters host-free; `prompt` and `query` stay unvalidated free text.
-  One picker may be pending per window. Background remains background unless follow raises and publishes
-  frontmost.
+  Picks share the window modal slot with GUI asks. Terminal asks use separate session slots.
+  A background window is raised only when `follow` is set.
 - Caller-supplied rows match on their label only. Subtitles are displayed but never searched, so
   consequence text cannot filter a safe row out and leave a destructive one preselected. An empty query
   preserves caller item order; a prefilled `query` re-ranks and drops that order. The palette trims
@@ -575,11 +576,75 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Results are pending, picked with ID/label/index, custom with query, or cancelled. Cancel is idempotent
   after terminal state. Tree exposes `pickPending`.
 - Selection/custom/Esc/Command-W/window close resolve. App termination may race polling. Retain eight
-  terminal results per controller; on unregister move them into a 32-entry app-wide oldest-first store so
+  finished pick results per controller; on unregister move them into a 32-entry app-wide oldest-first store so
   deletion does not lose a pending poll.
 - CLI reads JSON array when stdin begins `[`, otherwise nonblank lines become ID=label. Blocking poll is
   100ms for one second, then 500ms; print bare result JSON; exit 0 picked/custom, 2 cancelled, 1 failure.
   `--no-block` prints picker ID JSON; result/cancel are one-shot commands.
+
+- `ask.open` accepts a nonblank `title`, optional `message`, and 1...6 `buttons` with unique ids and
+  nonempty labels. Title, message, and labels reject control characters. Optional button `hotkey` is
+  one ASCII letter, unique case-insensitively and stored lowercase.
+- `defaultButton` and `destructiveButton` name supplied ids and cannot name the same button.
+  Default seeds the highlight; otherwise the first non-destructive button is selected, or the first
+  button if it is the only choice. Tab/Right/Down move forward, Shift-Tab/Left/Up move back, and wrap.
+  Return chooses the highlight; a letter hotkey chooses directly. Outside clicks leave the dialog open.
+- Optional `style` is `terminal` (default) or `gui`; invalid values return `unknown style`.
+  Style selects ownership, default placement, and appearance. It has no separate read-back field.
+- Optional `align` is `left`, `center`, or `right` (default). It aligns the whole button block, including
+  the vertical fallback, in both styles. Invalid values return `unknown align`; it has no read-back.
+- Both styles fit their content, capped at 90 percent of the anchor width and 72 cells.
+  Narrow layouts wrap labels and use the vertical button fallback.
+- Optional `width` fixes the panel width to an integer percentage of the anchor, 10...100, in either
+  style. It replaces automatic sizing and has no read-back. Invalid values return `width must be 10 to 100`.
+- Terminal buttons use padded labels and a dim fill from the theme foreground at low opacity.
+  The active button uses solid foreground fill with background-colored text. Colors come from the theme.
+- GUI style uses the picker's material, corner radius, and appearance handling, with system fonts,
+  a headline title, secondary message, and native push buttons in a row. The active button is
+  prominent in the accent color; destructive is tinted red and becomes prominent red when active. System colors only, so light and dark follow the picker.
+- A terminal ask occupies `Session.askPending`, one per session, independently of the HUD/program
+  overlay slot. A second terminal ask in that session returns `ask already pending`.
+  A GUI ask occupies `PickController.pendingAsk`, sharing the window modal slot with pick. Terminal
+  asks can coexist with GUI asks and picks. GUI asks participate in the shared window modal gates.
+- Without `target`, terminal style uses the selected session in the requested window. An explicit
+  unselected session is accepted without changing selection; its ask is hidden and pending.
+  Terminal `pane`/`paneID` selectors can omit `target`. GUI style without `target` centers over the
+  window's terminal area, excluding the sidebar. An explicit GUI target must be selected in its window;
+  GUI pane selectors require it. Zoom/dashboard reject anchored GUI opens.
+- A pane must be laid out by its session at open, independently of session selection. A live pane token
+  overrides the role; an unknown token uses the supplied role or errors without one. `follow` raises
+  the owning window without selecting another session. `ask.open` echoes the resolved role in `result.pane`.
+- A terminal ask covers only its session or pane. It takes keys when that region is laid out, its
+  session and covered pane are selected, and its window can receive input. GUI asks, picks, palettes,
+  sidebar rename, and the quick terminal take priority. Active text editors retain input until they resign;
+  palette dismissal ends editing before focus restoration. Clicking the covered region focuses its dialog;
+  answering an unfocused ask does not pull focus.
+- Terminal asks draw above program overlays, pane overlays, and the HUD within their region.
+  A session-wide ask draws above the scratch; a pane ask hides under it. Zoom and dashboard hide terminal
+  asks without resolving them. Deselecting a session or hiding its pane also keeps the ask pending.
+  Hidden asks own no input and return when their region is displayed. Geometry follows resize and the
+  captured pane identity through swaps and survivor promotion.
+- Terminal asks cancel synchronously before session close (hard or soft, single or batch), workspace
+  removal (hard or soft), destruction of their exact target pane, window close/removal, or app termination.
+  Undo restores the session without its ask. A session-wide ask survives a sibling pane closing while
+  the session remains. GUI asks cancel on window teardown or anchor loss, including session deselection
+  or loss of the anchored pane's identity or rendered role.
+- Esc and Command-W dismiss the ask that owns input with `escaped`. `ask.cancel` and owner teardown
+  return `cancelled`. Result/cancel use the exact global ask id; an explicit window must match its owner,
+  including for retained results. Cancelling a retained finished result is a successful no-op.
+- `AskRegistry` indexes both live owner types. Open the owner's slot before registering the id, and retain
+  the result before clearing the slot. Pending requests are never evicted. Finished results keep their
+  owning window in one 32-entry cache across both styles, ordered by resolution. `PickRegistry` retains
+  pick results separately.
+- Blocking CLI output is `{"result":"answered","id":"yes","label":"Yes","index":0}`,
+  `{"result":"escaped"}`, or `{"result":"cancelled"}`; index follows caller order.
+  Exit 0 means answered, including a No button; exit 3 means escaped, exit 2 means cancelled,
+  and exit 1 means failure. `--no-block` prints `{"id":"…"}`.
+  One-shot `ask result` also prints `pending` and exits 1 for it.
+- A session node exposes its terminal ask as `ask: {id, pane?}`; `pane` is the current left/right role
+  and is omitted for session-wide placement. Top-level `askPending` identifies the pending GUI ask.
+  Each field is omitted when its slot is empty. App shutdown can interrupt polling.
+  Ask emits no events; result and tree polling are its explicit event exemption.
 
 ## Status, notifications, and flags
 
@@ -778,7 +843,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   quick visibility, zoom, dashboard, session recency, and picker state. Prefer live tree sidebar state over
   cached window list.
 - Top-level tree includes idle/auto-follow, live sidebar visibility/mode/width, workspace filter, quick
-  visibility, zoom, dashboard, and picker state. Prefer live tree sidebar state over cached window list.
+  visibility, zoom, dashboard, pick, and GUI ask state. Prefer live tree sidebar state over cached window list.
   `sidebarWidth` is tree-only: nothing needs width discovery across windows, which is all the cached
   `window.list` copy would add.
   `quickVisible` and a `quick` `zoomedSurface` are APP-level, so every projected window reports the same

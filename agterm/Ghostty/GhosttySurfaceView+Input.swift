@@ -154,6 +154,7 @@ extension GhosttySurfaceView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard !deferMouseToAsk(with: event) else { return }
         // a click in a pane means "I want to type here", so it ends normal mode. The mode filters keys in the
         // app-wide monitor and holds no first responder, so nothing else would notice the user leaving it.
         // Above the surface guard: an unrealized pane is still a pane the user just clicked into, and this is
@@ -167,6 +168,7 @@ extension GhosttySurfaceView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard !askBlocksFocus else { return }
         guard let surface else { return }
         reportMousePos(from: event)
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods(event))
@@ -406,7 +408,11 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         ghostty_surface_preedit(surface, nil, 0)
     }
 
-    func selectedRange() -> NSRange { _selectedRange }
+    /// Dictation needs a valid caret outside a composition (#555), and the stored IME selection is stale
+    /// once one ends.
+    func selectedRange() -> NSRange {
+        hasMarkedText() ? _selectedRange : NSRange(location: 0, length: 0)
+    }
     func markedRange() -> NSRange { _markedRange }
     func hasMarkedText() -> Bool { _markedRange.location != NSNotFound }
 

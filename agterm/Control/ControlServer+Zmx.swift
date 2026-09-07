@@ -80,6 +80,7 @@ extension ControlServer {
                                             result: ZmxInventory.join(observed: observed,
                                                                       claims: walk.claims,
                                                                       inventoryComplete: walk.complete),
+                                            socketDirectory: client.socketDirectory,
                                             endpoint: client.endpoint)
         // a live store IS the open-window test, the same one `openCounts` uses: a closed window has no
         // store, and its panes are not attachable from here anyway

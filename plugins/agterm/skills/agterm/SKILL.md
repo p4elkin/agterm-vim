@@ -5,17 +5,18 @@ description: >
   running inside an agterm session and asked to control the terminal: create, rename, close, select or
   reorder sessions and workspaces; split panes; toggle the scratch terminal; run a program in an overlay
   and read its exit status; post a HUD panel or a desktop notification; show a native picker with
-  caller-supplied choices; display an image inline; type into a session, copy its selection or search its
-  scrollback; manage windows; change font size; set the theme; reload or edit the keymap and the
-  agterm-scoped ghostty config; subscribe to status, notification, lifecycle and tree-change events.
+  caller-supplied choices or a question dialog with named buttons; display an image inline; type into a
+  session, copy its selection or search its scrollback; manage windows; change font size; set the theme;
+  reload or edit the keymap and the agterm-scoped ghostty config; subscribe to status, notification,
+  lifecycle and tree-change events.
   Covers the window/workspace/session addressing model and the AGTERM_* environment a spawned shell sees,
   attaching a session running on another Mac, the cookbook recipes, the running version, and diagnosing
   problems or filing an agterm bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
-  split the pane, close the overlay, show a message over the session, show an image inline, search the
-  scrollback, park a session, hide parked rows, turn on normal mode, attach a session from another Mac,
-  what recipes are there, the keymap editor will not open.
+  split the pane, close the overlay, show a message over the session, show a question dialog, agtermctl ask,
+  show an image inline, search the scrollback, park a session, hide parked rows, turn on normal mode,
+  attach a session from another Mac, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
 ---
 
@@ -90,7 +91,7 @@ One slot, so a session shows either a HUD or a program overlay, never both. Sepa
 or whatever share Settings sets instead; not part of the tree and not owned by a window).
 
 Inspect the live tree any time with `agtermctl tree --json` (workspaces → sessions, each with
-`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `hud`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
+`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `hud`, `ask`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` and `surface cursor` (`left`, `right`, `scratch`, `overlay`,
@@ -106,7 +107,8 @@ points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`,
 quick terminal is shown — the read side of the write-only `quick` command; app-level, so every window
 reports the same value), `zoomedSurface`, the four `dashboard*` fields, `sessionRecency` (the window's
 jump-back targets, session ids most recent first, with the active session dropped and the visible
-navigation scope applied; omitted when there is nothing to jump back to), `pickPending`, and `app` (the
+navigation scope applied; omitted when there is nothing to jump back to), `pickPending`,
+`askPending` (GUI asks only), and `app` (the
 serving app's `version`, plus `commit` when the build recorded one — the same value `agtermctl version`
 returns). reference.md lists every one with its exact shape. List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `recencyDwellMs`,
@@ -530,8 +532,23 @@ the field and filters on open, which re-ranks and drops that order. An empty ite
 `< /dev/null` or it blocks. The default blocks until the user chooses or cancels and prints the bare JSON
 result. `--no-block` prints the picker id instead;
 `pick result ID [--window W]` reads it later, and `pick cancel ID [--window W]` cancels it.
-Only one picker may be pending per window. It opens without raising a background target unless
-`--follow` is set. Read the live picker id from the tree's top-level `pickPending` field.
+Pick shares its window modal slot with GUI asks. A background target is raised only with `--follow`.
+Read the live picker id from the tree's top-level `pickPending` field.
+
+**ask**: `ask TITLE --button ID=LABEL [--button ...] [--message TEXT]` opens a question and waits for
+an answer. The default `--style terminal` uses the selected session, with one pending ask per session.
+`--pane` or `--pane-id` narrows it to a pane without requiring `--target`. An explicit unselected session
+is accepted and keeps its ask hidden and pending. A terminal ask leaves the rest of the window usable.
+`--style gui` uses the window modal slot shared with pick; GUI pane placement requires a selected
+`--target`. Without a target, GUI style centers over the window's terminal area, excluding the sidebar.
+`--window` selects the window; `--follow` raises it without changing session selection.
+`--default ID` seeds the highlight, `--hotkey ID=LETTER` adds a shortcut, and `--destructive ID` marks a
+button that cannot be the default. `--align left|center|right` aligns the buttons; `--width N` fixes the
+panel width to 10...100 percent of its region. Exit 0 means answered, including No: inspect `.id`.
+Esc/Command-W on the interactive ask return `escaped` with exit 3; cancellation returns `cancelled`
+with exit 2. `--no-block` returns an id for `ask result ID` or `ask cancel ID`; explicit `--window` must
+match its owner. Tree exposes terminal asks on session nodes as `ask: {id, pane?}` and GUI asks as
+top-level `askPending`. See [reference.md](reference.md#ask) for result formats and command details.
 
 **quick** — `quick [show|hide|toggle]` (visibility; read back from the tree's `quickVisible`; a panel YOU open
 with `quick show` stays up when agterm loses focus, unlike one the user summoned by hotkey, so a following
