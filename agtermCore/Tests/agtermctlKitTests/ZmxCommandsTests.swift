@@ -10,6 +10,16 @@ import Testing
 struct ZmxCommandsTests {
     private let socketDirectory = "/tmp/agterm-zmx-e37fc371e9dbafce"
 
+    @Test func attachCarriesTheLocalWindowSeparatelyFromTheRemoteSession() throws {
+        let attach = try Zmx.Attach.parse(["buildbox", "s1", "--window", "local-window"])
+        let request = try attach.makeRequest()
+        #expect(request.cmd == .zmxAttach)
+        #expect(request.target == "s1")
+        #expect(request.args?.host == "buildbox")
+        #expect(request.args?.window == "local-window")
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
+    }
+
     @Test func treeCarriesItsHostAsAnArgumentNotATarget() throws {
         let tree = try Zmx.Tree.parse(["buildbox"])
 

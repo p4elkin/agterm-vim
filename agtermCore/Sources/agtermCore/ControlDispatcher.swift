@@ -193,6 +193,8 @@ public protocol ControlActions {
     /// Create a local session attached to `session` on `host`. Resolves the remote itself before inserting
     /// anything, so a session that has gone since the tree was read creates nothing.
     func attachRemoteSession(host: String, session: String) async -> ControlResponse
+    /// Attach into an open local window, defaulting to the frontmost window after discovery.
+    func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse
 }
 
 /// The parsed `session.pairing` update: which field to touch and what to set it to, or that it should be

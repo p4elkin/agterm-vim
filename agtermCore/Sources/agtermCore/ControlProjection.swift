@@ -106,6 +106,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let id: String
     public let name: String
     public let cwd: String
+    /// The split pane's last reported or fallback directory, including hidden splits; omitted without one.
+    public let splitCwd: String?
     /// The raw terminal title from the latest OSC 0/1/2 (a remote host over SSH, a shell `PROMPT_COMMAND`);
     /// nil/omitted when none reported. The unprocessed `Session.oscTitle`, distinct from `name` (the derived
     /// sidebar label, which uses it as one fallback); a remote session's local `cwd` goes stale, this does not.
@@ -283,7 +285,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
                 surfaces: [ControlSurfaceNode]? = nil, realized: Bool? = nil,
-                context: String? = nil, remoteHost: String? = nil) {
+                context: String? = nil, remoteHost: String? = nil, splitCwd: String? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -329,6 +331,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.scratchFontSize = scratchFontSize
         self.surfaces = surfaces
         self.realized = realized
+        self.splitCwd = splitCwd
         self.remoteHost = remoteHost
     }
 }

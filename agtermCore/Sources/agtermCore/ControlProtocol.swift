@@ -516,6 +516,9 @@ public struct ControlRequest: Codable, Sendable, Equatable {
 /// for `session.copy`. All optional.
 public struct ControlResult: Codable, Sendable, Equatable {
     public var id: String?
+    /// Applied window frame dimensions in integer points, echoed by `window.resize`.
+    public var width: Int?
+    public var height: Int?
     public var tree: ControlTree?
     public var text: String?
     public var windows: [ControlWindowNode]?
@@ -588,9 +591,12 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 ask: ControlAskResult? = nil,
                 cursor: ControlCursor? = nil, bookmarks: [ControlBookmarkNode]? = nil,
                 app: AppIdentity? = nil, restore: ControlRestoreStatus? = nil,
-                zmx: ControlZmxInventory? = nil, remote: ControlRemoteTree? = nil) {
+                zmx: ControlZmxInventory? = nil, remote: ControlRemoteTree? = nil,
+                width: Int? = nil, height: Int? = nil) {
         self.overlayRedirect = overlayRedirect
         self.bookmarks = bookmarks
+        self.width = width
+        self.height = height
         self.restore = restore
         self.zmx = zmx
         self.remote = remote
