@@ -414,7 +414,7 @@ final class CustomCommandRunner {
     /// split/scratch (or during a window-switch race) runs against THAT surface's session/cwd/window and reads
     /// its selection. A sessionless focused surface routes through `runFromSessionlessSurface`.
     func runFromKeybind(_ command: CustomCommand, focusedSurface: GhosttySurfaceView) {
-        guard let session = focusedSurface.session, let store = library.store(forSession: session.id) else {
+        guard let session = focusedSurface.session, let store = store(owning: session) else {
             runFromSessionlessSurface(command, focusedSurface: focusedSurface)
             return
         }
@@ -425,18 +425,30 @@ final class CustomCommandRunner {
         spawn(command, context: context)
     }
 
-    /// The keybind fallback for a sessionless focused surface (quick terminal, overlay, scratch). The scratch
-    /// and the overlays belong to the ACTIVE session, so a chord from one runs against that session and reads
-    /// THAT surface's own selection — the read leg of `$AGT_PANE` → `session type --pane scratch`. The quick
-    /// terminal is nobody's pane and takes the plain palette path.
-    private func runFromSessionlessSurface(_ command: CustomCommand, focusedSurface: GhosttySurfaceView) {
-        guard let store = library.activeStore, let session = store.activeSession,
-              let pane = sessionlessPane(of: focusedSurface, in: session) else {
-            runNoSurface(command)
-            return
+    /// The open store holding `session` itself. Matched by object identity rather than through
+    /// `store(forSession:)`, which answers with the first window carrying that id and a snapshot written by
+    /// an older build can put one id in two windows.
+    private func store(owning session: Session) -> AppStore? {
+        for windowID in library.openIDs() {
+            guard let store = library.store(for: windowID) else { continue }
+            if store.workspaces.contains(where: { $0.sessions.contains { $0 === session } }) { return store }
         }
-        let context = self.context(for: session, in: store, selectionSurface: focusedSurface, pane: pane)
-        spawn(command, context: context)
+        return nil
+    }
+
+    /// Resolve the surface and its owning store together, since a session id can repeat across windows.
+    /// The quick terminal has no session owner and keeps the active-session fallback.
+    private func runFromSessionlessSurface(_ command: CustomCommand, focusedSurface: GhosttySurfaceView) {
+        for windowID in library.openIDs() {
+            guard let store = library.store(for: windowID) else { continue }
+            for session in store.workspaces.flatMap(\.sessions) {
+                guard let pane = sessionlessPane(of: focusedSurface, in: session) else { continue }
+                let context = self.context(for: session, in: store, selectionSurface: focusedSurface, pane: pane)
+                spawn(command, context: context)
+                return
+            }
+        }
+        runNoSurface(command)
     }
 
     /// Which pane `session`'s sessionless surface reports as `$AGT_PANE`, nil when the surface is not one of
@@ -485,7 +497,7 @@ final class CustomCommandRunner {
     private func context(for session: Session, in store: AppStore, selectionSurface: GhosttySurfaceView?,
                          pane: CommandContext.Pane) -> CommandContext {
         let workspace = store.workspace(forSession: session.id)
-        let windowID = library.windowID(forSession: session.id)
+        let windowID = library.windowID(for: store)
         let windowName = library.windowName(for: windowID)
         return CommandContext(
             sessionID: session.id.uuidString,

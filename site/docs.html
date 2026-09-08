@@ -1453,8 +1453,8 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">Interface</strong> — turn individual chrome controls on or off (each shown by
-                default): in the title bar the sidebar toggle, the session name, the window name, the session context, and
-                the recent-sessions, scratch, split, dashboard, and quick-terminal buttons; in the sidebar the new-workspace, new-session,
+                default): in the title bar the sidebar toggle, the session name, the window name, the remote host, the
+                session context, and the recent-sessions, scratch, split, dashboard, and quick-terminal buttons; in the sidebar the new-workspace, new-session,
                 flagged-view, and workspace-filter footer buttons plus the per-workspace add-session + revealed on hover. A
                 <strong style="color: #e6e1d7">Multiple Windows</strong> option (off by default) shows the sidebar only in
                 the frontmost window and collapses it on every other, so switching windows moves the sidebar with focus.
@@ -2526,6 +2526,7 @@
               only this side's connection — the far-side processes keep running, and nothing agterm does from this end can kill them.
               A remote session is never written to disk, so it does not come back after a relaunch. Its tree node carries
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">remoteHost</span>.
+              The title bar shows a cloud and the remote host, which you can hide with the Remote host toggle in Settings ▸ Interface.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 12px 0 0">
               An attach joins as a follower, and pinned zmx has one leader per pane, so the pane arrives at the <em>other</em>
