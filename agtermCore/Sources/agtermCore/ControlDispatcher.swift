@@ -39,7 +39,7 @@ public protocol ControlActions {
     /// means clear.
     func setSessionContext(_ target: String?, window: String?, context: String?) -> ControlResponse
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse
-    func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) -> ControlResponse
+    func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) async -> ControlResponse
     /// Advance the target session's turn counter, write the visible `TurnMark` into its pane's pty, and
     /// return the new number in `result.count`. A failed pty write is NOT an error — the number still names
     /// the turn and a bookmark on it just loses the jump. Fork only.
@@ -230,7 +230,7 @@ public struct ControlDispatcher {
         case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
                 .sessionReveal, .sessionMove, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen,
                 .sessionStatus, .sessionRestore, .sessionMark:
-            return dispatchSessionCommand(request)
+            return await dispatchSessionCommand(request)
         case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
             return await dispatchSessionBookmark(request)
         case .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionScratch, .sessionFocus, .sessionResize,
@@ -331,7 +331,7 @@ public struct ControlDispatcher {
         return nil
     }
 
-    private func dispatchSessionCommand(_ request: ControlRequest) -> ControlResponse {
+    private func dispatchSessionCommand(_ request: ControlRequest) async -> ControlResponse {
         switch request.cmd {
         case .sessionNew:
             let args = request.args
@@ -449,7 +449,7 @@ public struct ControlDispatcher {
                                                     sound: request.args?.sound, color: request.args?.color,
                                                     shape: shape,
                                                     pane: pane, paneID: request.args?.paneID)
-            return actions.setSessionStatus(request.target, window: request.args?.window, update: update)
+            return await actions.setSessionStatus(request.target, window: request.args?.window, update: update)
         case .sessionRestore:
             return dispatchSessionRestore(request)
         case .sessionMark:

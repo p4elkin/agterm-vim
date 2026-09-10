@@ -419,7 +419,9 @@ buys nothing. A caller with no tree uses `version`.
   OSC 7 cwd the sidebar row shows and `session reveal` opens); selects + focuses the new session and
   returns its id. There are NO other options — the target session names both the destination workspace
   and the cwd — and `--target` defaults to `active`. It is equivalent to
-  `session new --cwd <source cwd> --after <source>` in ONE atomic round-trip.
+  `session new --cwd <source cwd> --after <source>` in ONE atomic round-trip, except that a remote
+  source's cwd goes through the local rule first (see Remote sessions): an existing local directory is
+  kept, anything else becomes home.
   ONLY the directory carries over: the duplicate is a plain login shell with the auto basename, and it
   does NOT inherit the source's custom name, `--command`, split, scratch, status, flag, font size, or
   background — it is "new session seeded with the source's cwd", not a clone of state. Errors: the usual
@@ -428,7 +430,8 @@ buys nothing. A caller with no tree uses `version`.
   directly after its source, carrying the source's focused-pane cwd. That equals the source node's
   `tree.cwd` for a non-split session (and a split focused on its primary pane); for a split focused off its
   primary the source node's `tree.cwd` reports the primary pane while the duplicate carries the focused
-  pane's directory. It is the control half of the sidebar row's **Duplicate Session** context-menu item
+  pane's directory, and for a remote source it is that cwd after the local rule, so it can read as home.
+  It is the control half of the sidebar row's **Duplicate Session** context-menu item
   (single-selection only).
 - `session close [--target T ...] [--window W]` — close one session, or repeat `--target` to close
   several sessions in the same window/store. Batch close honors the GUI grace-undo setting: one grouped
@@ -1373,7 +1376,14 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 
 - `{AGT_SESSION_NAME}` / `$AGT_SESSION_NAME` — the session's display name (the focused pane's terminal title, remote-settable via OSC).
 - `{AGT_SESSION_PWD}` / `$AGT_SESSION_PWD` — the working directory of the pane the command fired from;
-  the scratch terminal reports the main pane's, since it tracks no cwd of its own.
+  the scratch terminal reports the main pane's, since it tracks no cwd of its own. For a session opened
+  by `zmx attach` the path can be remote: the session starts with local HOME and follows subsequent cwd
+  reports. The command itself starts in that path only when it exists here as a directory, else in
+  local HOME. See Remote sessions.
+- `{AGT_SESSION_HOST}` / `$AGT_SESSION_HOST` — the SSH destination of a session opened by `zmx attach`,
+  verbatim as given (`user@alias` included); empty for a local session, an `ssh` typed into one included,
+  so branch on it: `if [ -n "$AGT_SESSION_HOST" ]; then ssh "$AGT_SESSION_HOST" uptime; fi` (a bare
+  `&&` chain exits 1 on a local session and the runner reports that as a failure).
 - `{AGT_SELECTION}` / `$AGT_SELECTION` — the current selection.
 - `{AGT_PANE}` / `$AGT_PANE` — the pane the command fired from: `left` (main), `right` (split), or
   `scratch` (the session's scratch terminal). Feed it back as `session type --pane "$AGT_PANE"` to type
@@ -1578,6 +1588,19 @@ and the exit status.
 Closing a remote session here ends only this side's connection: the far-side processes keep running and
 nothing agterm does from this end can kill them. It is never written to disk, so it does not come back
 after a relaunch whatever the restore mode is.
+
+The pane reports the far side's working directory, and the local launches that would inherit it pick
+their start directory by one rule: the reported path when it exists here as a directory, else local
+HOME. Those launches are a custom command (its `$AGT_SESSION_PWD` keeps the reported path and
+`$AGT_SESSION_HOST` names the destination), the scratch terminal, an overlay opened without `--cwd`,
+the quick terminal, a local split (the first one on a remote session that arrived without a split, or
+one opened after the attach-time split is closed), Duplicate Session, and New Session when it is set
+to open in the current session's directory. An explicit overlay `--cwd` is used as given. Quote both
+variables; an existing local path is not checked to be the same repository as the remote one.
+
+When another client leads at a different terminal size, local cursor and screen-text reads can disagree
+with the application's layout; automation relying on those reads, including the chat transport, is
+unsupported in that state.
 
 Both commands run ssh non-interactively (`BatchMode`), so key-based auth must already work for the host —
 a password or host-key prompt is a failure, not a question. An attach joins as a follower and pinned zmx

@@ -60,6 +60,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
                                          settings: SettingsModel(library: library,
                                                                  settingsStore: SettingsStore(directory: stateDir)),
                                          actions: actions,
+                                         usage: CustomCommandUsageStore(directory: stateDir),
                                          socketProvider: { "" })
             runner.builtinPerformer = { [weak self] action, _ in self?.record(action) }
             runner.escapeSender = { [weak self] pane in self?.escapeTargets.append(pane) }
@@ -545,6 +546,7 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         let seeded = CustomCommandRunner(library: library,
                                          settings: SettingsModel(library: library, settingsStore: store),
                                          actions: AppActions(library: library),
+                                         usage: CustomCommandUsageStore(directory: stateDir),
                                          socketProvider: { "" })
         seeded.builtinPerformer = { [weak self] action, _ in self?.record(action) }
         return seeded

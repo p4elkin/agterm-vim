@@ -36,6 +36,10 @@ package.targets += [
     .target(name: "SessionHostTrampoline"),
     .target(name: "SessionHostRuntime", dependencies: ["SessionHostTrampoline", "AgtermResponsibility", "agtermCore"]),
     .executableTarget(name: "agterm-session-host", dependencies: ["SessionHostRuntime"]),
-    .testTarget(name: "SessionHostRuntimeTests", dependencies: ["SessionHostRuntime", "agterm-session-host"]),
+    // The fixtures need a socket client they can copy into a test bundle, which /usr/bin/nc
+    // cannot be (see the target's own comment).
+    .executableTarget(name: "session-host-test-client"),
+    .testTarget(name: "SessionHostRuntimeTests",
+                dependencies: ["SessionHostRuntime", "agterm-session-host", "session-host-test-client"]),
 ]
 #endif

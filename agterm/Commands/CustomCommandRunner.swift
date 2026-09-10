@@ -33,11 +33,15 @@ final class CustomCommandRunner {
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
 
-    init(library: WindowLibrary, settings: SettingsModel, actions: AppActions,
+    /// Run counts behind the title-bar popover's most-used section; every spawn path records into it.
+    let usage: CustomCommandUsageStore
+
+    init(library: WindowLibrary, settings: SettingsModel, actions: AppActions, usage: CustomCommandUsageStore,
          socketProvider: @escaping () -> String) {
         self.library = library
         self.settings = settings
         self.actions = actions
+        self.usage = usage
         self.socketProvider = socketProvider
     }
 
@@ -405,9 +409,7 @@ final class CustomCommandRunner {
         // promoted survivor sits in the `surface` slot with both nil/false, so `.left`.
         let onSplit = session.splitFocused && session.splitSurface != nil
         let selectionSurface = (onSplit ? session.splitSurface : session.surface) as? GhosttySurfaceView
-        let context = self.context(for: session, in: store, selectionSurface: selectionSurface,
-                                   pane: onSplit ? .right : .left)
-        spawn(command, context: context)
+        spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
     }
 
     /// Run a command fired by KEYBIND: context from the surface that had focus at key-down, so a chord from a
@@ -421,8 +423,7 @@ final class CustomCommandRunner {
         // the pane is the surface's identity, not the focus flag, so a chord reports the pane it was typed in
         // even before the flag catches up.
         let pane: CommandContext.Pane = (session.splitSurface as? GhosttySurfaceView) === focusedSurface ? .right : .left
-        let context = self.context(for: session, in: store, selectionSurface: focusedSurface, pane: pane)
-        spawn(command, context: context)
+        spawn(command, for: session, in: store, selectionSurface: focusedSurface, pane: pane)
     }
 
     /// The open store holding `session` itself. Matched by object identity rather than through
@@ -443,8 +444,7 @@ final class CustomCommandRunner {
             guard let store = library.store(for: windowID) else { continue }
             for session in store.workspaces.flatMap(\.sessions) {
                 guard let pane = sessionlessPane(of: focusedSurface, in: session) else { continue }
-                let context = self.context(for: session, in: store, selectionSurface: focusedSurface, pane: pane)
-                spawn(command, context: context)
+                spawn(command, for: session, in: store, selectionSurface: focusedSurface, pane: pane)
                 return
             }
         }
@@ -488,12 +488,34 @@ final class CustomCommandRunner {
             logger.notice("custom command \"\(command.name, privacy: .public)\" references session context but no session is active; ignored")
             return
         }
-        spawn(command, context: sessionlessContext())
+        spawn(command, context: sessionlessContext(), cwd: nil)
     }
 
-    /// Resolve every `{AGT_X}` token for the given session: ids + cwd from the model, names from the owning
-    /// workspace/window, the selection from `selectionSurface`, the fired-from pane from the caller
-    /// (`left`|`right`|`scratch`), the socket from the control server.
+    /// Spawn for a session pane: the context carries the pane's reported cwd raw, while the process starts
+    /// where `Session.localWorkingDirectory` says, widened here to ANY row whose reported path is not a local
+    /// directory, not just a remote one. `Process.run()` validates `currentDirectoryURL` inside the spawn and
+    /// throws before `/bin/sh` is exec'd, so a local row whose directory was deleted or replaced by a file
+    /// loses the command exactly as a remote row did (measured 2026-09-09).
+    private func spawn(_ command: CustomCommand, for session: Session, in store: AppStore,
+                       selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) {
+        let context = self.context(for: session, in: store, selectionSurface: selectionSurface, pane: pane)
+        let home = NSHomeDirectory()
+        var cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
+        var isDirectory: ObjCBool = false
+        let resolves = FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory) && isDirectory.boolValue
+        if !cwd.isEmpty, !resolves {
+            logger.notice("""
+                custom command "\(command.name, privacy: .public)" runs from home: \
+                \(cwd, privacy: .public) is not a local directory
+                """)
+            cwd = home
+        }
+        spawn(command, context: context, cwd: cwd)
+    }
+
+    /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names
+    /// from the owning workspace/window, the selection from `selectionSurface`, the fired-from pane from the
+    /// caller (`left`|`right`|`scratch`), the socket from the control server.
     private func context(for session: Session, in store: AppStore, selectionSurface: GhosttySurfaceView?,
                          pane: CommandContext.Pane) -> CommandContext {
         let workspace = store.workspace(forSession: session.id)
@@ -503,6 +525,7 @@ final class CustomCommandRunner {
             sessionID: session.id.uuidString,
             sessionName: session.displayName,
             sessionPWD: session.cwd(for: pane),
+            sessionHost: TerminalText.sanitized(session.remoteHost ?? ""),
             workspaceID: workspace?.id.uuidString ?? "",
             workspaceName: workspace?.name ?? "",
             windowID: windowID?.uuidString ?? "",
@@ -523,10 +546,10 @@ final class CustomCommandRunner {
     }
 
     /// Spawn the expanded command as a detached `/bin/sh -c`, exporting `$AGT_*` over the app environment and
-    /// running in the session's cwd when that resolves locally, else home. `PATH` is widened first
+    /// running in `cwd` (nil for a sessionless launch, which inherits the app's). `PATH` is widened first
     /// (`CommandPath`): the app's own is launchd's, and `sh -c` runs no profile, so a bare `agtermctl` would
     /// exit 127. A spawn error or non-zero exit posts a failure banner; no output capture, no success banner.
-    private func spawn(_ command: CustomCommand, context: CommandContext) {
+    private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) {
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -540,27 +563,8 @@ final class CustomCommandRunner {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        // the cwd is a HINT, not a requirement: a REMOTE row's `sessionPWD` is a path on the OTHER machine.
-        // A pane running mosh into p4linux reports `/home/sasha/dev`, which no Mac has, and `Process.run()`
-        // validates `currentDirectoryURL` inside the spawn itself — it THROWS (`The file "dev" doesn't exist.`,
-        // or `Not a directory` for a path that turns out to be a plain file) before `/bin/sh` is ever exec'd.
-        // So EVERY custom command on a remote row died at the spawn and did nothing at all, not just the park
-        // chord that found this (measured 2026-09-09). Local existence, not the session's `remoteHost`, is the
-        // right test: a LOCAL row whose directory has since been deleted or replaced by a file fails
-        // identically. Home is the fallback rather than leaving the property unset, because unset inherits the
-        // app's own cwd — `/` for a Finder/launchd launch — where a command writing a relative path would fail
-        // a second, stranger way; home always exists and is writable.
-        if !context.sessionPWD.isEmpty {
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: context.sessionPWD, isDirectory: &isDirectory), isDirectory.boolValue {
-                process.currentDirectoryURL = URL(fileURLWithPath: context.sessionPWD, isDirectory: true)
-            } else {
-                logger.notice("""
-                    custom command "\(command.name, privacy: .public)" runs from home: \
-                    \(context.sessionPWD, privacy: .public) is not a local directory
-                    """)
-                process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-            }
+        if let cwd, !cwd.isEmpty {
+            process.currentDirectoryURL = URL(fileURLWithPath: cwd, isDirectory: true)
         }
         let name = command.name
         process.terminationHandler = { proc in
@@ -571,6 +575,7 @@ final class CustomCommandRunner {
         }
         do {
             try process.run()
+            usage.record(command)
         } catch {
             logger.error("custom command \"\(name, privacy: .public)\" failed to spawn: \(error.localizedDescription, privacy: .public)")
             NotificationManager.shared.notifyCommandFailure(name: name, detail: error.localizedDescription)

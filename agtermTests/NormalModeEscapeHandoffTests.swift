@@ -29,6 +29,7 @@ final class NormalModeEscapeHandoffTests: XCTestCase {
                                         settings: SettingsModel(library: library,
                                                                 settingsStore: SettingsStore(directory: stateDir)),
                                         actions: AppActions(library: library),
+                                        usage: CustomCommandUsageStore(directory: stateDir),
                                         socketProvider: { "" })
             // these tests drive Escape alone; a dispatched built-in stays inert, as it was before the hub
             // replaced the injected closure.

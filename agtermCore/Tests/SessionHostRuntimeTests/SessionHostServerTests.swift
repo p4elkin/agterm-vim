@@ -438,9 +438,8 @@ struct SessionHostServerTests {
             let package = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             try FileManager.default.copyItem(at: package.appendingPathComponent(".build/debug/agterm-session-host"), to: executable)
             try FileManager.default.copyItem(atPath: stagedZmxPath, toPath: zmx.path)
-            try FileManager.default.copyItem(atPath: "/usr/bin/nc", toPath: client.path)
+            try FileManager.default.copyItem(at: package.appendingPathComponent(".build/debug/session-host-test-client"), to: client)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: client.path)
-            _ = try run(URL(fileURLWithPath: "/usr/bin/codesign"), arguments: ["--force", "--sign", "-", client.path])
             let info = ["CFBundleIdentifier": identity.bundleID, "CFBundleExecutable": "agterm-session-host", "CFBundlePackageType": "APPL"]
             try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: bundle.appendingPathComponent("Contents/Info.plist"))
             try FileManager.default.createDirectory(at: URL(fileURLWithPath: paths.spawnLock).deletingLastPathComponent(), withIntermediateDirectories: true)
