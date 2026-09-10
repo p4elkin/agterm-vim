@@ -807,7 +807,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   pins, the two overlay-redirect pairing fields (`mirrorsSession`, `viewer` — fork only, both omitted when
   unset, see [[overlay-redirect]]; the surface node's `cwd` is fork-only too, present only on `right` and
   only when the split pane sits somewhere other than the session's own `cwd`), surfaces, `realized`,
-  `backedByZmx`, and `remoteHost`.
+  `backedByZmx`, `remoteHost`, and `liveAttribution`/`splitLiveAttribution`.
 - `foregroundShell`/`splitForegroundShell` name the RECOGNIZED shell HOLDING a pane's foreground, present
   exactly when that pane's `foreground` is absent because a shell holds it.
   For a pane that EXISTS, neither field means agterm could not determine the foreground state — a bare nil
@@ -829,6 +829,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.
+- `liveAttribution`/`splitLiveAttribution` report the observed responsibility attribution of a local Live
+  pane's leader process, probed from `sessionLeaderPIDs`: `supervisor`, `app`, `orphaned` or `unknown`,
+  from `SessionHost.classify`. Omitted for a non-Live or remote pane; the split field covers a hidden
+  split. `windows.md` owns the host lifecycle behind them.
 - `realized` reports the MAIN pane's `TerminalSurface.isRealized`, populated host-free in
   `AppStore.controlTree` (no app closure — `isRealized` is on the protocol) and false for an empty slot, so
   only a server predating the field omits it. It exists because `session.new` answers `ok` for a model
