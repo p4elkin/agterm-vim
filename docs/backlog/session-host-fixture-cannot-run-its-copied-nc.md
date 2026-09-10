@@ -38,13 +38,15 @@ Witnessed on p4studio (arm64, macOS 26) on 2026-09-10, running
 Reproduces with the tool sandbox off and with a single-test filter, so it is neither sandboxing nor
 parallel-test contention.
 
-## Options, none taken
+## Reported and fixed upstream
 
-The fix belongs upstream and none of it is the fork's to choose:
+- Issue: https://github.com/umputun/agterm/issues/577
+- PR: https://github.com/umputun/agterm/pull/578 — adds a small `session-host-test-client` executable
+  target, not a package product, and copies that into the test bundle instead of `nc`. Verified locally:
+  22 tests pass in 3.3s where six failed, full `swift test` green, swiftlint clean.
 
-- have the fixture copy the x86_64 slice only (`lipo -extract x86_64`), which keeps `nc` and costs Rosetta;
-- build a tiny client target instead of borrowing `nc`, which removes the platform-binary problem entirely;
-- take the client from Homebrew's netcat rather than `/usr/bin/nc`.
+⚠️ **Do not patch the fixture in this fork while that PR is open.** A fork edit inside an upstream test
+file is a merge conflict every time upstream touches it, for a suite the fork has no stake in. Until the
+PR lands, the six failures are expected on every `swift test` here.
 
-Worth reporting upstream before touching anything here. Editing an upstream test in the fork is a merge
-conflict every time that file changes, for a suite the fork has no stake in.
+`git rm` this item when the fix arrives in a merge from upstream.
