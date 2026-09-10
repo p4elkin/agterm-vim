@@ -523,9 +523,9 @@ final class CustomCommandRunner {
     }
 
     /// Spawn the expanded command as a detached `/bin/sh -c`, exporting `$AGT_*` over the app environment and
-    /// running in the session's cwd. `PATH` is widened first (`CommandPath`): the app's own is launchd's, and
-    /// `sh -c` runs no profile, so a bare `agtermctl` would exit 127. A spawn error or non-zero exit posts a
-    /// failure banner; no output capture, no success banner.
+    /// running in the session's cwd when that resolves locally, else home. `PATH` is widened first
+    /// (`CommandPath`): the app's own is launchd's, and `sh -c` runs no profile, so a bare `agtermctl` would
+    /// exit 127. A spawn error or non-zero exit posts a failure banner; no output capture, no success banner.
     private func spawn(_ command: CustomCommand, context: CommandContext) {
         let line = context.expand(command.command)
         let process = Process()
@@ -540,8 +540,27 @@ final class CustomCommandRunner {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        // the cwd is a HINT, not a requirement: a REMOTE row's `sessionPWD` is a path on the OTHER machine.
+        // A pane running mosh into p4linux reports `/home/sasha/dev`, which no Mac has, and `Process.run()`
+        // validates `currentDirectoryURL` inside the spawn itself — it THROWS (`The file "dev" doesn't exist.`,
+        // or `Not a directory` for a path that turns out to be a plain file) before `/bin/sh` is ever exec'd.
+        // So EVERY custom command on a remote row died at the spawn and did nothing at all, not just the park
+        // chord that found this (measured 2026-09-09). Local existence, not the session's `remoteHost`, is the
+        // right test: a LOCAL row whose directory has since been deleted or replaced by a file fails
+        // identically. Home is the fallback rather than leaving the property unset, because unset inherits the
+        // app's own cwd — `/` for a Finder/launchd launch — where a command writing a relative path would fail
+        // a second, stranger way; home always exists and is writable.
         if !context.sessionPWD.isEmpty {
-            process.currentDirectoryURL = URL(fileURLWithPath: context.sessionPWD, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: context.sessionPWD, isDirectory: &isDirectory), isDirectory.boolValue {
+                process.currentDirectoryURL = URL(fileURLWithPath: context.sessionPWD, isDirectory: true)
+            } else {
+                logger.notice("""
+                    custom command "\(command.name, privacy: .public)" runs from home: \
+                    \(context.sessionPWD, privacy: .public) is not a local directory
+                    """)
+                process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            }
         }
         let name = command.name
         process.terminationHandler = { proc in

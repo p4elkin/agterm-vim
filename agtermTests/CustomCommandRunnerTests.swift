@@ -374,6 +374,63 @@ final class CustomCommandRunnerTests: XCTestCase {
                        "with the scratch hidden the pane overlay names its own pane again")
     }
 
+    // a REMOTE row's cwd is a path on the OTHER machine: a pane running mosh into p4linux reports
+    // `/home/sasha/dev`, which no Mac has. `Process.run()` validates `currentDirectoryURL` in the spawn and
+    // throws before `/bin/sh` is exec'd, so every custom command on such a row — the park chord that found
+    // this among them — did nothing at all. The marker coming back IS the regression: with the cwd applied
+    // unconditionally nothing is ever written. `pwd` is read through `/bin/pwd` (getcwd) rather than `$PWD`,
+    // which the app's own environment carries in and would answer even from a cwd that was never applied.
+    func testAChordOnARowWhoseCwdIsOnAnotherMachineStillRunsTheCommandFromHome() throws {
+        let fix = try fixture()
+        let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let remote = "/home/sasha/dev"
+        XCTAssertFalse(FileManager.default.fileExists(atPath: remote),
+                       "the premise is that a Linux path does not resolve on the Mac running this test")
+        let session = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: remote))
+        let surface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        surface.session = session
+
+        let written = try fired(fix.runner, from: surface, writing: #""$AGT_SESSION_PWD|$(/bin/pwd)""#)
+
+        XCTAssertEqual(written, "\(remote)|\(FileManager.default.homeDirectoryForCurrentUser.path)",
+                       "the token still reports the remote cwd; only the process's own cwd falls back")
+    }
+
+    // the same guard's second arm: a path that EXISTS but is a plain file throws `Not a directory` just as a
+    // missing one throws, so an existence-only check would still lose the command.
+    func testAChordOnARowWhoseCwdIsAFileStillRunsTheCommandFromHome() throws {
+        let fix = try fixture()
+        let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let file = stateDir.appendingPathComponent("not-a-directory")
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        let session = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: file.path))
+        let surface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        surface.session = session
+
+        XCTAssertEqual(try fired(fix.runner, from: surface, writing: #""$(/bin/pwd)""#),
+                       FileManager.default.homeDirectoryForCurrentUser.path)
+    }
+
+    // the guard must not cost a LOCAL row its real cwd — the case every custom command already relied on.
+    func testAChordOnALocalRowStillRunsInTheSessionCwd() throws {
+        let fix = try fixture()
+        let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let dir = stateDir.appendingPathComponent("local-cwd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let session = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: dir.path))
+        let surface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        surface.session = session
+
+        // `stateDir` sits under /var/folders, which IS the /private/var symlink: `/bin/pwd` answers the
+        // physical `/private/var/...` while Foundation standardizes the other way, to `/var/...`. So both
+        // sides go through `resolvingSymlinksInPath()` rather than one being compared raw.
+        let written = try XCTUnwrap(try fired(fix.runner, from: surface, writing: #""$(/bin/pwd)""#),
+                                    "a local row's command must still run")
+        XCTAssertEqual(URL(fileURLWithPath: written).resolvingSymlinksInPath().path,
+                       dir.resolvingSymlinksInPath().path)
+    }
+
     // the quick terminal is nobody's pane, so it keeps falling through to the plain active-session path.
     func testAChordFiredFromAnUnrelatedSessionlessSurfaceStillTakesTheActiveSessionPath() throws {
         let fix = try fixture()
