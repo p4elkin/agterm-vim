@@ -129,6 +129,12 @@ Check these in order:
   or promotes a primary rather than leaving a daemon to recreate. To check what was captured, read
   `foregroundCommand` in `windows/<id>.json` while agterm is STOPPED: the next launch moves it into memory
   and rewrites the file with nil, so a running app always shows null there.
+- **A tool asks for the microphone again after every update.** The pane was created before the session
+  host and reads `orphaned` in `agtermctl tree --json`, so macOS charges each tool version separately. Help ▸
+  Reset Live Sessions… (or `agtermctl zmx reset --force`) ends those sessions' processes at the next launch
+  and recreates them under the host; agterm quits and reopens itself, captured commands start again where
+  possible, and the notification afterwards says how many sessions were covered. A session whose old process
+  could not be confirmed gone gets no command restarted and the reset can be run again.
 - **Switching modes ends detached live processes.** Selecting Fresh shells or Re-run commands and restarting
   reaps the live daemons in this state directory. An unavailable launch that still requests Live sessions
   preserves its claimed daemons for a later eligible launch.
@@ -265,6 +271,17 @@ mishandles it. agterm emits correct paired focus-in/focus-out and is already mac
 refocus click is not forwarded into the pty), so the terminal is not at fault. Tracked as
 anthropics/claude-code#72188 (mouse-click variant #72273). Workaround: answer before switching away, or
 `Esc` the stuck prompt and let it re-ask.
+
+### "Claude Code prints links as `label (url)` instead of clickable labels"
+
+Detection, not rendering. agterm identifies as `TERM_PROGRAM=agterm` (see the env list in SKILL.md) and
+Claude Code's hyperlink allowlist lacks that name, so it prints the URL. agterm renders OSC 8 links fine.
+Workaround: `FORCE_HYPERLINK=1 claude` (Claude Code reads it before any terminal check), or
+`env = FORCE_HYPERLINK=1` in `~/.config/agterm/ghostty.conf` for every new shell, after a config reload
+(`agtermctl config reload` or File ▸ Reload Config) and a new session; that form also forces links into
+redirected output. `env = TERM_PROGRAM=ghostty` there does nothing: agterm applies its identity after the
+config file. Do not file an agterm issue for it; the fix belongs upstream (Claude Code recognizing `agterm`
+or `TERM=xterm-ghostty`).
 
 ### "Every session restores to the directory it was created in"
 

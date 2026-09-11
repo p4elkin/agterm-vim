@@ -69,6 +69,7 @@ final class SettingsModel {
         applyAgentStatusShapes()
         applyWorkspaceRowClickExpands()
         applyAttentionButtonEnabled()
+        applyStatusReset()
         applyInterfaceElements()
         applyAutoHideSidebarInactiveWindows()
         // seed the app-global controller from the last-persisted value, before any command or chord reads
@@ -291,6 +292,8 @@ final class SettingsModel {
     /// Persist the system sound played when a session enters `blocked` (nil/empty = none). Not a ghostty
     /// key and nothing renders it continuously, so it only saves — `ControlServer` reads it on demand.
     func setBlockedStatusSoundName(_ name: String?) { settings.blockedStatusSoundName = name; try? settingsStore.save(settings) }
+    /// nil restores the default (clear on the first key), keeping the stored file minimal.
+    func setStatusReset(_ mode: StatusReset?) { settings.statusReset = mode?.rawValue; persistAndApply() }
     /// Persist where a new (⌘T) session opens (nil = home). Read only at the next `AppActions.newSession()`,
     /// so it just saves — no config rewrite or surface reload.
     func setNewSessionDirectory(_ value: String?) { settings.newSessionDirectory = value; try? settingsStore.save(settings) }
@@ -422,6 +425,7 @@ final class SettingsModel {
         settings.blockedStatusShape = nil
         settings.completedStatusShape = nil
         settings.blockedStatusSoundName = nil
+        settings.statusReset = nil
         persistAndApply()
     }
 
@@ -619,6 +623,10 @@ final class SettingsModel {
         # NOT SUPPORTED: the `ssh-env` and `ssh-terminfo` shell-integration features. They work by
         # wrapping `ssh` as a call to the `ghostty` CLI absent from agterm's bundle,
         # so agterm forces them back off. Your other shell-integration-features flags are kept.
+        #
+        # NO EFFECT: an `env` line naming a variable agterm injects into the shell (`TERM_PROGRAM`,
+        # `TERM_PROGRAM_VERSION`, `AGTERM_*`). agterm applies those after this file. Other `env` keys
+        # reach every new shell.
 
         """
     }
@@ -663,6 +671,7 @@ final class SettingsModel {
         applyAgentStatusShapes()
         applyWorkspaceRowClickExpands()
         applyAttentionButtonEnabled()
+        applyStatusReset()
         applyInterfaceElements()
         applyAutoHideSidebarInactiveWindows()
         // refresh the chrome (title bar + sidebar + quick terminal) for the new terminal color,
@@ -701,6 +710,10 @@ final class SettingsModel {
 
     private func applyAttentionButtonEnabled() {
         GhosttyApp.shared.setAttentionButtonEnabled(settings.attentionButtonEnabled ?? false)
+    }
+
+    private func applyStatusReset() {
+        GhosttyApp.shared.setStatusReset(settings.effectiveStatusReset)
     }
 
     private func applyInterfaceElements() {

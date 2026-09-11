@@ -22,12 +22,52 @@ extension ControlServer {
             probes[pid] = result
             return result
         }
-        let candidate = zmxClient.flatMap { liveAttributionProbe.hostPID($0.endpoint) }
-        let host = candidate.flatMap { responsible($0) == .live($0) ? $0 : nil }
+        let host = liveHostPID(responsible: responsible)
         return Dictionary(uniqueKeysWithValues: identities.map { identity in
             let leader = leaders[ZmxSupport.daemonName(for: identity)]
             return (identity, SessionHost.classify(leader: leader, responsible: leader.map(responsible), hostPid: host, appPid: liveAttributionProbe.appPID))
         })
+    }
+
+    /// The session host's pid when its pidfile names a live host, else nil.
+    private func liveHostPID(responsible: (pid_t) -> SessionHost.ResponsibleProcess) -> pid_t? {
+        guard let candidate = zmxClient.flatMap({ liveAttributionProbe.hostPID($0.endpoint) }) else { return nil }
+        return responsible(candidate) == .live(candidate) ? candidate : nil
+    }
+
+    /// The reset's read-back for the tree top level and the `zmx list` header: nil when nothing is pending
+    /// and no launch consumed a marker, so an untouched instance shows no field at all.
+    func liveResetReadback() -> ControlLiveResetReadback? {
+        let pending = liveReset?.pending.map(\.targets.count)
+        let last = liveResetOutcome()
+        guard pending != nil || last != nil else { return nil }
+        return ControlLiveResetReadback(pending: pending, last: last)
+    }
+
+    /// `zmx.reset`: the dialog's confirm path without the dialog. The quit is not requested here; the
+    /// connection thread requests it once this reply is written.
+    func resetLiveSessions() -> ControlResponse {
+        guard let liveReset else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.reset"))
+        }
+        switch liveReset.request(confirmed: true) {
+        case .refused(let refusal):
+            return ControlResponse(ok: false, error: refusal.message)
+        case .cancelled:
+            return ControlResponse(ok: false, error: "zmx.reset was cancelled")
+        case .confirmed(let selection):
+            let status = ControlLiveResetStatus(sessions: selection.sessionCount, panes: selection.targets.count, pending: true)
+            return ControlResponse(ok: true, result: ControlResult(text: LiveReset.dialogText(sessionCount: selection.sessionCount).body,
+                                                                    liveReset: status))
+        }
+    }
+
+    /// The panes Help ▸ Reset Live Sessions… would reset: every claim, open or saved, whose daemon leader
+    /// is orphaned or attributed to this app. Nil when the listing failed, which refuses the action.
+    func liveResetSelection() -> LiveReset.Selection? {
+        guard let zmxClient, let records = zmxClient.sessionRecords() else { return nil }
+        return LiveReset.select(claims: library.paneClaims(), records: records,
+                                classify: liveAttributionProbe.classifier(endpoint: zmxClient.endpoint))
     }
 
     /// Observed daemons joined against the panes that claim them, with the restore status as a header.
@@ -46,7 +86,7 @@ extension ControlServer {
                                        inventoryComplete: walk.complete)
         let inventory = ControlZmxInventory(restore: restoreStatus(), result: result,
                                             socketDirectory: client.socketDirectory,
-                                            endpoint: client.endpoint)
+                                            endpoint: client.endpoint, liveReset: liveResetReadback())
         return ControlResponse(ok: true, result: ControlResult(zmx: inventory))
     }
 }
@@ -105,7 +145,7 @@ extension ControlServer {
                                                                       claims: walk.claims,
                                                                       inventoryComplete: walk.complete),
                                             socketDirectory: client.socketDirectory,
-                                            endpoint: client.endpoint)
+                                            endpoint: client.endpoint, liveReset: liveResetReadback())
         // a live store IS the open-window test, the same one `openCounts` uses: a closed window has no
         // store, and its panes are not attachable from here anyway
         let windows = library.windows.compactMap { entry in
@@ -362,6 +402,21 @@ struct LiveAttributionProbe {
     var responsible: (pid_t) -> SessionHost.ResponsibleProcess = LiveAttributionProbe.lookup
     var hostPID: (ControlZmxEndpoint) -> pid_t? = LiveAttributionProbe.host
     var appPID: pid_t = getpid()
+
+    /// A classifier over daemon leaders that resolves the host once and probes each pid once.
+    func classifier(endpoint: ControlZmxEndpoint) -> (String, Int32) -> SessionHost.Attribution {
+        var probes: [pid_t: SessionHost.ResponsibleProcess] = [:]
+        func probed(_ pid: pid_t) -> SessionHost.ResponsibleProcess {
+            if let cached = probes[pid] { return cached }
+            let result = responsible(pid)
+            probes[pid] = result
+            return result
+        }
+        let host = hostPID(endpoint).flatMap { probed($0) == .live($0) ? $0 : nil }
+        return { _, leader in
+            SessionHost.classify(leader: leader, responsible: probed(leader), hostPid: host, appPid: appPID)
+        }
+    }
 
     private static func lookup(_ leader: pid_t) -> SessionHost.ResponsibleProcess {
         guard Responsibility.system.isAvailable, let pid = Responsibility.system.responsibleProcess(of: leader) else { return .unknown }

@@ -62,6 +62,7 @@ final class MockControlActions: ControlActions {
         case zmxList
         case zmxPrune
         case zmxKill(target: String, window: String?, pane: ZmxPaneRole)
+        case zmxReset
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String)
         case sidebarVisibility(ControlToggleMode)
@@ -150,6 +151,7 @@ final class MockControlActions: ControlActions {
     var nextZmxListResponse = ControlResponse(ok: true)
     var nextZmxPruneResponse = ControlResponse(ok: true)
     var nextZmxKillResponse = ControlResponse(ok: true)
+    var nextZmxResetResponse = ControlResponse(ok: true)
     var nextRemoteTreeResponse = ControlResponse(ok: true)
     var nextRemoteAttachResponse = ControlResponse(ok: true)
     var nextQuickResponse = ControlResponse(ok: true)
@@ -491,6 +493,11 @@ final class MockControlActions: ControlActions {
     func killZmxDaemon(target: String, window: String?, pane: ZmxPaneRole) -> ControlResponse {
         calls.append(.zmxKill(target: target, window: window, pane: pane))
         return nextZmxKillResponse
+    }
+
+    func resetLiveSessions() -> ControlResponse {
+        calls.append(.zmxReset)
+        return nextZmxResetResponse
     }
 
     func remoteTree(host: String?) async -> ControlResponse {

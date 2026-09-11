@@ -43,9 +43,12 @@ the control channel is available:
   per-surface token. The role is not rewritten after promotion or swap; the token resolves the LIVE slot.
   Prefer `--pane-id "$AGTERM_PANE_ID"` where supported, including `session status`, `session restore` and
   `session text`. The agent-status hook forwards both values for compatibility.
+- `TERM_PROGRAM=agterm` / `TERM_PROGRAM_VERSION` (agterm's version): the terminal identity, replacing
+  the `ghostty` pair embedded libghostty would set. A tool that decides a capability from a list of
+  terminal names (Claude Code's OSC 8 hyperlinks) needs its own override; see troubleshooting.md.
 
-The quick terminal is scratch (not in the tree) and belongs to no window, so it only gets
-`AGTERM_ENABLED` and `AGTERM_SOCKET` (no session/workspace/window ids). An untargeted `agtermctl` run
+The quick terminal is scratch (not in the tree) and belongs to no window, so of the `AGTERM_*` variables
+it only gets `AGTERM_ENABLED` and `AGTERM_SOCKET` (no session/workspace/window ids). An untargeted `agtermctl` run
 from it therefore resolves the active window like any other caller.
 
 These variables are inherited by every process the session's shell spawns — including long-lived
@@ -110,9 +113,10 @@ quick terminal is shown — the read side of the write-only `quick` command; app
 reports the same value), `zoomedSurface`, the four `dashboard*` fields, `sessionRecency` (the window's
 jump-back targets, session ids most recent first, with the active session dropped and the visible
 navigation scope applied; omitted when there is nothing to jump back to), `pickPending`,
-`askPending` (GUI asks only), and `app` (the
+`askPending` (GUI asks only), `app` (the
 serving app's `version`, plus `commit` when the build recorded one — the same value `agtermctl version`
-returns). reference.md lists every one with its exact shape. List windows with
+returns), and `liveReset` (the Live sessions reset state, omitted when nothing is pending and no launch
+consumed a reset). reference.md lists every one with its exact shape. List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `recencyDwellMs`,
 `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
@@ -341,7 +345,9 @@ omitted when expanded).
   open runs in the hidden shell and is invisible until it closes. There is no write twin of
   `session overlay text`: an overlay runs the caller's own program, so nothing types into one. Typing is the
   input a waiting agent asked for, so it clears that pane's `blocked`/`completed` glyph exactly as a
-  keystroke does; another pane's glyph, an `active` one, and an empty payload are left alone.
+  keystroke does, under Settings ▸ Agent Status ▸ Status reset: on the first key by default, only when the
+  text carries a newline under On Enter, never when Disabled; another pane's glyph, an `active` one, and an
+  empty payload are left alone.
 - `session copy` — print the session's selected text (does NOT touch the system clipboard).
 - `session paste` — paste the system clipboard into the session (the socket analogue of ⌘V; read it back with
   `session text`). `--pane left|right|scratch` picks the pane, with the usual role and position aliases;
@@ -638,6 +644,10 @@ refusing outright on an incomplete or conflicted inventory, and reporting each d
 stale-socket cleanup is not a kill · `zmx kill --target ID --pane left|right --force` - destroy one pane's
 daemon and the process in it; all three are required because this kills a backend process that reaches a
 pane no window is showing and every client attached to it, and none of its outcomes gets the undo grace ·
+`zmx reset --force` - Help ▸ Reset Live Sessions… without the dialog: ends every live session this app
+does not supervise at the next launch and recreates it under the session host, quitting and reopening
+agterm right after the reply; refused outside Live mode, on an incomplete inventory, and with nothing to
+reset ·
 `zmx tree [HOST]` - attachable sessions across EVERY open window, on another Mac with a HOST or this app
 without one (the bare form is exactly what the remote call runs on the far side). Each row carries the id
 `zmx attach` takes plus `windowID`/`windowName`, `workspaceID`/`workspaceName` (show the names, group by

@@ -239,7 +239,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries seventeen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries eighteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -279,7 +279,9 @@ window, omitted when none is pending), `askPending` (the pending GUI question's 
 and `app` (which agterm is serving this socket: `version`, plus
 `commit` when the build recorded one — the same value `agtermctl version` returns, so an agent already
 reading the tree gets its version floor without a second round-trip; it is not duplicated onto
-`window.list`, where a caller uses `version` instead). `idleMs` is live
+`window.list`, where a caller uses `version` instead), and `liveReset` (the Live sessions reset state, app-global
+like `app`: `pending` until the quit that follows a confirmed `zmx reset`, `last` for the launch that consumed
+it; omitted when neither applies). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four
@@ -596,7 +598,8 @@ error keeps those names for compatibility.
   which pane set the status. It has three effects: (1) keystroke-clear becomes pane-scoped — a status set
   from a background pane survives typing in a DIFFERENT pane (so a `right`- or `scratch`-tagged block is
   no longer wiped by foreground typing in the main pane, and only input in the OWNING pane clears it,
-  whether typed by hand or sent with `session type`), (2) while the session is `blocked`, a status from
+  whether typed by hand or sent with `session type`, and only as Settings ▸ Agent Status ▸ Status reset
+  allows: the first key by default, Return or a newline in the text under On Enter, never when Disabled), (2) while the session is `blocked`, a status from
   another pane that is not itself `blocked` is REFUSED with `blocked status owned by pane <pane>` —
   it changes nothing and plays no sound, so an agent working in one pane cannot erase the other pane's
   request for input; a second pane may still report its own `blocked`, `idle` is NOT exempt (Codex's
@@ -1548,6 +1551,18 @@ there is none; a pane whose window is closed simply comes back as a fresh shell.
 three-second undo. It refuses a daemon already gone, one zmx could not read (forcing that can unlink a
 live daemon's socket and leave it running unreachable), and a session inside its undo window. Killing the
 daemon of the pane you are typing in can kill the calling `agtermctl` before it reads the reply.
+
+`agtermctl zmx reset --force` — Help ▸ Reset Live Sessions… without the dialog. A live session created
+before the session host existed keeps its own macOS permission identity, so every new version of a tool in
+it asks for the microphone again; the reset ends those sessions' processes at the next launch and recreates
+them under the host, starting their captured commands again where possible. agterm quits and reopens itself
+right after answering, so running work in the affected sessions stops and agent conversations may need to be
+resumed by hand; run from inside one of those sessions it kills the calling shell. Sessions already
+supervised are left alone. It refuses outside Live sessions mode, while a mode change waits for a restart,
+on an incomplete pane inventory, and when nothing needs resetting. The reply carries `result.liveReset`
+with the session and pane counts; the next launch re-checks every session and only ever resets fewer than
+confirmed, and the tree's top-level `liveReset` reports `pending` until the quit and `last` for the launch
+that consumed the reset.
 
 `--window ID` scopes the search to one window's claims, for a session prefix claimed in more than one.
 Omit it to search every window, closed and unindexed ones included; `active` is not accepted, and neither

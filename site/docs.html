@@ -1479,9 +1479,10 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">Agent Status</strong> — the status-glyph colors and shapes, the blocked-session
-                sound, and an idle timeout to auto-follow blocked sessions. A
-                <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, and sound back to the
-                shipped values.
+                sound, a <strong style="color: #e6e1d7">Status reset</strong> choice for when typing into a blocked or completed
+                session clears its glyph (on the first key, on Enter, or disabled), and an idle timeout to auto-follow blocked
+                sessions. A <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, sound, and
+                status reset back to the shipped values.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span
@@ -2585,7 +2586,13 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session status --pane-id</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session restore --pane-id</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session text --pane-id</span> to resolve the current slot), so a
-              script can drive its own window without hard-coding ids.
+              script can drive its own window without hard-coding ids. The shell also identifies its terminal as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TERM_PROGRAM=agterm</span>, with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TERM_PROGRAM_VERSION</span> carrying agterm's version, so a
+              tool that decides a capability from a list of terminal names may need its own override. Claude Code prints links as
+              plain text until <span style="font-family: &quot;JetBrains Mono&quot;, monospace">FORCE_HYPERLINK=1</span> is set; see
+              <a href="https://github.com/umputun/agterm/blob/master/docs/troubleshooting.md#claude-code-prints-links-as-plain-text-instead-of-clickable-labels"
+                style="color: #6d82f3">troubleshooting</a>.
             </div>
 
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 22px 0 16px">
@@ -2681,7 +2688,14 @@
               absent from agterm's bundle, so the wrapper would fail on every connection. agterm forces those two
               back off and keeps the rest of your flags, leaving
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh</span> the real
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh</span>.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ssh</span>. The variables agterm
+              injects into the shell,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">TERM_PROGRAM</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">TERM_PROGRAM_VERSION</span> and the
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">AGTERM_*</span> set, are applied after
+              this file, so an <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env</span> line naming
+              one of them has no effect. Other
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env</span> keys reach every new shell.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keybind</span> here follows ghostty's
@@ -2954,8 +2968,12 @@
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >completed</span
               >
-              session clears its status; an interrupt keystroke, Esc or Ctrl-C, interrupts an
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> one and clears it too.
+              session clears its status, on the first key by default.
+              <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Status reset</strong> can move that to Enter, so a reply
+              you started and walked away from keeps the glyph until you send it, or disable it, leaving the status to the
+              agent's next hook or Clear Status. An interrupt keystroke, Esc or Ctrl-C, interrupts an
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> one and clears it
+              whatever the setting.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               When the sidebar is hidden the glyphs go with it, so an optional
@@ -3245,6 +3263,13 @@ command = "'/Users/you/.config/agterm/agent-status/agterm-codex-status.sh' stop"
                 Deleting a session, workspace, split, or window kills the corresponding daemon after any undo grace expires.
                 Switching to Fresh shells or Re-run commands and restarting ends every detached live process in this state directory.
                 A launch that still requests Live sessions but cannot use it preserves those processes for a later eligible launch.
+                A live session created before the session host existed keeps its own macOS permission identity, so a tool in it
+                asks for the microphone again after every update. <strong style="color: #e6e1d7">Help ▸ Reset Live Sessions…</strong>
+                replaces every such session at once: the dialog says how many it resets, agterm quits and reopens itself with the
+                same sessions and layout, and each captured command starts again where possible. Other work running in those
+                sessions stops, and agent conversations may need to be resumed by hand. Sessions already under the host are left
+                alone, and a notification afterwards says how many sessions the reset covered.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx reset --force</span> does the same without the dialog.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx list</span> shows every daemon and the pane that claims it,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx prune</span> clears the ones nothing claims, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx kill</span> destroys a single pane's daemon. A closed window's panes stay

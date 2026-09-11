@@ -134,7 +134,7 @@ struct SessionHostServerTests {
         let process = try PTYProcess.spawn(argv: ["/bin/sh", "-c", "trap '' TERM; printf ready; exec /bin/sleep 30"],
                                            env: [:], cwd: "/tmp", rows: 24, cols: 80)
         let child = NativeHostChild(process)
-        defer { try? child.terminate(grace: 0.01) }
+        defer { try? child.terminate(grace: 0.5) }
         var ready = Data()
         let deadline = ProcessInfo.processInfo.systemUptime + 5
         while ready.count < 5 {
@@ -144,8 +144,8 @@ struct SessionHostServerTests {
         }
         #expect(String(decoding: ready, as: UTF8.self) == "ready")
         let start = ProcessInfo.processInfo.systemUptime
-        try child.terminate(grace: 0.02)
-        #expect(ProcessInfo.processInfo.systemUptime - start >= 0.02)
+        try child.terminate(grace: 0.2)
+        #expect(ProcessInfo.processInfo.systemUptime - start >= 0.2)
         #expect(child.hasExited)
     }
 
@@ -223,9 +223,9 @@ struct SessionHostServerTests {
         let process = try PTYProcess.spawn(argv: ["/bin/sleep", "30"], env: [:], cwd: "/tmp", rows: 24, cols: 80)
         defer { close(process.ptyFD) }
         let child = NativeHostChild(.init(pid: process.pid, ptyFD: -1, execErrorFD: process.execErrorFD))
-        defer { try? child.terminate(grace: 0.01) }
+        defer { try? child.terminate(grace: 0.5) }
         #expect(child.poll() == .failed)
-        try child.terminate(grace: 0.01)
+        try child.terminate(grace: 0.5)
         #expect(child.hasExited)
     }
 

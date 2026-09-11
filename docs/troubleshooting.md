@@ -212,6 +212,16 @@ agterm is behaving correctly: it emits paired focus-in and focus-out reports wit
 
 Workaround until the upstream fix: answer the prompt before switching away, or if you have already returned to a stuck prompt, press `Esc` to dismiss it and let Claude Code re-ask.
 
+## Claude Code prints links as plain text instead of clickable labels
+
+Inside agterm, Claude Code prints a link as `label (https://…)` rather than as an OSC 8 hyperlink, so a list of ticket or PR links becomes a wall of URLs.
+
+agterm identifies itself to spawned shells as `TERM_PROGRAM=agterm`, with `TERM_PROGRAM_VERSION` carrying agterm's version, in place of the `ghostty` pair embedded libghostty would set ([#201](https://github.com/umputun/agterm/issues/201), [#203](https://github.com/umputun/agterm/pull/203)). Claude Code decides hyperlink support from a list of terminal names that does not include `agterm`, so it prints the URL. agterm renders OSC 8 links and ⌘-click opens them; only the detection is off.
+
+Workaround: set `FORCE_HYPERLINK=1` for the tool. Claude Code reads it before any terminal check. Per command, `FORCE_HYPERLINK=1 claude` or an alias. For every new shell, add `env = FORCE_HYPERLINK=1` to `~/.config/agterm/ghostty.conf`, reload the config (File ▸ Reload Config) and open a new session; that form also forces links into redirected output, because the variable skips the tty check as well.
+
+`env = TERM_PROGRAM=ghostty` in that file does nothing: agterm applies its identity after the config file. The durable fix is upstream, Claude Code recognizing `agterm` or `TERM=xterm-ghostty`. Reported in [discussion #583](https://github.com/umputun/agterm/discussions/583).
+
 ## Why agterm asks for camera, microphone and the rest
 
 agterm's code signature carries seven resource-access entitlements: Automation (Apple Events), camera,
@@ -280,7 +290,15 @@ A pane reads `app` when its daemon was created without the session host, either 
 because the host could not start; it remains attributed to the running agterm. When that agterm quits,
 the pane becomes `orphaned`; the same happens to panes whose session host dies. Commands in an
 `orphaned` pane remain responsible for themselves until the pane is replaced. Restarting agterm does not
-repair this; create a new Live pane to replace it.
+repair this.
+
+Help ▸ Reset Live Sessions… replaces every `orphaned` and `app` pane at once. The dialog says how many
+live sessions it resets; on Reset, agterm quits, ends those sessions' processes at the next launch and
+reopens itself with the same sessions and layout, starting each captured command again where possible.
+Other work running in those sessions stops, and agent conversations may need to be resumed by hand.
+Sessions already marked `supervisor` are left alone. A notification afterwards says how many sessions
+the reset covered; a session whose old process could not be confirmed gone gets no command restarted,
+and the reset can be run again. `agtermctl zmx reset --force` does the same without the dialog.
 
 For App Data prompts in `orphaned` or `app` panes, grant agterm Full Disk Access under
 System Settings ▸ Privacy & Security ▸ Full Disk Access; the
