@@ -1,6 +1,6 @@
 import Foundation
 
-/// Selection, next-launch narrowing and reporting for Help ▸ Reset Live Sessions… and `zmx.reset`.
+/// Selection, next-launch narrowing and reporting for Agterm ▸ Reset Live Sessions… and `zmx.reset`.
 /// Host-free: the app joins claims to daemons and kills; this decides which and reports what happened.
 public enum LiveReset {
     /// One pane confirmed for reset, with the leader observed at confirmation so the next launch can
@@ -197,7 +197,7 @@ public enum LiveReset {
         if outcome.inventoryFailed { return "Live sessions were not reset: the session list could not be read." }
         guard outcome.sessions.partial > 0 else { return nil }
         var text = "The reset covered \(outcome.sessions.reset) of \(outcome.sessions.affected) live sessions. "
-            + "Run Help ▸ Reset Live Sessions… again for the rest."
+            + "Run Agterm ▸ Reset Live Sessions… again for the rest."
         if outcome.sessions.unconfirmed > 0 {
             let noun = outcome.sessions.unconfirmed == 1 ? "session" : "sessions"
             text += " Some previous processes in \(outcome.sessions.unconfirmed) \(noun) may still be running; "

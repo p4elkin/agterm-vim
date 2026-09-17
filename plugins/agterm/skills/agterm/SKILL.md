@@ -493,7 +493,10 @@ omitted when expanded).
   and `surface zoom` will not address it. `session hud update`/`session hud close` with none up answer `no hud`. Read it
   back from the tree node's `hud` object; nothing announces it as an event, so poll `tree`.
 
-**window** — `window new [name] [--minimized]` · `window list` · `window select <id>` · `window close <id>` ·
+**window** — `window new [name] [--minimized]` · `window list` · `window select <id>` ·
+`window go --to next|prev` (raise the next/previous OPEN window, wrapping; relative, so it takes no id, and a
+closed bundle is not a stop — `window select` opens one. Errors with one window open. GUI twins: Navigate ▸
+Previous/Next Window and the keyless `previous_window`/`next_window` keymap actions) · `window close <id>` ·
 `window rename <id> <name>` ·
 `window delete <id>` · `window resize <id> --width W --height H` · `window move <id> --x X --y Y [--display N]` ·
 `window zoom <id>` (maximize-to-screen toggle, the double-click-header gesture; a plain green-button click does full screen) ·
@@ -644,7 +647,7 @@ refusing outright on an incomplete or conflicted inventory, and reporting each d
 stale-socket cleanup is not a kill · `zmx kill --target ID --pane left|right --force` - destroy one pane's
 daemon and the process in it; all three are required because this kills a backend process that reaches a
 pane no window is showing and every client attached to it, and none of its outcomes gets the undo grace ·
-`zmx reset --force` - Help ▸ Reset Live Sessions… without the dialog: ends every live session this app
+`zmx reset --force` - Agterm ▸ Reset Live Sessions… without the dialog: ends every live session this app
 does not supervise at the next launch and recreates it under the session host, quitting and reopening
 agterm right after the reply; refused outside Live mode, on an incomplete inventory, and with nothing to
 reset ·

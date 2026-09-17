@@ -104,6 +104,7 @@ SIGTERM use normal process behavior.
   tree to act on; default is the frontmost. With `--window` set, that window must be open. Without it,
   an id/prefix session target is matched across all open windows.
 - `window.*` commands take the window selector as a positional argument, default `active` (frontmost).
+  `window go` is the exception: it is relative to the active window and takes no selector.
 - A window need not be open to be a `window.*` target (e.g. `window select` opens a closed one).
 
 ## tree
@@ -899,6 +900,12 @@ shell (no controlling terminal — `/dev/tty` errors). See examples.md for usage
   carries `parkedHidden: true` — the read side of `sidebar parked`, true-only, read from the open
   window's store like `sidebarVisible` and omitted for a closed window.
 - `window select <id>` — raise it if open, else open it.
+- `window go --to next|prev` — raise the next/previous OPEN window in library order, wrapping. Relative
+  to the active window, so it takes no id and no `--window`. Only open windows are stepped through: a
+  closed bundle is not a stop on the way round, and `window select` is what opens one. Returns the id it
+  landed on; errors `no other open window to navigate to` with a single window open. The GUI twins are
+  Navigate ▸ Previous/Next Window and the `previous_window`/`next_window` keymap actions, which ship
+  keyless.
 - `window close <id>` — close the on-screen window (the bundle is kept; reopen with select).
 - `window rename <id> <name>`.
 - `window delete <id>` — keep-at-least-one; deleting the last errors.
@@ -1400,7 +1407,7 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `focus_workspace`, `toggle_workspace_filter`, `quick_terminal`,
 `session_palette`, `command_palette`, `custom_command_palette`, `dashboard`, and the navigation actions (`previous_session`, `next_session`,
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
-`focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
+`previous_window`, `next_window`, `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
 `keymap.conf` in `$EDITOR`, then `agtermctl keymap reload`.
 
 `new_session_in_workspace` ships no default chord and no menu item, so it only exists once you bind it —
@@ -1552,7 +1559,7 @@ three-second undo. It refuses a daemon already gone, one zmx could not read (for
 live daemon's socket and leave it running unreachable), and a session inside its undo window. Killing the
 daemon of the pane you are typing in can kill the calling `agtermctl` before it reads the reply.
 
-`agtermctl zmx reset --force` — Help ▸ Reset Live Sessions… without the dialog. A live session created
+`agtermctl zmx reset --force` — Agterm ▸ Reset Live Sessions… without the dialog. A live session created
 before the session host existed keeps its own macOS permission identity, so every new version of a tool in
 it asks for the microphone again; the reset ends those sessions' processes at the next launch and recreates
 them under the host, starting their captured commands again where possible. agterm quits and reopens itself

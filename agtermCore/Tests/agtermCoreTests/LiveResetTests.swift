@@ -263,7 +263,7 @@ struct LiveResetTests {
         let outcome = LiveReset.Outcome(panes: .init(confirmed: 3, killed: 2, gone: 0, skipped: 1), unconfirmed: [],
                                         sessions: .init(affected: 3, reset: 2, partial: 1, unconfirmed: 0), inventoryFailed: false)
         let text = LiveReset.notificationText(outcome: outcome)
-        #expect(text == "The reset covered 2 of 3 live sessions. Run Help ▸ Reset Live Sessions… again for the rest.")
+        #expect(text == "The reset covered 2 of 3 live sessions. Run Agterm ▸ Reset Live Sessions… again for the rest.")
     }
 
     @Test func notificationReportsSurvivorsBySession() {
@@ -271,7 +271,7 @@ struct LiveResetTests {
                                         unconfirmed: [Self.paneA, Self.paneASplit],
                                         sessions: .init(affected: 2, reset: 1, partial: 1, unconfirmed: 1), inventoryFailed: false)
         let text = LiveReset.notificationText(outcome: outcome)
-        #expect(text == "The reset covered 1 of 2 live sessions. Run Help ▸ Reset Live Sessions… again for the rest. "
+        #expect(text == "The reset covered 1 of 2 live sessions. Run Agterm ▸ Reset Live Sessions… again for the rest. "
             + "Some previous processes in 1 session may still be running; those commands were not restarted.")
     }
 
@@ -283,7 +283,7 @@ struct LiveResetTests {
 
         let text = LiveReset.notificationText(outcome: outcome)
 
-        #expect(text == "The reset covered 0 of 1 live sessions. Run Help ▸ Reset Live Sessions… again for the rest. "
+        #expect(text == "The reset covered 0 of 1 live sessions. Run Agterm ▸ Reset Live Sessions… again for the rest. "
             + "Some previous processes in 1 session may still be running; those commands were not restarted.")
     }
 

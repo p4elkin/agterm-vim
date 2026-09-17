@@ -292,7 +292,7 @@ the pane becomes `orphaned`; the same happens to panes whose session host dies. 
 `orphaned` pane remain responsible for themselves until the pane is replaced. Restarting agterm does not
 repair this.
 
-Help ▸ Reset Live Sessions… replaces every `orphaned` and `app` pane at once. The dialog says how many
+Agterm ▸ Reset Live Sessions… replaces every `orphaned` and `app` pane at once. The dialog says how many
 live sessions it resets; on Reset, agterm quits, ends those sessions' processes at the next launch and
 reopens itself with the same sessions and layout, starting each captured command again where possible.
 Other work running in those sessions stops, and agent conversations may need to be resumed by hand.

@@ -130,7 +130,7 @@ Check these in order:
   `foregroundCommand` in `windows/<id>.json` while agterm is STOPPED: the next launch moves it into memory
   and rewrites the file with nil, so a running app always shows null there.
 - **A tool asks for the microphone again after every update.** The pane was created before the session
-  host and reads `orphaned` in `agtermctl tree --json`, so macOS charges each tool version separately. Help ▸
+  host and reads `orphaned` in `agtermctl tree --json`, so macOS charges each tool version separately. Agterm ▸
   Reset Live Sessions… (or `agtermctl zmx reset --force`) ends those sessions' processes at the next launch
   and recreates them under the host; agterm quits and reopens itself, captured commands start again where
   possible, and the notification afterwards says how many sessions were covered. A session whose old process

@@ -96,6 +96,7 @@ final class MockControlActions: ControlActions {
         case windowNew(String?, minimized: Bool)
         case windowList
         case windowSelect(target: String?)
+        case windowGo(WorkspaceNavigation)
         case windowClose(target: String?)
         case windowRename(target: String?, String)
         case windowDelete(target: String?)
@@ -179,6 +180,7 @@ final class MockControlActions: ControlActions {
     var nextWindowNewResponse = ControlResponse(ok: true)
     var nextWindowListResponse = ControlResponse(ok: true)
     var nextWindowSelectResponse = ControlResponse(ok: true)
+    var nextWindowGoResponse = ControlResponse(ok: true)
     var nextWindowCloseResponse = ControlResponse(ok: true)
     var nextWindowRenameResponse = ControlResponse(ok: true)
     var nextWindowDeleteResponse = ControlResponse(ok: true)
@@ -693,6 +695,11 @@ final class MockControlActions: ControlActions {
     func windowSelect(_ target: String?) async -> ControlResponse {
         calls.append(.windowSelect(target: target))
         return nextWindowSelectResponse
+    }
+
+    func windowGo(direction: WorkspaceNavigation) -> ControlResponse {
+        calls.append(.windowGo(direction))
+        return nextWindowGoResponse
     }
 
     func windowClose(_ target: String?) async -> ControlResponse {

@@ -1,7 +1,7 @@
 import AppKit
 import agtermCore
 
-/// The one confirm path for Help ▸ Reset Live Sessions… and `zmx.reset`: refuses in a fixed order, shows
+/// The one confirm path for Agterm ▸ Reset Live Sessions… and `zmx.reset`: refuses in a fixed order, shows
 /// the dialog unless already confirmed, and holds the selection for the quit. The caller decides when to
 /// terminate, the menu right away and the control server after its reply is written; `AppDelegate` reads
 /// `armablePending` to skip the quit alert and to arm the marker.
@@ -81,7 +81,7 @@ final class LiveResetCoordinator {
         return .confirmed(selection)
     }
 
-    /// The Help item: a refusal is shown, a cancel is silent, a confirmation quits.
+    /// The menu item: a refusal is shown, a cancel is silent, a confirmation quits.
     func runFromMenu() {
         switch request(confirmed: false) {
         case .refused(let refusal): presentRefusal(refusal)

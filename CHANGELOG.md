@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.29.1 - 2026-09-11
+
+### Bug Fixes
+
+- the Reset Live Sessions… row in the Agterm menu had no icon, so it rendered indented in the blank icon slot, and it sat next to Settings… where it read as a preference. It now sits in Quit's group directly above Quit Agterm, with an icon, since it quits and reopens the app 3c91481 @umputun
+
+## v0.29.0 - 2026-09-11
+
+### New Features
+
+- **Reset Live Sessions.** A Live pane created before the session host existed, or whose host has exited, keeps its own macOS permission identity, so a tool in it asks for the microphone again after every update and restarting agterm does not repair it. **Agterm ▸ Reset Live Sessions…** and `agtermctl zmx reset --force` replace every such pane at once: the dialog says how many live sessions it resets, agterm quits and reopens itself with the same sessions and layout, and each captured command starts again where possible. Other work running in those sessions stops, and agent conversations may need to be resumed by hand. Sessions already under the host keep their processes. The reset runs only while Live sessions is both the configured and the launched mode, the marker is narrowed to panes that still match before anything is killed, and a partial reset posts a notification saying how many sessions it covered. The tree and `zmx list` read a pending reset and this launch's outcome back under `liveReset` #587 @umputun
+- **step between open windows.** Sessions, workspaces and panes had previous and next; windows did not, which left ⌘` or a script over `window list`. `previous_window` and `next_window` are keyless keymap builtins, Navigate ▸ Previous Window and Next Window have matching palette rows, and `agtermctl window go --to next|prev` does the same from the control API. The step walks the open windows in library order and wraps, so a closed window is not a stop on the way round; with fewer than two open windows the items disable and the command answers that there is no other open window #591 @umputun
+- **a title-bar button for custom commands.** Hidden by default and switched on in Settings ▸ Interface, it lists every `keymap.conf` command with its chord in a popover, the mouse form of Navigate ▸ Custom Commands. A row runs through the same modal gate as a palette pick and returns focus to the terminal. Once the file holds more than five commands, up to five of the most-run ones lead the popover above a separator; every run counts, whether by chord, palette or popover, and use changes only which commands sit on top, never their order. A second `command` line with a name already taken is skipped with a diagnostic, since the name is the key a run count is stored under #582 #584 @umputun
+- **choose when typing clears a blocked or completed status.** Settings ▸ Agent Status ▸ Status reset picks between On first key, today's behaviour and the default, On Enter, which clears on a bare Return or keypad Enter only so a reply you started and walked away from keeps the glyph until you send it, and Disabled, which leaves the status to the agent's hooks and Clear Status. Esc and Ctrl-C still clear an `active` glyph in every mode. `session type` follows the same setting, with a newline in the text counting as Return #585 @umputun
+- **the attachment host in custom commands, and local launches from a remote session.** A session attached with `agtermctl zmx attach` reports a remote working directory, and a custom command, the scratch terminal, an overlay opened without `--cwd`, the quick terminal, a local split, Duplicate Session and a new session under the current-directory setting inherited it as if it were local. Custom commands now see `AGT_SESSION_HOST`, the ssh destination the session was attached from and empty for a local session, while `AGT_SESSION_PWD` keeps the reported path. Those local launches keep an existing local directory at the reported path, which supports mirrored checkouts, and start in the local home directory otherwise #576 @umputun
+
+### Improved
+
+- the environment reference states the `TERM_PROGRAM=agterm` identity, and documents the `FORCE_HYPERLINK=1` workaround for Claude Code, which prints links as plain URLs because agterm is missing from its terminal allowlist 9dd5294 @umputun
+- the session-host tests build their own socket client instead of copying `/usr/bin/nc`, a copy of which is killed on exec on some macOS builds, seen on 26.0.1 with SIP enabled, so `swift test` passes on such a Mac again #578 @p4elkin
+
+### Bug Fixes
+
+- status sounds stalled typing in every session. Playback and the first lookup of a sound name both ran on the main thread, the one that delivers keystrokes, and a sound file on slow storage held it for seconds. Both now run on their own queues; cached names and the built-in sounds still answer at once, so an unknown name is still refused in the reply #579 #580 @umputun
+- the quit alert warned that all running shells end while Live sessions mode leaves them running. It now follows the active launch mode and shows counts only in Live mode ce28343 @umputun
+- the two-agent chat recipe refused to send to a Codex pane while Codex drew its idle animation, and a send with text in the composer failed because the animation kept drawing over typed characters. For the Codex pane only, animation rows count as blank and a particle stands for the cell it covers, so the prompt is found, typed text settles, and the body is verified once more before submit #588 @paskal
+- the Homebrew cask seed carried a deprecated postflight block that Homebrew warns about on every install and a description `brew style` rejects. Both were fixed by hand in the tap and never came back here, so a reseed would have shipped them again c0b5a85 @umputun
+
 ## v0.28.0 - 2026-09-09
 
 ### New Features

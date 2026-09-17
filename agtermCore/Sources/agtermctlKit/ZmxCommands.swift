@@ -22,7 +22,7 @@ struct Zmx: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Reset the live sessions this app does not supervise, then quit and reopen agterm.",
             discussion: """
-            The same operation as Help > Reset Live Sessions, without the dialog. A live session created \
+            The same operation as Agterm > Reset Live Sessions, without the dialog. A live session created \
             before the session host existed keeps its own macOS permission identity, so every new version \
             of a tool in it asks for the microphone again. The reset ends those sessions' processes at the \
             next launch and recreates them under the host, starting their captured commands again where \

@@ -62,7 +62,7 @@ extension ControlServer {
         }
     }
 
-    /// The panes Help ▸ Reset Live Sessions… would reset: every claim, open or saved, whose daemon leader
+    /// The panes Agterm ▸ Reset Live Sessions… would reset: every claim, open or saved, whose daemon leader
     /// is orphaned or attributed to this app. Nil when the listing failed, which refuses the action.
     func liveResetSelection() -> LiveReset.Selection? {
         guard let zmxClient, let records = zmxClient.sessionRecords() else { return nil }
