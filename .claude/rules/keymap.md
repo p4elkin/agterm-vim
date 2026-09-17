@@ -81,8 +81,19 @@ paths:
   `KeymapUITests.testCloseSessionReclaimsCommandWAfterReload`.
 - `CustomCommandRunner` uses an app-wide local `.keyDown` monitor. Its `KeybindMatcher` supports simple
   chords and leaders such as `ctrl+a>g`, ignores repeats, and times leaders out after 1.5 seconds.
-  `.fired` launches detached `/bin/sh -c` with cwd, selection, and `$AGT_*`; non-zero exit calls
-  `notifyCommandFailure`. `.firedBuiltin` routes through `AppActions.perform(_:in:)`, a reverse lookup over
+  `.fired` launches detached `/bin/sh -c` with cwd, selection, and `$AGT_*`; stdin and stdout go to
+  `/dev/null` while stderr goes to a temp FILE, whose last 16 KiB the termination handler reads before
+  removing it (`StderrFile`, `CommandFailure`). A pipe would be wrong here in both directions: its read end
+  dies with agterm, so a background process a chord started would take SIGPIPE where `/dev/null` let it run
+  on, and it needs a live reader or a full buffer blocks the command. The accepted cost is disk: the 16 KiB
+  is a READ cap, so a command that logs heavily writes all of it, and a descendant that inherited the file
+  goes on growing the unlinked inode until it exits. `/dev/null` grew nothing. A spawn error or non-zero exit calls `notifyCommandFailure` AND posts
+  a HUD over the firing session through the injected `FailureHud`, carrying the name, the exit status or
+  launch error, and the last nonblank stderr line; the banner obeys the notifications setting, so with
+  banners off the panel is the only report. It clears itself through the HUD's own `--hide-after`, posted
+  with `failureHudSeconds`, so the runner holds no clock and no close of its own; [[control-api]] owns that
+  contract and the ownership question with it. A program overlay owning the slot refuses the open, which is
+  logged and never evicts the program. Exit 0 reports nothing whatever it printed. `.firedBuiltin` routes through `AppActions.perform(_:in:)`, a reverse lookup over
   `PaletteCommand.allCases` on `builtinAction`, falling
   back to `paletteLessHandler(for:)` — the sole listing of the actions holding no palette row, partitioned
   against `PaletteCommand` by `AppActionsPaletteTests`. Rebuild the matcher from commands AND
@@ -262,6 +273,11 @@ paths:
   why `CommandContext.Pane` deliberately cannot spell an overlay; its buffer is `session overlay copy`/
   `text`, owned by [[control-api]]. A single pane is always `left`. Primary exit promotes the
   split into the main slot, clears `isSplitPane`, and makes it addressable only as `left`.
+- `{AGT_PANE_ID}`/`$AGT_PANE_ID` is the stable token of the surface in that slot, `Session.paneToken(for:)`,
+  read from the slot rather than the firing surface because an overlay's own view carries no token (#602).
+  It is the same value `--pane-id` consumers resolve, so an overlay chord carries the token of the pane
+  it names, and a scratch chord the scratch's own. Empty in the sessionless context, and deliberately
+  not session-scoped so a launcher naming it still fires there.
 - `resolveBuiltinOverrides` is order-independent: fold last-wins candidates, resolve all final chords,
   then drop every overridden owner of each collision together. A drop reverts to the shipped default, so
   repeat to a fixpoint; distinct shipped defaults and strict candidate removal guarantee termination.
@@ -385,3 +401,6 @@ paths:
   optional fish, VISUAL precedence, rc sourcing, and quoting.
   Overlay close reloads only the recorded edit session. No control command is needed because scripts can
   compose `session overlay open "$EDITOR <path>" --size-percent 95`.
+- `hooks.conf` shares `ConfigPaths`, `KeymapDiagnostic` and the Edit/Reload UX, not the parser:
+  `parseHooksConf` keeps the shell remainder verbatim with no inline-comment stripping. Its contract is
+  in [[control-api]].

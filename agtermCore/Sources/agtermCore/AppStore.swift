@@ -355,7 +355,7 @@ public final class AppStore {
                                           statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
                                           statusColor: idle ? nil : session.agentIndicator.color,
                                           statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
-                                          statusChangedAt: idle ? nil : session.statusChangedAt?.timeIntervalSince1970,
+                                          statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
                                           background: session.backgroundWatermark,
                                           unseen: session.unseenCount > 0 ? session.unseenCount : nil,
                                           turn: session.turnCounter > 0 ? session.turnCounter : nil,
@@ -410,7 +410,7 @@ public final class AppStore {
                               backgroundColor: spec.backgroundColor, textColor: spec.textColor,
                               sizePercent: session.overlaySizePercent,
                               heightPercent: session.hudHeightPercent, position: spec.position.rawValue,
-                              pane: session.hudTargetPane?.rawValue)
+                              pane: session.hudTargetPane?.rawValue, hideAfter: spec.effectiveHideAfter)
     }
 
     /// Creates a workspace and appends it. With `revealNewWorkspace` (the default) and the filter ON, the new

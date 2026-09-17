@@ -71,11 +71,16 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
     public let position: String
     /// The pane currently carrying the stable HUD target, nil/omitted for session-wide placement.
     public let pane: String?
+    /// The panel's auto-hide in seconds, 0 for one that stays until something closes it. The CONFIGURED
+    /// duration rather than the time left: each successful open or update restarts it, so a caller who wants
+    /// a countdown holds its own clock from the call it made.
+    public let hideAfter: Double
 
     public init(message: String, detail: String? = nil, spinner: String = HudSpinner.noneName,
                 backgroundColor: String? = nil, textColor: String? = nil,
                 sizePercent: Int? = nil, heightPercent: Int? = nil, position: String,
-                pane: String? = nil) {
+                pane: String? = nil, hideAfter: Double = 0) {
+        self.hideAfter = hideAfter
         self.message = message
         self.detail = detail
         self.spinner = spinner
@@ -112,6 +117,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// nil/omitted when none reported. The unprocessed `Session.oscTitle`, distinct from `name` (the derived
     /// sidebar label, which uses it as one fallback); a remote session's local `cwd` goes stale, this does not.
     public let title: String?
+    /// Whether this is the window's selected session. Selection within the window, not keyboard focus: it
+    /// stays `true` while another window is frontmost.
     public let active: Bool
     /// Whether the split is SHOWN side by side, the read side of `session.split on|off`. A split hidden with
     /// ⌘D reports `false` while its pane stays alive, so a caller asking "is there a second pane" must read
@@ -220,11 +227,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// the Settings shape / the default plain circle. The read side of `session.status --shape` — the
     /// PER-CALL override only, exactly like `statusColor`.
     public let statusShape: String?
-    /// When the agent status was last SET, as epoch seconds on the `ControlEvent.ts` clock (so the two
-    /// compare directly); nil/omitted when idle. Stamped on EVERY non-idle `session.status`, not only on a
-    /// change of state, so a hook re-pushing `active` refreshes it and "now minus this" reads as how long ago
-    /// the status was last WRITTEN — normally the agent's own push, though a pane promotion re-tags the
-    /// indicator and counts too. Ephemeral like `status` and `unseen` — never persisted.
+    /// When the status was last set, idle and repeated values included, as epoch seconds on the
+    /// `ControlEvent.ts` clock. Omitted before any set; never persisted.
     public let statusChangedAt: Double?
     /// The session's background watermark spec; nil/omitted when none is set. The read side of
     /// `session.background`.

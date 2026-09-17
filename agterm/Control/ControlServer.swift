@@ -62,6 +62,10 @@ final class ControlServer {
     private let cacheLock = NSLock()
     nonisolated(unsafe) private var cachedWindowNodes: [ControlWindowNode] = []
 
+    /// Live HUD auto-hide timers, one per session. `ControlServer+Hud` owns the logic; the state sits here
+    /// because an extension cannot hold it. Main-actor only.
+    var hudAutoHide: [UUID: HudAutoHide] = [:]
+
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }
         return cachedWindowNodes
@@ -154,6 +158,8 @@ final class ControlServer {
 
     /// The Live sessions reset's confirm path; nil refuses `zmx.reset` as unsupported.
     var liveReset: LiveResetCoordinator?
+    /// The scheduler's rows for `hooks.list`, wired by `agtermApp` once the controller exists.
+    var hookStatus: () -> [ControlHookEntry] = { [] }
     /// The last launch's reset outcome for the read-back; injectable so a hosted test stages one.
     var liveResetOutcome: () -> LiveReset.Outcome? = { GhosttyApp.shared.liveResetOutcome }
 
@@ -535,7 +541,8 @@ final class ControlServer {
                 .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
                 .sessionMark,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
-                .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload, .themeSet, .themeList,
+                .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .hooksReload, .hooksList, .configReload,
+                .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarParked, .sidebarExpand, .sidebarCollapse, .sidebarWidth,
                 .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,

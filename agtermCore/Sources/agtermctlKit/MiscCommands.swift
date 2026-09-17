@@ -35,6 +35,36 @@ struct Keymap: ParsableCommand {
     }
 }
 
+// MARK: - hooks
+
+struct Hooks: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Event hook commands.",
+        subcommands: [Reload.self, List.self]
+    )
+
+    struct Reload: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Re-read and apply hooks.conf (prints the diagnostic count).")
+        // app-global like the keymap commands, so no `--window`.
+        @OptionGroup var options: BasicOptions
+
+        func makeRequest() throws -> ControlRequest { ControlRequest(cmd: .hooksReload) }
+    }
+
+    struct List: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Show every hook with its running child, queue depth, dropped count and last failure.",
+            discussion: "One row per `on <kind> <shell...>` line in file order, then any hook removed from the file "
+                + "whose child is still running, marked retired. `running` is the child's pid and elapsed seconds "
+                + "while a hook is busy; `pending` is how many events wait behind it and `dropped` how many the "
+                + "bounded queue discarded; `last failure` stays until the hook's next clean run (a reload keeps it)."
+        )
+        @OptionGroup var options: BasicOptions
+
+        func makeRequest() throws -> ControlRequest { ControlRequest(cmd: .hooksList) }
+    }
+}
+
 // MARK: - config
 
 struct Config: ParsableCommand {
@@ -378,6 +408,8 @@ struct Pick: ParsableCommand {
         @Option(name: .long, help: "Initial text for the picker query field; it opens already filtered.")
         var query: String?
         @Flag(name: .long, help: "Accept the current query as a custom result.") var allowCustom = false
+        @Option(name: .long, help: "Item id to open highlighted; a --query that hides it falls back to the first row.")
+        var select: String?
         @Flag(name: .long, help: "Raise the target window when the picker opens.") var follow = false
         @Flag(name: .long, help: "Print the picker id and return without waiting for a result.") var noBlock = false
         @OptionGroup var options: ClientOptions
@@ -393,7 +425,8 @@ struct Pick: ParsableCommand {
                 items: try Self.parseItems(input),
                 prompt: prompt,
                 query: query,
-                allowCustom: allowCustom ? true : nil
+                allowCustom: allowCustom ? true : nil,
+                selection: select
             )
             return ControlRequest(cmd: .pickOpen, args: options.withWindow(args))
         }

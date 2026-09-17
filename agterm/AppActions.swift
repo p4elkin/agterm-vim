@@ -381,6 +381,25 @@ final class AppActions {
         }
     }
 
+    /// Re-read `hooks.conf` and apply it to the scheduler. Shared by the File menu, the palette and the Edit
+    /// Hooks overlay close (`hooks.reload` reaches the model directly, like `keymap.reload`); no-op before
+    /// the model wires.
+    func reloadHooks() { settingsModel?.reloadHooks() }
+
+    /// The session whose open overlay is the hooks editor, so its close reloads the hooks. Nil when none.
+    var hooksEditOverlaySession: UUID?
+
+    /// Open `hooks.conf` in the user's editor in a 95% overlay over the active session, exactly like
+    /// `editKeymap`; exiting reloads the hooks.
+    func editHooks() {
+        guard uiActionsEnabled else { return }
+        guard let store, let id = store.selectedSessionID, let settingsModel else { return }
+        settingsModel.ensureStarterHooks()
+        if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: settingsModel.hooksPath), sizePercent: 95) {
+            hooksEditOverlaySession = id
+        }
+    }
+
     /// Re-read the ghostty config and rebroadcast it to every live surface; `SettingsModel` posts the
     /// diagnostics banner, mirroring `reloadKeymap`. Returns the diagnostic count (0 = clean, and 0 before the
     /// model is wired) so the control channel reports what the reload produced. Shared by File ▸ Reload

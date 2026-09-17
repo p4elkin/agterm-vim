@@ -4,6 +4,50 @@ import os
 
 private let logger = Logger(subsystem: "com.umputun.agterm", category: "CustomCommandRunner")
 
+/// How the runner shows a failed command: posts the panel, answering false when the slot holds a running
+/// program, which is never evicted for a message. Taking it down again is the panel's own auto-hide.
+struct FailureHud {
+    let open: (_ sessionID: String, _ message: String, _ detail: String?) -> Bool
+}
+
+/// A command's stderr, captured to a temp file so a failure can say what it printed.
+///
+/// A FILE rather than a pipe: a pipe's read end lives only as long as agterm, so a background process a
+/// chord started would take SIGPIPE on its next write once the app quit, where inheriting `/dev/null` let it
+/// run on. A file also needs no reader, so nothing can block on a full buffer and nothing of ours outlives
+/// the command.
+private struct StderrFile: @unchecked Sendable {
+    let url: URL
+    let handle: FileHandle
+
+    /// Nil when the file cannot be created; the caller then sends stderr to `/dev/null` as before.
+    init?() {
+        url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agterm-command-\(UUID().uuidString).err")
+        guard FileManager.default.createFile(atPath: url.path, contents: nil),
+              let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        self.handle = handle
+    }
+
+    /// The last `CommandFailure.tailLimit` bytes the command wrote, after which the file is removed. The cap
+    /// is on the READ: the file itself holds everything written to it, and a background descendant that
+    /// inherited it keeps growing the unlinked inode, whose space returns only when that process exits.
+    func consume() -> [UInt8] {
+        defer {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: url)
+        }
+        guard let reader = try? FileHandle(forReadingFrom: url) else { return [] }
+        defer { try? reader.close() }
+        let size = (try? reader.seekToEnd()) ?? 0
+        // read the sampled interval, not to the end: a descendant appending between the two would otherwise
+        // hand back everything it wrote as well.
+        let wanted = min(size, UInt64(CommandFailure.tailLimit))
+        try? reader.seek(toOffset: size - wanted)
+        return [UInt8]((try? reader.read(upToCount: Int(wanted))) ?? Data())
+    }
+}
+
 /// Drives user-defined custom commands: an app-wide `NSEvent` local key monitor turns key presses into
 /// chords, a `CustomCommandEngine` resolves them (simple chords and leader sequences like `ctrl+a > g`), and
 /// a fired command runs detached as `/bin/sh -c` with the session's context in `{AGT_X}` tokens and `$AGT_X`
@@ -20,6 +64,9 @@ final class CustomCommandRunner {
     private let settings: SettingsModel
     private let actions: AppActions
     private let socketProvider: () -> String
+    /// Posts the failure panel over the session a command fired in; the panel's own auto-hide takes it down.
+    /// Injected rather than reached for: the control server owns the HUD path, and a test supplies a recorder.
+    private let failureHud: FailureHud?
 
     private var commandEngine = CustomCommandEngine(commands: [])
 
@@ -33,16 +80,21 @@ final class CustomCommandRunner {
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
 
+    /// How long a failure panel stays up: long enough to read a line, short enough that a message about a
+    /// command that has already finished is not still sitting over the session minutes later.
+    static let failureHudSeconds: TimeInterval = 10
+
     /// Run counts behind the title-bar popover's most-used section; every spawn path records into it.
     let usage: CustomCommandUsageStore
 
     init(library: WindowLibrary, settings: SettingsModel, actions: AppActions, usage: CustomCommandUsageStore,
-         socketProvider: @escaping () -> String) {
+         socketProvider: @escaping () -> String, failureHud: FailureHud? = nil) {
         self.library = library
         self.settings = settings
         self.actions = actions
         self.usage = usage
         self.socketProvider = socketProvider
+        self.failureHud = failureHud
     }
 
     /// Install the local `.keyDown` monitor (idempotent), build the keybind map, observe `.agtermKeymapChanged`.
@@ -515,7 +567,9 @@ final class CustomCommandRunner {
 
     /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names
     /// from the owning workspace/window, the selection from `selectionSurface`, the fired-from pane from the
-    /// caller (`left`|`right`|`scratch`), the socket from the control server.
+    /// caller (`left`|`right`|`scratch`) with the token of the surface in that slot, the socket from the
+    /// control server. The token is read from the slot, not from `selectionSurface`: for an overlay chord
+    /// that view is the overlay itself, which has no token, while `pane` names the terminal underneath.
     private func context(for session: Session, in store: AppStore, selectionSurface: GhosttySurfaceView?,
                          pane: CommandContext.Pane) -> CommandContext {
         let workspace = store.workspace(forSession: session.id)
@@ -531,6 +585,7 @@ final class CustomCommandRunner {
             windowID: windowID?.uuidString ?? "",
             windowName: windowName,
             pane: pane,
+            paneID: session.paneToken(for: pane),
             selection: selectionSurface?.readSelection() ?? "",
             socket: socketProvider()
         )
@@ -548,7 +603,7 @@ final class CustomCommandRunner {
     /// Spawn the expanded command as a detached `/bin/sh -c`, exporting `$AGT_*` over the app environment and
     /// running in `cwd` (nil for a sessionless launch, which inherits the app's). `PATH` is widened first
     /// (`CommandPath`): the app's own is launchd's, and `sh -c` runs no profile, so a bare `agtermctl` would
-    /// exit 127. A spawn error or non-zero exit posts a failure banner; no output capture, no success banner.
+    /// exit 127. stderr goes to a temp file the failure report reads; a clean exit reports nothing.
     private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) {
         let line = context.expand(command.command)
         let process = Process()
@@ -559,26 +614,53 @@ final class CustomCommandRunner {
                                                   bundledCLIDirectory: CLIInstaller.bundledTool?
                                                       .deletingLastPathComponent().path)
         process.environment = environment
-        // fire-and-forget: pin stdio to /dev/null rather than inherit the app's fds, which vary by launch.
+        // fire-and-forget: pin stdin and stdout to /dev/null rather than inherit the app's fds, which vary by
+        // launch. stderr is captured instead: it carries the one line that says why a command failed.
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let capture = StderrFile()
+        process.standardError = capture?.handle ?? FileHandle.nullDevice
+        if capture == nil {
+            logger.error("custom command \"\(command.name, privacy: .public)\": stderr capture unavailable")
+        }
         if let cwd, !cwd.isEmpty {
             process.currentDirectoryURL = URL(fileURLWithPath: cwd, isDirectory: true)
         }
         let name = command.name
+        let sessionID = context.sessionID
         process.terminationHandler = { proc in
-            guard proc.terminationStatus != 0 else { return }
             let status = proc.terminationStatus
-            // the handler fires on an arbitrary queue; hop to the main actor to post the banner.
-            DispatchQueue.main.async { NotificationManager.shared.notifyCommandFailure(name: name, detail: "exit \(status)") }
+            // read and remove the file whatever the status, or a successful command leaks one per run.
+            let detail = capture.map { CommandFailure.detail(fromTail: $0.consume()) } ?? nil
+            guard status != 0 else { return }
+            // the handler fires on an arbitrary queue; hop to the main actor to post.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.report(name: name, reason: "exit \(status)", detail: detail, sessionID: sessionID)
+                }
+            }
         }
         do {
             try process.run()
             usage.record(command)
         } catch {
+            _ = capture?.consume()
             logger.error("custom command \"\(name, privacy: .public)\" failed to spawn: \(error.localizedDescription, privacy: .public)")
-            NotificationManager.shared.notifyCommandFailure(name: name, detail: error.localizedDescription)
+            // a command that never started has no exit status and no output of its own, so the launch error
+            // is the whole diagnosis.
+            report(name: name, reason: error.localizedDescription, detail: nil, sessionID: sessionID)
+        }
+    }
+
+    /// Surface a failed command: the macOS banner as before, plus a panel over the session it fired in. The
+    /// banner obeys the notifications setting, so with banners off the panel is the only thing the user sees.
+    /// A sessionless launch and a session that has since closed have nowhere to put one.
+    private func report(name: String, reason: String, detail: String?, sessionID: String) {
+        NotificationManager.shared.notifyCommandFailure(name: name, detail: reason)
+        guard let failureHud, !sessionID.isEmpty else { return }
+        guard failureHud.open(sessionID, CommandFailure.message(name: name, reason: reason), detail) else {
+            logger.notice("custom command \"\(name, privacy: .public)\" failed (\(reason, privacy: .public)); no panel: the session is gone or a program overlay holds the slot")
+            return
         }
     }
 }

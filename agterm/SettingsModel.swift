@@ -19,6 +19,8 @@ final class SettingsModel {
     private(set) var keymap: Keymap = Keymap(builtinOverrides: [:], commands: [])
     /// Problems found while parsing the keymap file, surfaced read-only in the Key Mapping settings tab.
     private(set) var keymapDiagnostics: [KeymapDiagnostic] = []
+    private(set) var hooks = Hooks()
+    private(set) var hooksDiagnostics: [KeymapDiagnostic] = []
 
     /// Coalesces a burst of `previewTheme` calls into one `apply()` instead of rebuilding + reloading every
     /// surface per arrow keypress. `commitTheme` flushes it; `revertThemePreview` drops it.
@@ -78,6 +80,8 @@ final class SettingsModel {
         OverlayRedirectController.shared.setEnabled(settings.overlayRedirectEnabled ?? false)
         ensureStarterKeymap()
         loadKeymap()
+        ensureStarterHooks()
+        loadHooks()
         ensureStarterGhosttyConfig()
         ensureStarterRestoreDenylist()
         loadRestoreDenylist()
@@ -435,7 +439,51 @@ final class SettingsModel {
         settings.configDirectory = value
         try? settingsStore.save(settings)
         reloadKeymap()
+        reloadHooks()
         reloadGhosttyConfig()
+    }
+
+    /// Re-read `hooks.conf` and post `.agtermHooksChanged` so the scheduler applies it; diagnostics surface as
+    /// a banner like the keymap's.
+    func reloadHooks() {
+        loadHooks()
+        NotificationCenter.default.post(name: .agtermHooksChanged, object: nil)
+        if !hooksDiagnostics.isEmpty {
+            NotificationManager.shared.notifyHooksDiagnostics(count: hooksDiagnostics.count)
+        }
+    }
+
+    /// The resolved `hooks.conf` path: `<config dir>/hooks.conf`, beside `keymap.conf`.
+    var hooksPath: String { ConfigPaths.hooksPath(configDirectory: configDirectoryURL()).path }
+
+    private func loadHooks() {
+        let url = ConfigPaths.hooksPath(configDirectory: configDirectoryURL())
+        do {
+            let parsed = parseHooksConf(try String(contentsOf: url, encoding: .utf8))
+            hooks = parsed.hooks
+            hooksDiagnostics = parsed.diagnostics
+        } catch {
+            // a missing file means no hooks; an existing file that cannot be read must not read as clean,
+            // or a reload would silently retire every hook
+            hooks = Hooks()
+            hooksDiagnostics = FileManager.default.fileExists(atPath: url.path)
+                ? [KeymapDiagnostic(line: 0, message: "could not read hooks.conf: \(error.localizedDescription)")]
+                : []
+        }
+    }
+
+    /// Write the commented starter `hooks.conf` (and its directory) when none exists. Also the Edit Hooks
+    /// entry point: the file can be missing after a config-directory change or a manual delete.
+    func ensureStarterHooks() {
+        let url = ConfigPaths.hooksPath(configDirectory: configDirectoryURL())
+        if FileManager.default.fileExists(atPath: url.path) { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try ConfigPaths.starterHooksConf().write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            logger.notice("could not write starter hooks at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Re-read `keymap.conf` and post `.agtermKeymapChanged` so the custom-command runner and action palette
@@ -623,6 +671,7 @@ final class SettingsModel {
         # NOT SUPPORTED: the `ssh-env` and `ssh-terminfo` shell-integration features. They work by
         # wrapping `ssh` as a call to the `ghostty` CLI absent from agterm's bundle,
         # so agterm forces them back off. Your other shell-integration-features flags are kept.
+        # To install the terminfo entry on a remote host once: agtermctl terminfo install <host>
         #
         # NO EFFECT: an `env` line naming a variable agterm injects into the shell (`TERM_PROGRAM`,
         # `TERM_PROGRAM_VERSION`, `AGTERM_*`). agterm applies those after this file. Other `env` keys

@@ -447,9 +447,10 @@ private struct AppearanceSettingsView: View {
 
 /// Interface tab: per-element title-bar and sidebar chrome visibility, grouped by surface, two toggles per
 /// row so the tab keeps fitting the fixed 540×680 window as the element set grows, plus the quick terminal's
-/// panel size — that panel belongs to no window, so it is not a Window setting. Everything shows by
-/// default; a toggle off adds it to `AppSettings.hiddenInterfaceElements` and live-applies — title-bar and
-/// footer elements re-gate in open windows on `.agtermAppearanceChanged`, the add-session "+" on hover.
+/// panel size — that panel belongs to no window, so it is not a Window setting. A toggle off adds the
+/// element to `AppSettings.hiddenInterfaceElements`, a `hiddenByDefault` one toggled on to
+/// `shownInterfaceElements`, and both live-apply — title-bar and footer elements re-gate in open windows on
+/// `.agtermAppearanceChanged`, the add-session "+" on hover.
 private struct InterfaceSettingsView: View {
     let model: SettingsModel
 
@@ -846,7 +847,7 @@ private struct KeyMappingSettingsView: View {
                             .accessibilityIdentifier("settings-keymap-default")
                     }
                 }
-                Text("The directory holding keymap.conf. Changing it reloads the keymap.")
+                Text("The directory holding keymap.conf and hooks.conf. Changing it reloads both.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -874,9 +875,37 @@ private struct KeyMappingSettingsView: View {
                 Button("Reload") { model.reloadKeymap() }
                     .accessibilityIdentifier("settings-keymap-reload")
             }
+
+            Section("Hooks") {
+                if model.hooksDiagnostics.isEmpty {
+                    Text("No issues.")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-hooks-diagnostics")
+                        .accessibilityValue(hooksDiagnosticsSummary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(model.hooksDiagnostics.enumerated()), id: \.offset) { _, diagnostic in
+                            Text(diagnosticLine(diagnostic))
+                                .font(.system(size: 12).monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("settings-hooks-diagnostics")
+                    .accessibilityValue(hooksDiagnosticsSummary)
+                }
+                Button("Reload") { model.reloadHooks() }
+                    .accessibilityIdentifier("settings-hooks-reload")
+            }
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var hooksDiagnosticsSummary: String {
+        model.hooksDiagnostics.isEmpty ? "No issues." : model.hooksDiagnostics.map(diagnosticLine).joined(separator: " | ")
     }
 
     /// A diagnostic as one line, "line N: message"; a whole-file/cross-section one (line 0) shows the message.

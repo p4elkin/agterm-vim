@@ -12,14 +12,14 @@ struct EventCommandsTests {
         #expect(try plain.makeInitialRequest() == ControlRequest(cmd: .eventsRead))
 
         let resumed = try Events.parse([
-            "--json", "--kind", "status,notify", "--kind", "tree.changed",
+            "--json", "--kind", "status,notify", "--kind", "tree.changed", "--kind", "pane.split,pane.scratch",
             "--run", run.uuidString, "--after", "42", "--limit", "1000",
         ])
         #expect(resumed.options.json)
         #expect(try resumed.makeInitialRequest() == ControlRequest(
             cmd: .eventsRead,
             args: ControlArgs(after: "42", run: run.uuidString,
-                              kinds: ["status", "notify", "tree.changed"], limit: 1_000)
+                              kinds: ["status", "notify", "tree.changed", "pane.split", "pane.scratch"], limit: 1_000)
         ))
     }
 
@@ -155,9 +155,15 @@ struct EventCommandsTests {
             // shape WITHOUT a color: `shape=` must be its own arm, not nested inside the color one
             ControlEvent(seq: 7, ts: 0, kind: .status,
                          payload: ControlEventPayload(name: "api", status: "completed", shape: "star")),
-            ControlEvent(seq: 8, ts: 0, kind: .sessionParked,
+            ControlEvent(seq: 8, ts: 0, kind: .paneSplit, payload: ControlEventPayload(name: "api", status: "shown")),
+            ControlEvent(seq: 9, ts: 0, kind: .paneScratch, payload: ControlEventPayload(name: "api", status: "hidden")),
+            ControlEvent(seq: 10, ts: 0, kind: .status,
+                         payload: ControlEventPayload(name: "api", status: "blocked", pane: "left", previous: "active")),
+            ControlEvent(seq: 11, ts: 0, kind: .remoteOpened, payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 12, ts: 0, kind: .remoteClosed, payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 13, ts: 0, kind: .sessionParked,
                          payload: ControlEventPayload(name: "api", parked: true)),
-            ControlEvent(seq: 9, ts: 0, kind: .sessionParked,
+            ControlEvent(seq: 14, ts: 0, kind: .sessionParked,
                          payload: ControlEventPayload(name: "api", parked: false)),
         ]
         let human = events.map { EventFormatter.human($0, timeZone: TimeZone(secondsFromGMT: 0)!) }
@@ -168,8 +174,13 @@ struct EventCommandsTests {
         #expect(human[4] == "00:00:00 tree.changed win")
         #expect(human[5] == "00:00:00 status api active color=#ff8800 shape=triangle")
         #expect(human[6] == "00:00:00 status api completed shape=star")
-        #expect(human[7] == "00:00:00 session.parked api parked=on")
-        #expect(human[8] == "00:00:00 session.parked api parked=off")
+        #expect(human[7] == "00:00:00 pane.split api shown")
+        #expect(human[8] == "00:00:00 pane.scratch api hidden")
+        #expect(human[9] == "00:00:00 status api blocked previous=active pane=left")
+        #expect(human[10] == "00:00:00 remote.opened far host=buildbox")
+        #expect(human[11] == "00:00:00 remote.closed far host=buildbox")
+        #expect(human[12] == "00:00:00 session.parked api parked=on")
+        #expect(human[13] == "00:00:00 session.parked api parked=off")
 
         for event in events {
             let line = try EventFormatter.json(event)

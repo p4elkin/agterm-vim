@@ -7,8 +7,8 @@ description: >
   and read its exit status; post a HUD panel or a desktop notification; show a native picker with
   caller-supplied choices or a question dialog with named buttons; display an image inline; type into a
   session, copy its selection or search its scrollback; manage windows; change font size; set the theme;
-  reload or edit the keymap and the agterm-scoped ghostty config; subscribe to status, notification,
-  lifecycle and tree-change events.
+  reload or edit the keymap, the event hooks and the agterm-scoped ghostty config; subscribe to status,
+  notification, lifecycle, pane-visibility and tree-change events.
   Covers the window/workspace/session addressing model and the AGTERM_* environment a spawned shell sees,
   attaching a session running on another Mac, the cookbook recipes, the running version, and diagnosing
   problems or filing an agterm bug or feature request.
@@ -27,8 +27,8 @@ allowed-tools: Bash(agtermctl *)
 agterm is a native macOS terminal. It exposes a programmatic control channel over a local unix
 socket, driven by the companion CLI `agtermctl`. Use it to build and steer terminal layouts, run
 programs in overlays, type into sessions, notify the user in the exact session you are working in,
-and subscribe to control events. Events cover status, notifications, session lifecycle, and
-structural tree changes. They do not stream terminal output; use `session text` to read a buffer.
+and subscribe to control events. Events cover status, notifications, session lifecycle, split and
+scratch pane visibility, and structural tree changes; `hooks.conf` runs a shell line on any of them. They do not stream terminal output; use `session text` to read a buffer.
 
 ## Am I inside agterm?
 
@@ -214,9 +214,9 @@ unset or idle), `statusBlink`/`statusColor`/`statusShape` (the status glyph's `-
 `#rrggbb` tint and its `--shape` silhouette from `session status`, omitted when idle / not blinking / using
 the configured color or shape — the tint and the silhouette report the per-call override only),
 `statusChangedAt` (when that status was last set, in epoch seconds — the same clock as an event's `ts`;
-omitted when idle, and refreshed by a re-push of the SAME status, so `now - statusChangedAt` is how long
-ago the status was last written — normally the agent's own push, though a pane promotion re-tags the
-indicator and counts too; ephemeral, so it does not survive a restart), `background` (the background
+omitted before any set, and refreshed by every set including idle and a re-push of the SAME status, so
+`now - statusChangedAt` is how long ago the status was last written; automatic and manual clears count
+too; ephemeral, so it does not survive a restart), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
 `unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
 seen`; omitted when zero), `commandWait`/`splitCommandWait` (whether either pane's `--command` was
@@ -227,8 +227,9 @@ overlay resize` for a record-then-restore zoom), `paneOverlays` (the panes cover
 `["left"]`, `["right"]` or `["left","right"]`, omitted when neither is; the read side of `session overlay
 open --pane`, independent of the session-wide `overlay` flag),
 `hud` (the message panel occupying the session-wide slot — `{message, detail?, spinner, backgroundColor?,
-textColor?, sizePercent?, heightPercent?, position, pane?}`, the two percents being the panel's width and height
-shares — omitted when none is up; the read side of `session hud`. `position` and `spinner`
+textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter}`, the two percents being the panel's width and height
+shares and `hideAfter` the configured auto-hide in seconds, 0 for a panel that stays — omitted when none is
+up; the read side of `session hud`. `position` and `spinner`
 always report the EFFECTIVE value, `center` and a static panel's `none` included, so a caller who omitted
 them never has to know the defaults; `spinner` names the STYLE, so `none` is what a caller echoes back to
 turn one off. While a HUD is up the node's `overlay` reads `false` and `overlaySizePercent` is omitted, so a
@@ -270,10 +271,11 @@ that window, omitted when no pick is pending.
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind status|notify|session.created|session.closed|session.parked|tree.changed`; resume with paired
-`--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
-one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
-rebaselined. There is no terminal-output event stream.
+`--kind` over `status`, `notify`, `session.created`, `session.closed`, `session.parked`, `tree.changed`,
+`pane.split`, `pane.scratch`, `remote.opened` and `remote.closed`; resume with paired `--run RUN --after
+SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for one process run. Cursor
+run changes, expiry, and ahead-of-tail errors are fatal and are never silently rebaselined. There is no
+terminal-output event stream.
 
 **workspace** — `workspace new [name] [--collapsed]` (`--collapsed` creates it closed in the sidebar so you can fill
 it with `session new --no-select` without it opening, and keeps it out of the focus set; a plain create
@@ -455,8 +457,8 @@ omitted when expanded).
   `--background-color` gives the overlay pane its own solid color, independent of the session's. An
   overlay is a real terminal (pty), which is also how you **display an image inline** — via the bundled
   `scripts/show-image.sh` (see below).
-- `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--pane P] [--pane-id ID]` ·
-  `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--pane P] [--pane-id ID]` ·
+- `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
+  `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud close` — post a small **passive** panel over the session saying what you are doing
   ("gathering options…"). Unlike an overlay it takes no input and steals nothing: the session keeps first
   responder, the user keeps typing, and the terminal behind it is neither dimmed nor click-blocked. Use it
@@ -542,11 +544,13 @@ means no input, not no process effect. The most-recently-used grid also has a GU
 TOGGLE the frontmost window's MRU dashboard auto-sized (identical to `dashboard --mru --auto-size`); no new
 control command, the socket `dashboard` command is unchanged.
 
-**pick**: `pick [--prompt TEXT] [--query TEXT] [--allow-custom] [--follow] [--window W] [--no-block]` reads
-choices from stdin and opens the target window's native fuzzy picker. Supply nonblank lines (each line is
-both the id and label) or a JSON array of `{id,label,subtitle?}` items; typing matches labels only, and an
-empty query keeps the supplied order, so the caller's first item is the one Return runs. `--query` prefills
-the field and filters on open, which re-ranks and drops that order. An empty item list is accepted only with
+**pick**: `pick [--prompt TEXT] [--query TEXT] [--select ID] [--allow-custom] [--follow] [--window W] [--no-block]`
+reads choices from stdin and opens the target window's native fuzzy picker. Supply nonblank lines (each line
+is both the id and label) or a JSON array of `{id,label,subtitle?}` items; typing matches labels only, and an
+empty query keeps the supplied order, so without `--select` the caller's first item is the one Return runs. `--query` prefills
+the field and filters on open, which re-ranks and drops that order. `--select ID` opens with that item
+highlighted and scrolled into view (it must name a supplied item; a `--query` that hides it leaves the first
+visible row). An empty item list is accepted only with
 `--allow-custom`, giving a plain text prompt; stdin is read either way, so an itemless call needs
 `< /dev/null` or it blocks. The default blocks until the user chooses or cancels and prints the bare JSON
 result. `--no-block` prints the picker id instead;
@@ -622,6 +626,8 @@ place, and neither does turning the mode on over one.
 
 **keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count). `keymap list` — show the resolved keymap AND the live menu key equivalents: every built-in with its current binds (the menu chord first, then any `|`-separated alternatives a key monitor delivers, including leader sequences), the custom commands, the parse diagnostics, and what the menu bar is actually dispatching. Use it to check a rebind took effect, to find a free chord, or to spot a chord the keymap resolved but the menu is not carrying. Built-in actions support leader sequences too (e.g. `map ctrl+space>s toggle_split`); a sequence-only bind clears the action's menu shortcut and shows the joined glyphs in the palette and tooltips instead. `keymap list` also reports the `nmap` binds in their own `normalMode` section (bind + `action` or `command`, plus `mode` where the line carries a mode word that changes the outcome), the only place normal-mode binds are visible.
 
+**hooks** — `hooks reload` — re-read `hooks.conf` (prints the parse-diagnostic count); `hooks list` — every `on <kind> <shell...>` line with its running pid and elapsed seconds, pending and dropped counts, last failure, and a retired marker for a removed line whose script still runs. A hook gets the event JSON on stdin plus `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`; one process per line at a time with a 256-deep queue behind it. Both commands are app-global and refuse a target or `--window`.
+
 **config** - `config reload` - re-read the agterm-scoped `ghostty.conf` (prints the diagnostic count).
 
 **theme** — `theme list` (bundled themes, current marked `*`) · `theme set [name]` — set + persist the
@@ -665,6 +671,15 @@ handing back a fresh shell wearing its name. Closing it here ends only this side
 never restored after a relaunch. Both run ssh non-interactively, so key-based auth must already work, and
 the far side needs `agtermctl` installed by the cask or the Help action: a machine merely running agterm
 has no CLI an ssh command can find. Every zmx command needs a running agterm.
+
+**terminfo** — `terminfo install DESTINATION [-p PORT] [-i FILE ...] [-J HOST] [-F FILE]` — install the
+bundled `xterm-ghostty` terminfo entry into a remote account's `~/.terminfo` over one interactive ssh
+connection, the fix for `less`/`vim` on that host warning that the terminal is not fully functional. Run
+once per host and account; nothing is cached and `ssh` itself is untouched. Local-only: no socket, no
+`--json`, no running agterm needed, and it exits with ssh's status. Only those four ssh options pass
+through; other connection settings belong in `~/.ssh/config` under a host alias, while the execution
+settings (no pty, stdin kept, plain session, no fork, no `RemoteCommand`) are the installer's and win
+over the config. The remote needs `tic` (ncurses) and says so when it is missing.
 
 **version** — `agtermctl version` — which agterm is serving this socket, as `result.app` (`version`, plus
 `commit` when the build recorded one). App-global: no target, no `--window`, no window need be open, so it

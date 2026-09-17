@@ -133,7 +133,12 @@ final class GhosttyApp {
             liveUnavailableReason: ZmxLaunch.liveUnavailableReason())
         restoreLaunchDecision = restoreDecision
         resourcesDir = resolvedResources
-        guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
+        let booted = ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
+        // libghostty adopts the user's numeric locale; CoreSVG mis-sizes symbols with decimal commas.
+        // reset before the first symbol lookup, which caches its geometry. ensureLocale runs inside
+        // ghostty_init ahead of its own fallible steps, so a failed init can leave the locale adopted.
+        setlocale(LC_NUMERIC, "C")
+        guard booted else {
             logger.error("ghostty_init failed")
             return
         }
@@ -717,4 +722,7 @@ extension Notification.Name {
     /// refresh its cached `window.list` — the mode is entered by a keystroke as often as by a command, and a
     /// polling `window.list` is fast-path-served, so nothing else would ever refresh the `normalMode` flag.
     static let agtermNormalModeChanged = Notification.Name("agterm.normalModeChanged")
+
+    /// Posted after `hooks.conf` is (re)loaded and reparsed, so the hook scheduler applies the new definitions.
+    static let agtermHooksChanged = Notification.Name("agterm.hooksChanged")
 }

@@ -111,11 +111,9 @@ public final class Session: Identifiable {
     /// status glyph reacts. Ephemeral.
     public var agentIndicator = AgentIndicator()
 
-    /// Last time the status was set non-idle — stamped by `AppStore.setAgentIndicator` on EVERY non-idle set
-    /// (nil on idle), not just on an idle→non-idle transition. Ephemeral. Sorts the attention list
-    /// newest-change-first, and `controlTree` publishes it as the node's `statusChangedAt`. That read-back
-    /// ships epoch seconds compared against `ControlEvent.ts`, so it must stay a wall-clock `Date` — a
-    /// monotonic instant would keep the sort working and make a client's computed age meaningless.
+    /// Last time the status was set, idle and repeated values included; nil before any set, never persisted.
+    /// Must stay a wall-clock `Date`: `controlTree` ships it as epoch seconds compared against `ControlEvent.ts`,
+    /// so a monotonic instant would make a client's computed age meaningless.
     @ObservationIgnored public var statusChangedAt: Date?
 
     /// Whether idle auto-follow already pulled the user to THIS blocked episode; ephemeral. Set on jumping
@@ -427,11 +425,18 @@ public final class Session: Identifiable {
     /// leave it there. Deleting it also stops a helper still running against it.
     public func discardHudBody() {
         if let hudFile { try? FileManager.default.removeItem(atPath: hudFile) }
+        let cancelTimer = onHudDiscarded
+        onHudDiscarded = nil
         hudSpec = nil
         hudPaneIdentity = nil
         hudFile = nil
         hudHeightPercent = nil
+        cancelTimer?()
     }
+
+    /// Cancels the app's auto-hide timer for this panel; `discardHudBody` calls and clears it. Every teardown
+    /// that drops a HUD already routes through that one method, which is why the hook hangs there.
+    public var onHudDiscarded: (() -> Void)?
 
     /// Whether the overlay slot holds a HUD rather than a caller's program. The one predicate separating the
     /// two occupants, so the deck's passivity exemptions and the program-overlay questions below cannot
@@ -568,6 +573,19 @@ public final class Session: Identifiable {
             return splitCwd ?? initialSplitCwd ?? effectiveCwd
         case .left, .scratch:
             return effectiveCwd
+        }
+    }
+
+    /// The stable token of the surface currently in `pane`'s slot (`TerminalSurface.paneToken`), the inverse
+    /// of `paneRole(forToken:)`; empty while the slot holds no surface.
+    public func paneToken(for pane: CommandContext.Pane) -> String {
+        switch pane {
+        case .left:
+            return surface?.paneToken ?? ""
+        case .right:
+            return splitSurface?.paneToken ?? ""
+        case .scratch:
+            return scratchSurface?.paneToken ?? ""
         }
     }
 

@@ -103,6 +103,8 @@ public enum Command: String, Codable, Sendable {
     case windowMinimize = "window.minimize"
     case keymapReload = "keymap.reload"
     case keymapList = "keymap.list"
+    case hooksReload = "hooks.reload"
+    case hooksList = "hooks.list"
     case configReload = "config.reload"
     case themeSet = "theme.set"
     case themeList = "theme.list"
@@ -325,6 +327,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// style or nothing and the dispatcher has one thing to validate.
     /// The box reserves the glyph's cells either way, so toggling it cannot rewrap the message.
     public var spinner: String?
+    /// Seconds after which a HUD takes itself down, for `session.hud.open`/`.update`; nil/omitted or 0 leaves
+    /// it up until something closes it. Each successful open or update restarts the interval, so an update
+    /// that omits it cancels the previous one, exactly as omitting `detail` drops the second line.
+    public var hideAfter: Double?
     /// The finished caller-provided choices for `pick.open`.
     public var items: [ControlPickItem]?
     /// Optional placeholder text for `pick.open`'s query field.
@@ -333,6 +339,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var query: String?
     /// Whether `pick.open` accepts the current query as a custom result.
     public var allowCustom: Bool?
+    /// The item id `pick.open` highlights on open; distinct from `select`, the Bool behind
+    /// `session.type --select`.
+    public var selection: String?
     /// buttons are the caller-ordered choices for ask.open.
     public var buttons: [ControlAskButton]?
     /// defaultButton identifies the initially highlighted ask button.
@@ -399,8 +408,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, resolved: Bool? = nil,
                 message: String? = nil, detail: String? = nil, spinner: String? = nil,
+                hideAfter: Double? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
-                query: String? = nil, allowCustom: Bool? = nil,
+                query: String? = nil, allowCustom: Bool? = nil, selection: String? = nil,
                 buttons: [ControlAskButton]? = nil, defaultButton: String? = nil,
                 destructiveButton: String? = nil, style: String? = nil, align: String? = nil, window: String? = nil,
                 pane: String? = nil, paneID: String? = nil, to: String? = nil,
@@ -440,10 +450,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.message = message
         self.detail = detail
         self.spinner = spinner
+        self.hideAfter = hideAfter
         self.items = items
         self.prompt = prompt
         self.query = query
         self.allowCustom = allowCustom
+        self.selection = selection
         self.buttons = buttons
         self.defaultButton = defaultButton
         self.style = style
@@ -561,6 +573,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var events: ControlEventBatch?
     /// The resolved keymap plus the live menu key equivalents, for `keymap.list`.
     public var keymap: ControlKeymap?
+    /// The hook definitions and their live state, for `hooks.list`.
+    public var hooks: ControlHooks?
     /// The current or terminal picker outcome for `pick.result`.
     public var pick: ControlPickResult?
     /// `session.overlay.open`'s redirect answer. Present ONLY when the app decided the overlay belongs on
@@ -590,7 +604,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 theme: String? = nil, themes: [String]? = nil, ratio: Double? = nil,
                 sidebarWidth: Double? = nil, pane: String? = nil,
                 sync: Bool? = nil, light: String? = nil, dark: String? = nil,
-                events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil,
+                events: ControlEventBatch? = nil, keymap: ControlKeymap? = nil, hooks: ControlHooks? = nil,
                 pick: ControlPickResult? = nil, overlayRedirect: ControlOverlayRedirect? = nil,
                 ask: ControlAskResult? = nil,
                 cursor: ControlCursor? = nil, bookmarks: [ControlBookmarkNode]? = nil,
@@ -623,6 +637,7 @@ public struct ControlResult: Codable, Sendable, Equatable {
         self.dark = dark
         self.events = events
         self.keymap = keymap
+        self.hooks = hooks
         self.pick = pick
         self.overlayRedirect = overlayRedirect
         self.ask = ask

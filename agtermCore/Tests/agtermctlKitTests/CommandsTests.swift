@@ -1372,7 +1372,7 @@ struct CommandsTests {
 
     @Test func pickOpenMapsEveryOptionToRequest() throws {
         let command = try Pick.Open.parse([
-            "--prompt", "Choose one", "--query", "on", "--allow-custom", "--follow",
+            "--prompt", "Choose one", "--query", "on", "--allow-custom", "--select", "One", "--follow",
             "--window", "w1", "--no-block"
         ])
         let items = [ControlPickItem(id: "One", label: "One")]
@@ -1380,7 +1380,7 @@ struct CommandsTests {
             cmd: .pickOpen,
             args: ControlArgs(
                 follow: true, items: items, prompt: "Choose one", query: "on",
-                allowCustom: true, window: "w1"
+                allowCustom: true, selection: "One", window: "w1"
             )
         )
 
@@ -1691,6 +1691,16 @@ struct CommandsTests {
 
     @Test func keymapListRejectsWindowSelector() {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["keymap", "list", "--window", "w1"]) }
+    }
+
+    @Test func hooksReloadAndList() throws {
+        #expect(try request(["hooks", "reload"]) == ControlRequest(cmd: .hooksReload))
+        #expect(try request(["hooks", "list"]) == ControlRequest(cmd: .hooksList))
+    }
+
+    @Test func hooksCommandsRejectWindowSelector() {
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["hooks", "reload", "--window", "w1"]) }
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["hooks", "list", "--window", "w1"]) }
     }
 
     @Test func configReload() throws {

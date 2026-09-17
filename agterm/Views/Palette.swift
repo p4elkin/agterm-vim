@@ -109,6 +109,9 @@ struct CommandPalette: View {
     let prompt: String?
     /// Whether an unmatched, non-empty explicit-picker query can be submitted as free text.
     let allowCustom: Bool
+    /// The caller's `--select` item id for an explicit picker: the row the palette opens on, resolved once
+    /// against the first filtered list, so a `--query` prefill that hides it leaves the first visible row.
+    let initialSelection: String?
     let onCustom: ((String) -> Void)?
     /// The verb the free-text row reads with (`Use "foo"`), so a picker can say what submitting does.
     let customVerb: String
@@ -144,7 +147,8 @@ struct CommandPalette: View {
     /// palette already filtered, since `.onAppear` runs the first `updateFiltered()` against it.
     init(controller: PaletteController, actions: AppActions, terminalAreaInset: Double,
          items: [PaletteItem]? = nil,
-         prompt: String? = nil, initialQuery: String? = nil, allowCustom: Bool = false,
+         prompt: String? = nil, initialQuery: String? = nil, initialSelection: String? = nil,
+         allowCustom: Bool = false,
          customVerb: String = "Use", customRowRule: PickCustomRowRule = .whenNothingMatched,
          accessibilityID: (panel: String, scrim: String)? = nil,
          onCustom: ((String) -> Void)? = nil, onDismiss: (() -> Void)? = nil) {
@@ -154,6 +158,7 @@ struct CommandPalette: View {
         self.explicitItems = items
         self.prompt = prompt
         _query = State(initialValue: initialQuery ?? "")
+        self.initialSelection = initialSelection
         self.allowCustom = allowCustom
         self.customVerb = customVerb
         self.customRowRule = customRowRule
@@ -290,6 +295,9 @@ struct CommandPalette: View {
         .onAppear {
             fieldFocused = true
             updateFiltered()
+            if let initialSelection, let index = filtered.firstIndex(where: { $0.id == initialSelection }) {
+                selection = index
+            }
             if explicitItems == nil { syncThemeSession() }
             // a palette opened from a title-bar button (the attention bell) mounts while that button still
             // holds first responder, so the synchronous focus above loses the race. re-assert on the next

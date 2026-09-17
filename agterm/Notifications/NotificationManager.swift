@@ -136,6 +136,38 @@ final class NotificationManager: NSObject, @preconcurrency UNUserNotificationCen
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
     }
 
+    /// Post a banner for `hooks.conf` parse diagnostics, mirroring the keymap one.
+    func notifyHooksDiagnostics(count: Int) {
+        guard bannersEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Hooks"
+        content.body = "\(count) issue\(count == 1 ? "" : "s") — see Settings ▸ Key Mapping"
+        let request = UNNotificationRequest(identifier: "hooks-diagnostics", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { logger.error("hooks-diagnostics banner add failed: \(error.localizedDescription, privacy: .public)") }
+        }
+    }
+
+    /// The banner identifier for one hook, so repeated failures of the same line coalesce and never collide
+    /// with a custom command's `command-failure:` space.
+    static func hookFailureIdentifier(kind: String, command: String) -> String {
+        "hook-failure:\(kind):\(command)"
+    }
+
+    /// Post a failure banner for a hook line: a non-zero exit, a spawn failure or a stdin delivery failure.
+    /// The scheduler decides when to call this (once per hook until success or reload); nothing else does.
+    func notifyHookFailure(kind: String, command: String, detail: String) {
+        guard bannersEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Hook failed"
+        content.body = "on \(kind) \(command) (\(detail))"
+        let request = UNNotificationRequest(identifier: NotificationManager.hookFailureIdentifier(kind: kind, command: command),
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { logger.error("hook-failure banner add failed: \(error.localizedDescription, privacy: .public)") }
+        }
+    }
+
     /// Post a failure banner for a custom command that exited non-zero or failed to spawn. Not tied to a
     /// surface, so no focus/window gating; a fixed identifier coalesces repeated failures of one command.
     func notifyCommandFailure(name: String, detail: String) {

@@ -20,6 +20,7 @@ struct agtermApp: App {
     @State private var undoCloseShortcut: UndoCloseShortcut
     @State private var globalHotkey: GlobalHotkey
     @State var settingsModel: SettingsModel
+    @State private var hookController: HookController
     @State private var controlServer: ControlServer
     @State var liveReset: LiveResetCoordinator
     @State private var customCommandRunner: CustomCommandRunner
@@ -110,7 +111,22 @@ struct agtermApp: App {
         _customCommandRunner = State(initialValue: CustomCommandRunner(
             library: library, settings: settingsModel, actions: actions,
             usage: CustomCommandUsageStore(directory: stateDirectory),
-            socketProvider: { controlServer.resolvedSocketPath }))
+            socketProvider: { controlServer.resolvedSocketPath },
+            // the panel a failed command shows, through the same path `session.hud` takes: it owns helper
+            // resolution, geometry and the body file, none of which the runner should learn. The slot
+            // generation goes back with the open and is checked on close, so the timer cannot take down a
+            // panel something else has posted since.
+            failureHud: FailureHud(
+                open: { [weak controlServer] sessionID, message, detail in
+                    let spec = HudSpec(message: message, detail: detail, position: .bottomRight,
+                                       hideAfter: CustomCommandRunner.failureHudSeconds)
+                    return controlServer?.openHud(sessionID, window: nil, spec: spec).ok == true
+                })))
+        // hooks.conf scripts: fed by the library's post-append observer, applied from the settings model.
+        let hookController = HookController(library: library, settings: settingsModel,
+                                            socketProvider: { controlServer.resolvedSocketPath })
+        controlServer.hookStatus = { hookController.scheduler.status }
+        _hookController = State(initialValue: hookController)
         // follows macOS light/dark via KVO on NSApp.effectiveAppearance; dependency-free, started in `.task`.
         _appearanceObserver = State(initialValue: SystemAppearanceObserver())
         // follows Reduce Motion / Reduce Transparency via NSWorkspace's accessibility-display notification,
@@ -204,6 +220,9 @@ struct agtermApp: App {
                         // hand the delegate the action hub and drain folders `open -a agterm /path` queued
                         // before the window store resolved.
                         appDelegate.actions = actions
+                        // hooks apply BEFORE the drain: a queued `open -a agterm /path` creates a session, and a
+                        // session.created hook must already be scheduled to see it (idempotent).
+                        hookController.start()
                         appDelegate.drainPendingOpenDirectories()
                         customCommandRunner.start()
                         // wire the keymap + runner into the action hub for the command palette's custom
@@ -229,6 +248,9 @@ struct agtermApp: App {
                         // before registration. launch window only: `hasReopened` is false until `reopenWindows()`.
                         if !library.hasReopened, !settingsModel.keymapDiagnostics.isEmpty {
                             NotificationManager.shared.notifyKeymapDiagnostics(count: settingsModel.keymapDiagnostics.count)
+                        }
+                        if !library.hasReopened, !settingsModel.hooksDiagnostics.isEmpty {
+                            NotificationManager.shared.notifyHooksDiagnostics(count: settingsModel.hooksDiagnostics.count)
                         }
                         // same for ghostty config diagnostics, recorded at boot by GhosttyApp.loadConfig
                         // (applicationDidFinishLaunching, before registration): same `hasReopened` gate.

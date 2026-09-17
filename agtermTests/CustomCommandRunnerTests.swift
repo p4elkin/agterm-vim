@@ -289,6 +289,143 @@ final class CustomCommandRunnerTests: XCTestCase {
         XCTAssertEqual(fix.store.sidebarVisible, !fix.sidebarBefore)
     }
 
+    /// Records what the runner would put on screen for a failed command.
+    private final class HudRecorder: @unchecked Sendable {
+        var posts: [(session: String, message: String, detail: String?)] = []
+        var refuse = false
+
+        var hud: FailureHud {
+            FailureHud(open: { [self] session, message, detail in
+                posts.append((session, message, detail))
+                return !refuse
+            })
+        }
+    }
+
+    /// A runner wired to `recorder`, plus a session for its commands to fire in.
+    private func failureFixture(_ recorder: HudRecorder) throws -> (runner: CustomCommandRunner, session: Session) {
+        try write(keymap: CustomCommandRunnerTests.sidebarKeymap)
+        let settings = SettingsModel(library: library, settingsStore: SettingsStore(directory: stateDir))
+        settings.setConfigDirectory(configDir.path)
+        let actions = AppActions(library: library)
+        actions.settingsModel = settings
+        let runner = CustomCommandRunner(library: library, settings: settings, actions: actions,
+                                         usage: CustomCommandUsageStore(directory: stateDir),
+                                         socketProvider: { "" }, failureHud: recorder.hud)
+        runner.start()
+        started.append(runner)
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        store.selectSession(session.id)
+        return (runner, session)
+    }
+
+    /// Spins the run loop until `body` is true or the deadline passes, since the spawn, its exit and the
+    /// stderr drain all land asynchronously.
+    private func wait(upTo seconds: TimeInterval = 5, until body: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline, !body() {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+    }
+
+    func testAFailedCommandPostsThePanelWithItsLastStderrLine() throws {
+        let recorder = HudRecorder()
+        let fix = try failureFixture(recorder)
+        fix.runner.run(CustomCommand(name: "probe", command: "echo first >&2; echo boom >&2; exit 3",
+                                     shortcut: "ctrl+a>p"))
+
+        wait { !recorder.posts.isEmpty }
+
+        XCTAssertEqual(recorder.posts.count, 1)
+        XCTAssertEqual(recorder.posts.first?.session, fix.session.id.uuidString)
+        XCTAssertEqual(recorder.posts.first?.message, "probe: exit 3")
+        XCTAssertEqual(recorder.posts.first?.detail, "boom")
+    }
+
+    // the second command only starts failing after the first has run to its last statement, so the post it
+    // produces bounds how long the successful one had to say something.
+    func testACommandThatSucceedsPostsNothingEvenWhenItWroteToStderr() throws {
+        let recorder = HudRecorder()
+        let fix = try failureFixture(recorder)
+        let marker = stateDir.appendingPathComponent("quiet-\(UUID().uuidString).done")
+        fix.runner.run(CustomCommand(name: "quiet", command: "echo noise >&2; : > \(marker.path); exit 0",
+                                     shortcut: "ctrl+a>p"))
+        fix.runner.run(CustomCommand(name: "loud",
+                                     command: "while [ ! -f \(marker.path) ]; do sleep 0.02; done; "
+                                         + "echo boom >&2; exit 2",
+                                     shortcut: "ctrl+a>l"))
+
+        wait { !recorder.posts.isEmpty }
+
+        XCTAssertEqual(recorder.posts.count, 1, "exit 0 is a success whatever it printed")
+        XCTAssertEqual(recorder.posts.first?.message, "loud: exit 2")
+    }
+
+    func testADescendantKeepsWritingToStderrAfterTheCommandExits() throws {
+        let recorder = HudRecorder()
+        let fix = try failureFixture(recorder)
+        let marker = stateDir.appendingPathComponent("late-\(UUID().uuidString).ok")
+        // the subshell outlives its parent holding the same stderr. Its marker is written only if that late
+        // write SUCCEEDED: a capture a background process can be killed by fails this test, not passes it.
+        fix.runner.run(CustomCommand(name: "orphan",
+                                     command: "( sleep 0.6; echo late >&2 && : > \(marker.path) ) & "
+                                         + "echo boom >&2; exit 5",
+                                     shortcut: "ctrl+a>p"))
+
+        wait { !recorder.posts.isEmpty }
+        XCTAssertEqual(recorder.posts.first?.message, "orphan: exit 5")
+        XCTAssertEqual(recorder.posts.first?.detail, "boom", "the report belongs to the command, not its child")
+
+        wait { FileManager.default.fileExists(atPath: marker.path) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path),
+                      "the descendant's write must reach a live pipe, not a closed one")
+        XCTAssertEqual(recorder.posts.count, 1, "a late write reports nothing of its own")
+    }
+
+    func testStderrPastThePipeBufferDoesNotWedgeTheCommandAndKeepsItsLastLine() throws {
+        let recorder = HudRecorder()
+        let fix = try failureFixture(recorder)
+        // 512 KiB is well past the 64 KiB pipe buffer: a capture that only read at exit would deadlock here.
+        fix.runner.run(CustomCommand(name: "flood",
+                                     command: "for i in $(seq 1 8192); do "
+                                         + "printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n' >&2; "
+                                         + "done; echo 'final line' >&2; exit 1",
+                                     shortcut: "ctrl+a>p"))
+
+        wait(upTo: 20) { !recorder.posts.isEmpty }
+
+        XCTAssertEqual(recorder.posts.first?.detail, "final line")
+    }
+
+    func testACommandExitingWithMoreBufferedThanTheTailKeepsItsFinalLine() throws {
+        let recorder = HudRecorder()
+        let fix = try failureFixture(recorder)
+        // 48 KiB lands in the pipe and the command exits at once: a final drain budgeted at the 16 KiB tail
+        // would keep the oldest of it and lose the line below.
+        fix.runner.run(CustomCommand(name: "burst",
+                                     command: "head -c 49152 /dev/zero | tr '\\0' 'x' >&2; printf '\\n' >&2; "
+                                         + "echo 'final line' >&2; exit 7",
+                                     shortcut: "ctrl+a>b"))
+
+        wait(upTo: 20) { !recorder.posts.isEmpty }
+
+        XCTAssertEqual(recorder.posts.first?.message, "burst: exit 7")
+        XCTAssertEqual(recorder.posts.first?.detail, "final line")
+    }
+
+    func testARefusedPanelArmsNoAutoClose() throws {
+        let recorder = HudRecorder()
+        recorder.refuse = true
+        let fix = try failureFixture(recorder)
+        fix.runner.run(CustomCommand(name: "probe", command: "exit 4", shortcut: "ctrl+a>p"))
+
+        wait { !recorder.posts.isEmpty }
+
+        XCTAssertEqual(recorder.posts.count, 1, "a refusal still tries once")
+    }
+
     /// Runs `command` from `surface` and returns what it wrote, or nil if it never wrote anything. The spawn
     /// is a detached `/bin/sh`, so the file is the only channel back.
     private func fired(_ runner: CustomCommandRunner, from surface: GhosttySurfaceView,
@@ -354,13 +491,15 @@ final class CustomCommandRunnerTests: XCTestCase {
         let fix = try fixture()
         let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
         let session = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
-        session.scratchSurface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        let scratch = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), env: ["AGTERM_PANE_ID": "scratch-tok"])
+        session.scratchSurface = scratch
         session.scratchActive = true
+        XCTAssertEqual(try fired(fix.runner, from: scratch, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "scratch scratch-tok")
 
         let sessionWide = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
         session.overlaySurface = sessionWide
         session.overlayActive = true
-        XCTAssertEqual(try fired(fix.runner, from: sessionWide, writing: "\"$AGT_PANE\""), "scratch")
+        XCTAssertEqual(try fired(fix.runner, from: sessionWide, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "scratch scratch-tok")
 
         session.overlaySurface = nil
         session.overlayActive = false
@@ -441,6 +580,77 @@ final class CustomCommandRunnerTests: XCTestCase {
         let written = try fired(fix.runner, from: stray, writing: "\"$AGT_PANE $AGT_SESSION_ID\"")
 
         XCTAssertEqual(written, "left \(session.id.uuidString)")
+    }
+
+    private func tokenedSplitSession(_ fix: Fixture) throws -> (session: Session, main: GhosttySurfaceView, split: GhosttySurfaceView) {
+        let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let session = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+        let main = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), env: ["AGTERM_PANE_ID": "main-tok"])
+        main.session = session
+        session.surface = main
+        let split = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), env: ["AGTERM_PANE_ID": "split-tok"])
+        split.session = session
+        session.splitSurface = split
+        session.hasSplit = true
+        session.isSplit = true
+        return (session, main, split)
+    }
+
+    // #602: the role names the slot, the token names the terminal, and only the token survives a swap.
+    func testAChordCarriesTheTokenOfTheTerminalItFiredInAcrossASwap() throws {
+        let fix = try fixture()
+        let (session, main, split) = try tokenedSplitSession(fix)
+        XCTAssertEqual(try fired(fix.runner, from: split, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "right split-tok")
+        XCTAssertEqual(try fired(fix.runner, from: main, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "left main-tok")
+
+        XCTAssertNil(fix.store.swapPanes(session.id))
+
+        XCTAssertEqual(try fired(fix.runner, from: split, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "left split-tok")
+        XCTAssertEqual(try fired(fix.runner, from: main, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "right main-tok")
+    }
+
+    func testAChordFromAPromotedSurvivorReportsLeftWithItsOwnToken() throws {
+        let fix = try fixture()
+        let (session, _, split) = try tokenedSplitSession(fix)
+
+        fix.store.closePrimaryPane(session.id)
+
+        XCTAssertTrue(session.surface === split)
+        XCTAssertEqual(try fired(fix.runner, from: split, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "left split-tok")
+    }
+
+    func testAChordFiredInsideAPaneOverlayCarriesTheCoveredPanesToken() throws {
+        let fix = try fixture()
+        let (session, _, _) = try tokenedSplitSession(fix)
+        session.splitFocused = true
+        XCTAssertNil(fix.store.openPaneOverlay(session.id, pane: .left, command: "true"))
+        let overlay = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        session.setPaneOverlaySurface(overlay, pane: .left)
+        XCTAssertEqual(overlay.paneToken, "", "the overlay itself has no token to leak")
+
+        XCTAssertEqual(try fired(fix.runner, from: overlay, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "left main-tok")
+    }
+
+    func testAPaletteRunWithAFocusedButUnrealizedSplitCarriesThePrimaryToken() throws {
+        let fix = try fixture()
+        let (session, _, _) = try tokenedSplitSession(fix)
+        fix.store.selectSession(session.id)
+        session.splitFocused = true
+        XCTAssertEqual(try firedFromPalette(fix.runner, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "right split-tok")
+
+        session.splitSurface = nil
+        XCTAssertEqual(try firedFromPalette(fix.runner, writing: "\"$AGT_PANE $AGT_PANE_ID\""), "left main-tok")
+    }
+
+    private func firedFromPalette(_ runner: CustomCommandRunner, writing body: String) throws -> String? {
+        let probe = stateDir.appendingPathComponent("probe-\(UUID().uuidString).txt")
+        runner.run(CustomCommand(name: "probe", command: "printf '%s' \(body) > \(probe.path)", shortcut: ""))
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            if let written = try? String(contentsOf: probe, encoding: .utf8), !written.isEmpty { return written }
+        }
+        return nil
     }
 
     func testScratchChordKeepsItsOwnerAfterSelectionChanges() throws {

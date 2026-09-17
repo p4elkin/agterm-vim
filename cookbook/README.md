@@ -18,6 +18,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [project-launcher](project-launcher/) | pick a project anywhere — or type "project + prompt" — and get a session in its workspace | 0.19.0, jq |
 | [project-switcher](project-switcher/) | show only one project's workspaces in the sidebar | 0.18.0, jq |
 | [window-per-project](window-per-project/) | park every other window in the Dock and raise one | 0.17.1, jq |
+| [window-switcher](window-switcher/) | jump to a window by number, or pick one with its waiting sessions in view | 0.28.0, jq |
 | [workspace-sets](workspace-sets/) | switch the sidebar between named groups of workspaces, one chord each | 0.18.0, jq |
 
 ### Sessions across restarts
@@ -47,6 +48,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [cross-agent-chat](cross-agent-chat/) | sessions message each other without flooding the chat, one chord reads the conversation back | 0.10.0, python3, fzf, Claude Code |
 | [kimi-agent-status](kimi-agent-status/) | Kimi Code sessions report agent status onto their sidebar row | 0.3.1, Kimi Code |
 | [kiro-agent-status](kiro-agent-status/) | Kiro CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Kiro CLI |
+| [long-commands-status](long-commands-status/) | wrap any long shell command so the row reports active while it runs and completed or blocked when it finishes | 0.17.0 |
 | [remote-claude-session](remote-claude-session/) | one chord runs Claude Code in a tmux session on a remote host, reconnecting and reporting status onto its own tab | 0.22.0, jq, ssh, tmux, Claude Code |
 | [session-context-nudge](session-context-nudge/) | Claude Code keeps the title bar saying what the session is working on | 0.26.0, jq, Claude Code |
 | [status-announcer](status-announcer/) | demo: speak agent status changes from a dedicated session | 0.16.0, jq |

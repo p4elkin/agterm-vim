@@ -250,9 +250,12 @@ paths:
   shared-seam rule: the headless equivalent is `session.new --workspace`. Being keyless, it also owes the
   `rebuild()` merge line, which serves the single-chord `map` alone — `equivalent(for:)` is nil for a
   leader and for every `nmap` — see [[keymap]].
-- Attention mode lists every non-idle session, ordered blocked, active, completed and then newest
-  `statusChangedAt`, with nil last. Palette items carry status plus per-call color/shape, resolved by the
-  same helpers as sidebar glyphs. Typed queries use fuzzy score.
+- Attention mode lists every open window's non-idle sessions (`WindowLibrary.attentionAcrossWindows`),
+  ordered blocked, active, completed and then newest `statusChangedAt`, with nil last, as one combined
+  sort. Palette items carry status plus per-call color/shape, resolved by the same helpers as sidebar
+  glyphs, a subtitle naming the window once more than one is open, and `isEnabled` asking the OWNING
+  window's modal gate. A pick defers `AppActions.selectAttention` past the palette's close, which raises
+  another window before selecting. Typed queries use fuzzy score.
 - Open attention through `show_attention` (Ctrl-Shift-I), Navigate > Go to Attention, or Show Attention
   in the action palette. The titlebar bell opens a popover, not this palette. Palette opening is
   keep-in-sync exempt.
@@ -274,7 +277,8 @@ paths:
   background, and chrome text.
 - Clock lists up to `maxCandidates` recent visible sessions excluding active and enables only with at
   least two sessions. Selection records activity, selects, and focuses.
-- Bell lists all non-idle sessions including current. Selection uses pane-aware reveal.
+- Bell lists all non-idle sessions across open windows, current included. Selection uses the same
+  pane-aware reveal as the palette; see [[notifications]] for the cross-window raise.
 - Popover opens are keep-in-sync exempt. Synthesized XCUITest clicks inside `NSPopover` do not fire the
   SwiftUI button, though real clicks do; tests verify open/list contents, while selection is manual plus
   host-free API coverage.

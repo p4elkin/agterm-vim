@@ -88,6 +88,9 @@ struct WindowContentView: View {
     /// Whether the attention popover (the mouse equivalent of the ⌃⇧I attention palette) is shown, anchored
     /// on the title-bar bell. Non-private so the `+RecentSessions` extension's bell/rows can toggle it.
     @State var attentionPopoverShown = false
+    /// The attention popover's measured row-stack height, 0 until its preference lands; the popover sizes to
+    /// it up to a cap so a long cross-window list scrolls instead of running off the screen.
+    @State var attentionRowsHeight: Double = 0
     /// Whether the custom-commands popover (the mouse form of the ⌃⇧O palette) is shown, anchored on its
     /// title-bar button. Non-private so the `+CustomCommands` extension's button/rows can toggle it.
     @State var customCommandsShown = false
@@ -282,6 +285,10 @@ struct WindowContentView: View {
         if let id = actions.keymapEditOverlaySession, closed.contains(id) {
             actions.keymapEditOverlaySession = nil
             actions.reloadKeymap()
+        }
+        if let id = actions.hooksEditOverlaySession, closed.contains(id) {
+            actions.hooksEditOverlaySession = nil
+            actions.reloadHooks()
         }
         if let id = actions.ghosttyEditOverlaySession, closed.contains(id) {
             // the reload is skipped when the file is unchanged, so a no-op editor session keeps its font zoom.
@@ -542,8 +549,8 @@ struct WindowContentView: View {
         GhosttyApp.shared.hiddenInterfaceElements
     }
 
-    /// Whether a title-bar / sidebar-footer chrome element should be drawn. Everything is shown unless the
-    /// user hid it in Settings ▸ Interface.
+    /// Whether a title-bar / sidebar-footer chrome element should be drawn, per Settings ▸ Interface and
+    /// each element's `hiddenByDefault`.
     func shows(_ element: InterfaceElement) -> Bool {
         !hiddenInterfaceElements.contains(element)
     }
@@ -665,6 +672,7 @@ struct WindowContentView: View {
                 },
                 prompt: pending.prompt,
                 initialQuery: pending.query,
+                initialSelection: pending.selection,
                 allowCustom: pending.allowCustom,
                 onCustom: { query in
                     pick.resolve(ControlPickResult(result: .custom, query: query))

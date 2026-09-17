@@ -10,6 +10,10 @@ public enum ControlEventKind: String, Codable, CaseIterable, Sendable, Equatable
     /// `WindowLibrary` coalesces per window and re-emits empty, which would drop the mark it carried.
     case sessionParked = "session.parked"
     case treeChanged = "tree.changed"
+    case paneSplit = "pane.split"
+    case paneScratch = "pane.scratch"
+    case remoteOpened = "remote.opened"
+    case remoteClosed = "remote.closed"
 }
 
 /// Kind-specific event data. Optional fields keep the encoded payload compact while preserving one
@@ -26,12 +30,20 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
     /// The `session.parked` event's resulting mark. Both edges are events, so unlike the tree node's
     /// true-only field this carries false as well.
     public var parked: Bool?
+    /// The `status` event's status before the accepted write, so a consumer sees the transition without
+    /// keeping state. Equal to `status` when only shape, color, pane or blink changed.
+    public var previous: String?
     public var title: String?
     public var body: String?
+    /// The `remote.opened` / `remote.closed` ssh destination the row is attached to, as `zmx attach` was
+    /// given it.
+    public var host: String?
 
     public init(name: String? = nil, status: String? = nil, pane: String? = nil,
                 blink: Bool? = nil, color: String? = nil, shape: String? = nil,
-                parked: Bool? = nil, title: String? = nil, body: String? = nil) {
+                parked: Bool? = nil, previous: String? = nil,
+                title: String? = nil, body: String? = nil,
+                host: String? = nil) {
         self.name = name
         self.status = status
         self.pane = pane
@@ -39,8 +51,10 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
         self.color = color
         self.shape = shape
         self.parked = parked
+        self.previous = previous
         self.title = title
         self.body = body
+        self.host = host
     }
 }
 

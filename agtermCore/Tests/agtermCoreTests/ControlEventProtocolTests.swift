@@ -17,7 +17,17 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 4, ts: 4.5, kind: .sessionClosed, window: "win", workspace: "work",
                          session: "closed", payload: ControlEventPayload(name: "old")),
             ControlEvent(seq: 5, ts: 5.5, kind: .treeChanged, window: "win"),
-            ControlEvent(seq: 6, ts: 6.5, kind: .sessionParked, window: "win", workspace: "work",
+            ControlEvent(seq: 6, ts: 6.5, kind: .paneSplit, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "shown")),
+            ControlEvent(seq: 7, ts: 7.5, kind: .paneScratch, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "hidden")),
+            ControlEvent(seq: 8, ts: 8.5, kind: .status, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "blocked", previous: "active")),
+            ControlEvent(seq: 9, ts: 9.5, kind: .remoteOpened, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 10, ts: 10.5, kind: .remoteClosed, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 11, ts: 11.5, kind: .sessionParked, window: "win", workspace: "work",
                          session: "parked", payload: ControlEventPayload(name: "api", parked: true)),
         ]
 
@@ -43,7 +53,17 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 4, ts: 4.5, kind: .sessionClosed, window: "win", workspace: "work",
                          session: "closed", payload: ControlEventPayload(name: "old")),
             ControlEvent(seq: 5, ts: 5.5, kind: .treeChanged, window: "win"),
-            ControlEvent(seq: 6, ts: 6.5, kind: .sessionParked, window: "win", workspace: "work",
+            ControlEvent(seq: 6, ts: 6.5, kind: .paneSplit, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "shown")),
+            ControlEvent(seq: 7, ts: 7.5, kind: .paneScratch, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "hidden")),
+            ControlEvent(seq: 8, ts: 8.5, kind: .status, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", status: "blocked", previous: "active")),
+            ControlEvent(seq: 9, ts: 9.5, kind: .remoteOpened, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 10, ts: 10.5, kind: .remoteClosed, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", host: "buildbox")),
+            ControlEvent(seq: 11, ts: 11.5, kind: .sessionParked, window: "win", workspace: "work",
                          session: "parked", payload: ControlEventPayload(name: "api", parked: true)),
         ]
         let expected = [
@@ -53,8 +73,13 @@ struct ControlEventProtocolTests {
             ##"{"kind":"session.created","payload":{"name":"new"},"seq":3,"session":"created","ts":3.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"session.closed","payload":{"name":"old"},"seq":4,"session":"closed","ts":4.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"tree.changed","payload":{},"seq":5,"ts":5.5,"window":"win"}"##,
-            ##"{"kind":"session.parked","payload":{"name":"api","parked":true},"seq":6,"session":"parked","##
-                + ##""ts":6.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"pane.split","payload":{"name":"api","status":"shown"},"seq":6,"session":"sess","ts":6.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"pane.scratch","payload":{"name":"api","status":"hidden"},"seq":7,"session":"sess","ts":7.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"status","payload":{"name":"api","previous":"active","status":"blocked"},"seq":8,"session":"sess","ts":8.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"remote.opened","payload":{"host":"buildbox","name":"far"},"seq":9,"session":"sess","ts":9.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"remote.closed","payload":{"host":"buildbox","name":"far"},"seq":10,"session":"sess","ts":10.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"session.parked","payload":{"name":"api","parked":true},"seq":11,"session":"parked","##
+                + ##""ts":11.5,"window":"win","workspace":"work"}"##,
         ]
 
         #expect(try events.map(canonicalJSON) == expected)
@@ -72,6 +97,38 @@ struct ControlEventProtocolTests {
 
         let plainJSON = String(decoding: try JSONEncoder().encode(plain), as: UTF8.self)
         #expect(!plainJSON.contains("shape"), "a nil shape must be omitted from the payload; got \(plainJSON)")
+        #expect(!plainJSON.contains("previous"), "a nil previous must be omitted from the payload; got \(plainJSON)")
+    }
+
+    @Test func hooksCommandsAndResultRoundTripOnTheWire() throws {
+        for (command, raw) in [(Command.hooksReload, "hooks.reload"), (Command.hooksList, "hooks.list")] {
+            let data = try JSONEncoder().encode(ControlRequest(cmd: command))
+            #expect(String(decoding: data, as: UTF8.self).contains("\"cmd\":\"\(raw)\""))
+            #expect(try JSONDecoder().decode(ControlRequest.self, from: data).cmd == command)
+        }
+        let payload = ControlHooks(path: "/cfg/hooks.conf", diagnostics: [], hooks: [])
+        let response = ControlResponse(ok: true, result: ControlResult(hooks: payload))
+        let data = try JSONEncoder().encode(response)
+        #expect(try JSONDecoder().decode(ControlResponse.self, from: data) == response)
+        let bare = String(decoding: try JSONEncoder().encode(ControlResponse(ok: true, result: ControlResult(count: 0))),
+                          as: UTF8.self)
+        #expect(!bare.contains("hooks"))
+    }
+
+    @Test func hooksReadBackRoundTripsAndOmitsIdleFields() throws {
+        let idle = ControlHookEntry(kind: "status", command: "~/s.sh", line: 3)
+        let busy = ControlHookEntry(kind: "notify", command: "echo x | cat", line: 5, runningPid: 4242,
+                                    elapsedSeconds: 1.5, pending: 2, dropped: 7, lastFailure: "exit 1")
+        let hooks = ControlHooks(path: "/cfg/hooks.conf",
+                                 diagnostics: [ControlKeymapDiagnostic(line: 9, message: "unknown verb 'x'")],
+                                 hooks: [idle, busy])
+
+        let data = try JSONEncoder().encode(hooks)
+        #expect(try JSONDecoder().decode(ControlHooks.self, from: data) == hooks)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let idleJSON = String(decoding: try encoder.encode(idle), as: UTF8.self)
+        #expect(idleJSON == ##"{"command":"~/s.sh","dropped":0,"kind":"status","line":3,"pending":0}"##)
     }
 
     // the unpark edge is an event of its own, so `false` must reach the wire; the tree node's true-only

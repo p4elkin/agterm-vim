@@ -160,8 +160,8 @@ renumbering. Do not reintroduce a count anywhere.
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.go`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
-- `keymap.reload`, `keymap.list`, `config.reload`, `theme.set`, `theme.list`, `restore.capture`,
-  `restore.clear`, `version`
+- `keymap.reload`, `keymap.list`, `hooks.reload`, `hooks.list`, `config.reload`, `theme.set`,
+  `theme.list`, `restore.capture`, `restore.clear`, `version`
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
@@ -172,6 +172,12 @@ the bundled skill, `site/commands.html` and `README.md` leave them out. The sync
 below applies to upstream commands.
   `restore.clear`, `restore.mode`, `version`
 - `zmx.list`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`
+
+`terminfo install` is a CLI-only command with no protocol counterpart, the one exemption from the
+protocol/dispatcher contract: it runs `infocmp` and `ssh` locally and never opens the socket, so there is
+nothing for the app to dispatch or read back. `TerminfoInstall` in `agtermCore` owns the argv and the
+pipeline; the CLI owns the typed option surface, deliberately narrower than ssh's so `-G`, `-N`, `-n` and
+`-f` cannot fake a success or hang the install.
 
 `debug.appearance` is a private `Command` case, absent from the list above, used only by `AppearanceFlipUITests`.
 It accepts light/dark, sets `NSApp.appearance`, posts `.agtermSystemAppearanceChanged`, echoes the effective
@@ -411,6 +417,24 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   and session close tear a HUD down. `overlay.result` refuses with `OverlayHudError.noResult` because
   `overlayActive` alone would answer the misleading "overlay still running", and `overlay.resize` takes a
   percent but refuses `--full` (`OverlayHudError.fullResize`), which would cover the session it describes.
+- `--hide-after SECONDS` takes the panel down by itself; omitted or 0 leaves it up, which is what every HUD
+  did before. `0...HudSpec.maxHideAfter` (86400 seconds), REJECTED rather than clamped, by one predicate
+  (`HudSpec.isValidHideAfter`) the CLI and the dispatcher share — the ceiling is the scheduler's own, since
+  `seconds * 1_000_000_000` into a `UInt64` traps on a large enough Double, and `armHudAutoHide` clamps to it
+  as well so a raw-socket caller cannot reach that conversion past a validation that drifted. Each SUCCESSFUL open or update restarts the
+  full interval and an omitted value cancels it, which is `hud.update`'s replace-whole-spec rule rather than
+  an exception to it; a rejected write never touches timer state, so the panel on screen keeps the deadline
+  that came with it. The clock is elapsed lifetime, not viewing time: it runs while the session is
+  unselected, its pane hidden or its window minimized, and expiry closes the panel without selecting
+  anything. `ControlServer.armHudAutoHide` owns it, carrying a per-session REVISION because `updateHud`
+  must not bump `overlaySlotGeneration` (that identity re-creates the surface), so the revision is what makes
+  a superseded callback inert. Cancellation hangs off `Session.onHudDiscarded`, which `discardHudBody` calls,
+  so every teardown routing through it — `closeOverlay`, session and workspace teardown, pending-close
+  finalization, window teardown — takes the timer with the panel. A SOFT close is the one place that closes a
+  panel early: `AppStore.closeTimedHud` takes down a TIMED HUD before its session leaves the tree, since an
+  expiry could not resolve it there and undo would restore a panel whose time was up; a panel with no
+  auto-hide keeps the undo behaviour it always had. `tree`'s `hud.hideAfter` reads back the CONFIGURED
+  seconds, 0 for persistent, never a countdown.
 - `hud.open` and `hud.update` accept `--pane` plus `--pane-id` with `session.restore`'s resolution rule: a
   live stable token wins over the role fallback, while an unknown token without a fallback errors. The
   resolved pane identity is stored, so swap and promotion move the HUD with its shell. A hidden target keeps
@@ -564,6 +588,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   is set, which makes it a text prompt. Absent items return `pick.open requires items`; an empty list
   without `allowCustom` returns `pick.open requires at least one item`.
   Optional subtitle/prompt/query/custom/follow; `query` prefills the field so the picker opens filtered.
+  Optional `selection` (CLI `--select ID`, its own field because `ControlArgs.select` is the Bool behind
+  `session.type --select`) must name a supplied item, refused `pick select must name an item id`
+  otherwise, an `allowCustom` empty list included (without `allowCustom` the at-least-one-item guard
+  answers first). The palette seeds its highlight from it ONCE, against the first
+  filtered list, so a `query` prefill that hides the item leaves the first visible row; later query
+  edits keep the reset-to-zero behavior. Consumed at open like `query`, so it has no tree read-back: the
+  result's `id`/`index` report what was picked, and `ControlPickUITests` pins that a far-down row is
+  scrolled into view before Return.
   Reject duplicate IDs and control characters host-free; `prompt` and `query` stay unvalidated free text.
   Picks share the window modal slot with GUI asks. Terminal asks use separate session slots.
   A background window is raised only when `follow` is set.
@@ -666,13 +698,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   derive validation/help from `StatusShape.allCases`. Idle accepts but does not render shape.
   AppKit and SwiftUI resolve through shared color/symbol helpers.
 - `ControlEventPayload` and `EventFormatter.human` must include every override; human status prints color
-  and shape. Tree reports state, pane, true blink, per-call color, per-call shape, and `statusChangedAt`
-  only while non-idle.
+  and shape. Tree reports state, pane, true blink, per-call color, and per-call shape only while non-idle.
+  It reports `statusChangedAt` whenever it exists, including idle.
 - `statusChangedAt` is `Session.statusChangedAt` as epoch seconds — a plain `Double`, since
   `ControlProtocol.swift` imports no Foundation. It shares the `ControlEvent.ts` clock so a poller can
   compare the two, and `setAgentIndicator` stamps it BEFORE the unchanged-indicator early return, which is
-  what makes a re-pushed `active` refresh the age instead of freezing it. Ephemeral: cleared on idle, never
-  persisted, absent after restore.
+  what makes every set, including idle and repeated values, refresh the age. Automatic and manual clears
+  also count. Ephemeral: never persisted, absent before any set and after restore.
 - Pane is left/right/scratch, nil meaning left. It controls pane-scoped keystroke clearing and GUI
   blocked/completed reveal. Control attention navigation changes selection only.
 - Pane also decides PRECEDENCE while a session is blocked: a write from another pane that is neither
@@ -721,6 +753,16 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Host-free projection names arrow/return; represent AppKit globe as `fn+` even though grammar lacks it.
 - `config.reload` shares GUI/Edit-overlay reload and returns Ghostty diagnostic count. Keymap and config are
   app-global and take no window.
+- `hooks.reload` / `hooks.list` refuse a target or `--window` before any action. The user contract (file
+  format, stdin/env delivery, queue, failures, reload) lives in `site/docs.html#hooks` and the read-back in
+  `site/commands.html`; these are the implementation constraints. Hook identity is kind plus command text,
+  never the line number, so `HookScheduler.apply` keeps an unchanged entry's child, queue and counters.
+  Only process exit releases a hook's slot: a stdin delivery failure is recorded and bannered on the live
+  run and never starts a second child, and `HookProcessRunner` reports `onExit` only after the child has
+  terminated AND the `DispatchIO` cleanup handler has closed the write end. The scheduler's `onFailure`
+  sink is the only banner source, one per hook until success or reload. `WindowLibrary.onControlEvent`
+  fires after the ring append, so hooks and `events.read` see the same events; dispatch never waits on a
+  hook, which is what makes a hook's own same-socket `agtermctl` call safe.
 - `theme.set` operates on light and dark slots. Name/light aliases conflict; setting light preserves dark.
   Nil/empty means Ghostty built-in, while bare set clears both and disables sync. Dark enables sync,
   seeding missing light from current or Builtin Light; reserved `none` clears dark and sync but preserves
@@ -1167,6 +1209,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   keymap custom command the user supplies. There is NO timer, notification or session-wide coalescing;
   returning false dispatches no app callback, so app code does not learn ssh exited until the keypress, and
   each pane holding and closing on its own is also right when one half of a split dies.
+- `remote.opened` / `remote.closed` are emitted by `emitSessionCreated` / `emitSessionClosed` themselves,
+  gated on `remoteHost`, never from `zmx.attach`: the attach inserts the row before ssh starts, and a
+  soft close emits `session.closed` while the pane is still alive for undo, whose `session.created` never
+  passes through the attach path. So the pair means row visibility only, every producer of those edges
+  gets it, and no kind claims the ssh connection's state, which the app cannot observe under the hold
+  prompt. A host-side pair (`client.attached` / `client.detached`) is the backlog item, not these kinds.
 - `Session.remoteHost` is immutable and set at construction, because `addSession` saves: a marker written
   afterwards would let one snapshot reach disk carrying the ssh command. `isPersistable` gates every
   producer — the launch snapshot, the Recent Closed session record, and a closed workspace's record, whose
