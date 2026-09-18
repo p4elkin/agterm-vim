@@ -124,9 +124,9 @@ extension RequestCommand {
 
     /// What every command does with an answer it is not going to act on further: print it, and make a failure
     /// the process's own exit status. The overlay redirect's own tail ends here too.
-    func printAndCheck(_ response: ControlResponse) throws {
-        SocketClient.printResponse(response, json: options.json, echoID: echoesResultID)
-        if !response.ok { throw ExitCode.failure }
+    func printAndCheck(_ reply: SocketReply) throws {
+        SocketClient.printResponse(reply, json: options.json, echoID: echoesResultID)
+        if !reply.response.ok { throw ExitCode.failure }
     }
 }
 

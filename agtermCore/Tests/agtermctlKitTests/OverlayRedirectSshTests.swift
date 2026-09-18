@@ -599,10 +599,10 @@ private final class Effects: @unchecked Sendable {
     var currentDirectory = "/w/repo"
     var scriptPath: String? = "/tmp/agterm-overlay-redirect-1/42.sh"
 
-    func send(_ request: ControlRequest) throws -> ControlResponse {
+    func send(_ request: ControlRequest) throws -> SocketReply {
         requests.append(request)
         guard !responses.isEmpty else { throw SocketClientError("no scripted response for \(request.cmd)") }
-        return responses.removeFirst()
+        return SocketReply(responses.removeFirst())
     }
 
     var environment: OverlayRedirectEnvironment {

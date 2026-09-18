@@ -1397,6 +1397,30 @@ final class WindowLibraryTests {
         #expect(library.claimNextWindowID() == nil)
     }
 
+    // #626: a window deleted before its scene claimed it left a dead id for the next window to pop.
+    @Test func removeWindowPurgesItsPendingClaim() throws {
+        let library = WindowLibrary(directory: directory)
+        _ = library.consumeReopen()
+        _ = library.claimNextWindowID()
+        let extra = library.newWindow(name: "extra").id
+        library.enqueueClaim(extra)
+        library.removeWindow(extra)
+        #expect(library.claimNextWindowID() == nil)
+    }
+
+    @Test func rejectedRemoveOfLastWindowKeepsItsPendingClaim() throws {
+        let library = WindowLibrary(directory: directory)
+        let launch = library.windows[0].id
+        _ = library.consumeReopen()
+        _ = library.claimNextWindowID()
+        let extra = library.newWindow(name: "extra").id
+        library.enqueueClaim(extra)
+        library.removeWindow(launch)
+        library.removeWindow(extra)
+        #expect(library.windows.map(\.id) == [extra])
+        #expect(library.claimNextWindowID() == extra)
+    }
+
     // two adoptLaunchWindowID() calls before consumeReopen (SwiftUI restored more than one window,
     // each hitting the empty-queue fallback) must NOT both get the same launch id — only the first
     // does; the second gets nil and dismisses itself, so two windows can't bind the one launch store.

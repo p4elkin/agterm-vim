@@ -514,6 +514,8 @@ public final class WindowLibrary {
     /// persists. No-ops on the last window. Clears `frontmostWindowID` if it pointed at the removed one.
     public func removeWindow(_ id: UUID) {
         guard canRemoveWindow, let index = windows.firstIndex(where: { $0.id == id }) else { return }
+        // after the guard: a rejected delete of the last window must keep its live claim.
+        pendingClaim.removeAll { $0 == id }
         // before the pane inventory below, which reads `workspaces` and so cannot see a soft-closed
         // session; without this its daemon outlives the window with nothing left to finalize it
         stores[id]?.finalizeAllPendingCloses()

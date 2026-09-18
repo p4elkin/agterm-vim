@@ -377,9 +377,9 @@ extension Session.Overlay.Open {
     /// cannot simply be returned: on either redirect outcome the app opens NOTHING and answers with the
     /// outcome, and the resolved re-send carries `resolved` so it cannot loop back into a fresh decision.
     func runRedirecting(environment: OverlayRedirectEnvironment,
-                        send: (ControlRequest) throws -> ControlResponse) throws {
+                        send: (ControlRequest) throws -> SocketReply) throws {
         let opened = try send(makeRequest())
-        guard opened.ok, let result = opened.result, let redirect = result.overlayRedirect else {
+        guard opened.response.ok, let result = opened.response.result, let redirect = result.overlayRedirect else {
             try finishLocally(opened, send: send)
             return
         }
@@ -439,7 +439,7 @@ extension Session.Overlay.Open {
     private func sendToViewer(_ redirect: ControlOverlayRedirect,
                               id: String?,
                               environment: OverlayRedirectEnvironment,
-                              send: (ControlRequest) throws -> ControlResponse) throws {
+                              send: (ControlRequest) throws -> SocketReply) throws {
         guard let row = redirect.row, let sourceHost = environment.sourceHost() else {
             // a `watched-by` answer with no row is a protocol violation, and no source host means there is
             // nothing for the viewer to ssh back to. Neither can be redirected; open here, with a word about
@@ -508,7 +508,7 @@ extension Session.Overlay.Open {
 
     /// The fallback: the caller's own command, opened here, with `resolved` set so the app does not decide
     /// again and send it straight back to the viewer that just failed to answer.
-    private func openWithoutRedirect(id: String?, send: (ControlRequest) throws -> ControlResponse) throws {
+    private func openWithoutRedirect(id: String?, send: (ControlRequest) throws -> SocketReply) throws {
         try finishLocally(try send(try resolvedRequest(command: command, cwd: cwd, target: id)), send: send)
     }
 
@@ -524,28 +524,28 @@ extension Session.Overlay.Open {
     }
 
     /// The desk path's own tail, unchanged: print the response, or poll the overlay out for `--block`.
-    private func finishLocally(_ response: ControlResponse,
-                               send: (ControlRequest) throws -> ControlResponse) throws {
+    private func finishLocally(_ reply: SocketReply,
+                               send: (ControlRequest) throws -> SocketReply) throws {
         guard block else {
-            try printAndCheck(response)
+            try printAndCheck(reply)
             return
         }
-        guard response.ok, let id = response.result?.id else {
-            SocketClient.printResponse(response, json: options.json)
+        guard reply.response.ok, let id = reply.response.result?.id else {
+            SocketClient.printResponse(reply, json: options.json)
             throw ExitCode.failure
         }
         while true {
             let res = try send(resultRequest(id: id))
-            if res.ok {
+            if res.response.ok {
                 if options.json { SocketClient.printResponse(res, json: true) }
                 // a successful result must carry the status; its absence is a protocol violation, not success.
-                guard let code = res.result?.exitCode else {
+                guard let code = res.response.result?.exitCode else {
                     FileHandle.standardError.write(Data("error: result missing exit code\n".utf8))
                     throw ExitCode.failure
                 }
                 throw ExitCode(rawValue: Int32(code))
             }
-            if res.error == OverlayResultError.stillRunning {
+            if res.response.error == OverlayResultError.stillRunning {
                 Thread.sleep(forTimeInterval: 0.1)
                 continue
             }

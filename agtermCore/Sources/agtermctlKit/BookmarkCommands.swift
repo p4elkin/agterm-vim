@@ -28,12 +28,12 @@ extension Session {
         // shared formatter would read `result.count` as a diagnostic count.
         func run() throws {
             let client = SocketClient(path: options.socketPath())
-            let response = try client.send(try makeRequest())
-            if !options.json, response.ok, let turn = response.result?.count {
+            let reply = try client.send(try makeRequest())
+            if !options.json, reply.response.ok, let turn = reply.response.result?.count {
                 print(turn)
                 return
             }
-            try printAndCheck(response)
+            try printAndCheck(reply)
         }
     }
 

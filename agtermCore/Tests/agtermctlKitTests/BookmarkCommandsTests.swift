@@ -94,7 +94,7 @@ struct BookmarkCommandsTests {
         let node = ControlBookmarkNode(id: "b1", session: "s1", sessionName: "work", turn: 3,
                                        prompt: "fix the parser", created: 1_700_000_000, needle: "⟦3⟧")
         let response = ControlResponse(ok: true, result: ControlResult(bookmarks: [node]))
-        let line = SocketClient.formatResponse(response, json: true)
+        let line = SocketReply(response).line
         let decoded = try JSONDecoder().decode(ControlResponse.self, from: Data(line.utf8))
         #expect(decoded.result?.bookmarks == [node])
     }
