@@ -224,11 +224,21 @@ final class ZmxClient {
         process.environment = invocation.environment
         let output = Pipe()
         let errors = Pipe()
+        // libghostty spawns surface commands from its io thread with plain inheritance, so a pipe end still
+        // open here would ride into that child and hold EOF back for the daemon's lifetime.
+        for handle in [output.fileHandleForReading, output.fileHandleForWriting,
+                       errors.fileHandleForReading, errors.fileHandleForWriting] {
+            _ = fcntl(handle.fileDescriptor, F_SETFD, FD_CLOEXEC)
+        }
         process.standardOutput = output
         process.standardError = errors
         let finished = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in finished.signal() }
         try process.run()
+        // drain both pipes while waiting: a listing past the 16 KB pipe buffer blocks zmx on write, and
+        // reading only after exit turned every such call into the timeout.
+        let stdoutData = drain(output.fileHandleForReading)
+        let stderrData = drain(errors.fileHandleForReading)
         if finished.wait(timeout: .now() + invocation.timeout) == .timedOut {
             process.terminate()
             if finished.wait(timeout: .now() + terminationGrace) == .timedOut {
@@ -237,11 +247,29 @@ final class ZmxClient {
             }
             throw CommandError.timedOut
         }
-        let stdout = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        let stderr = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let stdout = String(decoding: stdoutData(), as: UTF8.self)
+        let stderr = String(decoding: stderrData(), as: UTF8.self)
         guard process.terminationStatus == 0 else {
             throw CommandError.failed(process.terminationStatus, stdout + stderr)
         }
         return invocation.mergesStderr ? stdout + stderr : stdout
+    }
+
+    /// Reads the handle to EOF on a global queue; the returned closure joins that read. The join is bounded:
+    /// called after the child exited, its output is already in the pipe, and a write end leaked to another
+    /// process must not turn a finished call into a hang.
+    private nonisolated static func drain(_ handle: FileHandle) -> () -> Data {
+        let done = DispatchSemaphore(value: 0)
+        let buffer = OSAllocatedUnfairLock(initialState: Data())
+        DispatchQueue.global(qos: .userInitiated).async {
+            while let chunk = try? handle.read(upToCount: 65536), !chunk.isEmpty {
+                buffer.withLock { $0.append(chunk) }
+            }
+            done.signal()
+        }
+        return {
+            _ = done.wait(timeout: .now() + terminationGrace)
+            return buffer.withLock { $0 }
+        }
     }
 }

@@ -110,3 +110,13 @@ publishes an empty body with only a warning on stderr.
   word changes the outcome, and the cheat sheet shows it too
 - the chrome pills moved from the title bar to the sidebar footer, and stay visible while terminal zoom
   hides the sidebar
+
+### Fixed
+
+- `tree` and `window list` no longer stall the app for 3 seconds per call once `zmx list` grows past the
+  16 KB pipe buffer (about 115 daemons). `ZmxClient.run` read the child's output only after it exited, so
+  zmx blocked on write, the app blocked on exit, and every call ended in the timeout with the Live leader
+  snapshot dropped. The pipes are now drained while waiting, and are close-on-exec so a surface command
+  libghostty spawns meanwhile cannot inherit a pipe end and hold EOF back for its lifetime, which hung the
+  same call forever. Upstream code since `d01a774`, reachable from every `tree` since `4ec4d4b` (#574); not
+  reported upstream yet

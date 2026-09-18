@@ -108,6 +108,21 @@ final class ZmxClientTests: XCTestCase {
         XCTAssertEqual(try ZmxClient.run(invocation(mergesStderr: true)), "row\nnotice\n")
     }
 
+    func testRunDrainsOutputLargerThanThePipeBufferBeforeTheProcessExits() throws {
+        let invocation = ZmxClient.Invocation(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "head -c 200000 /dev/zero | tr '\\0' x; head -c 200000 /dev/zero | tr '\\0' y >&2"],
+            environment: [:], timeout: 5, mergesStderr: true)
+        let started = Date()
+
+        let output = try ZmxClient.run(invocation)
+
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        XCTAssertEqual(output.count, 400_000)
+        XCTAssertEqual(output.prefix(1), "x")
+        XCTAssertEqual(output.suffix(1), "y")
+    }
+
     func testLiveReapListsThenKillsOnlyUnclaimedZeroClientNames() {
         let known = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         let orphan = "agterm-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
