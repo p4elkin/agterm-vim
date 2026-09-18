@@ -119,8 +119,8 @@ struct ConfigPathsTests {
             return String(text)
         }
         // an example silently dropped from the guard must fail here: four `map` lines, two `nmap`, three
-        // `command` and three `global-hotkey`.
-        #expect(examples.count == 12)
+        // `command` and four `global-hotkey`.
+        #expect(examples.count == 13)
         var bound = 0
         for example in examples {
             let (keymap, diagnostics) = parseKeymap(example)
@@ -133,9 +133,9 @@ struct ConfigPathsTests {
                 + (keymap.globalHotkey == nil ? 0 : 1)
         }
         // every `map` and `nmap` example plus the two chorded `command` ones; `Deploy` is palette-only.
-        // the alternatives example counts twice, its menu chord and its monitor-bound half. Then the three
+        // the alternatives example counts twice, its menu chord and its monitor-bound half. Then the four
         // `global-hotkey` examples, each of which must yield a chord rather than a diagnostic.
-        #expect(bound == 12)
+        #expect(bound == 13)
     }
 
     @Test func ghosttyConfigPathIsGhosttyConfInDir() {

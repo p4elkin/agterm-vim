@@ -76,6 +76,8 @@ final class CustomCommandRunner {
     private var resignKeyObserver: NSObjectProtocol?
 
     private let normalMode = NormalModeController.shared
+    private var menuActionObserver: NSObjectProtocol?
+    private var consumedKeyCodes: Set<UInt16> = []
 
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
@@ -97,14 +99,14 @@ final class CustomCommandRunner {
         self.failureHud = failureHud
     }
 
-    /// Install the local `.keyDown` monitor (idempotent), build the keybind map, observe `.agtermKeymapChanged`.
+    /// Install the local key monitor (idempotent), build the keybind map, observe `.agtermKeymapChanged`.
     func start() {
         guard keyMonitor == nil else { return }
         rebuild()
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
             // returning nil consumes the event (it never reaches the terminal); event passes it through.
-            return self.handleKeyDown(event) ? nil : event
+            return self.handleKeyEvent(event, in: NSApp.keyWindow) ? nil : event
         }
         keymapObserver = NotificationCenter.default.addObserver(
             forName: .agtermKeymapChanged, object: nil, queue: .main
@@ -124,9 +126,14 @@ final class CustomCommandRunner {
                 self.normalMode.exit()
             }
         }
+        menuActionObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.willSendActionNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recordMenuKeyPress(NSApp.currentEvent) }
+        }
     }
 
-    /// Remove the monitor, both observers, and any pending leader timer.
+    /// Remove the key monitor, observers, and pending leader timer.
     func stop() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
@@ -134,7 +141,10 @@ final class CustomCommandRunner {
         keymapObserver = nil
         if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
         resignKeyObserver = nil
+        if let menuActionObserver { NotificationCenter.default.removeObserver(menuActionObserver) }
+        menuActionObserver = nil
         cancelLeaderTimer()
+        consumedKeyCodes.removeAll()
     }
 
     /// Rebuild the matcher from the current keymap — custom commands plus the built-in monitor binds — skipping
@@ -177,27 +187,43 @@ final class CustomCommandRunner {
     /// hosted test cannot build, so those record the action instead. Nil dispatches through the real hub.
     var builtinPerformer: (@MainActor (BuiltinAction, NSWindow) -> Void)?
 
+    /// Own an F-key only after AppKit chooses a menu action, without predicting from a stale keymap.
+    func recordMenuKeyPress(_ event: NSEvent?) {
+        guard let event, event.type == .keyDown, !event.isARepeat,
+              let key = namedKey(forKeyCode: event.keyCode), bindableFunctionKeys.contains(key) else { return }
+        consumedKeyCodes.insert(event.keyCode)
+    }
+
     /// Feed one key event to the matcher; returns whether it was consumed (so the caller drops it). Normal
     /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while armed
     /// resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
     /// timer unless normal mode still owns the bare keys, and `toggle_fullscreen`'s chord toggles full
     /// screen without reaching the matcher at all — all consumed but that un-armed case; `.unmatched`
     /// passes through.
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
-        guard let keyWindow = NSApp.keyWindow else { return false }
-        return handleKeyDown(event, in: keyWindow)
-    }
-
-    /// The decision half, taking the key window instead of reading `NSApp.keyWindow`, so hosted tests can
-    /// drive it against a window they own: a hosted test's own window never becomes `NSApp.keyWindow` (the
-    /// app is not active), so `handleKeyDown(_:)` returns at that guard and none of this runs. Internal for
-    /// that reason alone, like `ControlServer.collectKeyEquivalents`.
     ///
     /// Acts when the key window's first responder is a terminal surface (context from that surface), or when
     /// the key window is an agterm terminal window whose focus is NOT on a text field — including one emptied
     /// to zero sessions. Passes through for a focused text field (Settings editor, inline rename, palette
     /// search) so a bound chord never eats those keystrokes, and for an auxiliary window focused off a text
-    /// field.
+    /// field. Repeats and releases of consumed presses stay consumed without firing again, except that
+    /// normal mode takes its repeats: holding `k` to skim back through sessions is what a bare-key bind is for.
+    func handleKeyEvent(_ event: NSEvent, in keyWindow: NSWindow?) -> Bool {
+        // ownership lasts through release, even if the action changes focus or a leader times out.
+        if event.type == .keyUp { return consumedKeyCodes.remove(event.keyCode) != nil }
+        guard event.type == .keyDown else { return false }
+        if event.isARepeat {
+            if normalMode.isActive, let keyWindow, handleKeyDown(event, in: keyWindow) { return true }
+            return consumedKeyCodes.contains(event.keyCode)
+        }
+        // a release may have occurred outside the app; a fresh press starts new ownership for this key.
+        consumedKeyCodes.remove(event.keyCode)
+        guard let keyWindow else { return false }
+        let consumed = handleKeyDown(event, in: keyWindow)
+        if consumed { consumedKeyCodes.insert(event.keyCode) }
+        return consumed
+    }
+
+    /// Dispatch a fresh press in a supplied window, also used by hosted tests whose window never becomes key.
     func handleKeyDown(_ event: NSEvent, in keyWindow: NSWindow) -> Bool {
         let responder = keyWindow.firstResponder
         // a focused text field is the window's NSText field editor and must keep its keystrokes: drop the
