@@ -663,7 +663,13 @@ final class CustomCommandRunnerTests: XCTestCase {
     func testSpawnFailurePostsOnlyWhenOptedIn() throws {
         let recorder = HudRecorder()
         let fix = try failureFixture(recorder)
-        fix.session.currentCwd = stateDir.appendingPathComponent("missing-directory").path
+        // a missing cwd falls back to home before the spawn (`spawn(_:for:in:)`), so the failure has to come
+        // from a directory that exists and cannot be entered.
+        let sealed = stateDir.appendingPathComponent("sealed-directory")
+        try FileManager.default.createDirectory(at: sealed, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0])
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sealed.path) }
+        fix.session.currentCwd = sealed.path
 
         fix.runner.run(CustomCommand(name: "quiet", command: "true", shortcut: ""))
         XCTAssertTrue(recorder.posts.isEmpty)
