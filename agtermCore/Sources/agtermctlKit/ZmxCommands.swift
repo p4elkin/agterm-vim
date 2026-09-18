@@ -69,13 +69,34 @@ struct Zmx: ParsableCommand {
         var session: String
         @Option(help: "Local open window id, unique prefix, or active (default: frontmost after discovery).")
         var window: String?
+        @Option(help: "How to reach the far side: ssh (default) or mosh.")
+        var transport: String?
+        @Option(help: "Absolute path of mosh-server on the far side. mosh starts its ssh bootstrap as a non-login shell, so a Homebrew mosh-server is otherwise off its PATH.")
+        var moshServer: String?
+        @Option(help: "Absolute path of the LOCAL mosh binary, when it is not at the first of /opt/homebrew/bin, /usr/local/bin, /usr/bin that exists.")
+        var mosh: String?
         @OptionGroup var options: BasicOptions
 
         /// It creates a local session, so it echoes that session's id like every other create command.
         var echoesResultID: Bool { true }
 
+        /// The server trims the transport the same way, so a padded spelling is not an unknown one there.
+        /// `RemoteTransport.parse` refuses the same pairs the dispatcher refuses, with one error text.
+        func validate() throws {
+            let trimmed = transport?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let wireTransport = trimmed?.isEmpty == true ? nil : trimmed
+            do {
+                _ = try RemoteTransport.parse(transport: wireTransport, moshServer: moshServer, mosh: mosh)
+            } catch {
+                throw ValidationError(RemoteTransport.refusalMessage(transport: wireTransport,
+                                                                      moshServer: moshServer, mosh: mosh))
+            }
+        }
+
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .zmxAttach, target: session, args: ControlArgs(host: host, window: window))
+            ControlRequest(cmd: .zmxAttach, target: session,
+                           args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
+                                             mosh: mosh, window: window))
         }
     }
 

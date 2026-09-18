@@ -218,6 +218,15 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `hasSplit` reports the pane existing at all and is present exactly when `splitRatio`/`splitFocused`
   can be. Callers asking "does this session have a split" read `hasSplit`, and `agtermctl tree` tags the
   hidden case `(split hidden)`.
+  `--command CMD` seeds the new pane to run CMD instead of a login shell, so the mode must be spelled
+  `on` — `off`/`toggle` would fire the seed on whichever later show won the toggle — and a split that
+  already exists, shown or hidden with its shell alive, is refused `split already running; session split
+  close first` rather than replacing what the pane runs. `--wait` requires `--command` and holds the
+  pane on Ghostty's press-any-key prompt after the command exits. Both persist in the snapshot like
+  `initialCommand` and replay on restore under the same rules. A host whose `ControlActions` predates
+  the command-carrying overload refuses `--command` with `split --command is not supported here`
+  through `ControlActionsDefaults`, while every command-less split still forwards to the older form —
+  never a login shell where a command was asked for.
 - `session.split.close` is the teardown verb, its own command rather than a fourth `ControlToggleMode`
   value, which is shared with `session.scratch`/`sidebar` and cannot express close (a hidden split is
   already `off`). Idempotent: a session with no right pane answers ok. The palette's Close Split is the
@@ -1169,6 +1178,28 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   auth is a precondition and a host-key or password prompt is a failure rather than a question a
   dispatcher could answer. The host is refused rather than escaped; paths and the remote command are
   argv-quoted.
+- `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
+  command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
+  VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments
+  for mosh-server's own `execvp`, with no shell in between, so the ssh form's one pre-quoted line would
+  arrive there as a single bogus program name. `--transport`, `--mosh-server PATH` and `--mosh PATH`
+  parse through one
+  host-free `RemoteTransport.parse` shared by the CLI and the dispatcher, so no path accepts a spelling
+  another refuses, an unknown transport is refused BY NAME rather than silently degrading to ssh, and
+  either path flag without `--transport mosh` is refused outright. The path names the server on the FAR
+  side, needed where a Mac far side's non-login bootstrap shell has no Homebrew on PATH, and it is held
+  to `RemoteSession.isPlainMoshServer` — `[A-Za-z0-9._/@:+=%,-]` and nothing else — because mosh
+  interpolates `--server=` RAW into the far side's shell line, where whitespace, `;`, quotes, `$`,
+  backticks and `~` act; it is refused rather than escaped, so a legal-but-odd path fails loudly here
+  instead of arriving mangled there. An empty `--mosh-server` is a quoting bug and refused; only
+  OMITTING it asks mosh for its own lookup. `--mosh PATH` names the LOCAL binary the pane runs. Omitted,
+  `RemoteSession.attachCommand` takes the first of `/opt/homebrew/bin/mosh`, `/usr/local/bin/mosh` and
+  `/usr/bin/mosh` that exists and falls back to a bare `mosh`, because a GUI-launched pane's PATH lacks
+  `/opt/homebrew/bin` the same way the far side's bootstrap shell does. An explicit `--mosh` overrides
+  the probe and is held to the same `isPlainMoshServer` allowlist.
+  A host that implemented only the older attach overloads
+  refuses a requested mosh with `zmx.attach --transport is not supported on this platform` through
+  `ControlActionsDefaults`, never a silent ssh.
 - Neither the host nor the session target is echoed into an error unless it PASSED validation. `invalid
   host` is a constant, and `zmx.attach` refuses a session carrying EMBEDDED whitespace or a control
   character through the same `RemoteSession.isPlain` the argv builders use — outer whitespace is trimmed

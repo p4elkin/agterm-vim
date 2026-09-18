@@ -174,6 +174,11 @@ extension ControlServer {
     /// attach, handing back a fresh shell wearing the session's name. Everything that can fail is checked
     /// before the model is touched, so a refusal leaves no half-built row behind.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {
+        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh)
+    }
+
+    func attachRemoteSession(host: String, session: String, window: String?,
+                             transport: RemoteTransport) async -> ControlResponse {
         let discovery = await remoteTree(host: host)
         guard discovery.ok, let tree = discovery.result?.remote else { return discovery }
         // by id only: remote session names are mutable and deliberately non-unique across workspaces, and
@@ -192,9 +197,13 @@ extension ControlServer {
         let primary: String
         let split: String?
         do {
-            primary = try paneCommand(host: host, tree: tree, daemon: left, name: remote.name, pane: .left)
+            primary = try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: left,
+                                                          session: remote.name, pane: .left,
+                                                          transport: transport)
             split = try right.map {
-                try paneCommand(host: host, tree: tree, daemon: $0, name: remote.name, pane: .right)
+                try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: $0,
+                                                    session: remote.name, pane: .right,
+                                                    transport: transport)
             }
         } catch {
             return ControlResponse(ok: false, error: "\(host) reported a session agterm cannot address")
@@ -225,12 +234,6 @@ extension ControlServer {
         // re-render can clear from under it through `onFocusChange`.
         actions.focusSplitPane(created, wantSplit: created.splitFocused)
         return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
-    }
-
-    private func paneCommand(host: String, tree: ControlRemoteTree, daemon: String, name: String,
-                             pane: ZmxPaneRole) throws -> String {
-        try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: daemon,
-                                            session: name, pane: pane)
     }
 
     /// Kill the daemons the inventory shows as unclaimed and detached.

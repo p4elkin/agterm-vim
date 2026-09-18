@@ -230,6 +230,13 @@ struct Session: ParsableCommand {
                                                            abstract: "Show or hide a session split (on|off|toggle).")
             @Argument(help: "Mode: on (show), off (hide), or toggle (default). Hidden panes stay alive.") var mode: String = "toggle"
             @Option(name: .long, help: "Divider direction: vertical (left/right) or horizontal (top/bottom).") var axis: String?
+            @Option(name: .long, help: """
+                When showing, run this command as the split's process instead of a login shell (no echoed \
+                command line; the split closes when it exits). The mode must be on — mode on must be spelled \
+                out (the default is toggle).
+                """)
+            var command: String?
+            @Flag(name: .long, help: "With --command, hold the split open after the command exits (press any key to close).") var wait = false
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
@@ -237,11 +244,18 @@ struct Session: ParsableCommand {
                 if let axis, SplitAxis(rawValue: axis) == nil {
                     throw ValidationError("--axis must be vertical or horizontal")
                 }
+                if wait, command == nil {
+                    throw ValidationError("--wait requires --command")
+                }
+                if command != nil, mode != "on" {
+                    throw ValidationError("--command needs mode on")
+                }
             }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionSplit, target: target.target,
-                               args: options.withWindow(ControlArgs(mode: mode, axis: axis)))
+                               args: options.withWindow(ControlArgs(mode: mode, axis: axis,
+                                                                    command: command, wait: wait ? true : nil)))
             }
         }
 

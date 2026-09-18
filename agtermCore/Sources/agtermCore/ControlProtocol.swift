@@ -175,6 +175,21 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// nothing to pair or clear); an EMPTY string clears the field named by `mode` instead of setting it —
     /// `name` is then ignored.
     public var host: String?
+    /// How `zmx.attach` reaches the far side: `"ssh"` (the default when absent, and the only transport
+    /// before this field existed) or `"mosh"`. Parsed by `RemoteTransport.parse`, so an unknown spelling
+    /// is refused by name rather than falling back to ssh.
+    public var transport: String?
+    /// The far side's `mosh-server` for `zmx.attach` mode `transport == "mosh"` — needed on a Mac far
+    /// side, whose mosh ssh bootstrap is a non-login shell with no `/opt/homebrew/bin` on PATH. Only with
+    /// mosh, and held to `RemoteSession.isPlainMoshServer`'s shell-safe characters: mosh interpolates
+    /// `--server=` raw into the far shell line.
+    public var moshServer: String?
+    /// The LOCAL `mosh` binary for `zmx.attach` mode `transport == "mosh"` (the CLI's `--mosh`), which
+    /// overrides `RemoteSession`'s own lookup and is held to the same `isPlainMoshServer` characters: it
+    /// is a command the pane's shell runs. Only with mosh. A server predating this field drops it and
+    /// looks the binary up itself, which is the same attachment with a different local binary, so no
+    /// read-back is owed.
+    public var mosh: String?
     /// For `session.new`: create in the background without selecting or focusing (the CLI's `--no-select`);
     /// omitted/`false` keeps select-and-focus. Read back via the `tree` `active` flag — the new node is not it.
     public var noSelect: Bool?
@@ -404,6 +419,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 workspace: String? = nil, workspaceName: String? = nil,
                 createWorkspace: Bool? = nil, collapsed: Bool? = nil, minimized: Bool? = nil,
                 force: Bool? = nil, host: String? = nil,
+                transport: String? = nil, moshServer: String? = nil, mosh: String? = nil,
                 noSelect: Bool? = nil,
                 text: String? = nil, select: Bool? = nil, mode: String? = nil, axis: String? = nil,
                 command: String? = nil, wait: Bool? = nil,
@@ -438,6 +454,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.minimized = minimized
         self.force = force
         self.host = host
+        self.transport = transport
+        self.moshServer = moshServer
+        self.mosh = mosh
         self.noSelect = noSelect
         self.text = text
         self.select = select

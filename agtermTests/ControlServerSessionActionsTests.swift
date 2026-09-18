@@ -1117,6 +1117,48 @@ final class ControlServerSessionActionsTests: XCTestCase {
         XCTAssertEqual(session.splitAxis, .leftRight)
     }
 
+    func testSplitCommandSeedsTheNewPaneAndShowsIt() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+
+        let response = server.splitSession(session.id.uuidString, window: nil, mode: "on", axis: .topBottom,
+                                          command: ControlSplitCommand(command: "echo hi", wait: true))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertTrue(session.isSplit)
+        XCTAssertEqual(session.splitAxis, .topBottom)
+        XCTAssertEqual(session.splitInitialCommand, "echo hi")
+        XCTAssertTrue(session.splitCommandWait)
+    }
+
+    func testSplitCommandNeedsModeOn() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory()))
+
+        let response = server.splitSession(session.id.uuidString, window: nil, mode: "off", axis: nil,
+                                          command: ControlSplitCommand(command: "echo hi"))
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "--command needs mode on")
+        XCTAssertFalse(session.hasSplit)
+        XCTAssertNil(session.splitInitialCommand)
+    }
+
+    func testSplitCommandRefusesAnExistingPaneShownOrHidden() throws {
+        let (store, session) = try splitSession()
+        store.toggleSplit(session.id)
+        XCTAssertTrue(session.hasSplit, "the hidden pane's shell is still alive")
+
+        let response = server.splitSession(session.id.uuidString, window: nil, mode: "on", axis: nil,
+                                          command: ControlSplitCommand(command: "echo hi"))
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "split already running; session split close first")
+        XCTAssertNil(session.splitInitialCommand, "a refused command must not be left for the next mount")
+    }
+
     func testSplitCloseTearsThePaneDown() throws {
         let (_, session) = try splitSession()
         session.splitRatio = 0.7

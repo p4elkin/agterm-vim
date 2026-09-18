@@ -171,7 +171,199 @@ struct RemoteSessionTests {
         #expect(!FileManager.default.fileExists(atPath: marker), "the name is data, never shell syntax")
     }
 
+    // MARK: - transports
+
+    @Test func moshReachesTheRemoteArgvAfterADoubleDashWithoutQuoting() throws {
+        let server = "/opt/homebrew/bin/mosh-server"
+        let ssh = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon)
+        let mosh = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: server, client: nil),
+                                                   fileExists: { _ in false })
+
+        #expect(mosh.prefix(5) == ["mosh", "--server=\(server)",
+                                   "--ssh=ssh -o BatchMode=yes -o ConnectTimeout=5", "buildbox", "--"])
+        // mosh-server execvps this argv with no shell in between, so it must be the unquoted elements
+        // the ssh form composes into its one quoted last argument
+        #expect(CommandRestore.shellQuotedLine(Array(mosh.dropFirst(5))) == ssh.last)
+    }
+
+    @Test func moshWithoutAServerPathOmitsTheServerElement() throws {
+        let mosh = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: nil, client: nil),
+                                                   fileExists: { _ in false })
+        #expect(mosh.prefix(4) == ["mosh", "--ssh=ssh -o BatchMode=yes -o ConnectTimeout=5", "buildbox", "--"])
+    }
+
+    @Test func moshBoundsItsSshBootstrapWithTheSameConnectTimeout() throws {
+        let mosh = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   connectTimeout: 9, transport: .mosh(server: nil, client: nil))
+        let bootstrap = try #require(mosh.first { $0.hasPrefix("--ssh=") })
+        // mosh splits --ssh= with shellwords and runs it itself, so the no-prompt contract holds here too
+        #expect(bootstrap == "--ssh=ssh -o BatchMode=yes -o ConnectTimeout=9")
+    }
+
+    // the pane's shell runs argv[0] under libghostty's GUI launch PATH, where /opt/homebrew/bin is absent,
+    // so a bare `mosh` exits 127 on an Apple-Silicon Homebrew install before reaching anything
+    @Test func theMoshClientIsTheFirstCandidateThatExists() throws {
+        let argv = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: nil, client: nil),
+                                                   moshCandidates: ["/a/mosh", "/b/mosh"],
+                                                   fileExists: { $0 != "/a/mosh" })
+        #expect(argv.first == "/b/mosh", "the first existing candidate wins, in the order the list gives")
+    }
+
+    @Test func aMoshClientNoCandidateProvidesFallsBackToTheBareName() throws {
+        let argv = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: nil, client: nil),
+                                                   moshCandidates: ["/a/mosh"], fileExists: { _ in false })
+        #expect(argv.first == "mosh", "a PATH that does carry mosh still resolves, which is what bare means")
+    }
+
+    @Test func theDefaultMoshCandidatesAreTheInstallLocationsInProbeOrder() {
+        #expect(RemoteSession.moshClientCandidates == ["/opt/homebrew/bin/mosh", "/usr/local/bin/mosh",
+                                                       "/usr/bin/mosh"])
+    }
+
+    @Test func anExplicitMoshClientOverridesTheLookup() throws {
+        let argv = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: nil, client: "/opt/custom/mosh"),
+                                                   moshCandidates: ["/a/mosh"], fileExists: { _ in true })
+        #expect(argv.first == "/opt/custom/mosh", "an explicit path is not second-guessed by the probe")
+    }
+
+    @Test func sshStaysTheDefaultAndIsUnchanged() throws {
+        let explicit = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                       transport: .ssh)
+        let byDefault = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon)
+        #expect(explicit == byDefault)
+        #expect(explicit.last?.hasPrefix("'") == true, "ssh still hands the far login shell one quoted line")
+    }
+
+    @Test func thePaneCommandCarriesTheTransportToTheAttach() throws {
+        let server = "/opt/homebrew/bin/mosh-server"
+        let mosh = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: server, client: nil),
+                                                   fileExists: { _ in false })
+        let command = try RemoteSession.attachPaneCommand(
+            host: "buildbox", endpoint: endpoint, daemon: daemon, session: "build", pane: .left,
+            transport: .mosh(server: server, client: nil), fileExists: { _ in false })
+        #expect(command.contains(CommandRestore.shellQuotedLine(mosh)))
+    }
+
     // MARK: - validation
+
+    @Test(arguments: ["/opt/home brew/bin/mosh-server", "/opt/mosh\nserver", ""])
+    func aMoshServerPathMustBeOnePlainToken(_ server: String) {
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                            transport: .mosh(server: server, client: nil))
+        }
+    }
+
+    @Test(arguments: ["/opt/home brew/bin/mosh", ""])
+    func anExplicitMoshClientMustBeOnePlainToken(_ client: String) {
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                            transport: .mosh(server: nil, client: client))
+        }
+    }
+
+    // mosh interpolates `--server=` raw into the far side's login-shell line, where these run; each is
+    // refused by BOTH guards, the wire parse and the argv builder's own re-check
+    @Test(arguments: ["/tmp/x;id", "/tmp/$(id)", "/tmp/x`id`", "/opt/it's/mosh-server", "/tmp/x*y", "~/.local/bin/mosh-server"])
+    func aMoshServerPathMustNotCarryShellSyntax(_ server: String) {
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: server)
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                            transport: .mosh(server: server, client: nil))
+        }
+    }
+
+    @Test(arguments: ["/tmp/mosh;id", "/opt/it's/mosh", "/tmp/x*y", "~/.local/bin/mosh"])
+    func aMoshClientPathMustNotCarryShellSyntax(_ client: String) {
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: nil, mosh: client)
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                            transport: .mosh(server: nil, client: client))
+        }
+    }
+
+    @Test func aMoshServerPathMayCarryEveryShellSafeCharacter() throws {
+        let server = "/opt/mosh-1.4.0_p1+build%/mosh-server"
+        #expect(try RemoteTransport.parse(transport: "mosh", moshServer: server)
+                == .mosh(server: server, client: nil))
+        let argv = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon,
+                                                   transport: .mosh(server: server, client: nil))
+        #expect(argv.contains("--server=" + server))
+    }
+
+    @Test func transportParsingMapsTheWireStrings() throws {
+        #expect(try RemoteTransport.parse(transport: nil, moshServer: nil) == .ssh)
+        #expect(try RemoteTransport.parse(transport: "ssh", moshServer: nil) == .ssh)
+        #expect(try RemoteTransport.parse(transport: "mosh", moshServer: nil) == .mosh(server: nil, client: nil))
+        #expect(try RemoteTransport.parse(transport: "mosh", moshServer: "/p/mosh-server")
+                == .mosh(server: "/p/mosh-server", client: nil))
+        #expect(try RemoteTransport.parse(transport: "mosh", moshServer: nil, mosh: "/p/mosh")
+                == .mosh(server: nil, client: "/p/mosh"))
+        #expect(try RemoteTransport.parse(transport: "mosh", moshServer: "/p/mosh-server", mosh: "/p/mosh")
+                == .mosh(server: "/p/mosh-server", client: "/p/mosh"))
+    }
+
+    @Test(arguments: ["tcp", "", "MOSH", " ssh"])
+    func anUnknownTransportValueIsRefused(_ raw: String) {
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: raw, moshServer: nil)
+        }
+    }
+
+    @Test func aMoshServerIsRefusedOutsideMoshAndWhenMalformed() {
+        for raw in ["/x", ""] {
+            #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+                try RemoteTransport.parse(transport: "ssh", moshServer: raw)
+            }
+            #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+                try RemoteTransport.parse(transport: nil, moshServer: raw)
+            }
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: "")
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: "/opt/mosh server")
+        }
+    }
+
+    @Test func aMoshClientIsRefusedOutsideMoshAndWhenMalformed() {
+        for raw in ["/x", ""] {
+            #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+                try RemoteTransport.parse(transport: "ssh", moshServer: nil, mosh: raw)
+            }
+            #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+                try RemoteTransport.parse(transport: nil, moshServer: nil, mosh: raw)
+            }
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: nil, mosh: "")
+        }
+        #expect(throws: RemoteSession.InvocationError.invalidTransport) {
+            try RemoteTransport.parse(transport: "mosh", moshServer: nil, mosh: "/opt/mosh client")
+        }
+    }
+
+    @Test func everyRefusalNamesTheOffendingFlag() {
+        #expect(RemoteTransport.refusalMessage(transport: "ssh", moshServer: "/p/mosh-server")
+                == "--mosh-server needs --transport mosh")
+        #expect(RemoteTransport.refusalMessage(transport: "ssh", moshServer: nil, mosh: "/p/mosh")
+                == "--mosh needs --transport mosh")
+        #expect(RemoteTransport.refusalMessage(transport: "mosh", moshServer: "/opt/mosh server")
+                == "invalid mosh-server path")
+        #expect(RemoteTransport.refusalMessage(transport: "mosh", moshServer: nil, mosh: "/opt/mosh client")
+                == "invalid mosh path")
+    }
 
     @Test func emptyHostIsRefused() {
         #expect(throws: RemoteSession.InvocationError.emptyHost) {

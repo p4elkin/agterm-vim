@@ -330,12 +330,32 @@ extension ControlServer: ControlActions {
     /// the current axis. `on|off|toggle` is computed against `isSplit` and keeps a hidden pane alive;
     /// `session.split.close` is the teardown verb.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?) -> ControlResponse {
+        splitSession(target, window: window, mode: mode, axis: axis, command: nil)
+    }
+
+    /// The command-carrying form: a seed the new pane runs instead of a login shell, consumed by the pane
+    /// factory when it mounts, so the fields are set before the split is shown. `on` is required (a seed on
+    /// `off` or `toggle` would fire on whichever later show won the toggle), and an existing pane — shown or
+    /// hidden, whose shell is alive — is refused rather than replaced, so a command can never silently kill
+    /// what the pane already runs.
+    func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
+                      command: ControlSplitCommand?) -> ControlResponse {
         return resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
             }
             guard let parsedMode = ControlToggleMode.parse(mode) else {
                 return ControlResponse(ok: false, error: "invalid split mode: \(mode ?? "toggle")")
+            }
+            if let command {
+                guard parsedMode == .on else {
+                    return ControlResponse(ok: false, error: "--command needs mode on")
+                }
+                guard !session.hasSplit else {
+                    return ControlResponse(ok: false, error: "split already running; session split close first")
+                }
+                session.splitInitialCommand = command.command
+                session.splitCommandWait = command.wait
             }
             switch parsedMode {
             case .on:

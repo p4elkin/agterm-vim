@@ -320,6 +320,23 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertFalse(created.hasSplit)
     }
 
+    func testAttachCarriesTheRequestedTransportIntoThePaneCommand() async throws {
+        let runner = FakeRemoteRunner(result: RemoteCommandResult(status: 0, stdout: Self.projection, stderr: ""))
+        let server = makeServer(list: "", remoteRunner: runner)
+        let store = try XCTUnwrap(library.activeStore)
+
+        let response = await server.attachRemoteSession(host: "buildbox", session: "s1", window: nil,
+                                                        transport: .mosh(server: "/opt/homebrew/bin/mosh-server",
+                                                                         client: nil))
+
+        XCTAssertTrue(response.ok)
+        let created = try XCTUnwrap(store.workspaces.flatMap(\.sessions).first { $0.remoteHost != nil })
+        let command = try XCTUnwrap(created.initialCommand)
+        XCTAssertTrue(command.contains("--server=/opt/homebrew/bin/mosh-server"),
+                      "a requested mosh must reach the pane command instead of silently attaching over ssh")
+        XCTAssertFalse(command.contains("-tt"), "the ssh attach shape must not be used")
+    }
+
     func testAttachResolvesTheRemoteAgainRatherThanTrustingTheCaller() async {
         // the daemon has gone since the picker listed it, so the far side's own eligibility walk no longer
         // offers the session at all; attaching would CREATE the daemon and hand back a fresh shell

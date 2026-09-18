@@ -2,12 +2,13 @@ import Foundation
 import Testing
 @testable import agtermCore
 
-/// The shared `ControlActions` test double for the dispatcher suites — it records every routed call as a
-/// `Call` value and hands back a per-command canned `ControlResponse`, so a dispatcher test asserts on
-/// WHAT was routed (and with which arguments) without any app host. Lives in its own file because it is a
-/// fixture shared by `ControlDispatcherTests` and `ControlDispatcherDashboardTests`, not a test suite.
+/// The shared `ControlActions` test fixture for the dispatcher suites, in two conforming shapes so the
+/// protocol's own defaults keep a real witness: `MockControlActions` records the fork's two overloads,
+/// and `DefaultsOnlyActions` inherits every recorded body WITHOUT them, leaving `ControlActionsDefaults`
+/// to answer what this fork added. Lives in its own file because it is a fixture shared by
+/// `ControlDispatcherTests` and `ControlDispatcherDashboardTests`, not a test suite.
 @MainActor
-final class MockControlActions: ControlActions {
+class MockControlActionsBase {
     enum Call: Equatable {
         case tree(window: String?)
         case eventsRead(ControlEventReadOptions)
@@ -40,7 +41,7 @@ final class MockControlActions: ControlActions {
         case sessionBookmarkList(target: String?, window: String?, all: Bool)
         case sessionBookmarkRemove(target: String?, window: String?, turn: Int)
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
-        case sessionSplit(target: String?, window: String?, String?, SplitAxis?)
+        case sessionSplit(target: String?, window: String?, String?, SplitAxis?, command: ControlSplitCommand?)
         case sessionSplitClose(target: String?, window: String?)
         case sessionSwap(target: String?, window: String?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
@@ -66,7 +67,7 @@ final class MockControlActions: ControlActions {
         case zmxKill(target: String, window: String?, pane: ZmxPaneRole)
         case zmxReset
         case zmxTree(host: String?)
-        case zmxAttach(host: String, session: String)
+        case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
         case sidebarParked(window: String?, ControlParkedVisibilityMode, ControlParkedScope)
@@ -390,8 +391,10 @@ final class MockControlActions: ControlActions {
         splitSession(target, window: window, mode: mode, axis: nil)
     }
 
+    /// Reachable only through the dispatcher's older forwarding forms — the dispatcher calls the
+    /// command-carrying overload — so it can observe no command.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?) -> ControlResponse {
-        calls.append(.sessionSplit(target: target, window: window, mode, axis))
+        calls.append(.sessionSplit(target: target, window: window, mode, axis, command: nil))
         return ControlResponse(ok: true)
     }
 
@@ -523,8 +526,10 @@ final class MockControlActions: ControlActions {
         return nextRemoteTreeResponse
     }
 
+    /// Only reachable through the ssh defaults — the dispatcher calls the transport overload — so this
+    /// entry can record nothing else.
     func attachRemoteSession(host: String, session: String) async -> ControlResponse {
-        calls.append(.zmxAttach(host: host, session: session))
+        calls.append(.zmxAttach(host: host, session: session, window: nil, transport: .ssh))
         return nextRemoteAttachResponse
     }
 
@@ -804,3 +809,28 @@ final class MockControlActions: ControlActions {
         return nextRestoreCaptureResponse
     }
 }
+
+/// The recording `ControlActions` double the dispatcher suites drive, asserting on WHAT was routed and
+/// with which arguments. The fork's two overloads are implemented HERE, on the conforming type, because
+/// a witness can only be declared where the conformance is: an implementation inherited from the base
+/// would witness the conformance and the production default would answer for nobody.
+@MainActor
+final class MockControlActions: MockControlActionsBase, ControlActions {
+    func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
+                      command: ControlSplitCommand?) -> ControlResponse {
+        calls.append(.sessionSplit(target: target, window: window, mode, axis, command: command))
+        return ControlResponse(ok: true)
+    }
+
+    func attachRemoteSession(host: String, session: String, window: String?,
+                             transport: RemoteTransport) async -> ControlResponse {
+        calls.append(.zmxAttach(host: host, session: session, window: window, transport: transport))
+        return nextRemoteAttachResponse
+    }
+}
+
+/// A host that never adopted the fork's two overloads, so `ControlActionsDefaults` answers them for
+/// real. Nothing is restated here, so deleting a guard in the production default must fail the tests
+/// that drive this double — a requested mosh or split command is refused, never silently downgraded.
+@MainActor
+final class DefaultsOnlyActions: MockControlActionsBase, ControlActions {}

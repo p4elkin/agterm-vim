@@ -66,6 +66,10 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 - `zmx list` reports `socketDirectory`, the private `ZMX_DIR` the app's own client is using, so an
   outside script exports it instead of recomputing the state-directory hash.
   `.claude/rules/control-api.md`.
+- `zmx attach` takes `--transport ssh|mosh` (with `--mosh-server` for a Homebrew far side and `--mosh` to
+  override the local binary probe, which finds Homebrew's mosh without a GUI-launched PATH) and
+  `session split on --command <cmd> [--wait]` seeds a fresh split's command in one step.
+  `.claude/rules/control-api.md`.
 - `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
   `CHANGELOG-fork.md` as the release body. `.claude/rules/release.md`.
 

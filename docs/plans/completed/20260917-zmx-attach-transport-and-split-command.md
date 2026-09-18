@@ -136,8 +136,10 @@ Key decisions:
 - mosh quotes each remote argument itself and the far login shell unquotes them, a round trip; a
   pre-quoted line would reach mosh-server's `execvp` as one bogus program name.
 - `--mosh-server` is refused with `--transport ssh` (a usage error at the CLI and an error from the
-  dispatcher). It is guarded by `isPlain` (no whitespace, no control characters), not `isPath`:
-  mosh interpolates `--server=` raw into the far shell line, so a space would split it. The endpoint
+  dispatcher). It is guarded by `isPlainMoshServer` (the shell-safe allowlist
+  `[A-Za-z0-9._/@:+=%,-]`), not `isPath`:
+  mosh interpolates `--server=` raw into the far shell line, so a space would split it and a `;` would
+  start a second command. The endpoint
   executable keeps `isPath` because it travels through `shellQuotedLine` or argv.
 - mosh is given `--ssh=ssh -o BatchMode=yes -o ConnectTimeout=<connectTimeout>`, so the no-prompt
   contract of the ssh path holds for mosh's bootstrap too and `connectTimeout` is not dead there.
@@ -157,7 +159,8 @@ Wire fields, both optional strings on `ControlArgs`:
 - `transport`: `"ssh"` (default when absent) or `"mosh"`. Anything else: error
   `invalid transport: <value> (ssh|mosh)`.
 - `moshServer`: absolute path of `mosh-server` on the far side. Only with `transport == "mosh"`;
-  empty or containing whitespace is an error (`isPlain`), at the CLI and at the dispatcher.
+  empty, containing whitespace, or carrying shell syntax is an error (`isPlainMoshServer`), at the CLI
+  and at the dispatcher.
 
 Command shapes (`attachCommand` output, argv), with `remoteArgv` the unquoted array `attachCommand`
 builds today (`/usr/bin/env`, `ZMX_SESSION=`, ..., `attach`, daemon, `/bin/sh`, `-c`, guard):
@@ -246,32 +249,32 @@ Seven consumers.
 - Modify: `agtermCore/Sources/agtermCore/RemoteSession.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/RemoteSessionTests.swift`
 
-- [ ] write a failing test: `attachCommand(..., transport: .mosh(server: "/opt/homebrew/bin/mosh-server"))`
+- [x] write a failing test: `attachCommand(..., transport: .mosh(server: "/opt/homebrew/bin/mosh-server"))`
       returns exactly `["mosh", "--server=/opt/homebrew/bin/mosh-server",
       "--ssh=ssh -o BatchMode=yes -o ConnectTimeout=5", host, "--"] + remoteArgv`, and the elements
       after `--` equal the argv the ssh form quotes into its last element (assert
       `CommandRestore.shellQuotedLine(Array(mosh[i...])) == ssh.last`)
-- [ ] write a failing test: `.mosh(server: nil)` omits the `--server=` element
-- [ ] write a failing test: `connectTimeout: 9` shows up as `ConnectTimeout=9` inside the `--ssh=`
+- [x] write a failing test: `.mosh(server: nil)` omits the `--server=` element
+- [x] write a failing test: `connectTimeout: 9` shows up as `ConnectTimeout=9` inside the `--ssh=`
       element of the mosh form
-- [ ] write a failing test: `.ssh` and the default (no `transport` argument) return the same argv as
+- [x] write a failing test: `.ssh` and the default (no `transport` argument) return the same argv as
       before this change (keep the existing `attachPassesTheEndpointAndGuardAsExactArguments` green)
-- [ ] write a failing test: a mosh server path with a space, with a control character, or empty
-      throws `invalidTransport` (the `isPlain` rule, not `isPath`)
-- [ ] write a failing test: `RemoteTransport.parse(transport: "mosh", moshServer: nil)`,
+- [x] write a failing test: a mosh server path with a space, with a control character, or empty
+      throws `invalidTransport` (the `isPlainMoshServer` rule, not `isPath`)
+- [x] write a failing test: `RemoteTransport.parse(transport: "mosh", moshServer: nil)`,
       `parse("ssh", nil)`, `parse(nil, nil) == .ssh`, `parse("tcp", nil)` throws,
       `parse("ssh", "/x")` throws (server only with mosh)
-- [ ] add `public enum RemoteTransport: Equatable, Sendable { case ssh, mosh(server: String?) }` with
+- [x] add `public enum RemoteTransport: Equatable, Sendable { case ssh, mosh(server: String?) }` with
       `static func parse(transport: String?, moshServer: String?) throws -> RemoteTransport` and an
       `InvocationError.invalidTransport` case
-- [ ] add `transport: RemoteTransport = .ssh` to `attachCommand` and `attachPaneCommand`; split the
+- [x] add `transport: RemoteTransport = .ssh` to `attachCommand` and `attachPaneCommand`; split the
       body so `remoteArgv` is built once, a private `transportArguments(host:transport:connectTimeout:)`
       gives the prefix (ssh: today's `sshArguments`; mosh: `mosh`, optional `--server=`, the
       `--ssh=ssh -o BatchMode=yes -o ConnectTimeout=N` element, host, `--`), and the transport decides
       whether `remoteArgv` is appended quoted as one element (ssh) or verbatim (mosh)
-- [ ] extend the `attachPaneCommand` doc comment: under mosh, `status=$?` is mosh-client's exit, not
+- [x] extend the `attachPaneCommand` doc comment: under mosh, `status=$?` is mosh-client's exit, not
       the guard's, so `disconnected, exit 0` after a vanished daemon is expected
-- [ ] run `scripts/test.sh` - must pass before task 2
+- [x] run `scripts/test.sh` - must pass before task 2
 
 ### Task 2: Wire fields and dispatcher parsing
 
@@ -282,51 +285,65 @@ Seven consumers.
 - Modify: `agtermCore/Sources/agtermCore/ControlDispatcher+Zmx.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherZmxTests.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/MockControlActions.swift` (`Call.zmxAttach` gains
-  `window` and `transport`; the mock implements the four-argument overload; a second, minimal
-  conformer `LegacyAttachActions` keeps only the two-argument stub, so the protocol defaults can
-  still be tested)
+  `window` and `transport`; the mock loses `final` and implements the four-argument overload; a
+  subclass `LegacyAttachActions` overrides it to restate the protocol fallback, so the defaults
+  can still be tested — see the deviation note below)
 
-- [ ] write a failing test: a `.zmxAttach` request with `args.transport == "mosh"` and
+- [x] write a failing test: a `.zmxAttach` request with `args.transport == "mosh"` and
       `args.moshServer == "/opt/homebrew/bin/mosh-server"` reaches the actions stub with
       `transport == .mosh(server: "/opt/homebrew/bin/mosh-server")`
-- [ ] write a failing test: no `transport` reaches the stub as `.ssh`
-- [ ] write a failing test: `transport == "tcp"` returns `ok: false` with
+- [x] write a failing test: no `transport` reaches the stub as `.ssh`
+- [x] write a failing test: `transport == "tcp"` returns `ok: false` with
       `invalid transport: tcp (ssh|mosh)` and never calls the stub
-- [ ] write a failing test: `transport == "ssh"` with a `moshServer` returns `ok: false`
+- [x] write a failing test: `transport == "ssh"` with a `moshServer` returns `ok: false`
       (`--mosh-server needs --transport mosh`)
-- [ ] write a failing test: `transport == "mosh"` with `moshServer == ""` returns `ok: false` and
+- [x] write a failing test: `transport == "mosh"` with `moshServer == ""` returns `ok: false` and
       never calls the stub
-- [ ] write a failing test against `LegacyAttachActions`: the default
+- [x] write a failing test against `LegacyAttachActions`: the default
       `attachRemoteSession(host:session:window:transport:)` returns `ok: false` with
       `ControlActionsUnsupported.message("zmx.attach --transport")` for `.mosh`, and forwards to the
       window form for `.ssh`
-- [ ] add `public var transport: String?` and `public var moshServer: String?` to `ControlArgs`
+- [x] add `public var transport: String?` and `public var moshServer: String?` to `ControlArgs`
       with doc comments in the file's style, and to its memberwise init where the file keeps one
-- [ ] add `attachRemoteSession(host:session:window:transport:)` to the `ControlActions` protocol;
+- [x] add `attachRemoteSession(host:session:window:transport:)` to the `ControlActions` protocol;
       default it in `ControlActionsDefaults.swift` like the existing `window` default: refuse with
       `ControlActionsUnsupported.message("zmx.attach --transport")` when `transport != .ssh`,
       forward to the three-argument form otherwise (an implementer that ignores transport keeps
       compiling and never silently downgrades a requested mosh to ssh)
-- [ ] update `MockControlActions`: `Call.zmxAttach(host:session:window:transport:)` and the
+- [x] update `MockControlActions`: `Call.zmxAttach(host:session:window:transport:)` and the
       four-argument overload. `anOlderAttachHostRefusesExplicitWindowPlacement` passes today only
       because the mock lacks that overload and the `window` default refuses first; once the mock
       implements it the request reaches the mock. Add `LegacyAttachActions` in
       `MockControlActions.swift` (two-argument stub only) and point that test and the new default
       test at it
-- [ ] in `ControlDispatcher+Zmx.swift`, parse with `RemoteTransport.parse` and call the new overload
-- [ ] run `scripts/test.sh` - must pass before task 3
+- [x] in `ControlDispatcher+Zmx.swift`, parse with `RemoteTransport.parse` and call the new overload
+- [x] run `scripts/test.sh` - must pass before task 3
+
+⚠️ **Deviation (2026-09-17):** `LegacyAttachActions` could not be the planned two-argument-stub
+conformer. Most `ControlActions` requirements have no protocol default, so a stub-only subclass
+does not compile, and Swift never lets a method declared only in a subclass become the witness for
+a requirement the superclass already inherited (restating the conformance is a "redundant
+conformance" error instead). So `MockControlActions` lost `final`, and `LegacyAttachActions`
+overrides the four-argument overload, restating the fallback rule against the same
+`ControlActionsUnsupported.message("zmx.attach --transport")` string the production default uses.
+The tests pin the same refusal text either way.
 
 ### Task 3: The app side uses the transport
 
 **Files:**
 - Modify: `agterm/Control/ControlServer+Zmx.swift`
 
-- [ ] implement `attachRemoteSession(host:session:window:transport:)` in the server by adding the
+- [x] implement `attachRemoteSession(host:session:window:transport:)` in the server by adding the
       parameter to the existing four-step body; the three-argument form forwards with `.ssh`
-- [ ] pass `transport` through the private `paneCommand` to `RemoteSession.attachPaneCommand`
-- [ ] no new app test target exists for this file; cover the mapping in task 2's dispatcher tests
+- [x] pass `transport` through the private `paneCommand` to `RemoteSession.attachPaneCommand`
+- [x] no new app test target exists for this file; cover the mapping in task 2's dispatcher tests
       and note here that `make build` compiled the app
-- [ ] run `make build` - must succeed before task 4
+- [x] run `make build` - must succeed before task 4
+
+Note (2026-09-17): `make build` ended in `** BUILD SUCCEEDED **` having compiled
+`ControlServer+Zmx.swift`, so the app side exists only as wiring; the transport mapping stays
+covered by the Task 2 dispatcher tests. The worktree needed the six artifact symlinks from the
+main checkout (ghostty rev and zmx rev+target both matched) before the first app build.
 
 ### Task 4: CLI flags on `zmx attach`
 
@@ -336,17 +353,17 @@ Seven consumers.
 - Modify: `plugins/agterm/skills/agterm/reference.md` (the `zmx attach` paragraph)
 - Modify: `cookbook/remote-session-picker/attach-remote.sh` (header comment only)
 
-- [ ] write a failing test: `Zmx.Attach.parse(["h", "s1", "--transport", "mosh", "--mosh-server", "/p/mosh-server"])`
+- [x] write a failing test: `Zmx.Attach.parse(["h", "s1", "--transport", "mosh", "--mosh-server", "/p/mosh-server"])`
       makes a request with `args.transport == "mosh"` and `args.moshServer == "/p/mosh-server"`
-- [ ] write a failing test: no flags leaves both args nil (today's request is unchanged)
-- [ ] write a failing test: `--transport tcp` fails validation; `--mosh-server` without
+- [x] write a failing test: no flags leaves both args nil (today's request is unchanged)
+- [x] write a failing test: `--transport tcp` fails validation; `--mosh-server` without
       `--transport mosh` fails validation
-- [ ] add `@Option(name: .long) var transport: String?` (help: `ssh (default) or mosh`) and
+- [x] add `@Option(name: .long) var transport: String?` (help: `ssh (default) or mosh`) and
       `@Option(name: .long) var moshServer: String?` (help: absolute path of mosh-server on the far
       side; mosh's ssh bootstrap is a non-login shell, so a Homebrew mosh-server needs it) with
       `validate()` for the two rules above
-- [ ] document both flags in the `zmx attach` paragraph of the reference and in the cookbook header
-- [ ] run `scripts/test.sh` - must pass before task 5
+- [x] document both flags in the `zmx attach` paragraph of the reference and in the cookbook header
+- [x] run `scripts/test.sh` - must pass before task 5
 
 ### Task 5: Dispatcher and protocol for `split --command`
 
@@ -358,32 +375,47 @@ Seven consumers.
 - Modify: `agtermCore/Tests/agtermCoreTests/MockControlActions.swift` (`Call.sessionSplit` gains
   `command` and `wait`; the mock implements the new overload)
 
-- [ ] write a failing test: a `.sessionSplit` request with `args.mode == "on"`, `args.command == "c"`,
+- [x] write a failing test: a `.sessionSplit` request with `args.mode == "on"`, `args.command == "c"`,
       `args.wait == true` reaches the stub's new overload with those values
-- [ ] write a failing test: a request without `command` still reaches the existing
+- [x] write a failing test: a request without `command` still reaches the existing
       `splitSession(_:window:mode:axis:)` behavior (default forwarding keeps old stubs working)
-- [ ] write a failing test: `args.wait == true` without `command` returns `ok: false` with
+- [x] write a failing test: `args.wait == true` without `command` returns `ok: false` with
       `--wait needs --command` and never calls the stub
-- [ ] add `splitSession(_:window:mode:axis:command:wait:)` to `ControlActions`; default it to
+- [x] add `splitSession(_:window:mode:axis:command:wait:)` to `ControlActions`; default it to
       forward to the `axis` form when `command == nil`, and to return
       `ok: false, error: "split --command is not supported here"` when a command is present
-- [ ] route `.sessionSplit` through the new overload, rejecting `wait == true` without `command`
+- [x] route `.sessionSplit` through the new overload, rejecting `wait == true` without `command`
       before the call
-- [ ] update `MockControlActions`: `Call.sessionSplit(target:window:_:_:command:wait:)` and the
+- [x] update `MockControlActions`: `Call.sessionSplit(target:window:_:_:command:wait:)` and the
       overload; adjust the existing forwarding assertion in `ControlDispatcherTests`
-- [ ] run `scripts/test.sh` - must pass before task 6
+- [x] run `scripts/test.sh` - must pass before task 6
+
+⚠️ **Deviation (2026-09-17):** the planned `splitSession(_:window:mode:axis:command:wait:)` has six
+parameters and trips strict `function_parameter_count` (max 5), which this codebase answers with an
+option struct rather than a lint disable. The overload therefore takes one
+`command: ControlSplitCommand?`, a new struct in `ControlDispatcherOptions.swift` holding `command`
+and `wait`. A wait without a command is rejected before the value is built, so a present value
+always names one, and `ControlArgs` already carried both fields, so the wire format is unchanged.
+`Call.sessionSplit` records the single value. The `.sessionSplit` case was rewritten at unchanged
+line count, because the `ControlDispatcher` struct body sits at the 800-line `type_body_length`
+warning. `LegacySplitActions`, added for this task like task 2's `LegacyAttachActions`, restates
+the fallback rule in an override: forward when `command == nil`, refuse with
+`split --command is not supported here` otherwise.
 
 ### Task 6: The app side runs the split's command
 
 **Files:**
 - Modify: `agterm/Control/ControlServer+SessionActions.swift`
+- Modify: `agtermTests/ControlServerSessionActionsTests.swift` (added during implementation: the
+  hosted class already covers `splitSession`, so the new overload gets its own three cases there —
+  seed + show, `--command needs mode on`, and the existing-pane refusal)
 
-- [ ] implement the new overload: with `command` present and mode `on`, refuse when
+- [x] implement the new overload: with `command` present and mode `on`, refuse when
       `session.hasSplit` is set (`split already running; session split close first`), else set
       `splitInitialCommand` and `splitCommandWait` and show the split with the given axis (the seed
       is read at mount, see Technical Details; nothing else to adapt)
-- [ ] with `command` present and any other mode, return `ok: false, error: "--command needs mode on"`
-- [ ] run `make build` - must succeed before task 7
+- [x] with `command` present and any other mode, return `ok: false, error: "--command needs mode on"`
+- [x] run `make build` - must succeed before task 7
 
 ### Task 7: CLI flags on `session split`
 
@@ -392,32 +424,44 @@ Seven consumers.
 - Modify: `agtermCore/Tests/agtermctlKitTests/CommandsTests.swift`
 - Modify: `plugins/agterm/skills/agterm/reference.md` (the `session split` bullet)
 
-- [ ] write a failing test: `["on", "--command", "c", "--wait"]` parses into
+- [x] write a failing test: `["on", "--command", "c", "--wait"]` parses into
       `ControlArgs(mode: "on", command: "c", wait: true)`
-- [ ] write a failing test: `--wait` alone fails validation; `["off", "--command", "c"]` fails
+- [x] write a failing test: `--wait` alone fails validation; `["off", "--command", "c"]` fails
       validation
-- [ ] add `--command` and `--wait` to `Split.Visibility` with the validation and help text modeled
+- [x] add `--command` and `--wait` to `Split.Visibility` with the validation and help text modeled
       on `session new --command/--wait`; the `--command` help says `mode on must be spelled out
       (the default is toggle)`
-- [ ] write a failing test: `["--command", "c"]` (mode left at its `toggle` default) fails
+- [x] write a failing test: `["--command", "c"]` (mode left at its `toggle` default) fails
       validation
-- [ ] document the flags in the `session split` bullet of the reference, with the sentence that
+- [x] document the flags in the `session split` bullet of the reference, with the sentence that
       `--wait` adds no hold in Live sessions mode for a local zmx-wrapped split (only
       ordinary/fallback and remote-host sessions honor it), and that a `--command` split persists
       its command and re-runs it on restore in Re-run commands mode, as `session new --command` does
-- [ ] run `scripts/test.sh` - must pass before task 8
+- [x] run `scripts/test.sh` - must pass before task 8
 
 ### Task 8: Verify acceptance criteria
-- [ ] `agtermctl zmx attach` without flags produces the same request and the same argv as before
-- [ ] recount the nine `--transport` consumers and the seven `split --command` consumers listed in
+- [x] `agtermctl zmx attach` without flags produces the same request and the same argv as before
+- [x] recount the nine `--transport` consumers and the seven `split --command` consumers listed in
       Technical Details; every one is touched
-- [ ] run full test suite: `scripts/test.sh`
-- [ ] run `make build`
-- [ ] `agtermctl zmx attach --help` and `agtermctl session split visibility --help` show the flags
+- [x] run full test suite: `scripts/test.sh`
+- [x] run `make build`
+- [x] `agtermctl zmx attach --help` and `agtermctl session split visibility --help` show the flags
+
+Note (2026-09-17): all sixteen consumers are present. The flagless attach is pinned by
+`attachWithoutTransportFlagsLeavesThemUnset` (both args nil) and the ssh argv by the unchanged
+exact-argument tests. `scripts/test.sh` ran 3765 tests in 160 suites, all passing. `make build` is the
+Debug xcodebuild per the Makefile and ended in `** BUILD SUCCEEDED **`. Both help texts list the new
+flags (`--transport`, `--mosh-server`; `--command`, `--wait`).
 
 ### Task 9: [Final] Update documentation
-- [ ] `CHANGELOG-fork.md` gets two lines under the unreleased section
-- [ ] move this plan to `docs/plans/completed/`
+- [x] `CHANGELOG-fork.md` gets two lines under the unreleased section
+- [x] move this plan to `docs/plans/completed/`
+
+Note (2026-09-17): the changelog entry went under `### New Features` in `## Unreleased`, one bullet per
+feature. The project rule (`CLAUDE.md`, [[release]]) requires both fork docs in the landing commit, so
+`FORK-NOTES.md` also got one line in the `**Control API and tooling**` group. The merge question is
+answered no: nothing here touches key routing, and task 6 added tests under `agtermTests/`
+(`ControlServerSessionActionsTests.swift`), so no file joins `flagged`.
 
 ## Post-Completion
 

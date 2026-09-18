@@ -702,7 +702,7 @@ struct ControlDispatcherTests {
         #expect(focus == ControlResponse(ok: true))
         #expect(resize == ControlResponse(ok: true))
         #expect(actions.calls == [
-            .sessionSplit(target: "session", window: "win", "off", .topBottom),
+            .sessionSplit(target: "session", window: "win", "off", .topBottom, command: nil),
             .sessionSplitClose(target: "session", window: "win"),
             .sessionScratch(target: "session", window: nil, "on", command: "htop"),
             .sessionFocus(target: "session", window: nil, "right"),
@@ -731,6 +731,62 @@ struct ControlDispatcherTests {
         #expect(response == ControlResponse(ok: false,
                                            error: "invalid split axis: diagonal (vertical|horizontal)"))
         #expect(actions.calls.isEmpty)
+    }
+
+    @Test func splitRoutesTheCommandAndWait() async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
+            cmd: .sessionSplit,
+            target: "session",
+            args: ControlArgs(mode: "on", command: "c", wait: true, window: "win")
+        ))
+
+        #expect(response == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .sessionSplit(target: "session", window: "win", "on", nil,
+                          command: ControlSplitCommand(command: "c", wait: true))
+        ])
+    }
+
+    @Test func splitWithoutACommandStillReachesTheAxisForm() async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
+            cmd: .sessionSplit,
+            target: "session",
+            args: ControlArgs(mode: "on", axis: "vertical")
+        ))
+
+        #expect(response == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .sessionSplit(target: "session", window: nil, "on", .leftRight, command: nil)
+        ])
+    }
+
+    @Test func splitWaitWithoutACommandIsRejectedBeforeDispatch() async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
+            cmd: .sessionSplit, args: ControlArgs(mode: "on", wait: true)
+        ))
+        #expect(response == ControlResponse(ok: false, error: "--wait needs --command"))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func legacySplitHostForwardsAPlainSplitAndRefusesACommand() async {
+        let actions = DefaultsOnlyActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let forwarded = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionSplit, target: "session", args: ControlArgs(mode: "on", axis: "vertical")
+        ))
+        let refused = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionSplit, target: "session", args: ControlArgs(mode: "on", command: "c")
+        ))
+
+        #expect(forwarded == ControlResponse(ok: true))
+        #expect(refused == ControlResponse(ok: false, error: "split --command is not supported here"))
+        #expect(actions.calls == [
+            .sessionSplit(target: "session", window: nil, "on", .leftRight, command: nil)
+        ])
     }
 
     @Test func resizeRejectsInvalidInputs() async {

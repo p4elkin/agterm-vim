@@ -23,7 +23,24 @@ extension ControlDispatcher {
             guard RemoteSession.isPlain(session) else {
                 return ControlResponse(ok: false, error: "invalid remote session")
             }
-            return await actions.attachRemoteSession(host: host, session: session, window: request.args?.window?.trimmedOrNil)
+            // trimmed like the host, so a padded spelling is not an unknown transport; the two paths are
+            // NOT trimmed, an empty one being the quoting bug `RemoteTransport.parse` exists to refuse
+            let rawTransport = request.args?.transport?.trimmedOrNil
+            let rawMoshServer = request.args?.moshServer
+            let rawMosh = request.args?.mosh
+            let transport: RemoteTransport
+            do {
+                transport = try RemoteTransport.parse(transport: rawTransport, moshServer: rawMoshServer,
+                                                      mosh: rawMosh)
+            } catch {
+                return ControlResponse(ok: false,
+                                       error: RemoteTransport.refusalMessage(transport: rawTransport,
+                                                                             moshServer: rawMoshServer,
+                                                                             mosh: rawMosh))
+            }
+            return await actions.attachRemoteSession(host: host, session: session,
+                                                     window: request.args?.window?.trimmedOrNil,
+                                                     transport: transport)
         default:
             return dispatchLocalZmxCommand(request)
         }

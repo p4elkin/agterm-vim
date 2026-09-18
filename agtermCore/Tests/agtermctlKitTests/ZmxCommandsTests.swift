@@ -20,6 +20,70 @@ struct ZmxCommandsTests {
         #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
     }
 
+    @Test func attachCarriesTheTransportFlags() throws {
+        let attach = try Zmx.Attach.parse(["buildbox", "s1", "--transport", "mosh",
+                                           "--mosh-server", "/p/mosh-server", "--mosh", "/p/mosh"])
+        let request = try attach.makeRequest()
+        #expect(request.args?.transport == "mosh")
+        #expect(request.args?.moshServer == "/p/mosh-server")
+        #expect(request.args?.mosh == "/p/mosh", "the local binary and the far-side server are separate flags")
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
+    }
+
+    @Test func attachWithoutTransportFlagsLeavesThemUnset() throws {
+        let request = try Zmx.Attach.parse(["buildbox", "s1"]).makeRequest()
+        #expect(request.args?.transport == nil)
+        #expect(request.args?.moshServer == nil)
+        #expect(request.args?.mosh == nil)
+    }
+
+    // the CLI prints these to a terminal, so the spelling must be refused on the same terms the server uses
+    @Test func attachRefusesBadTransportFlagsLocally() {
+        do {
+            _ = try Zmx.Attach.parse(["buildbox", "s1", "--transport", "tcp"])
+            Issue.record("expected invalid transport")
+        } catch {
+            #expect(Agtermctl.message(for: error) == "invalid transport: tcp (ssh|mosh)")
+        }
+        for arguments in [["buildbox", "s1", "--mosh-server", "/p/mosh-server"],
+                          ["buildbox", "s1", "--transport", "ssh", "--mosh-server", "/p/mosh-server"]] {
+            do {
+                _ = try Zmx.Attach.parse(arguments)
+                Issue.record("expected a server path without mosh to be refused")
+            } catch {
+                #expect(Agtermctl.message(for: error) == "--mosh-server needs --transport mosh")
+            }
+        }
+        for arguments in [["buildbox", "s1", "--mosh", "/p/mosh"],
+                          ["buildbox", "s1", "--transport", "ssh", "--mosh", "/p/mosh"]] {
+            do {
+                _ = try Zmx.Attach.parse(arguments)
+                Issue.record("expected a local mosh path without mosh to be refused")
+            } catch {
+                #expect(Agtermctl.message(for: error) == "--mosh needs --transport mosh")
+            }
+        }
+        for path in ["/p/mosh server", "/p/mosh-server;id"] {
+            do {
+                // mosh interpolates the path into the far side's shell line, where a space splits it in
+                // two and a `;` starts a second command; the CLI refuses on the same terms the server uses
+                _ = try Zmx.Attach.parse(["buildbox", "s1", "--transport", "mosh", "--mosh-server", path])
+                Issue.record("expected a server path outside a shell-safe spelling to be refused")
+            } catch {
+                #expect(Agtermctl.message(for: error) == "invalid mosh-server path")
+            }
+        }
+        for path in ["/p/mosh client", "/p/mosh;id"] {
+            do {
+                // the local binary is a command the pane's shell runs, so the same spelling is refused
+                _ = try Zmx.Attach.parse(["buildbox", "s1", "--transport", "mosh", "--mosh", path])
+                Issue.record("expected a local mosh path outside a shell-safe spelling to be refused")
+            } catch {
+                #expect(Agtermctl.message(for: error) == "invalid mosh path")
+            }
+        }
+    }
+
     @Test func treeCarriesItsHostAsAnArgumentNotATarget() throws {
         let tree = try Zmx.Tree.parse(["buildbox"])
 

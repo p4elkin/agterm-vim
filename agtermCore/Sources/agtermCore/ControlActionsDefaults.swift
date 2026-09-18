@@ -69,8 +69,24 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach"))
     }
 
+    func attachRemoteSession(host: String, session: String, window: String?,
+                             transport: RemoteTransport) async -> ControlResponse {
+        guard transport == .ssh else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --transport"))
+        }
+        return await attachRemoteSession(host: host, session: session, window: window)
+    }
+
     func splitSession(_ target: String?, window: String?, mode: String?, axis _: SplitAxis?) -> ControlResponse {
         splitSession(target, window: window, mode: mode)
+    }
+
+    func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
+                      command: ControlSplitCommand?) -> ControlResponse {
+        guard command == nil else {
+            return ControlResponse(ok: false, error: "split --command is not supported here")
+        }
+        return splitSession(target, window: window, mode: mode, axis: axis)
     }
 
     func swapSessionPanes(_: String?, window _: String?) async -> ControlResponse {
