@@ -123,6 +123,19 @@ final class ZmxClientTests: XCTestCase {
         XCTAssertEqual(output.suffix(1), "y")
     }
 
+    func testRunGivesUpOnAWriteEndHeldPastTheChildsExit() {
+        let invocation = ZmxClient.Invocation(
+            executablePath: "/bin/sh", arguments: ["-c", "sleep 30 & echo row"],
+            environment: [:], timeout: 5, mergesStderr: false)
+        let started = Date()
+
+        XCTAssertThrowsError(try ZmxClient.run(invocation)) { error in
+            guard case ZmxClient.CommandError.timedOut = error else { return XCTFail("\(error)") }
+        }
+
+        XCTAssertLessThan(Date().timeIntervalSince(started), ZmxClient.terminationGrace + 1)
+    }
+
     func testLiveReapListsThenKillsOnlyUnclaimedZeroClientNames() {
         let known = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         let orphan = "agterm-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

@@ -113,10 +113,11 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
-- `tree` and `window list` no longer stall the app for 3 seconds per call once `zmx list` grows past the
-  16 KB pipe buffer (about 115 daemons). `ZmxClient.run` read the child's output only after it exited, so
-  zmx blocked on write, the app blocked on exit, and every call ended in the timeout with the Live leader
-  snapshot dropped. The pipes are now drained while waiting, and are close-on-exec so a surface command
-  libghostty spawns meanwhile cannot inherit a pipe end and hold EOF back for its lifetime, which hung the
-  same call forever. Upstream code since `d01a774`, reachable from every `tree` since `4ec4d4b` (#574); not
-  reported upstream yet
+- `tree` and `window list` no longer stall the app for 3 seconds per call once four Live daemons exist.
+  `ZmxClient.run` read the child's output only after it exited; zmx writes the listing row by row, so the
+  pipe never grows past its initial 512 bytes, zmx blocked on write, the app blocked on exit, and every call
+  ended in the timeout with the Live leader snapshot dropped. Each pipe is now drained on its own thread
+  while waiting, the fds are close-on-exec so a surface command libghostty spawns meanwhile cannot inherit
+  a pipe end and hold EOF back for its lifetime (which hung the same call forever), and a listing whose EOF
+  still never comes fails instead of coming back short. Upstream code since `d01a774`, on every `tree`
+  since `4ec4d4b` (#574); reported as umputun/agterm#623, fix proposed in umputun/agterm#624

@@ -309,8 +309,9 @@ Mark a turn in an agent conversation and come back to it later without scrolling
   pinned upstream rev.
 - `CHANGELOG-fork.md` — the fork's release notes. `CHANGELOG.md` stays upstream's, taken whole on merge.
 - `ZmxClient.run` drains the child's pipes while waiting for it. Upstream reads only after exit, which
-  deadlocks `zmx list` past the 16 KB pipe buffer and stalls every `tree` call for the 3 s timeout.
-  Pending upstream; drop once upstream fixes it. Test: `testRunDrainsOutputLargerThanThePipeBufferBeforeTheProcessExits`.
+  deadlocks `zmx list` from four daemons on (a 512-byte pipe) and stalls every `tree` call for the 3 s
+  timeout. Proposed upstream as umputun/agterm#624; drop once it lands. Tests:
+  `testRunDrainsOutputLargerThanThePipeBufferBeforeTheProcessExits`, `testRunGivesUpOnAWriteEndHeldPastTheChildsExit`.
 - `.claude/rules/keymap.md`, `control-api.md`, `notifications.md`, `overlay-redirect.md` and
   `fork-merge.md` document the design and how the fork is kept current.
 

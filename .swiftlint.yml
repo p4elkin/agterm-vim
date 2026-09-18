@@ -8,6 +8,7 @@ excluded:
   - .build                      # SwiftPM build (root)
   - agtermCore/.build           # SwiftPM build + vendored checkouts
   - .claude/worktrees           # concurrent git worktrees (gitignored) carry their own .build/checkouts
+  - .ralphex/worktrees          # same, for ralphex runs
   - GhosttyKit.xcframework
   - agterm/Resources
 
