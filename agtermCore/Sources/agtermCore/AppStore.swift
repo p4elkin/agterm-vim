@@ -71,7 +71,7 @@ public final class AppStore {
     /// owns visibility, so toolbar, View menu, palette and the `sidebar` command all flip this one flag.
     public var sidebarVisible = true
 
-    /// Which view this window's sidebar renders: the tree or the flat flagged working set. Per-window state
+    /// Which view this window's sidebar renders: the tree or the flagged working set. Per-window state
     /// in `Snapshot`, flipped via `setSidebarMode(_:)` (bottom bar, View menu, palette, `sidebar.mode`).
     public var sidebarMode: SidebarMode = .tree
 
@@ -297,7 +297,8 @@ public final class AppStore {
                             dashboardHighlighted: () -> String? = { nil },
                             dashboardFontSize: () -> Double? = { nil },
                             dashboardFontMode: () -> String? = { nil }, app: AppIdentity? = nil,
-                            liveReset: ControlLiveResetReadback? = nil) -> ControlTree {
+                            liveReset: ControlLiveResetReadback? = nil,
+                            flaggedLayout: FlaggedViewLayout? = nil) -> ControlTree {
         let activeID = selectedSessionID
         // `currentWorkspaceID`, not the selected session's owner: an EMPTY destination selects nothing, so
         // deriving this from the selection alone made `tree` name the workspace `workspace.go` just left.
@@ -384,7 +385,8 @@ public final class AppStore {
         }
         return ControlTree(workspaces: nodes, idleMs: idleMs(), autoFollowMs: autoFollowMs,
                            recencyDwellMs: recencyDwellMs,
-                           sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue, sidebarWidth: sidebarWidth,
+                           sidebarVisible: sidebarVisible, sidebarMode: sidebarMode.rawValue,
+                           sidebarFlaggedLayout: flaggedLayout?.rawValue, sidebarWidth: sidebarWidth,
                            workspaceFilter: focusEnabled,
                            quickVisible: quickVisible(), zoomedSurface: zoomedSurface(),
                            dashboardMembers: dashboardMembers(),
@@ -774,8 +776,8 @@ public final class AppStore {
     /// Steps the CURRENT workspace one place through `visibleWorkspaces`, WRAPPING, via `selectWorkspace`, so
     /// a focus filter confines it as it does session nav. Collapse state is deliberately NOT a term: skipping
     /// a folded workspace would let the sidebar's fold silently rewrite where a keystroke lands. Nil with
-    /// nowhere to step — flagged mode renders no workspace rows, and a lone workspace would only reselect
-    /// itself. Backs `next_workspace`/`previous_workspace` and `workspace.go`.
+    /// nowhere to step — flagged mode (`canStepWorkspaces` owns why), and a lone workspace would only
+    /// reselect itself. Backs `next_workspace`/`previous_workspace` and `workspace.go`.
     @discardableResult
     public func navigateWorkspace(_ direction: WorkspaceNavigation) -> WorkspaceStep? {
         guard canStepWorkspaces else { return nil }
@@ -905,7 +907,7 @@ public final class AppStore {
         if changed { save() }
     }
 
-    /// The flagged sessions across all workspaces in tree order — the projection the flat sidebar renders.
+    /// The flagged sessions across all workspaces in tree order — the projection the flagged view renders.
     public var flaggedSessions: [Session] {
         workspaces.flatMap(\.sessions).filter(\.flagged)
     }

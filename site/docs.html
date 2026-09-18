@@ -696,11 +696,12 @@
               the shell underneath untouched.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 16px 0 0">
-              When a command fails, a panel appears over the session it fired in for ten seconds, carrying the command's name
-              and either its exit status or, for one that never started, why it could not run. The last line it wrote to
-              standard error is shown below that when there is one. A command that exits cleanly reports nothing,
-              whatever it printed. The panel is skipped while a program overlay is running in that session, since a message
-              never takes the screen from a program.
+              Custom commands report failures through notification banners, subject to the notification setting.
+              Add <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-hud</span> before a command's shell body to also show a ten-second panel.
+              It shows the command name, exit status or launch error, and the last usable stderr line when available.
+              The panel defaults to the center of the whole session. A successful command shows nothing,
+              and a program overlay keeps its slot. See <a href="#keymap" style="color: #6d82f3">Key Mapping</a>
+              for placement options.
             </p>
             <div
               style="
@@ -932,7 +933,9 @@
                   "
                   >›</span
                 >Narrow a crowded sidebar two ways: <strong style="color: #e6e1d7">flag</strong> sessions across workspaces into a
-                flat working-set view (a flag is durable and survives a move), or <strong style="color: #e6e1d7">focus</strong> a
+                working-set view (a flag is durable and survives a move), shown as one flat list or, with
+                <strong style="color: #e6e1d7">Settings ▸ General ▸ Flagged view layout</strong> set to Workspace tree, nested
+                under their workspaces with the ones holding nothing flagged left out; or <strong style="color: #e6e1d7">focus</strong> a
                 set of workspaces to collapse the tree to just their sessions. Focus one workspace to zoom to it, or mark
                 several from their row menus and apply the filter once with the sidebar's grid button — marking never
                 narrows the tree on its own, and suspending the filter keeps the set for one click back. Creating a workspace
@@ -1435,7 +1438,10 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed, right-click-to-paste, whether clicking a workspace
-                row expands or collapses it (on by default; the disclosure triangle always does), where a new session opens (your home
+                row expands or collapses it (on by default; the disclosure triangle always does), a
+                <strong style="color: #e6e1d7">Flagged view layout</strong> that picks a flat list or a workspace tree for the
+                flagged view in every window (the tree shares each workspace's collapse state with the ordinary tree, so
+                folding a group folds that workspace in both), where a new session opens (your home
                 directory by default, the current session's directory, or a fixed folder you pick), a restore mode for fresh shells,
                 re-run commands, or live sessions, an opt-in confirm before closing a session, and
                 whether to load your global Ghostty config.
@@ -1661,6 +1667,27 @@
               actually type.
             </p>
 
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Failure panels are opt-in per command. For example,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">command "Build" ctrl+a&gt;b --error-hud ./build.sh</span> shows failures at the center of the
+              whole session. Add <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-position POS</span> to choose a HUD position, or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-pane left|right</span> to select a pane role when the failure is reported.
+              Positions are <span style="font-family: &quot;JetBrains Mono&quot;, monospace">top-left</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">top-center</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">top-right</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">center-left</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">center</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">center-right</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">bottom-left</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">bottom-center</span>, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">bottom-right</span>; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">top</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">bottom</span>
+              are aliases for the middle column. If the chosen pane is hidden or gone, the panel covers the whole
+              session at the configured position. Only opted-in commands capture standard error for the panel.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Flags may appear in any order after the optional chord; for palette-only commands they follow the quoted name.
+              Position and pane require <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-hud</span>. A missing or invalid value, duplicate flag,
+              unknown leading <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-*</span> option, or empty shell body skips the command with a diagnostic.
+              The first ordinary shell token ends option parsing, so
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--error-hud ./script --error-pane right</span> passes the latter arguments to the script unchanged.
+              Use <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--</span> to end options explicitly before a shell body starting with a reserved name.
+              A chord is never parsed after flags.
+            </p>
+
             <h3
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
@@ -1766,7 +1793,7 @@
               it suits fire-and-forget launches (GUI apps, scripts) — not interactive TUIs. Run a TUI like
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">lazygit</span> in an overlay
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl session overlay open</span>) or a scratch
-              terminal, which have a real TTY. A non-zero exit posts a notification banner.
+              terminal, which have a real TTY. A non-zero exit or spawn failure posts a banner when notifications are enabled.
             </div>
             <div
               style="

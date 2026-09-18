@@ -237,11 +237,12 @@ from the top-level `zoomedSurface`. Workspace nodes carry
 set — the read side of `workspace focus`, distinct from `active` the SELECTED workspace; omitted on
 non-members, and absent entirely when nothing is marked. Membership is reported INDEPENDENTLY of whether
 the filter is applied, so a marked-but-not-filtering set reads back too; a workspace ROW RENDERS in the
-sidebar iff `sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || focused)`, every term on the
-same tree response — the sidebar hidden renders nothing, `flagged` mode renders a flat flagged-session
-list with NO workspace rows whatever the filter says, `tree` mode with the filter OFF renders the whole
-tree regardless of membership, and only `tree` mode with the filter ON narrows visibility to the
-members), `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
+sidebar iff `sidebarVisible && ((sidebarMode == "tree" && (!workspaceFilter || focused)) || (sidebarMode == "flagged" &&
+sidebarFlaggedLayout == "tree" && one of its sessions is flagged))`, every term on the
+same tree response — the sidebar hidden renders nothing, `flagged` mode renders NO workspace rows under
+the flat layout and, under the tree layout, the workspaces holding a flagged session whatever the filter
+says, `tree` mode with the filter OFF renders the whole tree regardless of membership, and only `tree`
+mode with the filter ON narrows visibility to the members), and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
 when expanded, so an all-expanded tree carries no `collapsed` keys), `parkedCount` (how many of this
 workspace's rows are PARKED, drawn or hidden alike — what the sidebar's dim `⏸ N` suffix shows; omitted
@@ -249,7 +250,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries eighteen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries nineteen top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -261,7 +262,9 @@ LEAVE: select A then B, and A is in B's list rather than skipped),
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
-`sidebar mode`), `sidebarWidth` (the sidebar divider position in points, the read side of
+`sidebar mode`), `sidebarFlaggedLayout` (`flat` or `tree` — how the flagged view is arranged, the read side
+of `sidebar flagged-layout`; app-wide, so every window reports the same value, under the ordinary tree
+too), `sidebarWidth` (the sidebar divider position in points, the read side of
 `sidebar width`, reported here and nowhere else), `workspaceFilter` (whether the window's workspace focus filter is currently APPLIED —
 the flag half of the focus set, whose member half is each workspace node's `focused`; the read side of
 `workspace filter`, so a script can record the filter state, restore it, or make the toggle idempotent),
@@ -321,7 +324,8 @@ buys nothing. A caller with no tree uses `version`.
   workspace id. A workspace's COLLAPSED state does not affect it — a folded workspace is stepped into
   like any other. While the focus filter is applied, stepping is confined to the marked workspaces, the
   same scoping `session go` gets. Errors with `no other workspace to navigate to` when there is nowhere
-  to step: the flagged flat list (which renders no workspace rows), or a single visible workspace.
+  to step: flagged mode under either layout (stepping follows the focus projection, which the flagged
+  tree does not render), or a single visible workspace.
 - `workspace move --to up|down|top|bottom [--target] [--window W]` — reorder among siblings. Missing
   or invalid `--to` errors. Note: `--target active` resolves to the current workspace — a
   foreground-created workspace that still holds the target, else the selected session's, else
@@ -335,7 +339,7 @@ buys nothing. A caller with no tree uses `version`.
   into the set leaving the filter flag EXACTLY as it was. `add` never switches the filter on: that is
   what makes a multi-workspace set buildable, since a mark that narrowed the tree would hide the rows
   still to be marked, so mark several and apply once with `workspace filter on`.
-  Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores the filter).
+  Per-window and persisted; orthogonal to `sidebar mode` (the flagged view ignores the filter in both layouts).
   While the filter is applied, `session go` navigation is scoped to the marked workspaces' sessions (and
   to the flagged set in flagged mode); an explicit `session select` of a session outside the set switches
   the filter OFF while KEEPING the set, so re-applying it costs one `workspace filter on`.
@@ -354,7 +358,8 @@ buys nothing. A caller with no tree uses `version`.
   `session flag clear` never does (it empties the list), and neither does `session new --no-select`, so
   the view can hold a row with nothing selected until one of the listed commands runs.
   Nor does a plain `session new` or a `session select` in FLAGGED mode: both make the fresh or chosen
-  session active while the flagged view renders no row for it, leaving the sidebar unselected.
+  session active while the flagged view renders no row for it, leaving the sidebar unselected. New Session
+  from a flagged-tree workspace row, or its hover +, is the same case.
   A script that changes what is visible should re-read `tree` before using the default `active` target.
   A workspace
   created while the filter is applied joins the set, so it is visible without breaking the filter — except
@@ -634,8 +639,8 @@ error keeps those names for compatibility.
 - `session flag [on|off|toggle|clear] [--target] [--window W]` — flag/unflag a session for the flagged
   working-set view (a durable, persisted membership). `on`/`off`/`toggle` act on `--target` (default
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
-  Pair with `sidebar mode flagged` to see just the flagged sessions as a flat `session : workspace`
-  list. Unknown mode errors. The tree's `flagged` flag tracks membership.
+  Pair with `sidebar mode flagged` to see just the flagged sessions, arranged by
+  `sidebar flagged-layout` (a flat `session : workspace` list by default). Unknown mode errors. The tree's `flagged` flag tracks membership.
 - `session park [on|off|toggle] [--target] [--window W]` — mark a session parked: the row is kept,
   whatever agent it held is not. Persisted and idempotent, defaulting to `toggle`, acting on `--target`
   (default `active`). A parked row draws dimmed in the sidebar and nothing else changes: it stays
@@ -1201,8 +1206,8 @@ like `quick type`. Errors with `quick terminal not open` (never shown), `failed 
 the ⌃⇧P palette "Toggle Sidebar", and the ⌃⌘S keymap action (`toggle_sidebar`).
 
 `agtermctl sidebar mode [tree|flagged|toggle]` — flip the frontmost window's sidebar VIEW between the
-workspace tree and the flat flagged working-set list (the durable per-session `flag`; each flagged row
-is labeled `session : workspace`, even across workspaces). `toggle` is the default; idempotent
+workspace tree and the flagged working set (the durable per-session `flag`; in the default flat layout
+each flagged row is labeled `session : workspace`, even across workspaces). `toggle` is the default; idempotent
 (delta-computed); an unknown mode is an error, and `no open window` when none is open. Persisted
 per-window. While in `flagged` mode, `session go` navigation (and the Ctrl-Tab MRU switcher) is scoped
 to the flagged sessions only; back in `tree` it spans the marked workspaces' sessions (while the focus
@@ -1223,16 +1228,26 @@ name whether they are drawn or not, so nothing disappears without trace. Hiding 
 second mark: unparking (`session park off`) is what brings a row back. Read back from the `window list`
 node's true-only `parkedHidden` and the tree workspace node's `parkedCount`/`revealsParked`.
 
+`agtermctl sidebar flagged-layout [flat|tree|toggle]` — pick how the flagged view arranges its sessions.
+`flat` is one list labeled `session : workspace`; `tree` nests the flagged sessions under their workspace
+rows and leaves out workspaces holding none. `toggle` is the default; an unknown layout is an error.
+APP-WIDE, the same setting as Settings ▸ General ▸ Flagged view layout: no `--window`, no open window
+needed, and every window's flagged view follows at once. Setting it never enters flagged mode and never
+moves the selection. Returns the resulting layout in `result.text`; read back as the tree's top-level
+`sidebarFlaggedLayout`, reported under the ordinary tree too. The tree layout shares each workspace's
+collapse state with the ordinary tree, ignores the focus filter, and keeps `workspace go` unavailable.
+
 `agtermctl sidebar expand [--window W]` — expand every workspace row in a window's sidebar tree.
 Defaults to the frontmost window; `--window` (id / prefix / `active`) targets any OPEN window, so a
 script can expand a background window's tree. Idempotent (a clean no-op when all are already expanded);
-a graceful no-op in `flagged` mode (no workspace rows); a named-but-closed window errors, and `no open
+a graceful no-op under the flat flagged list (no workspace rows). In either tree layout it applies to
+all workspaces, including those the view omits. A named-but-closed window errors, and `no open
 window` when none is open. The GUI half (frontmost only) is View ▸ Expand Workspaces and the ⌃⇧P palette
 "Expand Workspaces".
 
 `agtermctl sidebar collapse [--window W]` — collapse every workspace EXCEPT the current one (the same
 resolution as `--target active`), which stays expanded and is scrolled into view. Same `--window`
-selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mode; a named-but-closed
+selector and defaults as `expand`. Idempotent; a graceful no-op under the flat flagged list; a named-but-closed
 window errors, and `no open window` when none is open. The GUI half (frontmost only) is View ▸ Collapse
 Workspaces and the ⌃⇧P palette "Collapse Workspaces".
 
@@ -1321,7 +1336,9 @@ parse diagnostics (0 = clean). App-global (no `--window`).
   has none), and `overridden: true` when a `map` line moved it off its shipped default. Every action is
   listed, bound or not, so you can also see which chords are free.
 - `commands[]` — the custom commands: `name`, and `shortcut` omitted for a palette-only one. A shortcut
-  holding alternatives is one `|`-joined string, in the file's own spelling.
+  holding alternatives is one `|`-joined string, in the file's own spelling. `errorHud` is always a boolean,
+  `errorPosition` is the canonical position (default `center`), and `errorPane` is `left` or `right`,
+  omitted for session-wide placement. The human listing shows error options for opted-in commands.
 - `normalMode[]` — the `nmap` binds, omitted when there are none: `bind` (the key or sequence, spelled
   like `actions[].chord`) plus exactly one of `action` and `command`, the second being a bind whose
   `nmap` target was a quoted command name. This is the only place normal-mode binds are visible.
@@ -1360,7 +1377,7 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   palette and tooltips show the joined glyphs (e.g. `⌃␣>S`). A sequence is inert while normal mode is on:
   its tail chords are bare keys, and the mode swallows those. A Command-leading first chord is handed back
   rather than eaten; any other first chord the mode swallows like the bare key it is.
-- `command "<name>" [chord] <shell...>` — define a custom shell command, listed in the action palette
+- `command "<name>" [chord] [error options] <shell...>` — define a custom shell command, listed in the action palette
   marked `custom`. The quoted name may contain spaces. The post-name token is the chord only if it
   parses and starts with a modifier or a function key (`f1` through `f20`).
   A custom chord may be a leader sequence (chords joined by `>`, e.g. `ctrl+a>g`). No chord → palette-only.
@@ -1382,9 +1399,30 @@ Key Mapping). Three verbs, line-based; blank lines and `#` comments ignored:
   menu item, but the global hotkey wins even when agterm is frontmost.
   `global-hotkey f5` takes F5 from every application and from agterm local map/command bindings.
 
-Either verb's chord token may hold **alternatives** joined by `|`, with no spaces around it (everything
-after the first token is the shell line): `map cmd+t|ctrl+space>s toggle_split` fires the action from
-either. A built-in's first single-chord alternative the menu can carry becomes its menu shortcut (one that
+Custom commands keep banner-only failure reporting by default, subject to the notification setting.
+To add a ten-second failure panel, put `--error-hud` after the optional chord, before the shell body:
+
+```text
+command "Build" ctrl+a>b --error-hud ./build.sh
+command "Deploy" --error-position top-right --error-pane left --error-hud ./deploy.sh
+```
+
+The panel defaults to `center` over the whole session. `--error-position POS` accepts the same nine
+positions as `session hud --position`, including the `top`/`bottom` aliases. `--error-pane left|right`
+selects that role when the failure is reported. If the pane is hidden or gone, the panel falls back to
+the whole session at the configured position and logs the fallback. A program overlay keeps its slot.
+The panel shows the command name, exit status or spawn error, and the last usable stderr line if any;
+only opted-in commands capture stderr. Successful commands show nothing.
+
+Flags may appear in any order. Position and pane require `--error-hud`. A missing/invalid value,
+duplicate flag, unknown leading `--error-*` option, or empty shell body diagnoses and skips the command.
+The first ordinary shell token ends option parsing; the rest stays shell text, so
+`--error-hud ./script --error-pane right` passes `--error-pane right` to the script.
+Use `--` to end options explicitly, including before a shell body starting with a reserved name.
+Palette-only commands put flags immediately after the quoted name; a chord is never parsed after flags.
+
+Either verb's chord token may hold **alternatives** joined by `|`, with no spaces around it:
+`map cmd+t|ctrl+space>s toggle_split` fires the action from either. A built-in's first single-chord alternative the menu can carry becomes its menu shortcut (one that
 names a reserved chord or a bare arrow is diagnosed and dropped, and the next single chord takes the slot);
 every other alternative, and every alternative of a `command`, is delivered by a key monitor and so must
 start with a modifier or a function key. `global-hotkey` is outside all of this:

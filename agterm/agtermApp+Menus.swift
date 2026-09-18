@@ -237,7 +237,7 @@ extension agtermApp {
                 .keyboardShortcut(shortcut(for: .toggleSidebar))
                 .disabled(!PaletteCommand.toggleSidebar.isEnabled(in: context))
                 // expand every workspace / collapse all but the active one. plain keyless items, disabled
-                // outside tree mode, where there are no workspace rows; control sidebar.expand/collapse.
+                // under the flat flagged list, where there are no workspace rows; control sidebar.expand/collapse.
                 Button { actions.expandAllWorkspaces() } label: { Label("Expand Workspaces", systemImage: "chevron.down") }
                     .disabled(!PaletteCommand.expandWorkspaces.isEnabled(in: context))
                 Button { actions.collapseOtherWorkspaces() } label: { Label("Collapse Workspaces", systemImage: "chevron.right") }
@@ -251,7 +251,7 @@ extension agtermApp {
                 }
                 .keyboardShortcut(shortcut(for: .toggleWorkspaceCollapse))
                 .disabled(!PaletteCommand.toggleWorkspaceCollapse.isEnabled(in: context))
-                // flip the sidebar between the workspace tree and the flat flagged working-set list. one
+                // flip the sidebar between the workspace tree and the flagged working-set view. one
                 // 2-state item, keyless by default (rebindable via toggle_flagged_view); control sidebar.mode.
                 // Disabled with nothing to show (tree mode + no flags), live in flagged mode so it can
                 // always switch back to the tree.
@@ -387,8 +387,8 @@ extension agtermApp {
                     .keyboardShortcut(shortcut(for: .lastSession))
                     .disabled(!PaletteCommand.lastSession.isEnabled(in: context))
                 // step between WORKSPACES, landing on each one's first session. keyless, rebindable via
-                // previous_workspace/next_workspace; control workspace.go. tree mode only, like the
-                // expansion items in View — flagged mode renders no workspace rows to step through.
+                // previous_workspace/next_workspace; control workspace.go. ordinary tree only, narrower than
+                // the expansion items in View: `AppStore.canStepWorkspaces` owns why.
                 Button { actions.selectPreviousWorkspace() } label: {
                     Label("Previous Workspace", systemImage: "chevron.up.2")
                 }

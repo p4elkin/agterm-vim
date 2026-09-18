@@ -96,6 +96,7 @@ public protocol ControlActions {
     /// a phantom member is what broke the focus read-back.
     func setSidebarParked(window: String?, mode: ControlParkedVisibilityMode,
                           scope: ControlParkedScope) -> ControlResponse
+    func setFlaggedViewLayout(_ mode: ControlFlaggedLayoutMode) -> ControlResponse
     func expandSidebar(window: String?) -> ControlResponse
     func collapseSidebar(window: String?) -> ControlResponse
     /// Turn normal mode on/off for the frontmost window. The host owns the entry gate (the mode cannot arm
@@ -251,9 +252,9 @@ public struct ControlDispatcher {
                 .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList,
-                .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarExpand,
-                .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear, .restoreCapture,
-                .sessionPairing, .overlayRedirectToggle, .version:
+                .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarFlaggedLayout,
+                .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear,
+                .restoreCapture, .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
         case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree, .zmxAttach:
             return await dispatchZmxCommand(request)
@@ -781,17 +782,13 @@ public struct ControlDispatcher {
         case .themeList:
             return actions.listThemes()
         case .sidebar:
-            guard let mode = ControlToggleMode.parse(request.args?.mode, on: "show", off: "hide") else {
-                return ControlResponse(ok: false, error: "invalid sidebar mode: \(request.args?.mode ?? "toggle")")
-            }
-            return actions.setSidebarVisibility(mode)
+            return dispatchSidebar(request)
         case .sidebarMode:
-            guard let mode = ControlSidebarViewMode.parse(request.args?.mode) else {
-                return ControlResponse(ok: false, error: "invalid sidebar mode: \(request.args?.mode ?? "toggle")")
-            }
-            return actions.setSidebarViewMode(mode)
+            return dispatchSidebarMode(request)
         case .sidebarParked:
             return dispatchSidebarParked(request)
+        case .sidebarFlaggedLayout:
+            return dispatchSidebarFlaggedLayout(request)
         case .sidebarExpand:
             return actions.expandSidebar(window: request.args?.window)
         case .sidebarCollapse:

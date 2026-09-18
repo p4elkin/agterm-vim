@@ -78,6 +78,7 @@ final class SettingsModel {
         // `OverlayRedirectController.shared.isEnabled` — the one setting this class does not also apply to
         // live chrome/config, since it drives only the overlay-open decision and the title-bar pill.
         OverlayRedirectController.shared.setEnabled(settings.overlayRedirectEnabled ?? false)
+        applyFlaggedViewLayout()
         ensureStarterKeymap()
         loadKeymap()
         ensureStarterHooks()
@@ -257,6 +258,15 @@ final class SettingsModel {
         settings.autoHideSidebarInactiveWindows = value
         persistAndApply()
         if value == true { library.applyInactiveWindowSidebarHiding() }
+    }
+
+    /// Persist the flagged view's layout; `flat` is the nil case, keeping `settings.json` minimal. Not a ghostty
+    /// key: it rides `.agtermAppearanceChanged`, which every sidebar reconciles on. An unchanged value skips
+    /// the write so no sidebar rebuilds for nothing.
+    func setFlaggedViewLayout(_ layout: FlaggedViewLayout) {
+        guard layout != settings.effectiveFlaggedViewLayout else { return }
+        settings.flaggedViewLayout = layout == .flat ? nil : layout.rawValue
+        persistAndApply()
     }
 
     /// Show or hide one title-bar / sidebar-footer chrome element (an empty result maps back to nil so
@@ -723,6 +733,7 @@ final class SettingsModel {
         applyStatusReset()
         applyInterfaceElements()
         applyAutoHideSidebarInactiveWindows()
+        applyFlaggedViewLayout()
         // refresh the chrome (title bar + sidebar + quick terminal) for the new terminal color,
         // translucency and toolbar style now, not at the next window re-key.
         NotificationCenter.default.post(name: .agtermAppearanceChanged, object: nil)
@@ -767,6 +778,10 @@ final class SettingsModel {
 
     private func applyInterfaceElements() {
         GhosttyApp.shared.setHiddenInterfaceElements(settings.resolvedHiddenInterfaceElements)
+    }
+
+    private func applyFlaggedViewLayout() {
+        GhosttyApp.shared.setFlaggedViewLayout(settings.effectiveFlaggedViewLayout)
     }
 
     private func applyAutoHideSidebarInactiveWindows() {

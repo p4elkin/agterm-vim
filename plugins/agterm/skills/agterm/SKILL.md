@@ -107,7 +107,8 @@ selected before it joins `sessionRecency`, in ms, omitted when the setting is Im
 control `session select` both record without waiting it out),
 `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), `sidebarWidth` (the sidebar divider position in
+(`tree` or `flagged` — the read side of `sidebar mode`), `sidebarFlaggedLayout` (`flat` or `tree`, app-wide —
+the read side of `sidebar flagged-layout`), `sidebarWidth` (the sidebar divider position in
 points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`, `quickVisible` (whether the
 quick terminal is shown — the read side of the write-only `quick` command; app-level, so every window
 reports the same value), `zoomedSurface`, the four `dashboard*` fields, `sessionRecency` (the window's
@@ -292,9 +293,11 @@ the others WITHOUT switching the filter on; read membership back from the tree w
 `workspace filter [on|off|toggle]` (apply or suspend that filter for the whole window WITHOUT losing the marked
 set — no `--target`; read it back from the tree top-level `workspaceFilter`. Build a working set with
 repeated `workspace focus add`, then apply it once with `workspace filter on`; a workspace row renders iff
-`sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || focused)` — no workspace row renders at
-all with the sidebar hidden or in `flagged` mode, the whole tree renders while the filter is off, and
-only while it is on does visibility narrow to the members — and `workspace filter on` with nothing marked is
+`sidebarVisible && ((sidebarMode == "tree" && (!workspaceFilter || focused)) || (sidebarMode == "flagged" &&
+sidebarFlaggedLayout == "tree" && one of its sessions is flagged))` — no workspace row renders at
+all with the sidebar hidden or under the flat flagged list, the ordinary tree renders whole while the filter is
+off and narrows to the members only while it is on, and the flagged tree ignores the filter — and
+`workspace filter on` with nothing marked is
 refused so the pair can never lie) ·
 `workspace collapse [--target W] [--window W]` · `workspace expand [--target W] [--window W]` (collapse/expand ONE workspace
 in the sidebar tree — the per-workspace pair, distinct from the all-workspace `sidebar expand`/`collapse`;
@@ -581,8 +584,10 @@ with `quick show` stays up when agterm loses focus, unlike one the user summoned
 per app, so none of them take `--target`/`--window`/`--pane`; all three still need an open window.
 
 **sidebar** — `sidebar [show|hide|toggle]` (visibility; read back from the tree's `sidebarVisible`) ·
-`sidebar mode [tree|flagged|toggle]` (flip between the workspace tree and the flat flagged working-set list; read
-back from the tree's top-level `sidebarMode`) ·
+`sidebar mode [tree|flagged|toggle]` (flip between the workspace tree and the flagged working set; read
+back from the tree's top-level `sidebarMode`) · `sidebar flagged-layout [flat|tree|toggle]` (arrange the flagged
+view as one flat list or nested under workspace rows; app-wide, no `--window`, echoes the resulting layout; read
+back from `sidebarFlaggedLayout`) ·
 `sidebar parked [show|hide|toggle] [--workspace <id|active|all>] [--window W]` (whether PARKED rows are
 drawn: bare, it sets the window-wide hide flag; `--workspace id/active` marks one workspace as an exception
 that shows its parked rows anyway; `all` clears the exceptions and applies the mode everywhere. A hidden row
@@ -625,6 +630,10 @@ place, and neither does turning the mode on over one.
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). Read the resulting size back from `tree` (`fontSize`/`splitFontSize`/`scratchFontSize` per pane).
 
 **keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count). `keymap list` — show the resolved keymap AND the live menu key equivalents: every built-in with its current binds (the menu chord first, then any `|`-separated alternatives a key monitor delivers, including leader sequences), the custom commands, the parse diagnostics, and what the menu bar is actually dispatching. Use it to check a rebind took effect, to find a free chord, or to spot a chord the keymap resolved but the menu is not carrying. Built-in actions support leader sequences too (e.g. `map ctrl+space>s toggle_split`); a sequence-only bind clears the action's menu shortcut and shows the joined glyphs in the palette and tooltips instead. `keymap list` also reports the `nmap` binds in their own `normalMode` section (bind + `action` or `command`, plus `mode` where the line carries a mode word that changes the outcome), the only place normal-mode binds are visible.
+
+Custom commands opt into a failure panel with `command "Build" [chord] --error-hud ./build.sh`, placed
+with `--error-position POS` and `--error-pane left|right`; see
+[keymap.conf format](reference.md#keymapconf-format) for the parsing rules and defaults.
 
 **hooks** — `hooks reload` — re-read `hooks.conf` (prints the parse-diagnostic count); `hooks list` — every `on <kind> <shell...>` line with its running pid and elapsed seconds, pending and dropped counts, last failure, and a retired marker for a removed line whose script still runs. A hook gets the event JSON on stdin plus `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`; one process per line at a time with a 256-deep queue behind it. Both commands are app-global and refuse a target or `--window`.
 

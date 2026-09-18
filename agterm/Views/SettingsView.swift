@@ -73,7 +73,8 @@ private struct SettingHint: View {
 }
 
 /// General tab: Mouse (scroll speed, right-click-pastes, workspace-row click), Sessions (new-session
-/// directory, restore mode) and the inherit-global-ghostty-config toggle; visual and
+/// directory, restore mode, and the flagged view layout, here because the Interface tab is full) and the
+/// inherit-global-ghostty-config toggle; visual and
 /// notification settings have their own tabs.
 private struct GeneralSettingsView: View {
     let model: SettingsModel
@@ -132,6 +133,11 @@ private struct GeneralSettingsView: View {
                     .accessibilityIdentifier("settings-confirm-close-session")
                 Toggle("Allow undo after closing sessions and workspaces", isOn: closeGraceUndoEnabled)
                     .accessibilityIdentifier("settings-close-grace-undo")
+                Picker("Flagged view layout", selection: flaggedViewLayout) {
+                    Text("Flat list").tag(FlaggedViewLayout.flat)
+                    Text("Workspace tree").tag(FlaggedViewLayout.tree)
+                }
+                .accessibilityIdentifier("settings-flagged-view-layout")
             }
 
             Section("Ghostty Config") {
@@ -168,6 +174,11 @@ private struct GeneralSettingsView: View {
     private var rightClickPaste: Binding<Bool> {
         Binding(get: { model.settings.rightClickPaste ?? true },
                 set: { model.setRightClickPaste($0 ? nil : false) })
+    }
+
+    private var flaggedViewLayout: Binding<FlaggedViewLayout> {
+        Binding(get: { model.settings.effectiveFlaggedViewLayout },
+                set: { model.setFlaggedViewLayout($0) })
     }
 
     /// Default ON; turning it off stores false and leaves only the disclosure triangle as the hit target.

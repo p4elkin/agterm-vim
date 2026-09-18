@@ -358,11 +358,13 @@ public struct ControlWorkspaceNode: Codable, Sendable, Equatable {
     /// the selected session stays behind in another one). The read
     /// side of the write-only `workspace.focus`/`workspace.filter`.
     ///
-    /// A workspace ROW is VISIBLE iff `tree.sidebarVisible && tree.sidebarMode == "tree" &&
-    /// (!tree.workspaceFilter || focused)`, every term on the same `tree` response — no second call needed.
-    /// Both shorter forms are wrong: `focused && workspaceFilter` reports nothing visible while the filter is
-    /// off, and a bare `!workspaceFilter || focused` reports rows behind a hidden sidebar and in `"flagged"`
-    /// mode, which renders a FLAT flagged-session list with NO workspace rows whatever membership says. The
+    /// A workspace ROW is VISIBLE iff `tree.sidebarVisible && ((tree.sidebarMode == "tree" &&
+    /// (!tree.workspaceFilter || focused)) || (tree.sidebarMode == "flagged" &&
+    /// tree.sidebarFlaggedLayout == "tree" && one of its sessions is `flagged`))`, every term on the same
+    /// `tree` response — no second call needed. The parentheses matter: the focus filter restricts the
+    /// ordinary tree only, and flagged mode ignores it. The shorter forms are wrong: `focused &&
+    /// workspaceFilter` reports nothing visible while the filter is off, and a bare `!workspaceFilter ||
+    /// focused` reports rows behind a hidden sidebar and under the FLAT flagged list, which has none. The
     /// filter-ON term is exact because enabled-with-an-empty-set is unrepresentable (enabling an empty set is
     /// refused; restore prunes stale ids then disables when it empties), so an applied filter always has at
     /// least one visible member.
@@ -416,11 +418,16 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// it for a closed window.
     public let sidebarVisible: Bool?
     /// The projected window's sidebar VIEW mode — `SidebarMode.rawValue` (`tree` = the workspace tree,
-    /// `flagged` = the flat flagged working-set list). LIVE and always populated on an app-produced `tree`;
+    /// `flagged` = the flagged working-set view). LIVE and always populated on an app-produced `tree`;
     /// optional at the protocol level (like the other `tree` fields) for version skew. The read side of the
     /// write-only `sidebar.mode`. `tree`-only, as every field below is: a GUI toggle bypasses the command
     /// path, so a cached `window.list` copy would go stale.
     public let sidebarMode: String?
+    /// How the flagged view arranges its sessions — `FlaggedViewLayout.rawValue` (`flat` | `tree`). APP-WIDE,
+    /// so every window's `tree` reports the same value, and reported under the ordinary tree too, where it
+    /// is dormant. The read side of `sidebar.flagged-layout` and a term of the workspace-row visibility
+    /// predicate on `ControlWorkspaceNode.focused`.
+    public let sidebarFlaggedLayout: String?
     /// The projected window's sidebar divider position in points - the read side of `sidebar.width`, and the
     /// only place it is reported. LIVE and `tree`-only, like every field below and like `sidebarMode`: the
     /// tree is the live per-window read surface, and nothing needs width discovery ACROSS windows, which is
@@ -477,7 +484,8 @@ public struct ControlTree: Codable, Sendable, Equatable {
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
-                sidebarVisible: Bool? = nil, sidebarMode: String? = nil, sidebarWidth: Double? = nil, workspaceFilter: Bool? = nil,
+                sidebarVisible: Bool? = nil, sidebarMode: String? = nil, sidebarFlaggedLayout: String? = nil,
+                sidebarWidth: Double? = nil, workspaceFilter: Bool? = nil,
                 quickVisible: Bool? = nil,
                 zoomedSurface: String? = nil, dashboardMembers: [String]? = nil,
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
@@ -491,6 +499,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.recencyDwellMs = recencyDwellMs
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
+        self.sidebarFlaggedLayout = sidebarFlaggedLayout
         self.sidebarWidth = sidebarWidth
         self.workspaceFilter = workspaceFilter
         self.quickVisible = quickVisible

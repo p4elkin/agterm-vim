@@ -155,8 +155,8 @@ renumbering. Do not reintroduce a count anywhere.
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
   `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
-- `sidebar`, `sidebar.mode`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`, `mode`, `notify`
-- `sidebar`, `sidebar.mode`, `sidebar.expand`, `sidebar.collapse`, `sidebar.width`, `notify`
+- `sidebar`, `sidebar.mode`, `sidebar.flagged-layout`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`,
+  `sidebar.width`, `mode`, `notify`
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.go`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
@@ -744,7 +744,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 - `keymap.reload` shares GUI reload and returns diagnostic count. `keymap.list` reports:
   resolved built-in actions and override state; live AppKit menu equivalents/menu/title/selector; path;
-  custom commands; diagnostics. An action's `chord` is the menu key equivalent alone, so it keeps comparing
+  custom commands with `errorHud` (boolean), `errorPosition` (canonical, default center), and optional
+  `errorPane` (left/right, omitted for session-wide); diagnostics. Human command rows show opted-in error
+  options. An action's `chord` is the menu key equivalent alone, so it keeps comparing
   against `menu`, while `alternates` holds its monitor-bound binds in kitty syntax and is omitted when
   empty; the human actions column joins the whole set with `|`. Both halves are canonical kitty syntax, not
   the file's own spelling — only a custom command's `shortcut` is preserved verbatim. `overridden` compares
@@ -800,8 +802,16 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   exception set — reported independently of the flag, like `focused` beside `workspaceFilter` — and
   `parkedCount` on the workspace node, omitted when zero, counting parked rows drawn or hidden alike so
   nothing disappears without trace.
+- `sidebar.flagged-layout flat|tree|toggle` is APP-WIDE: no `activeStore` guard and no window target, since it
+  writes the `FlaggedViewLayout` setting through `SettingsModel.setFlaggedViewLayout`, the seam the Settings
+  picker uses, whose delta guard skips an unchanged value. `toggle` resolves from the effective setting and
+  the response echoes the resulting layout in `result.text`. Read back as top-level `sidebarFlaggedLayout`
+  on EVERY tree response, ordinary-tree windows included: `AppStore.controlTree` takes it as a parameter and
+  `ControlServer.buildTree` passes the `GhosttyApp` mirror the sidebars render from. The legacy
+  `controlTree(foreground:)` overload reports nil, meaning the host supplied none. An outside
+  `ControlActions` conformer gets the unsupported-host default.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
-  no-op in flagged mode. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
+  no-op under the flat flagged list. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `sidebar.width <points>` targets an optional open window, unlike frontmost-only `sidebar`/`sidebar.mode`:
   it is per-window state and new commands do not inherit that limitation. Clamps to
   `AppStore.sidebarWidthMin...Max` through `clampSidebarWidth`, shared with the drag and the `restore()`
@@ -818,7 +828,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   target or replaces/enables; add inserts without changing enabled state. There is no membership toggle.
   Clear Focus loops off over members; `workspace.filter off` only suspends.
 - Read membership independently as `focused`. A workspace row is visible exactly when
-  `sidebarVisible && sidebarMode == "tree" && (!workspaceFilter || focused)`. Preserve all terms.
+  `sidebarVisible && ((sidebarMode == "tree" && (!workspaceFilter || focused)) ||
+  (sidebarMode == "flagged" && sidebarFlaggedLayout == "tree" && one of its sessions is flagged))`.
+  Preserve all terms and the parentheses. The control tree stays the unfiltered workspace/session model;
+  never filter it to match what the GUI draws.
 - `workspace.filter on|off|toggle` targets optional window, changes only enabled state, and refuses to
   enable empty membership. Read live top-level `workspaceFilter`.
 - Focus/filter/mode/flag narrowing reselects the most recent visible session. Growing an empty visible set

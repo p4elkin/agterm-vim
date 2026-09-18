@@ -53,7 +53,7 @@ extension WorkspaceSidebar.Coordinator {
             field.setAccessibilityLabel(workspace?.name ?? "")
             // roll-up badge so an unseen notification stays visible when the workspace is collapsed
             // (gated by the Settings badge toggle, like the session badge below)
-            applyBadge(toCell: cell, count: effectiveUnseen(workspace?.unseenCount ?? 0))
+            applyBadge(toCell: cell, count: effectiveUnseen(workspace.map(displayedUnseen(for:)) ?? 0))
             // the parked count is keyed on the FACT that parked rows exist, not on `hideParked` — like the
             // focus-membership icon below, so what a hide would remove stays legible while hiding is off.
             let parkedCount = workspace.flatMap { store.parkedCount(in: $0) } ?? 0
@@ -256,7 +256,7 @@ extension WorkspaceSidebar.Coordinator {
     /// `rowLabel(for:workspaceName:)`) to stay off the O(n) lookups.
     private func rowLabel(forSession id: UUID) -> String {
         guard let session = store.session(withID: id) else { return "" }
-        let workspaceName = store.sidebarMode == .flagged ? store.workspace(forSession: id)?.name ?? "" : ""
+        let workspaceName = flaggedLayout == .flat ? store.workspace(forSession: id)?.name ?? "" : ""
         return rowLabel(for: session, workspaceName: workspaceName)
     }
 }

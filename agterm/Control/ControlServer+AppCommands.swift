@@ -30,7 +30,7 @@ extension ControlServer {
         return ControlResponse(ok: true)
     }
 
-    /// Set the frontmost window's sidebar VIEW mode (tree vs the flat flagged list), distinct from
+    /// Set the frontmost window's sidebar VIEW mode (tree vs the flagged view), distinct from
     /// `setSidebarVisibility`. Delta-computed so a no-op mode skips the write; unknown mode + no window error.
     func setSidebarViewMode(_ mode: ControlSidebarViewMode) -> ControlResponse {
         guard let store = library.activeStore else {
@@ -72,8 +72,25 @@ extension ControlServer {
         }
     }
 
+    /// Set how EVERY window's flagged view arranges its sessions. App-wide state, so unlike `setSidebarViewMode`
+    /// it needs no open window and takes no window target. Writes through the `SettingsModel` setter the
+    /// Settings picker uses, which skips an unchanged value; echoes the resulting layout so a `toggle`
+    /// caller learns which way it went.
+    func setFlaggedViewLayout(_ mode: ControlFlaggedLayoutMode) -> ControlResponse {
+        let current = settingsModel.settings.effectiveFlaggedViewLayout
+        let want: FlaggedViewLayout
+        switch mode {
+        case .flat: want = .flat
+        case .tree: want = .tree
+        case .toggle: want = current == .flat ? .tree : .flat
+        }
+        settingsModel.setFlaggedViewLayout(want)
+        return ControlResponse(ok: true, result: ControlResult(text: want.rawValue))
+    }
+
     /// Expand every workspace in a window's sidebar tree; `--window` picks the OPEN target, default frontmost.
-    /// Idempotent, and a graceful no-op in flagged mode (no workspace rows); a closed or absent window errors.
+    /// Idempotent, and a graceful no-op under the flat flagged list (no workspace rows); a closed or absent
+    /// window errors.
     /// Drives the same `AppActions.expandAllWorkspaces(in:)` the View menu / palette drive.
     func expandSidebar(window: String?) -> ControlResponse {
         resolver.resolveOpenPlacementStore(window) { store in
@@ -83,7 +100,7 @@ extension ControlServer {
     }
 
     /// Collapse every workspace except the current one, which stays expanded and scrolled into view; same
-    /// window selector and flagged-mode/idempotency/error behavior as `expandSidebar`.
+    /// window selector and flat-list/idempotency/error behavior as `expandSidebar`.
     func collapseSidebar(window: String?) -> ControlResponse {
         resolver.resolveOpenPlacementStore(window) { store in
             actions.collapseOtherWorkspaces(in: store)
