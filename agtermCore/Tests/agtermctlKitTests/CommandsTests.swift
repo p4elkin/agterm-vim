@@ -393,6 +393,19 @@ struct CommandsTests {
             == "--axis must be vertical or horizontal")
     }
 
+    @Test func sessionSplitWithCommandAndWait() throws {
+        let expected = ControlRequest(cmd: .sessionSplit, target: "active",
+                                      args: ControlArgs(mode: "on", command: "c", wait: true))
+        #expect(try request(["session", "split", "on", "--command", "c", "--wait"]) == expected)
+    }
+
+    @Test func sessionSplitCommandValidation() {
+        #expect(validationMessage(["session", "split", "on", "--wait"]) == "--wait requires --command")
+        #expect(validationMessage(["session", "split", "off", "--command", "c"]) == "--command needs mode on")
+        // mode defaults to toggle, so `on` must be spelled out
+        #expect(validationMessage(["session", "split", "--command", "c"]) == "--command needs mode on")
+    }
+
     @Test func sessionSplitClose() throws {
         #expect(try request(["session", "split", "close"]) == ControlRequest(cmd: .sessionSplitClose, target: "active"))
     }

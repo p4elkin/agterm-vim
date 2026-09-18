@@ -1234,7 +1234,7 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session split [on|off|toggle] [--axis vertical|horizontal] [--target T] [--window W]
+                agtermctl session split [on|off|toggle] [--axis vertical|horizontal] [--command CMD] [--wait] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.split</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1249,6 +1249,21 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split: false</span> with the pane still alive, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl tree</span> tags it
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">(split hidden)</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> runs a program in the new pane
+                instead of a login shell — argv-style with the same GUI-<span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>
+                exit-127 caveat as <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session new --command</span>,
+                and run-once. The mode must be spelled <span style="font-family: &quot;JetBrains Mono&quot;, monospace">on</span>: a seed on
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">off</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> would fire on whichever later show won the
+                toggle. A session that already has a split, hidden or shown, is refused
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">split already running; session split close first</span>
+                rather than replacing what its pane runs.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--wait</span> requires
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> and holds the pane on Ghostty's press-any-key
+                prompt after it exits; a local zmx-wrapped split under <em>Live sessions</em> takes no hold — its command runs as the
+                create-only zmx payload and the pane stays open.
               </p>
             </div>
 
@@ -3205,7 +3220,7 @@
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl zmx attach HOST SESSION [--window W]
+                agtermctl zmx attach HOST SESSION [--window W] [--transport ssh|mosh] [--mosh-server PATH] [--mosh PATH]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">zmx.attach</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -3215,10 +3230,29 @@
                 a session. A background target leaves the frontmost window unchanged.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--transport</span> picks how the pane reaches the
+                host: <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ssh</span>, the default, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">mosh</span>, which survives a dropped connection and
+                roaming. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--mosh-server</span> names the mosh-server path
+                on the far host. It is optional: omitted, the far side uses its own mosh-server lookup, and a
+                Homebrew install is what needs it, where a Mac's non-login bootstrap shell has no Homebrew on its
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--mosh</span> names the
+                <em>local</em> mosh binary instead, for an install outside the first of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/opt/homebrew/bin</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/usr/local/bin</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/usr/bin</span> that exists — the
+                lookup agterm runs itself, because a GUI-launched pane's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>
+                lacks <span style="font-family: &quot;JetBrains Mono&quot;, monospace">/opt/homebrew/bin</span> too. Both path flags
+                are valid only with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--transport mosh</span>, and a path holding shell syntax
+                is refused rather than escaped, because mosh interpolates the server path raw into the far side's shell line.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 The remote is resolved again before anything is created, so a session gone since the listing fails and creates nothing rather than handing back a fresh shell wearing its name. Only failures found before that point are reported here; a connection that starts and later drops is an ordinary pane exit.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
-                Each pane holds on Ghostty's own press-any-key prompt when its ssh exits, under one line naming the host, the session, the pane and the exit status. Closing the session here ends only this side's connection: the far-side processes keep running, and nothing this command does can kill them. A remote session is never written to disk, so it does not come back after a relaunch.
+                Each pane holds on Ghostty's own press-any-key prompt when its connection exits, under one line naming the host, the session, the pane and the exit status. Closing the session here ends only this side's connection: the far-side processes keep running, and nothing this command does can kill them. A remote session is never written to disk, so it does not come back after a relaunch.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Pinned zmx has a single leader, and an attach joins as a follower, so the remote arrives at the <em>other</em> machine's window size and ignores input until the first <em>classified</em> key — a printable character, Return, Tab or Backspace — takes the lead and reflows it. Until then the mouse, focus reporting and Ctrl-L do not reach the far side, so a mouse-driven TUI looks dead, and an ordinary control key may not wake it either. Leadership is per pane, so typing in one half of a split leaves the other at the remote's geometry, and after you close the session the far side keeps your size until something else resizes it.

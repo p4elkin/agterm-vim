@@ -63,6 +63,11 @@ public protocol ControlActions {
     /// Axis-aware entry point. Its default delegates to the original method so an existing conformer does
     /// not have to implement the new requirement until it needs axis support.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?) -> ControlResponse
+    /// `split --command` entry point: the bundled command runs in the new split pane. Its default
+    /// forwards to the axis form when no command is present and refuses a command, so a host that has
+    /// not adopted the operation never silently opens a plain shell instead.
+    func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
+                      command: ControlSplitCommand?) -> ControlResponse
     /// Tear the split pane down rather than hide it, the write side `splitSession`'s `on|off|toggle` cannot
     /// express: the surface dies and `hasSplit`/`splitRatio`/`splitFocused` go nil in `tree`.
     func closeSessionSplit(_ target: String?, window: String?) -> ControlResponse
@@ -202,6 +207,10 @@ public protocol ControlActions {
     func attachRemoteSession(host: String, session: String) async -> ControlResponse
     /// Attach into an open local window, defaulting to the frontmost window after discovery.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse
+    /// The same attach over a chosen transport. A host that has not adopted this overload refuses a
+    /// requested mosh through the default rather than attaching over ssh, which the caller did not ask for.
+    func attachRemoteSession(host: String, session: String, window: String?,
+                             transport: RemoteTransport) async -> ControlResponse
 }
 
 /// The parsed `session.pairing` update: which field to touch and what to set it to, or that it should be
@@ -609,17 +618,19 @@ public struct ControlDispatcher {
     private func dispatchSessionSurfaceCommand(_ request: ControlRequest) async -> ControlResponse {
         switch request.cmd {
         case .sessionSplit:
-            let axis: SplitAxis?
-            if let raw = request.args?.axis {
-                guard let parsed = SplitAxis(rawValue: raw) else {
-                    return ControlResponse(ok: false, error: "invalid split axis: \(raw) (vertical|horizontal)")
-                }
-                axis = parsed
-            } else {
-                axis = nil
+            let args = request.args
+            // The CLI enforces the same pair, but a raw socket client bypasses it, and a wait that no
+            // command can answer would hold nothing.
+            if args?.wait == true, args?.command == nil {
+                return ControlResponse(ok: false, error: "--wait needs --command")
             }
-            return actions.splitSession(request.target, window: request.args?.window,
-                                        mode: request.args?.mode, axis: axis)
+            let axis = args?.axis.flatMap(SplitAxis.init(rawValue:))
+            if let raw = args?.axis, axis == nil {
+                return ControlResponse(ok: false, error: "invalid split axis: \(raw) (vertical|horizontal)")
+            }
+            let command = args?.command.map { ControlSplitCommand(command: $0, wait: args?.wait ?? false) }
+            return actions.splitSession(request.target, window: args?.window, mode: args?.mode, axis: axis,
+                                        command: command)
         case .sessionSplitClose:
             return actions.closeSessionSplit(request.target, window: request.args?.window)
         case .sessionSwap:

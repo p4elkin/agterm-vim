@@ -6,6 +6,8 @@
 #
 # each row shows the far side's window and workspace, the session's own note of what it is
 # for, its working directory, and whatever its panes are running.
+#
+# add `--transport mosh --mosh-server /opt/homebrew/bin/mosh-server` to the attach for a connection that survives sleep.
 set -eu
 
 AGTERMCTL=${AGTERMCTL:-agtermctl}

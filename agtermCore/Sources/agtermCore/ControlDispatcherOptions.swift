@@ -76,3 +76,17 @@ public struct ControlSessionOverlayTextOptions: Equatable, Sendable {
         self.lines = lines
     }
 }
+
+/// `session.split --command`'s inputs: the command the new pane runs and whether the pane holds on the
+/// press-any-key prompt after it exits. One value rather than two parameters, which would take the
+/// command-carrying overload over the five-parameter convention; a wait without a command is rejected
+/// before this value exists, so a present value always carries one.
+public struct ControlSplitCommand: Equatable, Sendable {
+    public let command: String
+    public let wait: Bool
+
+    public init(command: String, wait: Bool = false) {
+        self.command = command
+        self.wait = wait
+    }
+}

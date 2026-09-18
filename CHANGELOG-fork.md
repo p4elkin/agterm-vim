@@ -97,6 +97,22 @@ publishes an empty body with only a warning on stderr.
   behaviour for anyone who dislikes it
 - hidden surfaces release their GPU resources, opt-in, with unrealize debounced and surfaces born hidden
   covered
+- `zmx attach` takes `--transport ssh|mosh`, `--mosh-server PATH` and `--mosh PATH`, so a remote
+  session can attach over mosh and survive laptop sleep and roaming while ssh stays the default.
+  `--mosh-server` names the far-side `mosh-server`; it is optional, and omitted the far side uses its own
+  lookup, but a Homebrew one needs it, because mosh's ssh bootstrap is a non-login shell and
+  `/opt/homebrew/bin` is off its PATH. `--mosh` names the local mosh binary for an install outside
+  `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/bin`; agterm probes those three itself, so the attach
+  works in a GUI-launched pane whose PATH lacks `/opt/homebrew/bin` too. Both are refused without
+  `--transport mosh` rather than silently ignored. ⚠️ Under mosh the exit line's status is mosh-client's,
+  not the guard's, so `disconnected, exit 0` after a vanished daemon is expected there
+- `session split on --command <cmd> [--wait]` runs a command in a fresh split in the same step, as
+  `session new --command` does, so a scripted remote row needs no second type call. `on` must be spelled
+  out, because the mode default is `toggle`. An existing split, hidden or shown, is refused with
+  `split already running; session split close first`, and the command persists in the snapshot and
+  re-runs on restore in Re-run commands mode. ⚠️ `--wait` adds no hold on a local row in Live sessions
+  mode: the zmx-wrapped split runs the command and falls through to a login shell; only
+  ordinary/fallback and remote-host sessions hold
 
 ### Improved
 

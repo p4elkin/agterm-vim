@@ -544,10 +544,18 @@ error keeps those names for compatibility.
   matches) and `result.text` (the counter string: "N of M", "M matches", or "no matches"); the count
   settles asynchronously, so the command waits briefly for it. Without `--json` it prints `result.text`
   (or `ok` on close / an empty bar).
-- `session split [on|off|toggle] [--axis vertical|horizontal] [--target] [--window W]` - second shell.
+- `session split [on|off|toggle] [--axis vertical|horizontal] [--command CMD] [--wait] [--target] [--window W]` - second shell.
   `vertical` means left/right and `horizontal` means top/bottom. Omitting `--axis` preserves the current
   axis and keeps the legacy left/right default for a new split. `off` hides but keeps the shell alive;
   tearing it down takes `session split close` or the shell's own exit. Unknown modes and axes error.
+  `--command` runs that command as the split's process instead of the login shell, and needs the mode
+  spelled out as `on` (the default is toggle); it is refused when the session already has a split, shown
+  or hidden, whose shell is still alive — close it first. A `--command` split persists its command and
+  re-runs it on restore in Re-run commands mode, as `session new --command` does.
+  `--wait` (only with `--command`, else an error) holds the split open after the command exits, on the
+  same press-any-key prompt as `session new --wait`. In Live sessions mode a local split is zmx-wrapped,
+  so `--wait` adds no hold there and the pane falls through to a login shell; only ordinary (Fresh
+  shells/Re-run commands) and remote-host sessions honor it.
 - `session split close [--target] [--window W]` — tear the split pane down: the surface dies, whatever it
   runs dies with it, and `hasSplit`/`splitRatio`/`splitFocused` drop out of `tree`. Reaches a HIDDEN pane
   too, which is what `session type --pane right $'exit\n'` cannot do once the pane is past a prompt
@@ -1654,11 +1662,22 @@ pane, and be new enough to answer `zmx tree` at all; an older one is refused by 
 half-attached. It also needs `agtermctl` installed by the cask or the Help action: a machine merely
 running agterm has no CLI an ssh command can find, and the read fails with exit 127.
 
-`agtermctl zmx attach HOST SESSION [--window W]` opens one of those sessions here, marked remote, in
+`agtermctl zmx attach HOST SESSION [--window W] [--transport ssh|mosh] [--mosh-server PATH] [--mosh PATH]` opens one
+of those sessions here, marked remote, in
 the destination window's current workspace, selected, with the remote session's split when it has one.
 `--window` takes a local open window ID, unique prefix, or `active`; omitted, it uses the frontmost window
 after discovery. An invalid or closed destination fails without creating a session. Targeting a background
-window leaves the frontmost window unchanged. `SESSION` is the
+window leaves the frontmost window unchanged. `--transport mosh` carries the attach over mosh instead of
+ssh, which survives a network change and a laptop sleep. Both path flags are refused without
+`--transport mosh`, and a path holding whitespace or shell syntax is refused rather than escaped.
+`--mosh-server PATH` names the far side's `mosh-server`. It is optional: with no value the argv is
+`mosh ... host --` and the far side uses its own `mosh-server` lookup. A Homebrew `mosh-server` is what
+needs it, because mosh starts its ssh bootstrap as a non-login shell, where `/opt/homebrew/bin` is not on
+PATH. `--mosh PATH` names the LOCAL `mosh` on this machine. agterm resolves it itself, taking the first of
+`/opt/homebrew/bin/mosh`, `/usr/local/bin/mosh` and `/usr/bin/mosh` that exists and falling back to a bare
+`mosh`, so the attach works in a GUI-launched pane whose PATH also lacks `/opt/homebrew/bin`; pass the
+flag only when mosh is somewhere else.
+`SESSION` is the
 `id` from `zmx tree`, never the name: remote names are editable and repeat across workspaces. Returns the
 new local session's `id`; read `remoteHost` on its tree node. The remote is resolved AGAIN before anything
 is created, so a session that has gone since the listing fails and creates nothing. Everything reported
