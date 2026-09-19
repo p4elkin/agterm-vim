@@ -19,4 +19,13 @@ chooses. Worth deciding, outside a merge, whether the mirror job should create i
 its host natively, which is most of what `mirrorsSession` records. The parts that do not fall out of it
 are the mirrored session's key and its per-pane cwd, which the redirect's `cd` needs.
 
+Upstream #629 (merged 2026-09-19) widened the gap. A row created by `zmx attach` now also mirrors the
+origin's status, notifications and HUD to the viewer, over a presentation stream `zmx present` opens.
+`ControlServer+Zmx.attachRemoteSession` is the only place that arms it, so a mirror-job row — made with
+`session new --command`, never through `zmx attach` — gets none of it. The fork's own
+[[overlay-redirect]] left the status HUD out on purpose and says it "still appears on the workstation";
+that is still true of the mirror path, and no longer true of an upstream attach. So the choice is now
+also about which of the two mirroring paths carries the origin's panel, not only about the pairing
+fields.
+
 Not a defect. Nothing in the merge broke, and both paths work today.

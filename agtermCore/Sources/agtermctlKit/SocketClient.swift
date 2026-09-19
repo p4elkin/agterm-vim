@@ -63,8 +63,8 @@ struct SocketClient {
         }
     }
 
-    /// Open and connect a `AF_UNIX` stream socket to `path`.
-    private func connect() throws -> Int32 {
+    /// Open and connect a `AF_UNIX` stream socket to `path`. The caller owns the descriptor.
+    func connect() throws -> Int32 {
         var addr = sockaddr_un()
         let pathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
         guard path.utf8.count < pathCapacity else {
@@ -485,7 +485,11 @@ struct SocketClient {
                 let titleSuffix = session.title.map { "  title: \($0)" } ?? ""
                 let attribution = session.liveAttribution.map { "  live attribution: \($0)" } ?? ""
                 let splitAttribution = session.splitLiveAttribution.map { "  split live attribution: \($0)" } ?? ""
-                lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(session.cwd)\(splitCwdSuffix)\(titleSuffix)\(attribution)\(splitAttribution)")
+                let presentation = session.presentation.map {
+                    "  presentation: \($0.state)" + ($0.error.map { " (\($0))" } ?? "")
+                } ?? ""
+                let presenters = session.presenters.map { "  mirrored by: \($0.mirrors)" } ?? ""
+                lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(session.cwd)\(splitCwdSuffix)\(titleSuffix)\(attribution)\(splitAttribution)\(presentation)\(presenters)")
             }
         }
         return lines.joined(separator: "\n")

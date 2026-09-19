@@ -206,6 +206,8 @@ public protocol ControlActions {
     /// Create a local session attached to `session` on `host`. Resolves the remote itself before inserting
     /// anything, so a session that has gone since the tree was read creates nothing.
     func attachRemoteSession(host: String, session: String) async -> ControlResponse
+    /// Accept a viewer's presentation stream. After an ok answer the host speaks frames on that connection.
+    func openPresentation(session: String) -> ControlResponse
     /// Attach into an open local window, defaulting to the frontmost window after discovery.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse
     /// The same attach over a chosen transport. A host that has not adopted this overload refuses a
@@ -265,7 +267,7 @@ public struct ControlDispatcher {
                 .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear,
                 .restoreCapture, .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
-        case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree, .zmxAttach:
+        case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree, .zmxAttach, .zmxPresent:
             return await dispatchZmxCommand(request)
         case .hooksReload, .hooksList:
             return dispatchHooksCommand(request)

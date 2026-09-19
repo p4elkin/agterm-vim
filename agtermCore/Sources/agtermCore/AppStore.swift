@@ -135,6 +135,11 @@ public final class AppStore {
     /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
     /// discards per-session state must hang off this, or an undone close silently loses it.
     @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
+    /// Where this store publishes a session's presentation state for attached viewers. One hub serves every
+    /// window, since a viewer subscribes by session id alone.
+    @ObservationIgnored public var presentationHub: PresentationHub?
+    /// Told when an attached session's row is shown or leaves, undo and restoration included.
+    @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
@@ -373,7 +378,8 @@ public final class AppStore {
                                           realized: session.surface?.isRealized ?? false,
                                           context: session.context, remoteHost: session.remoteHost,
                                           splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
-                                          liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue)
+                                          liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
+                                          presentation: presentationNode(of: session), presenters: presentersNode(of: session))
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,

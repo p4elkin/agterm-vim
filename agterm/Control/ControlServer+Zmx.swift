@@ -120,8 +120,7 @@ extension ControlServer {
             let remote = try RemoteTreeMerger.decode(stdout: result.stdout)
             // the far side cannot know which name reached it, so the destination we were given is stamped
             // here rather than self-reported there
-            let stamped = ControlRemoteTree(host: host, endpoint: remote.endpoint, sessions: remote.sessions)
-            return ControlResponse(ok: true, result: ControlResult(remote: stamped))
+            return ControlResponse(ok: true, result: ControlResult(remote: remote.stamped(host: host)))
         } catch let error as RemoteTreeMerger.MergeError {
             return ControlResponse(ok: false, error: error.message)
         } catch {
@@ -230,6 +229,12 @@ extension ControlServer {
             store.setSplitVisibility(created.id, shown: true,
                                      axis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)) ?? .leftRight)
         }
+        var daemons = [created.paneIdentity: left]
+        if let right, let local = created.splitPaneIdentity { daemons[local] = right }
+        store.bindRemote(RemoteBinding(remoteSessionID: remote.id, daemonsByLocalPane: daemons,
+                                       presentationVersion: tree.presentation), forSession: created.id)
+        // the row's created event fired inside `addSession`, before the binding existed
+        startRemotePresentation(for: created)
         // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck
         // re-render can clear from under it through `onFocusChange`.
         actions.focusSplitPane(created, wantSplit: created.splitFocused)

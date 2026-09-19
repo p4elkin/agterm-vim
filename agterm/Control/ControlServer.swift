@@ -65,6 +65,22 @@ final class ControlServer {
     /// Live HUD auto-hide timers, one per session. `ControlServer+Hud` owns the logic; the state sits here
     /// because an extension cannot hold it. Main-actor only.
     var hudAutoHide: [UUID: HudAutoHide] = [:]
+    /// The clock HUD expiry deadlines are stamped from.
+    var hudClock: () -> Date = Date.init
+
+    /// Presentation streams to attached viewers. `ControlServer+Presentation` owns the logic; the state sits
+    /// here because an extension cannot hold it. Main-actor only.
+    let presentationHub = PresentationHub(staleTimeout: 30)
+    var presentationStreams: [PresentationStream] = []
+    var presentationHeartbeat: Task<Void, Never>?
+    /// How long an adopted stream may stay silent before its first hello.
+    var presentationHelloDeadline: TimeInterval = 10
+
+    /// This Mac as a VIEWER: one client per attached session. `ControlServer+RemotePresentation` owns the
+    /// logic. The transport is injectable so a hosted test needs no ssh.
+    var remoteClients: [UUID: RemotePresentationClient] = [:]
+    var remoteTransport: RemotePresentationTransport = RemotePresentationProcess()
+    var remoteTick: Task<Void, Never>?
 
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }
@@ -72,6 +88,7 @@ final class ControlServer {
     }
 
     @MainActor func refreshWindowCache() {
+        attachPresentationHub()
         let nodes = buildWindowList()
         cacheLock.lock(); cachedWindowNodes = nodes; cacheLock.unlock()
     }
@@ -303,6 +320,8 @@ final class ControlServer {
         // outside the guard: the lock is taken in `init`, so an instance that never bound (path too long,
         // or a bind that failed) still holds one and would otherwise keep it for the whole process.
         defer { releaseOwnership() }
+        shutdownPresentationStreams()
+        stopRemotePresentations()
         guard listenFD >= 0 else { return }
         close(listenFD)
         listenFD = -1
@@ -420,6 +439,17 @@ final class ControlServer {
         // stalls the main thread (surface teardown / re-render), wedging the accept loop against polls.
         if let cached = server.fastPathResponse(for: request) {
             _ = server.responseWriter(conn, cached)
+            return
+        }
+
+        // a presentation stream outlives its request: the reply below is the last ordinary one, and an ok
+        // hands the descriptor to a stream owner so this thread goes straight back to accepting.
+        if request.cmd == .zmxPresent {
+            let response = runBlocking { await server.dispatch(request) }
+            guard server.responseWriter(conn, response), response.ok,
+                  let session = response.result?.id.flatMap(UUID.init(uuidString:)) else { return }
+            handedOff = true
+            runBlocking { await server.adoptPresentationStream(descriptor: conn, session: session) }
             return
         }
 
@@ -553,7 +583,7 @@ final class ControlServer {
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree,
-                .zmxAttach, .dashboard, .version:
+                .zmxAttach, .zmxPresent, .dashboard, .version:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
