@@ -412,9 +412,9 @@ struct ControlDispatcherSessionMetadataTests {
 
         let exact = String(repeating: "a", count: cap)
         let over = String(repeating: "a", count: cap + 1)
-        // 400 four-byte scalars = 1600 UTF-8 bytes but only 400 characters: under the cap by grapheme
+        // 1100 four-byte scalars = 4400 UTF-8 bytes but only 1100 characters: under the cap by grapheme
         // count, over it by BYTES — the cap is a storage bound, so this must be rejected.
-        let multiByte = String(repeating: "🌍", count: 400)
+        let multiByte = String(repeating: "🌍", count: 1100)
 
         let exactResponse = await dispatcher.dispatch(ControlRequest(
             cmd: .sessionRestore, target: "session", args: ControlArgs(mode: "set", command: exact)))
