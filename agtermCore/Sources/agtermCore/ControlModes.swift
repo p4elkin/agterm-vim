@@ -260,8 +260,11 @@ public enum ControlRestoreOverride: Equatable, Sendable {
     case unpin
 
     /// Storage bound in UTF-8 BYTES, not graphemes: the pin persists in `windows/<id>.json`, so the cap
-    /// guards the snapshot, not the display width.
-    public static let maxCommandBytes = 1024
+    /// guards the snapshot, not the display width. 4096, not 1024: a labelled far attach (the
+    /// `zmx set` identity prefix, the nested far shell and, in the ssh form, the repeated env pin)
+    /// runs to about 2 KB with a Tailscale host name; at 1024 every such bind was refused and the
+    /// row came back unpinned.
+    public static let maxCommandBytes = 4096
 }
 
 /// Parsed `session.restore` payload. `paneID` is carried opaquely and resolved app-side against the LIVE
