@@ -149,9 +149,21 @@ extension ControlServer {
     /// Points every open store at the hub. Stores are created by the window library, which this file cannot
     /// reach into, so the server assigns wherever it already walks the open windows.
     func attachPresentationHub() {
+        presentationHub.onPresenterLost = { [weak self] session in
+            self?.takeBackRemoteAsk(forSession: session)
+            self?.library.store(forSession: session)?.remoteOverlayPresenterLost(forSession: session)
+        }
+        presentationHub.onPresenterFrame = { [weak self] session, body in
+            self?.receivePresenterFrame(body, forSession: session)
+        }
+        overlayJobs.onFinished = { [weak self] job in
+            self?.pendingJobCancels.remove(job.id)
+            self?.library.store(forSession: job.session)?.finishRemoteOverlay(job)
+        }
         for entry in library.windows {
             guard let store = library.store(for: entry.id) else { continue }
             store.presentationHub = presentationHub
+            store.overlayJobs = overlayJobs
             store.onRemoteRowVisibility = { [weak self] session, shown in
                 MainActor.assumeIsolated { self?.remoteRowVisibilityChanged(session, shown: shown) }
             }

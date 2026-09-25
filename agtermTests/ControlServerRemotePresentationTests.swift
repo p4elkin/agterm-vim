@@ -164,7 +164,10 @@ final class ControlServerRemotePresentationTests: XCTestCase {
     private final class Transport: RemotePresentationTransport {
         final class Link: RemotePresentationLink {
             var stopped = false
-            func send(_ line: Data) {}
+            var sent: [PresentationFrame.Body] = []
+            func send(_ line: Data) {
+                if let frame = try? PresentationCodec.decode(line.dropLast()) { sent.append(frame.body) }
+            }
             func stop() { stopped = true }
         }
 
@@ -225,6 +228,140 @@ final class ControlServerRemotePresentationTests: XCTestCase {
 
         XCTAssertTrue(fix.session.hudActive)
         XCTAssertTrue(body(of: fix.session).contains("deploying"))
+    }
+
+    func testAHandedOverAskIsShownOnTheRowAndItsAnswerGoesBack() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        let ask = PresentationAsk(PendingAsk(id: "a1", title: "deploy?", buttons: [ControlAskButton(id: "yes", label: "Yes")]),
+                                  pane: nil, owner: 2)
+
+        try transport.feed(.askRequest(ask), rev: 2)
+
+        XCTAssertEqual(fix.session.askPending?.id, "a1")
+        XCTAssertTrue(fix.session.askReplica)
+        fix.session.resolveAsk(id: "a1", ControlAskResult(result: .answered, id: "yes", label: "Yes", index: 0))
+        XCTAssertEqual(transport.links[0].sent.last, .askResolve(PresentationAskAnswer(id: "a1", owner: 2, button: "yes")))
+    }
+
+    func testAnAskTheRowCannotShowIsRefused() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        fix.session.openAsk(PendingAsk(id: "local", title: "local", buttons: [ControlAskButton(id: "ok", label: "OK")]))
+
+        try transport.feed(.askRequest(PresentationAsk(PendingAsk(id: "a1", title: "deploy?",
+                                                                  buttons: [ControlAskButton(id: "yes", label: "Yes")]),
+                                                       pane: nil, owner: 2)), rev: 2)
+
+        XCTAssertEqual(transport.links[0].sent.last, .askRejected(PresentationAskRef(id: "a1", owner: 2)))
+        XCTAssertEqual(fix.session.askPending?.id, "local")
+    }
+
+    private let handedOverlay = PresentationOverlay(job: "job-1", pane: nil, sizePercent: 50, backgroundColor: nil,
+                                                    follow: false, wait: false)
+
+    func testAHandedOverOverlayRunsTheJobsHelperOverSshAndItsCloseGoesBack() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+
+        try transport.feed(.overlayRequest(handedOverlay), rev: 2)
+
+        let host = try XCTUnwrap(fix.session.remoteHost)
+        XCTAssertEqual(fix.session.overlayCommand,
+                       CommandRestore.shellQuotedLine(try RemoteSession.runJobCommand(host: host, job: "job-1")))
+        XCTAssertEqual(fix.session.overlaySizePercent, 50)
+        fix.store.closeOverlay(fix.session.id)
+        XCTAssertEqual(transport.links[0].sent.last, .overlayClosed(PresentationOverlayChange(job: "job-1")))
+    }
+
+    func testAnOverlayTheRowCannotShowIsRefused() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        fix.store.openOverlay(fix.session.id, command: "top")
+
+        try transport.feed(.overlayRequest(handedOverlay), rev: 2)
+
+        XCTAssertEqual(transport.links[0].sent.last, .overlayRejected(PresentationOverlayChange(job: "job-1")))
+        XCTAssertEqual(fix.session.overlayCommand, "top")
+    }
+
+    func testTheOriginsResizeAndCloseReachTheOverlay() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        try transport.feed(.overlayRequest(handedOverlay), rev: 2)
+
+        try transport.feed(.overlayResize(PresentationOverlayChange(job: "job-1", sizePercent: 70)), rev: 3)
+        XCTAssertEqual(fix.session.overlaySizePercent, 70)
+        try transport.feed(.overlayClose(PresentationOverlayChange(job: "job-1")), rev: 4)
+
+        XCTAssertFalse(fix.session.overlayActive)
+    }
+
+    private func replica(_ style: ControlAskStyle) -> PresentationAsk {
+        PresentationAsk(PendingAsk(id: UUID().uuidString, title: "deploy?", buttons: [ControlAskButton(id: "yes", label: "Yes")],
+                                   style: style), pane: nil, owner: 2)
+    }
+
+    private func unselect(_ fix: (server: ControlServer, store: AppStore, session: Session)) throws {
+        let other = try XCTUnwrap(fix.store.workspaces.flatMap(\.sessions).first { $0.id != fix.session.id })
+        fix.store.selectSession(other.id)
+    }
+
+    func testAGuiReplicaForARowNotSelectedIsRefused() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        try unselect(fix)
+        let ask = replica(.gui)
+
+        try transport.feed(.askRequest(ask), rev: 2)
+
+        XCTAssertEqual(transport.links[0].sent.last, .askRejected(PresentationAskRef(id: ask.id, owner: 2)))
+        XCTAssertNil(fix.session.askPending)
+    }
+
+    func testAGuiReplicaUnderZoomIsRefused() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        fix.store.selectSession(fix.session.id)
+        let windowID = try XCTUnwrap(fix.server.library.windowID(for: fix.store))
+        let zoom = TerminalZoomController()
+        TerminalZoomRegistry.shared.register(windowID, controller: zoom)
+        defer { TerminalZoomRegistry.shared.unregister(windowID) }
+        zoom.set(.on, target: .session(fix.session.id, .primary))
+        let ask = replica(.gui)
+
+        try transport.feed(.askRequest(ask), rev: 2)
+
+        XCTAssertEqual(transport.links[0].sent.last, .askRejected(PresentationAskRef(id: ask.id, owner: 2)))
+    }
+
+    func testAGuiReplicaUnderTheDashboardIsRefused() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        fix.store.selectSession(fix.session.id)
+        let windowID = try XCTUnwrap(fix.server.library.windowID(for: fix.store))
+        let dashboard = DashboardController()
+        DashboardControllerRegistry.shared.register(windowID, controller: dashboard)
+        defer { DashboardControllerRegistry.shared.unregister(windowID) }
+        dashboard.open(members: [DashboardMember(session: fix.session.id, surface: .primary)])
+        let ask = replica(.gui)
+
+        try transport.feed(.askRequest(ask), rev: 2)
+
+        XCTAssertEqual(transport.links[0].sent.last, .askRejected(PresentationAskRef(id: ask.id, owner: 2)))
+    }
+
+    func testATerminalReplicaForARowNotSelectedWaitsHiddenLikeALocalOne() throws {
+        let (fix, transport) = try connected()
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil)), rev: 1)
+        try unselect(fix)
+        let ask = replica(.terminal)
+
+        try transport.feed(.askRequest(ask), rev: 2)
+
+        XCTAssertEqual(fix.session.askPending?.id, ask.id)
+        XCTAssertTrue(fix.session.askReplica)
+        XCTAssertNotEqual(transport.links[0].sent.last, .askRejected(PresentationAskRef(id: ask.id, owner: 2)))
     }
 
     func testASoftCloseStopsTheClientAndUndoStartsAFreshOne() throws {
@@ -293,7 +430,16 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertTrue(condition(), what)
     }
 
-    func testStatusAndHudTravelFromAnOriginSessionToItsViewerAndLeaveWithTheStream() throws {
+    private struct BridgedPair {
+        let server: ControlServer
+        let store: AppStore
+        let origin: Session
+        let viewer: Session
+        let socketPath: String
+        let cli: String
+    }
+
+    private func bridgedPair() throws -> BridgedPair {
         let library = WindowLibrary(directory: stateDir)
         let socketPath = "/tmp/agterm-e2e-\(UUID().uuidString.prefix(8)).sock"
         let server = ControlServer(
@@ -304,7 +450,7 @@ final class ControlServerRemotePresentationTests: XCTestCase {
             socketPath: socketPath
         )
         servers.append(server)
-        defer {
+        addTeardownBlock {
             unlink(socketPath)
             unlink(socketPath + ".lock")
         }
@@ -326,6 +472,13 @@ final class ControlServerRemotePresentationTests: XCTestCase {
 
         server.startRemotePresentation(for: viewer)
         waitUntil("the viewer's stream connects") { viewer.remotePresentation?.connection == .connected }
+        waitUntil("the viewer is granted the presenter role") { viewer.remotePresentation?.mode == .presenter }
+        return BridgedPair(server: server, store: store, origin: origin, viewer: viewer, socketPath: socketPath, cli: cli)
+    }
+
+    func testStatusAndHudTravelFromAnOriginSessionToItsViewerAndLeaveWithTheStream() throws {
+        let pair = try bridgedPair()
+        let (server, store, origin, viewer) = (pair.server, pair.store, pair.origin, pair.viewer)
 
         store.applyControlStatus(AgentIndicator(status: .blocked, blink: true), forSession: origin.id)
         waitUntil("the origin's status reaches the viewer row") { viewer.agentIndicator.status == .blocked }
@@ -339,13 +492,56 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertFalse(OverlayPanelStyle.resolve(viewer).interactive)
         XCTAssertEqual(viewer.hudSpec?.message, "deploying")
         XCTAssertEqual(store.controlTree().workspaces.flatMap(\.sessions).first { $0.id == origin.id.uuidString }?
-            .presenters, ControlPresentersNode(mirrors: 1))
+            .presenters, ControlPresentersNode(mirrors: 0, presenter: true))
 
         server.shutdownPresentationStreams()
         waitUntil("the mirrored status and HUD leave with the stream") {
             viewer.agentIndicator.status == .idle && !viewer.hudActive
         }
+        XCTAssertEqual(viewer.remotePresentation?.mode, .mirror)
         XCTAssertTrue(origin.hudActive, "the origin keeps drawing its own panel")
         XCTAssertEqual(origin.agentIndicator.status, .blocked)
+    }
+
+    func testAnAskAndAnOverlayJobHandedToTheViewerCompleteOnTheOrigin() throws {
+        let pair = try bridgedPair()
+        let (server, origin, viewer) = (pair.server, pair.origin, pair.viewer)
+        let ask = PendingAsk(id: UUID().uuidString, title: "deploy?",
+                             buttons: [ControlAskButton(id: "yes", label: "Yes"), ControlAskButton(id: "no", label: "No")])
+
+        XCTAssertTrue(server.openAsk(ask, target: origin.id.uuidString, window: nil, placement: ControlAskPlacement(),
+                                     follow: false).ok)
+        waitUntil("the ask is drawn on the viewer") { viewer.askReplica && viewer.askPending?.id == ask.id }
+        XCTAssertTrue(origin.askPresentedRemotely, "the origin's dialog is gated off")
+        viewer.resolveAsk(id: ask.id, ControlAskResult(result: .answered, id: "yes", label: "Yes", index: 0))
+        waitUntil("the viewer's answer completes the caller") {
+            server.askResult(ask.id, window: nil).result?.ask?.result == .answered
+        }
+        XCTAssertEqual(server.askResult(ask.id, window: nil).result?.ask?.id, "yes")
+
+        let ranFile = "/tmp/agterm-e2e-ran-\(UUID().uuidString.prefix(8))"
+        defer { unlink(ranFile) }
+        let options = ControlSessionOverlayOpenOptions(command: "echo ran >> \(ranFile); exit 7", cwd: "/tmp", wait: false,
+                                                       sizePercent: nil, backgroundColor: nil, follow: false, pane: nil)
+        XCTAssertTrue(server.openSessionOverlay(origin.id.uuidString, window: nil, options: options).ok)
+        waitUntil("the overlay is shown on the viewer") { viewer.overlayReplica != nil }
+        XCTAssertTrue(DeckPaneGates.coverActive(viewer))
+        XCTAssertFalse(DeckPaneGates.coverActive(origin), "the origin's session stays uncovered")
+        let job = try XCTUnwrap(viewer.overlayReplica?.job)
+
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+        helper.arguments = ["-q", "/dev/null", "/bin/sh", "-c",
+                            "'\(pair.cli)' session overlay run-job \(job) --socket '\(pair.socketPath)'; true"]
+        helper.standardInput = Pipe()
+        helper.standardOutput = FileHandle.nullDevice
+        helper.standardError = FileHandle.nullDevice
+        try helper.run()
+        defer { if helper.isRunning { kill(helper.processIdentifier, SIGKILL) } }
+
+        waitUntil("the program's status is the origin's result") {
+            server.sessionOverlayResult(origin.id.uuidString, window: nil, pane: nil).result?.exitCode == 7
+        }
+        XCTAssertEqual(try String(contentsOfFile: ranFile, encoding: .utf8), "ran\n", "the program ran once")
     }
 }

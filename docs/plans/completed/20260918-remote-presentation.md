@@ -30,6 +30,18 @@ Decisions already taken:
   acknowledgment protocol
 - `ControlDispatcher.swift` (998 lines against a 1000-line lint limit) has its overlay dispatch moved to
   `ControlDispatcher+Overlay.swift`; no other cleanup
+- slice 2, confirmed before its run: an ask the origin cannot present answers `cancelled` with an additive
+  `reason: presentation-lost`, exit 2 unchanged; rendering is covered by hosted input assertions plus the
+  two-Mac checks, not on-screen tests
+- slice 2 is a first version: it favors no confusing state and no leftover artifact over preserving work
+  across a disconnect. Presentation loss ends the viewer's claim on every job it held; a refused mirror
+  stays a mirror until it reconnects; reconnect timing stays as slice 1 shipped it
+- a remote `overlay.close` replies at once, like a local one: it requests the cancel and the surface's
+  removal, and `session.overlay.result` answers whether and how the program ended (Eugene, first-version
+  bar); `closeSessionOverlay` stays synchronous in `ControlActions`
+- an overlay gets no public job handle: a remote job's outcome lands in the slot result local overlays
+  already use, so `--block` keeps their known race (a second overlay opened on the slot before the next
+  100ms poll answers for the first), documented rather than closed
 
 ## Context (from discovery)
 
@@ -123,8 +135,8 @@ Decisions already taken:
 - **hosted tests** (`make test-app`): stream owner descriptor lifecycle against a real socket pair,
   `ControlServer` hand-off keeping the accept thread free, HUD publication and discard, the ask and overlay
   rendering gates, and one end-to-end case per slice with both roles in one process through the injected
-  runner. Those end-to-end cases assert what is rendered, not only read-back, so "state exists but nothing
-  paints" fails.
+  runner. Those end-to-end cases assert rendering inputs (surface-selection state, HUD body, deck gates),
+  not only read-back; painted output is confirmed only by the two-Mac checks.
 - **XCUITest**: exempt, recorded once in `control-api.md`. The commands need a second machine or a
   transport the launched app cannot select.
 - **decisive failure tests** (slice 2), each asserting at most one launch, one authoritative answer, and a
@@ -185,7 +197,7 @@ docs say so.
 **Meaning of the stream.** An open stream means "presentation connected". It says nothing about the pane
 ssh connections, which fail independently. `docs/backlog/host-side-remote-client-events.md` stays open.
 
-**Viewer side.** The attach records the remote session id, an attachment id, and a mapping from each
+**Viewer side.** The attach records the remote session id and a mapping from each
 remote pane identity (decoded once from the daemon name) to the stable local pane identity. The local role
 is resolved at use time through `paneRole(forIdentity:)`, so a swap or promotion on either side keeps
 status owner, HUD, ask anchor and pane overlay routing correct. Mirrored state is applied through a narrow
@@ -197,12 +209,15 @@ when undo or workspace restoration reinserts the row.
 **Reconnect.** While the remote row is visible and the origin advertised the capability, the viewer retries
 with backoff capped at 30s, growing to a five-minute cap after repeated failures and resetting after a
 healthy connection. It never gives up: an offline or sleeping laptop is ordinary. One `os.Logger` warning
-is written per failure episode or changed reason, and the reason is kept in read-back.
+is written per failure episode or changed reason, and the reason is kept in read-back. The row shows a small
+indicator with a tooltip whenever the connection is not `connected` (connecting, failed), derived from the
+connection state so it clears itself; closing and reattaching the row is the manual recovery.
 
 **Presenter (slice 2).** After hello the viewer sends an explicit acquire. The origin grants the role to
 one connection per session, bounded by the heartbeat; a second viewer is refused and stays a mirror; there
-is no preemption and no manual release, since disconnect and lease loss already revoke. The grant affects
-new requests only: an overlay already open on the origin stays there. Connection existence alone never
+is no preemption and no manual release, since disconnect and lease loss already revoke. A refused mirror
+stays a mirror until its own stream reconnects. The grant affects new requests only: an overlay already
+open on the origin stays there. Connection existence alone never
 selects a presenter.
 
 **Ask (slice 2).** Both ask styles are covered: the default terminal ask and the GUI ask. The origin owns
@@ -218,7 +233,11 @@ result wins, as today. Three transitions stay distinct:
 - presentation loss (stream loss, revoked grant, viewer rejection): the origin bumps the ownership
   generation, rejects late resolves, and presents the ask itself. When it cannot, because the target is
   hidden for a GUI ask or an unrelated pick holds the modal slot, the ask completes canceled with reason
-  `presentation-lost`. It never waits invisibly and never displaces the unrelated pick.
+  `presentation-lost`. It never displaces the unrelated pick. A terminal ask handed back keeps today's
+  terminal rule of no selected-session check, so it can land on an unselected origin session and wait there.
+
+The reason is an optional `reason` field on the ask result beside `result: cancelled`; the CLI still exits 2
+and an older client ignores the field.
 
 **Overlay (slice 2).** With a presenter, `session.overlay.open` registers a job, reserves the session or
 pane slot against a second open, and sends `overlay.request`. The reservation is separate from coverage:
@@ -231,13 +250,13 @@ once expiry wins a late claim spawns nothing. A job is never rerun and never lau
 presenter, overlays behave as they do today.
 
 **Job helper.** `run-job` supervises. It opens a streaming connection to the origin's local socket
-(`session.overlay.job.run`, handed off the accept thread like `zmx.present`), claims the job over it,
+(`session.overlay.job.run`, handed off the accept thread like `zmx.present`), whose request is the claim,
 receives the shell command, cwd and environment, launches the command under the ssh pty, reports
 `started`, waits, and reports the exit. It evaluates the command with status-preserving shell semantics
 (`/bin/sh -c 'eval "$AGTERM_OVL_CMD"'`), not through `OverlayCapture.shellLine`; what is shared with a
 local launch is the command string and the environment. That connection is the helper's liveness: it
-stays open for the whole run with ping/ack, the origin sends `cancel` over it, and it is independent of the
-presentation stream. Losing the pty or receiving SIGHUP or SIGTERM is a cancellation, the same as a
+stays open for the whole run and closes when the helper dies, the origin sends `cancel` over it, and it
+is independent of the presentation stream. Losing the pty or receiving SIGHUP or SIGTERM is a cancellation, the same as a
 `cancel` frame: the helper terminates the child, escalates to SIGKILL after a grace period, and reports
 `canceled`. That is what makes closing the overlay on the viewer work with no presentation stream.
 Outcomes are `exited(code)`, `canceled`, `launch-failed`, and `unknown`. `unknown` is reached only by a
@@ -246,34 +265,31 @@ terminal report. Elapsed program runtime and presentation-stream loss never prod
 of 255 is never read as the program's exit. A claimed job's completion stays valid across
 presenter-generation changes.
 
-**Job handle.** `session.overlay.open` returns an additive job id for every overlay, local ones included,
-and local completion and close feed the same job table. `--block` polls the job's retained outcome when
-the reply carries a job id and falls back to the session-plus-pane lookup when it does not, so a new CLI
-still works against an older running app. The job lookup is a distinct command,
-`session.overlay.job.result`: an older app fails it as unknown, where a new argument on
-`session.overlay.result` would be ignored and answered with another overlay's exit code. A late result for
-one job never closes or overwrites another.
+**Slot result.** Local overlays are unchanged. A remote job lives in a private origin table keyed by job id,
+never exposed as a command, and its outcome is written into the same slot result `session.overlay.result`
+and `--block` read: an exit code, or a failure reason (`launch-failed`, `canceled`, `unknown`) that
+`overlay.result` returns as an error and `--block` exits 1 with. Only a job's first terminal outcome is
+recorded, and a report for a job the table no longer holds is ignored, so a late helper report never
+overwrites another overlay's result.
 
-**Remote close and resize.** Both send a fire-and-forget frame. Close also cancels through the helper
-connection, leaves the accept thread, and waits off the main actor with a bounded deadline for the helper's
-terminal report: it replies `execution: ended` with the outcome, or `execution: pending` when the deadline
-passes, and always `surface: pending` for a remote overlay, since surface removal is reconciled and not
-confirmed. A close that arrives before any helper claimed the job cancels the unclaimed job atomically
-and revokes its launch permission: the job ends `canceled`, the slot is released, a late claim is refused
-and nothing is launched; racing a claim, either close wins and nothing launches or the claim wins and the
-claimant is canceled through its connection. An already-finished job reports its known outcome at once,
-except that a retained `unknown` never reads as ended: the helper may have died while the program
-survived, so the reply is `execution: unknown` and the outcome stays `unknown`. Resize replies `requested`; read-back
-carries the requested size and claims nothing about what the viewer applied, and a viewer-side resize
-error is not reported back. Resize with no stream fails explicitly. `session.overlay.text` and
-`session.overlay.copy` are refused for a remotely presented overlay.
+**Remote close and resize.** Close sends `overlay.close` to the presenter and replies at once: an unclaimed
+job ends `canceled` and can never launch, a claimed or running one is cancelled through its helper (no
+presentation stream is needed for that), and a held `--wait` surface whose program ended frees its slot.
+The reply means the request was made; `session.overlay.result` answers `overlay still running` until the
+helper reports, then the exit code or `overlay ended: canceled|unknown`, and `unknown` never proves the
+program is gone. A `--wait` job keeps its slot after the program ends, its result readable, until the
+origin closes it, the viewer sends `overlay.closed`, or the stream is lost. Resize replies ok, records the
+requested size in `remoteOverlays`, and fails with `the viewer showing this overlay is gone` when the
+job's own presentation stream is gone, even if another has since connected. `session.overlay.text` and
+`session.overlay.copy` are refused with `overlay is shown on another Mac`.
 
-**Reconciliation.** The origin keeps the set of remote jobs it still expects a viewer to show and sends it
-in every snapshot; on reconnect the viewer closes any remote overlay surface whose job is not in it, a held
-`--wait` surface included. The viewer's hello lists the remote job ids whose surfaces it still shows for
-that attachment, and the origin releases the slot of any expected job missing from that list. That covers
-a held surface closed on the viewer while no stream and no helper existed to say so. Releasing the slot
-never touches the job's retained outcome.
+**Presentation loss.** Losing a presenter's stream marks every job it held as presentation-lost, for good;
+a later stream or presenter never adopts them. On the origin an unclaimed job is canceled and its launch
+revoked, a finished or `unknown` job's reservation is released at once, and a claimed or running job's
+reservation is released when it reaches a terminal outcome, whatever stream exists by then. On the viewer
+an ended job's surface closes at once, a running one closes when its job ssh ends, ignoring `--wait`, and a
+shown ask replica is dismissed without resolving. Retained outcomes, `unknown` included, are never changed.
+A held `--wait` surface therefore does not survive a disconnect.
 
 **Environment.** Nothing but the job id and render settings reaches the viewer. The origin resolves cwd
 and builds the launch environment with its own `AGTERM_*` identities, and the helper takes `TERM` from the
@@ -287,48 +303,47 @@ ssh pty.
 |---|---|---|---|
 | `zmx.present` | `agtermctl zmx present <session>` | 1 | presentation stream; streaming |
 | `session.overlay.job.run` | `agtermctl session overlay run-job <id>` | 2 | helper connection: claim, started, exit, cancel; streaming |
-| `session.overlay.job.result` | `agtermctl session overlay job-result <id>` | 2 | retained outcome by job id |
 
-`zmx.tree` gains the optional `presentation` version field. `session.overlay.open` gains `job` in its result.
+`zmx.tree` gains the optional `presentation` version field.
 
 **Presentation frames** (newline JSON, each with `gen` and `rev`)
 
-- both directions: `hello` (protocol version, supported kinds, mode; slice 2 adds the viewer's shown
-  remote job ids), `ping`, `ack`
-- origin to viewer, slice 1: `snapshot` (slice 2 adds the expected remote job ids), `status`,
+- both directions: `hello` (protocol version, supported kinds, mode), `ping`, `ack`
+- origin to viewer, slice 1: `snapshot`, `status`,
   `hud` (full spec or absent, HUD generation, remaining lifetime sampled at send),
   `notify` (control origin only, with pane and source)
-- viewer to origin, slice 2: `presenter.acquire`, `ask.accepted`, `ask.rejected`, `ask.resolve`,
+- viewer to origin, slice 2: `presenter.acquire`, `ask.rejected`, `ask.resolve`,
   `overlay.rejected`, `overlay.closed`
-- origin to viewer, slice 2: `presenter.granted`, `presenter.refused`, `presenter.revoked`, `ask.request`,
+- origin to viewer, slice 2: `presenter.granted`, `presenter.refused`, `ask.request`,
   `ask.dismiss`, `overlay.request` (job id, size, color, follow, pane scope, wait), `overlay.close`,
   `overlay.resize`
 
-**Helper frames** on `session.overlay.job.run`: `claim`, `context`, `refused`, `started`, `exited`,
-`canceled`, `launch-failed`, `cancel`, `ping`, `ack`.
+**Helper frames** on `session.overlay.job.run`, after the reply to the claim: `context`, `cancel` (origin
+to helper); `started`, `exited`, `canceled`, `launch-failed` (helper to origin).
 
 Frame size and the pending-output queue are bounded; the limits are constants beside the codec.
 
 **Model additions**
 
-- `Session.remoteBinding`: remote session id, attachment id, remote-pane-to-local-pane identity mapping.
+- `Session.remoteBinding`: remote session id, remote-pane-to-local-pane identity mapping.
   Immutable, set at construction like `remoteHost`, never persisted.
 - `Session.remotePresentation`: bridge-owned status and HUD, connection state (`connecting`, `connected`,
   `unsupported`, `failed(reason)`) and mode (`mirror`, `presenter`).
 - origin side: per-session subscriber list, presenter grant (connection, generation), remote ask
-  ownership marker, overlay job table with retained outcomes, expected remote job set, HUD expiry deadline.
+  ownership marker, private remote overlay job table with each job's state and presenter generation, HUD
+  expiry deadline.
 
 **Read-back**
 
 - viewer `ControlSessionNode`: `presentation` with state, mode and last error
 - origin `ControlSessionNode`: `presenters` with the mirror count (slice 1) and the grant flag (slice 2)
-- `overlayJobs`: a new additive list (job id, pane scope, state, `remote`, requested size), beside the
-  unchanged `overlay`, `overlaySizePercent` and `paneOverlays`
+- `remoteOverlays`: an additive list on the origin's session node, one entry per slot a viewer holds (pane,
+  omitted for session-wide, and the requested size), beside the unchanged `overlay`, `overlaySizePercent`
+  and `paneOverlays`, so a reserved slot never reads as free
 - while a viewer presents: the origin reports `overlay: false` and `paneOverlays` without that pane, since
-  nothing covers it, and the job in `overlayJobs` with `remote: true`; its `ask` node carries the pending
-  ask with `remote: true`. The viewer reports a session-wide replica through `overlay: true` and a
-  pane-scoped one through `paneOverlays` only, as local overlays do; either way its `overlayJobs` entry
-  names the origin job. Its `ask` node carries the replica with `replica: true`.
+  nothing covers it, and the slot in `remoteOverlays`; its `ask` node carries the pending ask with
+  `remote: true`. The viewer reports a session-wide replica through `overlay: true` and a pane-scoped one
+  through `paneOverlays` only, as local overlays do. Its `ask` node carries the replica with `replica: true`.
 
 ## What Goes Where
 
@@ -454,6 +469,7 @@ Frame size and the pending-output queue are bounded; the limits are constants be
 - [x] run the targeted hosted tests - must pass before Task 8
 - ➕ `zmx.present` takes the session as its target and no `--attachment`: the origin has no use for an
   attachment id until slice 2's reconciliation, and adding it then is an additive optional argument
+  (superseded: slice 2 uses no attachment id and no reconciliation; see Presentation loss)
 - ➕ the server owns the hub and assigns it to every open store from `refreshWindowCache`, since
   `WindowLibrary.swift` sits at the 1000-line lint limit and creates the stores
 
@@ -606,7 +622,7 @@ Frame size and the pending-output queue are bounded; the limits are constants be
 
 Slice 1 ends here and ships as its own PR.
 
-### Task 13: Presenter grant and viewer acquisition
+### Task 13: Presenter grant, viewer acquisition and connection indicator
 
 **Files:**
 - Create: `agtermCore/Sources/agtermCore/PresenterGrant.swift`
@@ -614,19 +630,30 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Sources/agtermCore/PresentationHub.swift`
 - Modify: `agtermCore/Sources/agtermCore/RemotePresentationClient.swift`
 - Modify: `agtermCore/Sources/agtermCore/ControlProjection.swift`
+- Modify: `agterm/Views/WorkspaceSidebar+RowRendering.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/PresenterGrantTests.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/RemotePresentationClientTests.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/PresentationFramesTests.swift`
 
-- [ ] write failing tests, origin: acquire grants one connection per session; a second is refused and keeps
+- [x] write failing tests, origin: acquire grants one connection per session; a second is refused and keeps
       mirroring; no preemption; a missed heartbeat or a closed stream revokes and bumps the generation;
       a slice-1 peer negotiates down to mirror
-- [ ] write failing tests, viewer: the client sends acquire after a hello that offers presenter mode;
+- [x] write failing tests, viewer: the client sends acquire after a hello that offers presenter mode;
       granted, refused and revoked each update `remotePresentation.mode`; a reconnect acquires again
-- [ ] add the slice-2 frames to the codec, with round-trip tests
-- [ ] implement `PresenterGrant`, wire it into the hub, and wire acquisition into the client
-- [ ] project the mode on the viewer node and add the grant flag to the origin's `presenters`
-- [ ] run the targeted tests - must pass before Task 14
+- [x] add the slice-2 frames to the codec, with round-trip tests
+- [x] implement `PresenterGrant`, wire it into the hub, and wire acquisition into the client
+- [x] project the mode on the viewer node and add the grant flag to the origin's `presenters`
+- [x] show the row's connection indicator with a tooltip for `connecting` and `failed`, read from
+      `remotePresentation.connection`, including a first connection that never succeeded; a test for the
+      state-to-indicator mapping
+- [x] run the targeted tests - must pass before Task 14
+- ➕ `presenter.revoked` is not a frame: nothing preempts and nothing releases early, so the role is only
+  ever lost with its stream, and no frame reaches a closed stream. Loss of the stream is the revocation
+- ➕ only the presenter frames joined the codec here; the ask and overlay frames join with Tasks 14-22,
+  where their payloads are defined
+- ➕ the origin's hello answer echoes the viewer's mode, so a slice-1 viewer asking for `mirror` is
+  never offered the role; `presenters.mirrors` counts the viewers that are not the presenter
+- ➕ the row indicator swaps the remote cloud for `icloud.slash` and puts the notice in the icon's tooltip
 
 ### Task 14: Ask ownership split on the origin
 
@@ -641,20 +668,30 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherAskTests.swift`
 - Modify: `agtermTests/ControlServerAskTests.swift`, `agtermTests/AskDialogViewTests.swift`
 
-- [ ] write failing tests for both styles, the default terminal ask (`session.openAsk`, `AskRegistry`
+- [x] write failing tests for both styles, the default terminal ask (`session.openAsk`, `AskRegistry`
       `.session` owner) and the GUI ask (`PickController` reservation, origin visibility): with a presenter
       a session-associated ask is marked remotely presented and takes neither local path; `AskDialogView`
       neither renders nor resolves it; a resolve with an unknown button id or a stale generation is refused;
       an escaped resolve completes escaped; the first result wins when two resolves race
-- [ ] write failing tests for the three transitions: `ask.cancel`, soft close and pane teardown complete
+- [x] write failing tests for the three transitions: `ask.cancel`, soft close and pane teardown complete
       canceled and send `ask.dismiss`, never handing the ask back; viewer rejection, stream loss and revoked
       grant return it to the origin under a new generation; when the origin cannot present it (hidden GUI
       target, or an unrelated pick holding the slot) it completes canceled with reason `presentation-lost`
       and the unrelated pick is untouched
-- [ ] separate authoritative pending and result ownership from the local UI reservation
-- [ ] route `ask.request` and `ask.dismiss` through the hub; untargeted GUI ask and `pick.open` stay local
-- [ ] report a remotely presented ask on the origin's `ask` node with `remote: true`, with a projection test
-- [ ] run the targeted tests - must pass before Task 15
+- [x] add the optional `reason` to `ControlAskResult`; tests: it encodes as `reason: presentation-lost`
+      beside `result: cancelled`, an ordinary cancel carries none, a payload without it decodes, and
+      `agtermctl ask` still exits 2 and prints the field under `--json`
+- [x] separate authoritative pending and result ownership from the local UI reservation
+- [x] route `ask.request` and `ask.dismiss` through the hub; untargeted GUI ask and `pick.open` stay local
+- [x] report a remotely presented ask on the origin's `ask` node with `remote: true`, with a projection test
+- [x] run the targeted tests - must pass before Task 15
+- ➕ a handed-over ask of either style keeps `Session.askPending` with `askRemoteOwner` set, so every
+  existing cancel and teardown path ends it and a session-scoped `onRemoteAskEnded` sends `ask.dismiss`.
+  While a viewer presents a session, a terminal ask and a targeted GUI ask for it share that one slot
+- ➕ no `ask.accepted` frame: the origin acts only on a refusal, so the viewer sends `ask.rejected` or an
+  answer and nothing in between. `follow` raises no origin window for a handed-over ask
+- ➕ a GUI ask taken back moves into its window slot through `AskRegistry.reassign`, under the visibility
+  rule `presentAsk` applies at open, and otherwise ends `presentation-lost`
 
 ### Task 15: Ask presentation on the viewer
 
@@ -666,87 +703,86 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Tests/agtermCoreTests/RemotePresentationClientTests.swift`
 - Modify: `agtermTests/ControlServerAskTests.swift`
 
-- [ ] write failing tests: the viewer answers `ask.accepted` only after its dialog is reserved; occupancy or
+- [x] write failing tests: the viewer answers `ask.accepted` only after its dialog is reserved; occupancy or
       a missing visible pane answers `ask.rejected`; `ask.dismiss` and a revoked generation hide the dialog
       without resolving; a button travels as an id only; Esc and Command-W send the escaped outcome; the
-      replica appears on the viewer's `ask` node with `replica: true`
-- [ ] present the remote ask in its own style through the existing ask UI against the mapped local session
+      replica appears on the viewer's `ask` node with `replica: true`; losing the stream dismisses a shown
+      replica at once without resolving it and with no reconnect
+- [x] present the remote ask in its own style through the existing ask UI against the mapped local session
       and pane
-- [ ] send `ask.resolve` with the presenter generation and tear the dialog down on dismiss
-- [ ] run the targeted tests - must pass before Task 16
+- [x] send `ask.resolve` with the presenter generation and tear the dialog down on dismiss
+- [x] run the targeted tests - must pass before Task 16
+- ➕ the viewer shows a replica of either style in its session slot, in the ask's own appearance over the
+  mapped session or pane: `AskDialogView` already styles by `ask.style`, and a targeted GUI ask is anchored
+  to that same session or pane on the origin. It takes session-slot input rules, not the window modal slot.
+  A GUI replica keeps the local GUI rule and is refused unless its row is selected with no zoom target and
+  no open dashboard; a terminal replica, like a local terminal ask, waits hidden until its row is shown
+- ➕ nothing is sent on acceptance; a refusal is `ask.rejected`, sent when the slot is taken or the mapped
+  pane is not shown, and also when the replica is cancelled here (session or pane teardown), so the origin
+  takes the ask back rather than waiting on a dialog nobody can see
 
-### Task 16: Overlay dispatch split, job table and job handle for local overlays
+### Task 16: Overlay dispatch split
 
 **Files:**
 - Create: `agtermCore/Sources/agtermCore/ControlDispatcher+Overlay.swift`
 - Modify: `agtermCore/Sources/agtermCore/ControlDispatcher.swift`
-- Create: `agtermCore/Sources/agtermCore/OverlayJobs.swift`
-- Modify: `agtermCore/Sources/agtermCore/ControlProtocol.swift`
-- Modify: `agtermCore/Sources/agtermCore/ControlPayloads.swift`
-- Modify: `agtermCore/Sources/agtermCore/ControlProjection.swift`
-- Modify: `agtermCore/Sources/agtermCore/AppStore+Panes.swift`
-- Modify: `agterm/agtermApp.swift`
-- Modify: `agterm/Control/ControlServer+SessionActions.swift`
-- Modify: `agtermCore/Sources/agtermctlKit/SessionCommands.swift`
-- Create: `agtermCore/Tests/agtermCoreTests/OverlayJobsTests.swift`
-- Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherOverlayTests.swift`
-- Modify: `agtermCore/Tests/agtermctlKitTests/CommandsTests.swift`
-- Modify: `agtermTests/ControlServerSessionActionsTests.swift`
 
-- [ ] move the overlay dispatch block out of `ControlDispatcher.swift` into
+- [x] move the overlay dispatch block out of `ControlDispatcher.swift` into
       `ControlDispatcher+Overlay.swift` unchanged; `ControlDispatcherOverlayTests` still pass
-- [ ] write failing tests: every open gets a job id; local program exit and local close complete that job;
-      a late result for job X leaves job Y and its slot untouched; the session-plus-pane lookup still
-      answers; `--block` polls the job when the reply has one and falls back to the slot lookup when an
-      older app returns none
-- [ ] implement `OverlayJobs` with states unclaimed, claimed, running, and outcomes exited, canceled,
-      launch-failed, unknown, retained for polling
-- [ ] capture the job id in the overlay completion and close callbacks in `agtermApp.swift` and feed the table
-- [ ] return `job` from `session.overlay.open`; add `session.overlay.job.result` and
-      `agtermctl session overlay job-result <id>`
-- [ ] add the additive `overlayJobs` read-back list, leaving `overlay`, `overlaySizePercent` and
-      `paneOverlays` unchanged
-- [ ] run the targeted tests - must pass before Task 17
+- ➕ the local job table and public job handle this task first carried were dropped before implementation
+  (Eugene, first-version bar): the remote job table is private and born in Task 18, and a remote outcome
+  reaches callers through the slot result, recorded in Task 20
 
 ### Task 17: Overlay launch context built on the origin
 
 **Files:**
 - Modify: `agtermCore/Sources/agtermCore/OverlayCapture.swift`
-- Modify: `agtermCore/Sources/agtermCore/OverlayJobs.swift`
 - Modify: `agterm/agtermApp.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/OverlayCaptureTests.swift`
-- Modify: `agtermCore/Tests/agtermCoreTests/OverlayJobsTests.swift`
 
-- [ ] build the job's launch context in one place shared with the local overlay launch: the
+- [x] build the job's launch context in one place shared with the local overlay launch: the
       `AGTERM_OVL_CMD` command string, cwd resolved on the origin, the origin's `AGTERM_*` identities;
       `TERM` is left for the helper to take from its pty; the `shellLine` wrapper and its code file stay
       local-only
-- [ ] write a test comparing the variables a local overlay launch receives with those the job context
+- [x] write a test comparing the variables a local overlay launch receives with those the job context
       carries, listing every deliberate difference, and asserting no viewer session id or socket path can
       enter the context
-- [ ] run the targeted tests - must pass before Task 18
+- [x] run the targeted tests - must pass before Task 18
+- ➕ `OverlayLaunchContext` in `OverlayCapture.swift` carries command, cwd and environment and is Codable
+  for the helper connection; the local factory builds through it and adds only `localEnvironment`'s code
+  and HUD files, and `OverlayLaunchContext.cwd` owns the `--cwd` or remote-rule default for both
 
 ### Task 18: Origin helper connection and the claim-versus-expiry state machine
 
 **Files:**
-- Modify: `agtermCore/Sources/agtermCore/OverlayJobs.swift`
+- Create: `agtermCore/Sources/agtermCore/OverlayJobs.swift`
 - Modify: `agtermCore/Sources/agtermCore/ControlProtocol.swift`
 - Create: `agterm/Control/ControlServer+OverlayJobs.swift`
 - Modify: `agterm/Control/ControlServer.swift`
-- Modify: `agtermCore/Tests/agtermCoreTests/OverlayJobsTests.swift`
+- Create: `agtermCore/Tests/agtermCoreTests/OverlayJobsTests.swift`
 - Create: `agtermTests/ControlServerOverlayJobsTests.swift`
 
-- [ ] write failing table tests: claim raced against launch-deadline expiry yields exactly one winner; once
+- [x] create `OverlayJobs`, private to the origin and holding remote jobs only: states unclaimed, claimed,
+      running; outcomes exited, canceled, launch-failed, unknown; first terminal outcome wins and a report
+      for a job no longer held is ignored
+- [x] write failing table tests: claim raced against launch-deadline expiry yields exactly one winner; once
       the claim wins, the deadline cannot fail the running job; once expiry wins, the job is
-      `launch-failed` and a late claim is refused; the grant is single use and bound to job, attachment and
+      `launch-failed` and a late claim is refused; the grant is single use and bound to job and presenter
       generation; a claim with no `started` inside the launch window ends `unknown`; the helper connection
       closing without a terminal report ends `unknown`; a running job with a live connection stays running
       past every timeout; completion of a claimed job is accepted after the presenter generation changed
-- [ ] add streaming `session.overlay.job.run`, handed to `ControlStreamOwner`, with the helper frames
-- [ ] deliver `cancel` to a job's helper connection from the job table
-- [ ] write hosted tests against a fake helper peer: claim returns the context; a second claim is refused;
+- [x] add streaming `session.overlay.job.run`, handed to `ControlStreamOwner`, with the helper frames
+- [x] deliver `cancel` to a job's helper connection from the job table
+- [x] write hosted tests against a fake helper peer: claim returns the context; a second claim is refused;
       connection loss marks the job `unknown`; cancel reaches the peer
-- [ ] run the targeted tests - must pass before Task 19
+- [x] run the targeted tests - must pass before Task 19
+- ➕ the `session.overlay.job.run` request is itself the claim: an ok reply is the one winner against the
+  launch deadline, and the origin's first frame is `context`. There is no `claim` or `refused` frame
+- ➕ no ping/ack on the helper connection: the helper runs on the origin, so its death closes the local
+  socket, which ends an unreported job `unknown`. Frames are `context`, `cancel`, `started`, `exited`,
+  `canceled`, `launch-failed`
+- ➕ the claim carries no presenter generation: a job is single use by id, and presentation loss cancels an
+  unclaimed job (Task 21), which refuses a later claim. Windows are 30s open-to-claim, 10s claim-to-start
 
 ### Task 19: `run-job` supervising helper
 
@@ -755,16 +791,24 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Sources/agtermctlKit/SessionCommands.swift`
 - Create: `agtermCore/Tests/agtermctlKitTests/OverlayRunJobTests.swift`
 
-- [ ] implement `agtermctl session overlay run-job <id>`: connect, claim, spawn the shell command as a child
+- [x] implement `agtermctl session overlay run-job <id>`: connect, claim, spawn the shell command as a child
       under the inherited pty with foreground process-group handling, forward SIGWINCH, wait, report, exit
       with the program's status, evaluating the command with status-preserving semantics
-- [ ] a `cancel` frame, pty loss, SIGHUP or SIGTERM terminates the child, escalates to SIGKILL after a grace
+- [x] a `cancel` frame, pty loss, SIGHUP or SIGTERM terminates the child, escalates to SIGKILL after a grace
       period, and reports canceled
-- [ ] write tests with a real child process: a program exiting 3 yields job result 3 and helper exit 3; pty
+- [x] write tests with a real child process: a program exiting 3 yields job result 3 and helper exit 3; pty
       loss with a child that ignores the first signal still ends `canceled` with the child gone; a refused
       claim launches nothing; cancel ends `canceled`; a report failure does not change the helper's own
       exit status
-- [ ] run `swift test --filter OverlayRunJobTests` - must pass before Task 20
+- [x] run `swift test --filter OverlayRunJobTests` - must pass before Task 20
+- ➕ the program leads its own process group, started suspended and resumed only once `tcsetpgrp` made it
+  the pty's foreground, so it gets the keys and SIGWINCH directly and nothing is forwarded; the helper
+  ignores SIGINT, SIGQUIT, SIGTSTP and SIGTTOU like a shell running a foreground command
+- ➕ a cancel frame, SIGHUP, SIGTERM or a pty hangup the helper sees itself (it may not be the session
+  leader) ends the whole group, TERM then KILL after the grace, and `canceled` is reported only once the
+  group is empty; the program starts from the helper's own environment with the context over it
+- ➕ the helper's socket is close-on-exec, so only the helper's own death closes it for the app
+- ➕ exit status is the program's, or 128 plus the signal that ended it; a launch failure exits 127
 
 ### Task 20: Origin overlay routing, best-effort close and resize
 
@@ -783,45 +827,65 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTreeProjectionTests.swift`
 - Modify: `agtermTests/ControlServerSessionActionsTests.swift`, `agtermTests/ControlServerTests.swift`
 
-- [ ] write failing tests: grant then open reserves the slot, sends `overlay.request`, mounts nothing
+- [x] write failing tests: grant then open reserves the slot, sends `overlay.request`, mounts nothing
       locally, leaves `programOverlayActive` false, and zoom and deck on the origin behave as uncovered; a
       second open against the reserved slot is refused; an overlay already local when the grant arrives
       stays local; `overlay.rejected` and deadline expiry each end the job `launch-failed` with no local
       launch; with no presenter an open is local as today
-- [ ] implement the reservation separately from coverage, the `overlay.request` emission and the launch
+- [x] implement the reservation separately from coverage, the `overlay.request` emission and the launch
       deadline
-- [ ] write failing tests for close: it leaves the accept thread and does not block `window.list` or the
+- [x] write failing tests: a remote job's exit code reaches `session.overlay.result` and `--block` for its
+      slot; `launch-failed`, `canceled` and `unknown` answer as errors naming the outcome and `--block`
+      exits 1;
+      a report after the first terminal outcome, or for a job no longer held, changes no slot result
+- [x] record each remote job's first terminal outcome into its slot result
+- [x] write failing tests for close: it leaves the accept thread and does not block `window.list` or the
       helper's report; it replies `execution: ended` with the outcome once the helper confirms and
       `execution: pending` at the deadline; `surface: pending` for a remote overlay; an already-finished job
       answers at once, but a retained `unknown` replies `execution: unknown` and stays `unknown`; with the
       stream down it still ends execution; open, close before any claim, then a late claim: the job is
       `canceled`, nothing launches, the slot is free; close raced against a claim either prevents the launch
-      or cancels the claimant
-- [ ] make `closeSessionOverlay` async in the `ControlActions` requirement (`ControlDispatcher.swift:94`)
+      or cancels the claimant; close captures its job before waiting and answers for that job even when the
+      slot is reused meanwhile
+- [x] make `closeSessionOverlay` async in the `ControlActions` requirement (`ControlDispatcher.swift:94`)
       and its callers; for a remote overlay: atomic cancel of an unclaimed job in `OverlayJobs`, else cancel
       through the helper connection, bounded wait off the main actor, fire-and-forget `overlay.close` frame
-- [ ] resize replies `requested`, records the requested size in `overlayJobs`, and fails explicitly with no
-      stream; `session.overlay.text` and `.copy` refuse a remote overlay; tests for each
-- [ ] project the origin's nodes during remote presentation (`overlay: false`, `paneOverlays` without the
-      pane, the job with `remote: true`), with projection tests
-- [ ] run the targeted tests - must pass before Task 21
+- [x] resize replies `requested`, records the requested size in `remoteOverlays`, and fails explicitly when
+      the job's own stream is gone, even with a newer stream connected; `session.overlay.text` and `.copy`
+      refuse a remote overlay; tests for each
+- [x] project the origin's nodes during remote presentation (`overlay: false`, `paneOverlays` without the
+      pane, the slot in `remoteOverlays`), with projection tests
+- [x] run the targeted tests - must pass before Task 21
+- ➕ close is synchronous and replies at once (Eugene's decision, see Decisions): no async `ControlActions`
+  requirement, no bounded wait, no `execution`/`surface` reply fields. The close items above that describe
+  the wait and those fields are replaced by that contract, tested as open, close, result
+- ➕ remote state lives in `Session.remoteOverlays` (`RemoteOverlays.swift`), keyed by pane role like the
+  local slots, with the logic in `AppStore+RemoteOverlay.swift`; `Session.swift` gained one stored property
+- ➕ a `--wait` job keeps its slot after it ends, its result recorded, until origin close, the viewer's new
+  `overlay.closed` frame, or stream loss; the viewer sends `overlay.closed` from Task 22
+- ➕ remote open builds its context from this Mac's `SurfaceEnvironment.session`, the identities a local
+  overlay gets; `follow` is passed to the viewer and selects nothing on the origin
 
-### Task 21: Overlay reconciliation in both directions
+### Task 21: Presentation loss on the origin
 
 **Files:**
 - Modify: `agtermCore/Sources/agtermCore/PresentationHub.swift`
 - Modify: `agtermCore/Sources/agtermCore/OverlayJobs.swift`
-- Modify: `agtermCore/Sources/agtermCore/PresentationFrames.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/PresentationHubTests.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/OverlayJobsTests.swift`
 
-- [ ] write failing tests: every snapshot carries the expected remote job set; a viewer hello missing an
-      expected job releases that job's slot and leaves its retained outcome unchanged; a `--wait` job exits
-      0, the stream drops, the viewer's held surface is closed, the viewer reconnects: the origin's slot is
-      free, the job result is still exited 0, and a new overlay opens
-- [ ] keep the expected remote job set on the origin and include it in the snapshot
-- [ ] on a viewer hello, release the slot of every expected job the viewer no longer shows
-- [ ] run the targeted tests - must pass before Task 22
+- [x] write failing tests: on loss of the presenter's stream an unclaimed job ends `canceled` and a late claim
+      launches nothing; a finished and an `unknown` job release their reservation at once with outcomes
+      unchanged; a claimed or running job releases on its terminal outcome, including after a reconnect and
+      after another viewer acquired the role, without touching that viewer's newer job; claim, then stream
+      loss, then no `started` inside the launch window ends `unknown` with the reservation released, with and
+      without a reconnect
+- [x] mark the presenter's jobs presentation-lost on stream loss and release reservations as above
+- [x] run the targeted tests - must pass before Task 22
+- ➕ the loss rules live in `AppStore.remoteOverlayPresenterLost`, called from the server's
+  `onPresenterLost` beside the ask handback; every slot of the session counts as its viewer surface gone,
+  so a held one is freed and a running one frees on its outcome. Tests are in `AppStoreRemoteOverlayTests`
+  and one hosted case in `ControlServerSessionActionsTests`
 
 ### Task 22: Overlay presentation on the viewer
 
@@ -835,35 +899,55 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `agtermCore/Tests/agtermCoreTests/RemoteSessionTests.swift`
 - Modify: `agtermTests/ControlServerSessionActionsTests.swift`
 
-- [ ] write failing tests: `overlay.request` opens a local overlay with the run-job ssh command on the
+- [x] write failing tests: `overlay.request` opens a local overlay with the run-job ssh command on the
       mapped pane; occupancy answers `overlay.rejected`; the stream dropping while the job ssh lives leaves
       the overlay running and a close from the origin still ends it; closing on the viewer tears down the
       job ssh and sends `overlay.closed` when a stream exists; with the stream down, viewer close still ends
-      the job `canceled`; `overlay.close` and `overlay.resize` frames are applied locally; a reconnect
-      snapshot lacking a job closes its surface, a held `--wait` one included; the reconnect hello lists
-      only surfaces still shown
-- [ ] add `RemoteSession.runJobCommand(host:endpoint:job:)` with `-tt`
-- [ ] preserve size, color, follow, pane scope and `--wait` from the request; the held `--wait` surface on
+      the job `canceled`; `overlay.close` and `overlay.resize` frames are applied locally; on stream loss
+      an ended job's surface closes at once, a held `--wait` one included, and a running one closes when its
+      job ssh ends, ignoring `--wait`, also after a reconnect
+- [x] add `RemoteSession.runJobCommand(host:endpoint:job:)` with `-tt`
+- [x] preserve size, color, follow, pane scope and `--wait` from the request; the held `--wait` surface on
       the viewer is distinct from program completion on the origin
-- [ ] name the origin job on the viewer's `overlayJobs` entry; projection tests assert a session-wide
-      replica sets `overlay` and a pane-scoped replica appears in `paneOverlays` only
-- [ ] run the targeted tests - must pass before Task 23
+- [x] projection tests assert a session-wide replica sets `overlay` and a pane-scoped replica appears in
+      `paneOverlays` only
+- [x] run the targeted tests - must pass before Task 23
+- ➕ `RemoteSession.runJobCommand(host:job:)` takes no endpoint: the helper is the origin's installed
+  `agtermctl`, reached through `cliPathPrefix` like the presentation bridge
+- ➕ a replica is an ordinary local overlay tagged with `OverlayReplica` on its slot (`PaneOverlay.replica`,
+  `Session.overlayReplica`), so swap and promotion move it with the slot; every close path reports it once
+  through `Session.onReplicaOverlayClosed`. A held `--wait` exit reaches the store through the surface's new
+  `onExitHeld`, fired from `GHOSTTY_ACTION_SHOW_CHILD_EXITED` when the view keeps the surface
+- ➕ the app wiring is tested in `ControlServerRemotePresentationTests`, beside the replica ask, not in
+  `ControlServerSessionActionsTests`; the store rules in `RemotePresentationStateTests`
 
 ### Task 23: Verify acceptance criteria
 
 **Files:**
 - Modify: `agtermTests/ControlServerZmxTests.swift`
 
-- [ ] slice 1: status, control notifications and HUD for an attached session appear on the viewer;
+- [x] slice 1: status, control notifications and HUD for an attached session appear on the viewer;
       mirrored status and HUD clear on disconnect
-- [ ] slice 2: a session-associated ask of either style and a program overlay appear on the viewer only,
-      the program runs once on the origin, and `--block` returns its real exit status
-- [ ] every decisive failure test from Testing Strategy exists and passes
-- [ ] an origin without the capability leaves the attach working, launches no stream ssh, and the viewer
+- [x] slice 2: a session-associated ask of either style and a program overlay appear on the viewer only,
+      the program runs once on the origin, and `--block` returns its real exit status when no other overlay
+      reuses the slot before its next poll
+- [x] every decisive failure test from Testing Strategy exists and passes
+- [x] an origin without the capability leaves the attach working, launches no stream ssh, and the viewer
       row reads `unsupported`
-- [ ] add one hosted end-to-end test for slice 2 through the injected runner: an ask answered on the viewer
-      completes the caller; an overlay job runs once, renders on the viewer only, and returns its status
-- [ ] run `cd agtermCore && swift test`, `make test-app`, `make lint` once; all green
+- [x] add one hosted end-to-end test for slice 2 through the injected runner: an ask answered on the viewer
+      completes the caller; an overlay job runs once, selects the viewer-only surface through the rendering
+      gates, and returns its status. Like slice 1 it asserts rendering inputs, not painted pixels; on-screen
+      rendering is confirmed by the two-Mac checks in Post-Completion
+- [x] run `cd agtermCore && swift test`, `make test-app`, `make lint` once; all green
+- ➕ the slice 2 end-to-end case sits beside slice 1's in `ControlServerRemotePresentationTests`, sharing its
+  real-bridge setup (`bridgedPair`); the program runs once under the bundle's `run-job` helper and its status
+  becomes the origin's `session.overlay.result`. The test launches `run-job` itself with the job id it read
+  from the viewer, so the viewer surface's ssh launch and exit callbacks and CLI `--block` are left to the
+  two-Mac checks. The decisive failure tests map to `OverlayJobsTests` (deadline
+  race, helper gone before and after the claim, a long healthy run), `AppStoreRemoteOverlayTests` (a close
+  after the stream broke, an old job's result after a new open), `RemotePresentationStateTests` and
+  `RemotePresentationClientTests` (ask refused on occupancy, stream lost during an ask); the origin-side close
+  after a broken stream was the one missing and is added here
 
 ### Task 24: [Final] Update documentation
 
@@ -874,15 +958,25 @@ Slice 1 ends here and ships as its own PR.
 - Modify: `plugins/agterm/skills/agterm/SKILL.md`, `plugins/agterm/skills/agterm/reference.md`,
   `plugins/agterm/skills/agterm/examples.md`
 
-- [ ] extend control-api.md Remote sessions with the presenter, ask and overlay job contracts: the three
+- [x] extend control-api.md Remote sessions with the presenter, ask and overlay job contracts: the three
       ask transitions, the job outcomes, `launch-failed` in place of a local fallback, the uncovered origin,
-      best-effort close and resize wording, and the `text`/`copy` refusal for a remote overlay
-- [ ] update the streaming hand-off statement in control-api.md to include the helper connection and the
+      best-effort close and resize wording, the `text`/`copy` refusal for a remote overlay, the
+      `presentation-lost` reason field, presentation loss ending held surfaces, and the row indicator with
+      close-and-reattach as the manual recovery
+- [x] document that a remote `overlay.close` reply means the cancel was requested, not that the program
+      ended, replacing the close help's "destroys it" wording for that case
+- [x] document in `site/commands.html` and the bundled skill that a remote overlay's non-exit outcomes
+      (`launch-failed`, `canceled`, `unknown`) answer `overlay.result` as errors and make `--block` exit 1,
+      and that `--block` polls the slot, so an overlay opened on it before the next poll answers for it
+- [x] update the streaming hand-off statement in control-api.md to include the helper connection and the
       async remote close
-- [ ] mirror the new commands, arguments and read-back fields in `site/commands.html` and the bundled skill;
+- [x] mirror the new commands, arguments and read-back fields in `site/commands.html` and the bundled skill;
       update `site/docs.html`; touch `README.md` and `site/index.html` only where remote attach is described
-- [ ] no surface states a command total
-- [ ] move this plan to `docs/plans/completed/`
+- [x] no surface states a command total
+- [x] move this plan to `docs/plans/completed/`
+- ➕ `README.md` and `site/index.html` describe no remote attach, so they are unchanged; `site/llms.txt` gains
+  the asks and overlays on its remote-sessions line. The viewer's own `overlay.result` for a replica is
+  documented as its local ssh status, with the origin's as the authoritative answer
 
 ## Post-Completion
 
@@ -894,6 +988,8 @@ Slice 1 ends here and ships as its own PR.
 - leave a revdiff overlay idle for longer than every timeout; confirm it stays open and completes normally
 - open an overlay while the viewer already shows one; confirm the caller gets `launch-failed`
 - attach the same session from two viewers; confirm the second stays a mirror
+- drop the network during a `--wait` overlay; confirm the viewer shows the row indicator, the held surface
+  goes away, and after reconnect a new overlay opens on the viewer
 - soft-close an attached session and undo; confirm mirroring resumes
 - sleep the viewer for an hour and wake it; confirm the stream reconnects
 - attach to an origin running a build without the capability; confirm the terminal works and the row reads

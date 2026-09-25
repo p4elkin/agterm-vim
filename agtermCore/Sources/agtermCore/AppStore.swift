@@ -138,6 +138,8 @@ public final class AppStore {
     /// Where this store publishes a session's presentation state for attached viewers. One hub serves every
     /// window, since a viewer subscribes by session id alone.
     @ObservationIgnored public var presentationHub: PresentationHub?
+    /// The remote overlay jobs this Mac handed to presenters, shared with the server like the hub.
+    @ObservationIgnored public var overlayJobs: OverlayJobs?
     /// Told when an attached session's row is shown or leaves, undo and restoration included.
     @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
@@ -343,7 +345,11 @@ public final class AppStore {
                                           overlaySizePercent: session.programOverlayActive
                                               ? session.overlaySizePercent : nil,
                                           paneOverlays: paneOverlays(session), hud: hudNode(session),
-                                          ask: session.askPending.map { ControlSessionAsk(id: $0.id, pane: session.askTargetPane?.rawValue) },
+                                          ask: session.askPending.map {
+                                              ControlSessionAsk(id: $0.id, pane: session.askTargetPane?.rawValue,
+                                                                remote: session.askPresentedRemotely ? true : nil,
+                                                                replica: session.askReplica ? true : nil)
+                                          },
                                           scratch: session.scratchActive, flagged: session.flagged,
                                           parked: session.parked ? true : nil,
                                           commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
@@ -379,7 +385,8 @@ public final class AppStore {
                                           context: session.context, remoteHost: session.remoteHost,
                                           splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
                                           liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
-                                          presentation: presentationNode(of: session), presenters: presentersNode(of: session))
+                                          presentation: presentationNode(of: session), presenters: presentersNode(of: session),
+                                          remoteOverlays: remoteOverlayNodes(of: session))
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -585,7 +592,7 @@ public final class AppStore {
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspace.sessions[location.sessionIndex]
-        removed.cancelPendingAsk()
+        releaseLeavingSession(removed)
         workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
         dropLaunchPanes([removed])
@@ -627,7 +634,7 @@ public final class AppStore {
         recordRecentClosedWorkspace(workspace, selectedSessionID: removingActive ? selectedSessionID : nil,
                                     focusMember: focusedWorkspaceIDs.contains(workspaceID))
         for session in workspace.sessions {
-            session.cancelPendingAsk()
+            releaseLeavingSession(session)
             emitSessionClosed(session, workspace: workspace.id)
         }
         if workspace.sessions.isEmpty { scheduleTreeChanged() }

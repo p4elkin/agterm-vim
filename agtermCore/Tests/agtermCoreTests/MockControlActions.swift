@@ -69,6 +69,7 @@ class MockControlActionsBase {
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
         case zmxPresent(session: String)
+        case claimOverlayJob(String)
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
         case sidebarParked(window: String?, ControlParkedVisibilityMode, ControlParkedScope)
@@ -530,6 +531,11 @@ class MockControlActionsBase {
     func openPresentation(session: String) -> ControlResponse {
         calls.append(.zmxPresent(session: session))
         return ControlResponse(ok: true, result: ControlResult(id: session))
+    }
+
+    func claimOverlayJob(_ job: String) -> ControlResponse {
+        calls.append(.claimOverlayJob(job))
+        return ControlResponse(ok: true, result: ControlResult(id: job))
     }
 
     /// Only reachable through the ssh defaults — the dispatcher calls the transport overload — so this

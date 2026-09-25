@@ -101,7 +101,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         _ = store.workspaces.map { workspace in
             (workspace.id, workspace.name, workspace.unseenCount, workspace.sessions.map {
                 ($0.id, $0.displayName, $0.hasSplit, $0.splitAxis, $0.unseenCount, $0.agentIndicator,
-                 $0.flagged, $0.parked)
+                 $0.flagged, $0.parked, $0.remotePresentation?.connection)
             })
         }
         _ = store.selectedSessionID
@@ -398,6 +398,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
             /// How many of the workspace's rows are parked (the dim "⏸ N" suffix), drawn or hidden alike —
             /// with hiding OFF a park moves no row, so only this delta re-renders the count. 0 for sessions.
             let parkedCount: Int
+            /// The remote row's stream notice, nil while it is up or for a local row.
+            var presentationNotice: String?
 
             func differsOnlyInLabel(from other: RowContent) -> Bool {
                 var relabeled = self
@@ -552,7 +554,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        splitAxis: session.splitAxis,
                        unseen: effectiveUnseen(session.unseenCount),
                        indicator: session.agentIndicator, flagged: session.flagged,
-                       parked: session.parked, focusMember: false, parkedCount: 0)
+                       parked: session.parked, focusMember: false, parkedCount: 0,
+                       presentationNotice: presentationNotice(for: session))
         }
 
         /// Rebuilds `roots` from the store, reusing cached node instances by id so NSOutlineView item
@@ -862,6 +865,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
         lazy var flaggedHorizontalSplitSessionIcon = Self.rowIcon("rectangle.split.1x2.fill")
         lazy var remoteSessionIcon = Self.rowIcon("cloud")
         lazy var remoteSplitSessionIcon = Self.rowIcon("cloud", weight: .bold)
+        lazy var remoteDisconnectedSessionIcon = Self.rowIcon("icloud.slash")
+        lazy var remoteDisconnectedSplitSessionIcon = Self.rowIcon("icloud.slash", weight: .bold)
 
         private static func rowIcon(_ symbolName: String, weight: NSFont.Weight = .regular) -> NSImage? {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: weight)

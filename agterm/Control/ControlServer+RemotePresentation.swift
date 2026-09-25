@@ -67,9 +67,41 @@ extension ControlServer {
             connection: { [weak self] connection in
                 self?.library.store(forSession: id)?.setRemoteConnection(connection, forSession: id)
             },
+            mode: { [weak self] mode in self?.library.store(forSession: id)?.setRemoteMode(mode, forSession: id) },
+            askRequest: { [weak self] ask in self?.showReplicaAsk(ask, forSession: id) ?? false },
+            askDismiss: { [weak self] ref in self?.library.store(forSession: id)?.dismissReplicaAsk(ref, forSession: id) },
+            overlayRequest: { [weak self] overlay in self?.showReplicaOverlay(overlay, forSession: id) ?? false },
+            overlayClose: { [weak self] change in
+                self?.library.store(forSession: id)?.closeReplicaOverlay(change.job, forSession: id)
+            },
+            overlayResize: { [weak self] change in
+                self?.library.store(forSession: id)?.resizeReplicaOverlay(change, forSession: id)
+            },
             warn: { reason in
                 remoteLogger.warning("presentation stream for \(id, privacy: .public) is down: \(reason, privacy: .public)")
             })
+    }
+
+    /// Shows an ask `id`'s origin handed over. A GUI one keeps the local rule of refusing a target that is not
+    /// on screen; a terminal one, like a local terminal ask, waits hidden until its session is shown.
+    private func showReplicaAsk(_ ask: PresentationAsk, forSession id: UUID) -> Bool {
+        guard let store = library.store(forSession: id) else { return false }
+        if ask.style == .gui {
+            guard let windowID = library.windowID(for: store), guiTargetShown(id, in: store, windowID: windowID) else {
+                return false
+            }
+        }
+        return store.presentReplicaAsk(ask, forSession: id) { [weak self] body in self?.remoteClients[id]?.answer(body) }
+    }
+
+    /// Shows an overlay `id`'s origin handed over, running the job's helper on the origin over ssh.
+    private func showReplicaOverlay(_ overlay: PresentationOverlay, forSession id: UUID) -> Bool {
+        guard let store = library.store(forSession: id), let host = store.session(withID: id)?.remoteHost,
+              let argv = try? RemoteSession.runJobCommand(host: host, job: overlay.job) else { return false }
+        let command = CommandRestore.shellQuotedLine(argv)
+        return store.presentReplicaOverlay(overlay, command: command, forSession: id) { [weak self] job in
+            self?.remoteClients[id]?.answer(.overlayClosed(PresentationOverlayChange(job: job)))
+        }
     }
 
     private func startRemoteTick() {

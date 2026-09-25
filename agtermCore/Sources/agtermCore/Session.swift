@@ -62,6 +62,8 @@ public struct PaneOverlay: Equatable, Sendable {
     /// Whether the overlay holds its surface after the command exits (libghostty's "press any key to
     /// close"), instead of closing.
     public var wait: Bool
+    /// Set on a viewer when the overlay shows a job running on its origin.
+    public var replica: OverlayReplica?
 
     public init(command: String, cwd: String? = nil, backgroundColor: String? = nil, wait: Bool = false) {
         self.command = command
@@ -361,6 +363,24 @@ public final class Session: Identifiable {
     public private(set) var askPending: PendingAsk?
     /// Stable identity of the covered pane; nil covers the whole session.
     public private(set) var askPaneIdentity: UUID?
+    /// The presenter generation the pending ask was handed to, nil while this Mac draws it. A remotely
+    /// presented ask keeps the slot and its result here but is neither drawn nor answered on this Mac.
+    public private(set) var askRemoteOwner: Int?
+    /// Tells the presenter a handed-over ask ended here. Set with the handover, run once when it resolves.
+    @ObservationIgnored var onRemoteAskEnded: (@MainActor (String) -> Void)?
+
+    public var askPresentedRemotely: Bool { askRemoteOwner != nil }
+    /// Overlay slots a viewer's presenter holds and the outcomes of remote jobs, on the origin.
+    public internal(set) var remoteOverlays = RemoteOverlays()
+    /// The origin's job the session-wide overlay shows, on a viewer.
+    @ObservationIgnored public internal(set) var overlayReplica: OverlayReplica?
+    /// Tells the origin a replica overlay's surface is gone here, whatever closed it.
+    @ObservationIgnored var onReplicaOverlayClosed: (@MainActor (String) -> Void)?
+    /// Set on a viewer while the pending ask is a replica of one its origin handed over: drawn and answered
+    /// here, but owned and resolved on the origin, which is what the answer is sent to.
+    public private(set) var askReplica = false
+    /// Sends a replica's outcome to its origin. Run once when it resolves; a dismissal skips it.
+    @ObservationIgnored var onReplicaResolved: (@MainActor (ControlAskResult) -> Void)?
 
     /// The anchored pane's current role, nil for session-wide placement or a destroyed pane.
     public var askTargetPane: OverlayPane? {
@@ -369,11 +389,36 @@ public final class Session: Identifiable {
 
     /// Reserves the session ask slot and its placement, refusing replacement of a pending ask.
     @discardableResult
-    public func openAsk(_ ask: PendingAsk, paneIdentity: UUID? = nil) -> Bool {
+    public func openAsk(_ ask: PendingAsk, paneIdentity: UUID? = nil, remoteOwner: Int? = nil) -> Bool {
         guard askPending == nil else { return false }
         askPaneIdentity = paneIdentity
+        askRemoteOwner = remoteOwner
         askPending = ask
         return true
+    }
+
+    /// Reserves the slot for a replica of an origin's ask, whose outcome goes to `resolved` instead of here.
+    func openReplicaAsk(_ ask: PendingAsk, paneIdentity: UUID?,
+                        resolved: @escaping @MainActor (ControlAskResult) -> Void) -> Bool {
+        guard openAsk(ask, paneIdentity: paneIdentity) else { return false }
+        askReplica = true
+        onReplicaResolved = resolved
+        return true
+    }
+
+    /// Takes a handed-over ask back to be drawn here, so an answer from its former presenter is stale.
+    public func takeAskBack() {
+        askRemoteOwner = nil
+        onRemoteAskEnded = nil
+    }
+
+    /// Empties the slot without an outcome, for an ask that moves to another owner rather than ending.
+    public func releaseAsk() {
+        askPending = nil
+        askPaneIdentity = nil
+        askReplica = false
+        onReplicaResolved = nil
+        takeAskBack()
     }
 
     /// Retains a registered ask's terminal outcome before clearing its slot; stale ids are ignored.
@@ -383,8 +428,15 @@ public final class Session: Identifiable {
         if case let .session(sessionID, windowID) = AskRegistry.shared.owner(for: id), sessionID == self.id {
             AskRegistry.shared.retain(id: id, result: result, window: windowID)
         }
+        let ended = onRemoteAskEnded
+        let replicaResolved = onReplicaResolved
         askPending = nil
         askPaneIdentity = nil
+        askReplica = false
+        onReplicaResolved = nil
+        takeAskBack()
+        ended?(id)
+        replicaResolved?(result)
         return true
     }
 
@@ -739,10 +791,12 @@ public final class Session: Identifiable {
     /// exit code readable by `session.overlay.result`; here no pane survives to be asked. `teardown()` nils
     /// the surface's store-capturing callbacks, breaking the store/session/surface/closure cycle.
     public func teardownPaneOverlay(_ pane: OverlayPane) {
+        let replica = paneOverlay(pane)?.replica
         paneOverlaySurface(pane)?.teardown()
         setPaneOverlay(nil, pane: pane)
         setPaneOverlaySurface(nil, pane: pane)
         setPaneOverlayExitCode(nil, pane: pane)
+        if let replica { onReplicaOverlayClosed?(replica.job) }
     }
 
     /// The pane-slot writers, paired with the `paneOverlay*` readers through `OverlayPane`'s key paths.

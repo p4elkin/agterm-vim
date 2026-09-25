@@ -28,6 +28,27 @@ struct PresentationFramesTests {
         PresentationFrame(gen: 1, rev: 12, body: .snapshot(PresentationSnapshot(status: nil, hud: paneHud))),
         PresentationFrame(gen: 2, rev: 10, body: .notify(PresentationNotify(
             title: "build", body: "done", pane: pane, source: "control"))),
+        PresentationFrame(gen: 1, rev: 13, body: .hello(PresentationHello(
+            version: 1, kinds: ["status"], mode: .presenter))),
+        PresentationFrame(gen: 1, rev: 14, body: .presenterAcquire),
+        PresentationFrame(gen: 1, rev: 15, body: .presenterGranted),
+        PresentationFrame(gen: 1, rev: 16, body: .presenterRefused),
+        PresentationFrame(gen: 1, rev: 17, body: .askRequest(PresentationAsk(
+            PendingAsk(id: "a1", title: "deploy?", message: "to prod", buttons: [ControlAskButton(id: "y", label: "Yes", hotkey: "y")],
+                       defaultID: "y", style: .gui, align: .center, width: 40),
+            pane: pane, owner: 3))),
+        PresentationFrame(gen: 1, rev: 18, body: .askResolve(PresentationAskAnswer(id: "a1", owner: 3, button: "y"))),
+        PresentationFrame(gen: 1, rev: 19, body: .askResolve(PresentationAskAnswer(id: "a1", owner: 3, button: nil))),
+        PresentationFrame(gen: 1, rev: 20, body: .askRejected(PresentationAskRef(id: "a1", owner: 3))),
+        PresentationFrame(gen: 1, rev: 21, body: .askDismiss(PresentationAskRef(id: "a1", owner: 3))),
+        PresentationFrame(gen: 1, rev: 22, body: .overlayRequest(PresentationOverlay(
+            job: "j1", pane: pane, sizePercent: 60, backgroundColor: "#102030", follow: true, wait: true))),
+        PresentationFrame(gen: 1, rev: 23, body: .overlayRequest(PresentationOverlay(
+            job: "j1", pane: nil, sizePercent: nil, backgroundColor: nil, follow: false, wait: false))),
+        PresentationFrame(gen: 1, rev: 24, body: .overlayRejected(PresentationOverlayChange(job: "j1"))),
+        PresentationFrame(gen: 1, rev: 25, body: .overlayClose(PresentationOverlayChange(job: "j1"))),
+        PresentationFrame(gen: 1, rev: 26, body: .overlayResize(PresentationOverlayChange(job: "j1", sizePercent: 40))),
+        PresentationFrame(gen: 1, rev: 27, body: .overlayClosed(PresentationOverlayChange(job: "j1"))),
     ]
 
     @Test(arguments: frames)
@@ -40,10 +61,10 @@ struct PresentationFramesTests {
     }
 
     @Test func anUnknownKindDecodesToUnknownAndKeepsItsOrdering() throws {
-        let line = Data(#"{"kind":"overlay.request","gen":3,"rev":12,"job":"abc"}"#.utf8)
+        let line = Data(#"{"kind":"future.kind","gen":3,"rev":12,"job":"abc"}"#.utf8)
 
         #expect(try PresentationCodec.decode(line) == PresentationFrame(gen: 3, rev: 12,
-                                                                        body: .unknown("overlay.request")))
+                                                                        body: .unknown("future.kind")))
     }
 
     @Test func anOversizeLineIsRefusedBeforeDecoding() {

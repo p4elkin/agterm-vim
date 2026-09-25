@@ -555,7 +555,7 @@ struct Session: ParsableCommand {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Resize.self, Result.self, Copy.self, Text.self]
+            subcommands: [Open.self, Close.self, Resize.self, Result.self, Copy.self, Text.self, RunJob.self]
         )
 
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
@@ -631,7 +631,7 @@ struct Session: ParsableCommand {
         }
 
         struct Close: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it).")
+            static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it; for one shown on another Mac, requests its cancel).")
             @Option(name: .long, help: "Close that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
             var pane: String?
             @OptionGroup var target: TargetOptions

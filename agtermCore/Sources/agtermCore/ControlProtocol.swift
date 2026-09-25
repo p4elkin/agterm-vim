@@ -126,6 +126,8 @@ public enum Command: String, Codable, Sendable {
     case zmxTree = "zmx.tree"
     case zmxAttach = "zmx.attach"
     case zmxPresent = "zmx.present"
+    /// A viewer's helper claiming a remote overlay job; after an ok reply the connection carries job frames.
+    case sessionOverlayJobRun = "session.overlay.job.run"
     /// UI-TEST-ONLY: forces the app-level appearance (`light`|`dark` via `args.name`) so an XCUITest can
     /// simulate a macOS light/dark flip; with NO name it READS the side the last config feed applied, so a
     /// test can assert the flip drove the reload. Refused outside an XCUITest launch, and EXEMPT from the
@@ -674,6 +676,14 @@ public struct ControlResult: Codable, Sendable, Equatable {
 public enum OverlayResultError {
     public static let stillRunning = "overlay still running"
     public static let noResult = "no overlay result"
+    /// An overlay a viewer showed that ended without an exit code: `launch-failed`, `canceled`, `unknown`.
+    public static func ended(_ outcome: String) -> String { "overlay ended: \(outcome)" }
+    /// The overlay runs on another Mac's surface, so this Mac has nothing to read or copy.
+    public static let shownElsewhere = "overlay is shown on another Mac"
+    /// The stream the overlay was handed to is gone, so nothing can reach the surface to resize it.
+    public static let viewerGone = "the viewer showing this overlay is gone"
+    /// The command and its environment exceed what the helper reads in one frame.
+    public static let tooLarge = "overlay command too large to show on another Mac"
 }
 
 /// Error strings for `session.overlay.*` aimed at a session whose overlay slot holds a HUD. The slot is
