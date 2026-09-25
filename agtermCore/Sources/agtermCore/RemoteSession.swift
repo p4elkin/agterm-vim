@@ -190,7 +190,10 @@ public enum RemoteSession {
             ["agterm: \(session) (\(pane.rawValue)) on \(host) disconnected, exit"])
         // the pane must exit with SSH's status, not printf's zero, or a failed connection reads as a
         // clean one to anything that looks at the exit code
-        return "\(attach); status=$?; printf '%s %s\\n' \(label) \"$status\"; exit \"$status\""
+        let script = "\(attach); status=$?; printf '%s %s\\n' \(label) \"$status\"; exit \"$status\""
+        // libghostty runs this as `exec -l <command>`: bare, the exec replaces the shell with ssh and nothing
+        // after it runs. `env` takes the exec instead, and a plain `sh` beneath it reads no login profile.
+        return CommandRestore.shellQuotedLine(["/usr/bin/env", "/bin/sh", "-c", script])
     }
 
     /// Where a Homebrew or manual `mosh` installs, in probe order. The pane's command runs under
