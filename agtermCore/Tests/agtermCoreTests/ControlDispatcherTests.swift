@@ -724,6 +724,29 @@ struct ControlDispatcherTests {
         #expect(actions.calls == [.sessionSwap(target: "session", window: "win")])
     }
 
+    @Test func sessionLeadParsesThePaneOnceAndRoutesIt() async {
+        let actions = MockControlActions()
+
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
+            cmd: .sessionLead, target: "session", args: ControlArgs(window: "win", pane: "split")))
+        let bare = await ControlDispatcher(actions: actions).dispatch(ControlRequest(cmd: .sessionLead, target: "active"))
+
+        #expect(response?.ok == true)
+        #expect(bare?.ok == true)
+        #expect(actions.calls == [.sessionLead(target: "session", window: "win", pane: .right),
+                                  .sessionLead(target: "active", window: nil, pane: nil)])
+    }
+
+    @Test func sessionLeadRejectsAnUnknownPaneBeforeDispatch() async {
+        let actions = MockControlActions()
+
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
+            cmd: .sessionLead, target: "session", args: ControlArgs(pane: "middle")))
+
+        #expect(response == ControlResponse(ok: false, error: "invalid pane: middle"))
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func splitRejectsAnUnknownAxisBeforeDispatch() async {
         let actions = MockControlActions()
         let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(
@@ -1271,6 +1294,30 @@ struct ControlDispatcherTests {
             .sessionBackground(target: "session", window: nil,
                                ControlSessionBackgroundOptions(watermark: nil))
         ])
+    }
+
+    @Test(arguments: [("left", StatusPane.left), ("split", .right), ("bottom", .right), ("scratch", .scratch)])
+    func sessionBackgroundPassesTheParsedPane(raw: String, pane: StatusPane) async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        actions.nextSessionBackgroundResponse = ControlResponse(ok: true, result: ControlResult(id: "session"))
+
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionBackground, target: "session",
+                                                     args: ControlArgs(mode: "clear", pane: raw)))
+
+        #expect(actions.calls == [.sessionBackground(target: "session", window: nil,
+                                                     ControlSessionBackgroundOptions(watermark: nil, pane: pane))])
+    }
+
+    @Test func sessionBackgroundRejectsAnUnknownPaneBeforeCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionBackground, args: ControlArgs(mode: "color", pane: "middle", color: "#102030")))
+
+        #expect(response == ControlResponse(ok: false, error: "--pane must be left, right, or scratch"))
+        #expect(actions.calls.isEmpty)
     }
 
     @Test func sessionBackgroundRejectsInvalidInputsBeforeCallingActions() async {

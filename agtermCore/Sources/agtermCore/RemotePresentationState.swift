@@ -4,16 +4,36 @@ import Foundation
 /// there, and which local pane stands for each of the origin's panes. Both sides create their own pane
 /// identities, so presentation state names the origin's and is routed through this mapping.
 public struct RemoteBinding: Equatable, Sendable {
+    /// What attaching one of the origin's panes again takes. Taking the lead back is a fresh attach, and
+    /// the pane's first command line cannot be reused: it carries that attachment's token.
+    public struct Origin: Equatable, Sendable {
+        public let host: String
+        public let endpoint: ControlZmxEndpoint
+        public let sessionName: String
+
+        public init(host: String, endpoint: ControlZmxEndpoint, sessionName: String) {
+            self.host = host
+            self.endpoint = endpoint
+            self.sessionName = sessionName
+        }
+    }
+
     public let remoteSessionID: String
     /// The origin's presentation protocol version, nil for an origin that predates the stream.
     public let presentationVersion: Int?
+    /// Nil for a binding built without one, which can then not be attached again.
+    public let origin: Origin?
     private let localByRemotePane: [UUID: UUID]
+    private let daemonsByLocalPane: [UUID: String]
 
     /// `daemonsByLocalPane` is what an attach knows: the daemon each local pane runs `zmx attach` against.
     /// A daemon name encodes the origin's pane identity, so the mapping is decoded once, here.
-    public init(remoteSessionID: String, daemonsByLocalPane: [UUID: String], presentationVersion: Int?) {
+    public init(remoteSessionID: String, daemonsByLocalPane: [UUID: String], presentationVersion: Int?,
+                origin: Origin? = nil) {
         self.remoteSessionID = remoteSessionID
         self.presentationVersion = presentationVersion
+        self.origin = origin
+        self.daemonsByLocalPane = daemonsByLocalPane
         var mapping: [UUID: UUID] = [:]
         for (local, daemon) in daemonsByLocalPane {
             if let remote = ZmxSupport.paneIdentity(fromDaemonName: daemon) { mapping[remote] = local }
@@ -22,6 +42,12 @@ public struct RemoteBinding: Equatable, Sendable {
     }
 
     public func localPane(forRemote identity: UUID) -> UUID? { localByRemotePane[identity] }
+
+    public func daemon(forLocalPane identity: UUID) -> String? { daemonsByLocalPane[identity] }
+
+    func remotePane(forLocal identity: UUID) -> UUID? {
+        localByRemotePane.first { $0.value == identity }?.key
+    }
 }
 
 /// RemotePresentationConnection is the state of a viewer's presentation stream, as read-back reports it.
@@ -38,7 +64,7 @@ public enum RemotePresentationConnection: Equatable, Sendable {
     public func rowNotice(host: String) -> String? {
         switch self {
         case .connected, .unsupported: return nil
-        case .connecting: return "Connecting to \(host) for status, notifications, dialogs and overlays"
+        case .connecting: return "Connecting to \(host) for status, context, notifications, dialogs and overlays"
         case .failed(let reason):
             return "Lost the connection to \(host) (\(reason)), retrying. Close and reattach the session to retry now."
         }
@@ -50,6 +76,8 @@ public struct RemotePresentationState: Equatable, Sendable {
     public let binding: RemoteBinding
     public var connection: RemotePresentationConnection
     public var mode: PresentationMode = .mirror
+    var layout: PresentationLayout?
+    var heldPanes: Set<UUID> = []
     /// Whether the glyph on the row is the bridge's. A flag and not a comparison of values: a pane swap
     /// rewrites the indicator without changing who set it, and a local write of the very same value does
     /// change who set it. Every local write clears this.

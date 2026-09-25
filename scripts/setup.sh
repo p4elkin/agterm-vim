@@ -3,7 +3,8 @@
 #
 # We build from source rather than downloading a prebuilt artifact so the toolchain is fully
 # self-owned: the inputs are pinned upstream revisions, zig, Xcode's Metal Toolchain, and the additive
-# patches in patches/ghostty. No fork or daily-build release is involved.
+# patches in patches/ghostty. No fork or daily-build release is involved; zmx takes the patches in
+# scripts/zmx-patches over its plain pin.
 #
 # GHOSTTY_REV is a plain pin for reproducibility, not a workaround. It was held at a 2026-04-30
 # pre-regression commit while later builds blanked the scrollback on a font-size increase; that is
@@ -35,6 +36,11 @@ RESOURCES_MARKER="agterm/Resources/terminfo"
 STAMP_FILE=".ghostty-build-stamp"
 ZMX_STAGE_DIR="agterm/Resources/zmx"
 ZMX_STAMP_FILE=".zmx-build-stamp"
+# applied in name order over the plain pin; scripts/zmx-patches/README.md says what each one is for.
+# The stamp carries their digest, so editing a patch rebuilds zmx exactly as a ZMX_REV change does.
+ZMX_PATCH_DIR="scripts/zmx-patches"
+ZMX_PATCH_DIGEST="$(cat "$ZMX_PATCH_DIR"/*.patch | shasum -a 256 | cut -c1-16)"
+ZMX_STAMP="$ZMX_REV $ZMX_TARGET $ZMX_PATCH_DIGEST"
 
 # What the staged artifacts were built FROM: the upstream revision AND the patches applied on top
 # of it. The revision alone is not enough, and that gap shipped a broken build.
@@ -70,7 +76,7 @@ need_zmx=true
 [[ -d "$XCFRAMEWORK_DIR" ]] && need_xc=false
 [[ -d "$RESOURCES_MARKER" ]] && need_res=false
 if [[ -x "$ZMX_STAGE_DIR/zmx" && -f "$ZMX_STAGE_DIR/LICENSE" && -f "$ZMX_STAMP_FILE" ]] &&
-   [[ "$(cat "$ZMX_STAMP_FILE")" == "$ZMX_REV $ZMX_TARGET" ]]; then
+   [[ "$(cat "$ZMX_STAMP_FILE")" == "$ZMX_STAMP" ]]; then
   need_zmx=false
 fi
 
@@ -202,6 +208,10 @@ if $need_zmx; then
   git -C "$zmx_build" remote add origin "$ZMX_REPO"
   git -C "$zmx_build" fetch -q --depth 1 origin "$ZMX_REV"
   git -C "$zmx_build" -c advice.detachedHead=false checkout -q FETCH_HEAD
+  for zmx_patch in "$ZMX_PATCH_DIR"/*.patch; do
+    echo "applying $(basename "$zmx_patch")..."
+    git -C "$zmx_build" apply --whitespace=nowarn "$PWD/$zmx_patch"
+  done
 
   patch_zig_float_h
 
@@ -211,7 +221,7 @@ if $need_zmx; then
   mkdir -p "$ZMX_STAGE_DIR"
   install -m 0755 "$zmx_build/zig-out/bin/zmx" "$ZMX_STAGE_DIR/zmx"
   cp "$zmx_build/LICENSE" "$ZMX_STAGE_DIR/LICENSE"
-  printf '%s %s\n' "$ZMX_REV" "$ZMX_TARGET" > "$ZMX_STAMP_FILE"
+  printf '%s\n' "$ZMX_STAMP" > "$ZMX_STAMP_FILE"
 fi
 
 stage_custom_themes

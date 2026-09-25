@@ -175,8 +175,9 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
-`{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter}`
-object: `detail`, `backgroundColor` and `textColor` are omitted when the caller set none, `sizePercent` is the EFFECTIVE
+`{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter,
+markdown, fontSize?}` object: `markdown` is always present, and `fontSize` is the `--font-size` the panel was
+opened with, omitted when it uses the session's; `detail`, `backgroundColor` and `textColor` are omitted when the caller set none, `sizePercent` is the EFFECTIVE
 10–80 share of the pane's WIDTH the panel takes (the app's measurement of the message, or the caller's
 `--size-percent` override, either way bounded so a message never covers the session; always present for a
 live HUD), `heightPercent` is the effective share of its HEIGHT, always measured from the message's rows
@@ -194,8 +195,8 @@ a message for one. No event announces a HUD; poll `tree` for it),
 either style handed over for a remote session), with `pane` omitted for session-wide placement, `remote: true` on an origin while the Mac presenting the session draws it, and
 `replica: true` on that Mac for the copy it draws; omitted when the session ask slot is empty), `scratch` (scratch shown), `flagged` (in the
 flagged working-set), `parked` (the row is kept, its agent is not — true-only, so an unparked session
-carries no field; the read side of `session park`), `context` (what the session is about — the
-`session context` value, persisted and omitted when unset), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
+carries no field; the read side of `session park`), `context` (what the session is about — the `session context` value, or on an attached row without
+one the origin's mirrored context; omitted when neither is set), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
 as `status`, so it is never reported without a `status`), `statusBlink` (`true` when the status glyph is
@@ -227,16 +228,21 @@ other program),
 command string = the shell line that runs on the next launch; reported from persisted state, so a read
 after the override already fired still reports what is pinned), `background` (the
 background spec set via `session background` — a `{kind, text?, imagePath?, colorHex?, opacity?, fit?,
-position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when none is set), `unseen`
+position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when none is set),
+`paneBackgrounds` (the per-pane overrides set via `session background --pane`, a `{left?, right?,
+scratch?}` object of the same specs; an absent pane inherits `background`; never the effective value;
+omitted when no pane has one), `unseen`
 (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session seen` — omitted
 when zero), `fontSize`/`splitFontSize`/`scratchFontSize` (the LIVE font size in points of each pane —
 the read side of `font --pane`; each omitted when that pane isn't realized. `fontSize` tracks the
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
 `font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes and a
 promoted survivor are live-only — read them back here rather than from the snapshot), and `surfaces` (array
-of `{id, kind, active, visible, backedByZmx?}` where `kind` is
+of `{id, kind, active, visible, backedByZmx?, lead?}` where `kind` is
 `left`|`right`|`scratch`|`overlay`|`overlay-left`|`overlay-right`).
-Primary/split surfaces report `backedByZmx`; scratch and overlays omit it.
+Primary/split surfaces report `backedByZmx`; scratch and overlays omit it. `lead` is `leader`, `follower`
+or `unowned`: whether this Mac's window size is the one the pane's program sees. A pane that does not
+lead is covered. Absent until the pane's terminal reports one (see Remote sessions).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
@@ -579,6 +585,9 @@ error keeps those names for compatibility.
   Works when the split is shown or hidden and under zoom/dashboard. Errors when there is no split or a
   surface is not ready. The new primary supplies `tree`'s `cwd`/`title`/`foreground`/`restoreCommand`/
   `commandWait`; the other side supplies `splitCwd`/`splitForeground`/`splitRestoreCommand`/`splitCommandWait`.
+- `session lead [--pane left|right] [--target] [--window W]`: take the lead of a pane for this Mac, as a
+  key press on its cover does; the pane is then covered on the other Mac. Ok when it already leads,
+  `pane has no lead to take` when its terminal reports none. Read back `surfaces[].lead`.
 - `session scratch [on|off|toggle] [--command CMD] [--target] [--window W]` — a third, full-coverage
   shell that renders like a full overlay but behaves like the split. `off` hides it keep-alive; typing
   `exit` in it closes it and the next `on` spawns a fresh shell. `on` selects the target first (the
@@ -676,8 +685,10 @@ error keeps those names for compatibility.
   trimmed of outer spaces and rejected if empty, over 256 UTF-8 bytes, or carrying any control character or
   line/paragraph separator; a rejected call leaves the previous context standing. It states durable purpose,
   not current activity: it persists across quit, relaunch and restore, and nothing expires it. A duplicated
-  session starts without one. A set or clear that CHANGES the value emits `tree.changed`; re-setting the
-  same value emits nothing. The tree's `context` field is the read side, omitted when unset. In the title
+  session starts without one. A set or clear that changes the SHOWN value emits `tree.changed`; re-setting
+  the same value emits nothing. The tree's `context` field is the read side, omitted when unset. A session
+  attached from another Mac also shows that Mac's context when it has none of its own (see Remote
+  sessions); that mirrored value is never persisted, and setting the text it already shows emits nothing. In the title
   bar it takes line two in normal mode (replacing the cwd/terminal-title detail) and follows the session and
   window names on line one in compact mode, where a long value tail-truncates before the names do. Settings
   ▸ Interface ▸ Title Bar ▸ "Session context" hides it without clearing it.
@@ -747,11 +758,15 @@ error keeps those names for compatibility.
   the requested presentation returns when Reduce Transparency is disabled. Errors on a malformed color
   (must be a `#rrggbb` hex value).
 - `session background clear [--target] [--window W]` — remove the session's background.
-  Per session (applies to the session's pane(s)); persisted, so it survives a relaunch. An image/text
-  watermark makes the pane render OPAQUE, overriding window translucency (an image is invisible at 0
-  background-opacity); a `color` instead honors the Settings window translucency. Read the current
-  background back from a session's `background` field in `tree --json` (a `{kind, colorHex, …}` object,
-  omitted when none).
+  An image/text watermark makes the pane render OPAQUE, overriding window translucency (an image is
+  invisible at 0 background-opacity); a `color` instead honors the Settings window translucency.
+- All four take `--pane left|right|scratch` (aliases `primary`/`top`, `split`/`bottom`): set or clear that
+  pane's own override instead of the persisted session default. A pane without one inherits the default;
+  `clear --pane` returns it to inheriting; set/clear without `--pane` never touch overrides. The override
+  follows its terminal (`session swap`, a closed left pane promoting the right); left/right persist, a
+  scratch override ends with that scratch terminal. Errors `session has no split pane` / `session has no
+  scratch terminal` when the pane does not exist, and `--pane must be left, right, or scratch` on a bad
+  name. Read the default from `background` and pane overrides from `paneBackgrounds` in `tree --json`.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no
@@ -833,7 +848,7 @@ error keeps those names for compatibility.
   file. Errors `no overlay`, `overlay not realized` and `no overlay to read: the slot holds a hud` as
   `session overlay copy` does, plus `failed to read surface buffer` on a real read failure. It has no
   `no selection`: a blank realized screen is `ok` with an empty string.
-- `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
+- `session hud [open] <message>|--file FILE [--markdown] [--font-size PT] [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
   — post a PASSIVE message panel over the session and return its id. It occupies the same session-wide slot
   as `session overlay open`, but carries a message rather than a program: it takes no input, the session
   keeps first responder and stays typable, and the terminal behind it is neither dimmed nor click-blocked.
@@ -864,7 +879,7 @@ error keeps those names for compatibility.
   without stopping its helper, and showing it restores the panel. Destroying the target closes the HUD.
   A corner is what keeps a long-lived panel out of the text the user is reading. The bare `top`/`bottom`
   this argument shipped with are still accepted for `top-center`/`bottom-center`, and `hud.position` reports
-  the canonical anchor whichever spelling was sent. The panel is measured from the message against the session's terminal font on BOTH
+  the canonical anchor whichever spelling was sent. The panel is measured from the message against its own font on BOTH
   axes separately — width from the longest wrapped line, height from the number of them — so a title and a
   subtitle give a wide, short panel rather than a square one. `--size-percent N` (1–100) overrides the WIDTH
   only; the height always follows the message, since a caller-set height could only strand it in an empty
@@ -875,9 +890,30 @@ error keeps those names for compatibility.
   background, rides the panel's body file, so an update can change it. Both read back, as
   `hud.backgroundColor` and `hud.textColor`. Message and detail are capped at 256 characters and
   reject control characters — newline included, since the panel prints straight into a live terminal and
-  `--detail` is the second line on offer. Errors `session.hud.open requires a message` on a missing or
+  `--detail` is the second line on offer.
+  `--markdown` renders the message as standard markdown (CommonMark plus GFM tables): headings, bold, italic,
+  strikethrough, nested lists, code blocks, block quotes, rules and tables; a link shows its label, an image its
+  alt text, and raw HTML stays literal. It raises the message cap to 4096 characters and allows newlines and tabs
+  in it; every other control character is still refused and the detail keeps the plain rules. Markdown
+  semantics apply: a single newline inside a paragraph is a space, so end a line with two spaces or a
+  backslash, or use list items, to keep rows apart; lists always render tight. Text wraps at 60 columns while
+  table rows stay intact, and the rows sit left-aligned as one block. What does not fit the panel is clipped:
+  a row too wide ends in `…`, and rows past the panel's height give way to a dim `… N more`, itself clipped
+  in a narrow panel. A table is framed in box-drawing borders with a rule under its header; trailing
+  all-empty table rows and an all-empty header row are not shown, the latter leaving no header rule.
+  A markdown message that renders nothing visible is refused like an empty one.
+  `--file FILE` reads the message from a UTF-8 file instead of the argument, exactly one of the two, once per
+  command (nothing watches the file), dropping one trailing newline. `agtermctl` reads it before sending and
+  fails there with `cannot read --file <path>: <reason>` or `--file <path> is not valid UTF-8`; passing both or
+  neither fails with `MESSAGE and --file are mutually exclusive` or `provide MESSAGE or --file`, and every cap
+  still applies to what is sent. `--font-size PT` (6–72) sets the
+  panel's own font, used for its surface and its measurement; it is fixed for the panel's life, and omitting
+  it uses the session's size at open. A window resize or divider drag re-measures the panel by itself.
+  Errors `session.hud.open requires a message` on a missing or
   empty message, `hud text must not contain control characters`, `hud message too long (max 256
-  characters)` / `hud detail too long (max 256 characters)`, `invalid color: <value> (#rrggbb)`,
+  characters)` (4096 with `--markdown`) / `hud detail too long (max 256 characters)`,
+  `font-size must be 6...72 points` from the CLI (`session.hud.open: --font-size must be 6...72 points` from
+  the raw protocol), `invalid color: <value> (#rrggbb)`,
   `invalid text color: <value> (#rrggbb)`,
   `invalid position: <value> (top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right|top|bottom)`,
   `invalid spinner: <value> (bar|braille|circle|blocks|dot|none)`,
@@ -886,7 +922,7 @@ error keeps those names for compatibility.
   and `session.hud.open: --size-percent must be 1...100`.
   A second `hud` replaces the first; a `session overlay open` replaces a HUD, while a HUD over a RUNNING
   program is refused with `overlay already open` — a message is replaceable, a program is not.
-- `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
+- `session hud update <message>|--file FILE [--markdown] [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
   — repaint the live panel in place: no re-spawn, no blink, the panel does not flicker. It REPLACES the
   whole spec rather than patching it, so `--detail`, the spinner, `--position`, `--text-color`, and pane selectors must be
   repeated to survive and an omitted one drops. `--spinner-style` may name a DIFFERENT style than the panel
@@ -895,7 +931,10 @@ error keeps those names for compatibility.
   validation. Pane lifecycle differs: update accepts a hidden target, while a missing split errors
   `session has no split` instead of `pane not visible`. There is no `--background-color`: the surface reads
   that once at creation, so only a fresh `session hud` can change it, and `tree` keeps reporting the creation
-  color across updates. Errors `no hud` when none is up.
+  color across updates. The same holds for the font: `update` takes no `--font-size`, and a raw protocol
+  update carrying `fontSize` is refused with
+  `session.hud.update: --font-size is fixed at open; reopen the hud to change it`. `--markdown` must be repeated
+  like every other option, or the panel returns to plain text. Errors `no hud` when none is up.
 - `session hud close [--target] [--window W]` — take the panel down and delete its message file. Errors
   `no hud` when none is up, so it is not idempotent. A program overlay in the same slot is left alone;
   `session overlay close`, ⌘W, and closing the session or its window also tear a HUD down and delete that
@@ -1670,7 +1709,8 @@ The header also carries `endpoint.executable` and `endpoint.socketDirectory`, wh
 needs to reach these daemons; a server older than remote sessions omits the key. It repeats the socket
 directory as the top-level `socketDirectory` too, so a caller attaches to a daemon instead of recomputing the
 hash of the state directory; a plain shell or a mosh session must carry that path in `ZMX_DIR` to find them
-at all.
+at all. A row whose daemon was created before the recorded first launch with this zmx build carries
+`outdated: true` (omitted otherwise).
 
 `agtermctl zmx prune` — kill the daemons no pane claims and nothing is attached to. It refuses outright on
 an incomplete or conflicted inventory. The gate is checked and revalidated rather than atomic: zmx has no
@@ -1691,12 +1731,14 @@ daemon of the pane you are typing in can kill the calling `agtermctl` before it 
 `agtermctl zmx reset --force` — Agterm ▸ Reset Live Sessions… without the dialog. A live session created
 before the session host existed keeps its own macOS permission identity, so every new version of a tool in
 it asks for the microphone again; the reset ends those sessions' processes at the next launch and recreates
-them under the host, starting their captured commands again where possible. agterm quits and reopens itself
+them under the host, starting their captured commands again where possible. It also covers every session
+whose daemon predates the recorded first launch with this zmx build: live sessions keep the zmx they started
+with through updates, so they miss a zmx change until recreated. agterm quits and reopens itself
 right after answering, so running work in the affected sessions stops and agent conversations may need to be
-resumed by hand; run from inside one of those sessions it kills the calling shell. Sessions already
-supervised are left alone. It refuses outside Live sessions mode, while a mode change waits for a restart,
+resumed by hand; run from inside one of those sessions it kills the calling shell. Other supervised
+sessions are left alone. It refuses outside Live sessions mode, while a mode change waits for a restart,
 on an incomplete pane inventory, and when nothing needs resetting. The reply carries `result.liveReset`
-with the session and pane counts; the next launch re-checks every session and only ever resets fewer than
+with the session and pane counts, plus `outdated` sessions when any; the next launch re-checks every session and only ever resets fewer than
 confirmed, and the tree's top-level `liveReset` reports `pending` until the quit and `last` for the launch
 that consumed the reset.
 
@@ -1750,15 +1792,27 @@ and the exit status.
 
 A program in an attached session runs on the origin and talks to the origin's agterm, so what it asks
 agterm to draw would show there only. Every attach therefore also opens a presentation stream, and this
-Mac mirrors the origin session's status, its `notify` notifications and its HUD. Nothing has to be set up
-beyond the `agtermctl` PATH precondition above. What to expect:
+Mac mirrors the origin session's status, its `session context`, its `notify` notifications, its HUD and
+the layout of panes already attached.
+Nothing has to be set up beyond the `agtermctl` PATH precondition above. What to expect:
 
+- The origin's context shows in this Mac's title bar and as the row's `context` in `tree`. A
+  `session context` set on this Mac's row wins over it, and `--clear` here removes only that local value,
+  so the origin's latest context shows again. It cannot blank the origin's. An origin running an agterm
+  that predates context mirroring still connects and mirrors status and HUD, with no context.
+
+- Two existing remote panes follow the origin's split axis, hide/show and swaps. Local panes, divider
+  ratio and focus stay local. A layout never opens a pane: an origin split opened later requires closing
+  and attaching the row again, and a replica closed here stays closed. Older origins leave layout alone.
+- Confirmed origin removal closes its replica without acknowledgement, even if ssh already exited and
+  left a hold prompt. The last replica waits for its ssh exit and may then close the row. A pending local
+  split prevents automatic primary removal; an ordinary disconnect still holds for a keypress.
 - `presentation.state` in `tree` reports the stream. `connected` means mirroring works; it is not a claim
   about the panes' ssh connections. An origin too old for it reads `unsupported` and the attach still works.
-- When the stream drops, the mirrored status and HUD are cleared here and come back on reconnect. Retries
+- When the stream drops, the mirrored status, context and HUD are cleared here and come back on reconnect. Retries
   run after 1, 2, 4, 8, 16 then 30 seconds, slow to every 5 minutes after eight failures in a row, and
   never stop.
-- A notification raised while the stream is down is never shown here; status and HUD are restored.
+- A notification raised while the stream is down is never shown here; status, context and HUD are restored.
 - A terminal notification (OSC 9/777) is not mirrored: it already arrives in the pane's bytes and is
   raised here once. A mirrored `notify` records a `notify` event on each app.
 - A HUD with `--hide-after` closes here on this Mac's own countdown of the time the origin had left, so
@@ -1802,18 +1856,22 @@ one opened after the attach-time split is closed), Duplicate Session, and New Se
 to open in the current session's directory. An explicit overlay `--cwd` is used as given. Quote both
 variables; an existing local path is not checked to be the same repository as the remote one.
 
-When another client leads at a different terminal size, local cursor and screen-text reads can disagree
-with the application's layout; automation relying on those reads, including the chat transport, is
-unsupported in that state.
+Each pane has ONE leading Mac, whose window size the program inside sees. `zmx attach` takes the lead in
+every pane at once; the same panes on the Mac the session runs on are covered ("in use from another Mac").
+Each pane's `lead` in `tree` reads `leader`, `follower` or `unowned`. It is absent when the pane has no
+daemon to lead, which is every local pane outside Live sessions mode (`agtermctl restore mode`), and when
+an agterm on either side predates the lead. `agtermctl session lead [--pane left|right]` takes the lead
+for this Mac, as pressing a key on the cover does.
+
+On the Mac the session RUNS on, a covered pane stays fully drivable: `session type`, `session text` and
+`surface cursor` go through the session's daemon and answer for the real layout, so pane-to-pane
+automation is unaffected by who leads. On the ATTACHING Mac a covered pane refuses those three with
+`pane is in use on the Mac it runs on`; run `session lead` first.
 
 Both commands run ssh non-interactively (`BatchMode`), so key-based auth must already work for the host —
-a password or host-key prompt is a failure, not a question. An attach joins as a follower and pinned zmx
-keeps one leader per pane, so the pane arrives at the OTHER machine's window size and drops input until
-the first CLASSIFIED key (a printable character, Return, Tab or Backspace) takes the lead and reflows
-it. Until then the mouse, focus reporting and Ctrl-L do not reach the far side, so a mouse-driven TUI looks
-dead, and an ordinary control key may not wake it. Because the lead is per pane, typing in one half of a split leaves the other at the
-remote's geometry, and after the session closes the far side keeps that size until something there resizes
-it.
+a password or host-key prompt is a failure, not a question. Against an origin whose agterm predates the
+lead, the attach follows instead: the pane arrives at the OTHER machine's window size and drops input
+until a typed key (a printable character, Return, Tab or Backspace) takes the lead.
 
 Every zmx command needs a running agterm: only the app can join its live windows, its pending closes and
 its persisted snapshots against what zmx reports. With agterm stopped there is nothing to ask.

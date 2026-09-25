@@ -20,19 +20,24 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     public let cwd: String?
     /// Actual zmx backing for primary/split surfaces; nil for ephemeral surfaces or older servers.
     public let backedByZmx: Bool?
+    /// Whether this pane's client leads its zmx daemon: `leader`, `follower` or `unowned`. A pane that
+    /// does not lead is covered and its reads come from the daemon. Nil until the pane's zmx reports a
+    /// role, which a zmx or an origin without explicit leadership never does.
+    public let lead: ZmxLeadRole?
 
     public init(id: String, kind: String, active: Bool, visible: Bool) {
         self.init(id: id, kind: kind, active: active, visible: visible, cwd: nil, backedByZmx: nil)
     }
 
     public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil,
-                backedByZmx: Bool?) {
+                backedByZmx: Bool?, lead: ZmxLeadRole? = nil) {
         self.id = id
         self.kind = kind
         self.active = active
         self.visible = visible
         self.cwd = cwd
         self.backedByZmx = backedByZmx
+        self.lead = lead
     }
 }
 
@@ -75,12 +80,19 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
     /// duration rather than the time left: each successful open or update restarts it, so a caller who wants
     /// a countdown holds its own clock from the call it made.
     public let hideAfter: Double
+    /// markdown reports whether the message renders as markdown. Always present; an absent key decodes as
+    /// false.
+    public let markdown: Bool
+    /// fontSize is the caller's requested point size, nil/omitted when the panel inherits the session's.
+    public let fontSize: Double?
 
     public init(message: String, detail: String? = nil, spinner: String = HudSpinner.noneName,
                 backgroundColor: String? = nil, textColor: String? = nil,
                 sizePercent: Int? = nil, heightPercent: Int? = nil, position: String,
-                pane: String? = nil, hideAfter: Double = 0) {
+                pane: String? = nil, hideAfter: Double = 0, markdown: Bool = false, fontSize: Double? = nil) {
         self.hideAfter = hideAfter
+        self.markdown = markdown
+        self.fontSize = fontSize
         self.message = message
         self.detail = detail
         self.spinner = spinner
@@ -90,6 +102,27 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
         self.heightPercent = heightPercent
         self.position = position
         self.pane = pane
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case message, detail, spinner, backgroundColor, textColor, sizePercent, heightPercent, position, pane
+        case hideAfter, markdown, fontSize
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        message = try c.decode(String.self, forKey: .message)
+        detail = try c.decodeIfPresent(String.self, forKey: .detail)
+        spinner = try c.decode(String.self, forKey: .spinner)
+        backgroundColor = try c.decodeIfPresent(String.self, forKey: .backgroundColor)
+        textColor = try c.decodeIfPresent(String.self, forKey: .textColor)
+        sizePercent = try c.decodeIfPresent(Int.self, forKey: .sizePercent)
+        heightPercent = try c.decodeIfPresent(Int.self, forKey: .heightPercent)
+        position = try c.decode(String.self, forKey: .position)
+        pane = try c.decodeIfPresent(String.self, forKey: .pane)
+        hideAfter = try c.decode(Double.self, forKey: .hideAfter)
+        markdown = try c.decodeIfPresent(Bool.self, forKey: .markdown) ?? false
+        fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize)
     }
 }
 
@@ -173,8 +206,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// not, so an unparked row adds no field. The read side of `session.park`. agterm sets the mark and
     /// dims the row; killing and restarting the process belongs to whoever asked for the mark.
     public let parked: Bool?
-    /// What the session is FOR, the read side of `session.context`; nil/omitted when none is set. Durable
-    /// purpose, so it survives a relaunch and only an explicit `session.context clear` removes it.
+    /// What the session is FOR: `Session.effectiveContext`, so the local `session.context` value or, on an
+    /// attached row without one, the origin's mirrored context. Nil/omitted when neither is set.
     public let context: String?
     /// For a `--command` session, whether it HOLDS its surface after the command exits (`session.new
     /// --command … --wait`) instead of closing; nil/omitted for a plain or non-holding session. The read
@@ -239,6 +272,9 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// The session's background watermark spec; nil/omitted when none is set. The read side of
     /// `session.background`.
     public let background: BackgroundWatermark?
+    /// paneBackgrounds is the read side of `session.background --pane`: overrides only, never effective values,
+    /// so an absent pane inherits `background`; omitted when no pane has one.
+    public let paneBackgrounds: PaneBackgrounds?
     /// The session's unseen-notification badge count; nil/omitted when zero. `notify` (and terminal OSC
     /// 9/777) raise it, `session.seen` clears it. Ephemeral like `status` — never persisted, resets on restart.
     public let unseen: Int?
@@ -282,7 +318,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
 
     /// This Mac's presentation stream to the session's origin, on an attached session only. `state` is
     /// `connecting`, `connected`, `unsupported` for an origin that predates the stream, or `failed` with
-    /// the reason in `error`. It says whether status, notifications and HUD are being mirrored, never
+    /// the reason in `error`. It says whether status, context, notifications and HUD are being mirrored, never
     /// whether the panes' own ssh connections are up.
     public let presentation: ControlPresentationNode?
     /// The presentation streams on this session: how many mirror it, a count of connections so two rows
@@ -306,8 +342,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
                 statusShape: String? = nil, statusChangedAt: Double? = nil,
-                background: BackgroundWatermark? = nil, unseen: Int? = nil, turn: Int? = nil,
-                bookmarks: Int? = nil,
+                background: BackgroundWatermark? = nil, paneBackgrounds: PaneBackgrounds? = nil, unseen: Int? = nil,
+                turn: Int? = nil, bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
                 surfaces: [ControlSurfaceNode]? = nil, realized: Bool? = nil,
                 context: String? = nil, remoteHost: String? = nil, splitCwd: String? = nil,
@@ -351,6 +387,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.statusShape = statusShape
         self.statusChangedAt = statusChangedAt
         self.background = background
+        self.paneBackgrounds = paneBackgrounds
         self.unseen = unseen
         self.turn = turn
         self.bookmarks = bookmarks

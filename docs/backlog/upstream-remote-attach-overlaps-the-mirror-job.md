@@ -29,3 +29,7 @@ also about which of the two mirroring paths carries the origin's panel, not only
 fields.
 
 Not a defect. Nothing in the merge broke, and both paths work today.
+
+The 2026-09-25 merge widened it again. An upstream attach now also mirrors the origin's `session.context`
+(#634), follows the origin's split layout (#636), and takes an explicit zmx lead with a cover on the
+following pane (#635). None of it reaches a mirror-job row, whose pane is a plain mosh `session new --command`.

@@ -544,7 +544,7 @@ public final class WindowLibrary {
             .map { $0.workspaces.flatMap(\.sessions).map(\.id) }
             ?? persistenceStore(for: id).load().workspaces.flatMap(\.sessions).map(\.id)
         for sessionID in doomed {
-            WatermarkStorage.removeRenderedText(sessionID: sessionID, stateDir: directory)
+            WatermarkStorage.removeAllRenderedText(sessionID: sessionID, stateDir: directory)
         }
         stores[id] = nil
         openSetVersion += 1

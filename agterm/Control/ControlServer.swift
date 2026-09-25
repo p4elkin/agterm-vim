@@ -65,6 +65,8 @@ final class ControlServer {
     /// Live HUD auto-hide timers, one per session. `ControlServer+Hud` owns the logic; the state sits here
     /// because an extension cannot hold it. Main-actor only.
     var hudAutoHide: [UUID: HudAutoHide] = [:]
+    /// hudGeometryPending holds the sessions whose HUD body rewrite is queued for this main-actor turn.
+    var hudGeometryPending: Set<UUID> = []
     /// The clock HUD expiry deadlines are stamped from.
     var hudClock: () -> Date = Date.init
 
@@ -164,6 +166,8 @@ final class ControlServer {
     /// backend is unavailable rather than pretending an empty listing.
     let zmxClient: ZmxClient?
     let liveAttributionProbe: LiveAttributionProbe
+    /// zmxOutdatedBefore is the launch's `ZmxBuildRecord` cutoff; nil turns the outdated reset reason off.
+    let zmxOutdatedBefore: Date?
 
     /// Runs the ssh invocations behind the remote commands. Injectable so hosted tests drive them against
     /// a fake instead of a second Mac.
@@ -188,6 +192,7 @@ final class ControlServer {
     init(library: WindowLibrary, actions: AppActions, settingsModel: SettingsModel, identity: AppIdentity,
          launchRestoreMode: RestoreMode = GhosttyApp.shared.launchRestoreMode,
          zmxForegroundResolver: ZmxForegroundResolver? = nil, zmxClient: ZmxClient? = nil,
+         zmxOutdatedBefore: Date? = nil,
          liveAttributionProbe: LiveAttributionProbe = LiveAttributionProbe(),
          remoteRunner: (any RemoteCommandRunner)? = nil,
          statusSoundPlayer: StatusSoundPlayer = .shared,
@@ -202,6 +207,7 @@ final class ControlServer {
         self.launchRestoreMode = launchRestoreMode
         self.zmxForegroundResolver = zmxForegroundResolver
         self.zmxClient = zmxClient
+        self.zmxOutdatedBefore = zmxOutdatedBefore
         self.liveAttributionProbe = liveAttributionProbe
         self.identity = identity
         self.resolver = ControlTargetResolver(library: library)
@@ -344,7 +350,7 @@ final class ControlServer {
     /// same moment, and the kernel releases it when a force-quit kills the holder — which is the case the
     /// `unlink` in `start()` exists for.
     private func acquireOwnership() -> Bool {
-        let lockPath = socketPath + ".lock"
+        let lockPath = ControlResolve.ownershipLockPath(forSocket: socketPath)
         let fd = open(lockPath, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard fd >= 0 else {
             log("control lock open(\(lockPath)) failed: \(String(cString: strerror(errno)))")
@@ -585,8 +591,8 @@ final class ControlServer {
                 .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
                 .workspaceFocus,
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand,
-                .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionScratch, .sessionFocus, .sessionResize,
-                .surfaceZoom,
+                .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionScratch, .sessionFocus,
+                .sessionResize, .surfaceZoom,
                 .surfaceCursor,
                 .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
                 .sessionMark,

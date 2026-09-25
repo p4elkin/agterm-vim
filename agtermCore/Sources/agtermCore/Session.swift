@@ -153,10 +153,11 @@ public final class Session: Identifiable {
     /// process (`agterm-park`), never by the app — agterm marks the row and dims it, and stops nothing
     /// itself. Persisted, so a parked row comes back parked.
     public var parked: Bool = false
-    /// What the session is FOR, set only over `session.context` and shown in the title bar. Durable purpose
-    /// held until an explicit clear, never a claim about current activity — nothing expires it and no command
-    /// exit drops it. Persisted; validated by `validateContext` before it lands here.
+    /// Local context, persisted for local sessions; clearing reveals any mirrored context.
     public var context: String?
+    /// Ephemeral origin context, observed independently of the stream's bookkeeping.
+    public internal(set) var mirroredContext: String?
+    public var effectiveContext: String? { context ?? mirroredContext }
 
     /// Changes only when one live primary-slot surface replaces another; SwiftUI hosts fold it into their
     /// identity, so lazy nil→first creation stays at zero while split-survivor promotion remounts the view.
@@ -221,6 +222,9 @@ public final class Session: Identifiable {
     /// Applied app-side as a per-surface ghostty config overlay (`WatermarkConfig`) at creation, on change, and
     /// after a global config reload. Persisted, so it survives a relaunch (`.text` re-renders its PNG).
     @ObservationIgnored public var backgroundWatermark: BackgroundWatermark?
+
+    /// paneBackgrounds overrides `backgroundWatermark` per pane.
+    @ObservationIgnored public var paneBackgrounds = PaneBackgrounds()
 
     /// A command to run as the session's process instead of the login shell (kitty's `launch <cmd>`, ghostty's
     /// `command`), set via `session.new --command`. The surface factory reads it once; the session closes when
@@ -342,6 +346,11 @@ public final class Session: Identifiable {
     /// both axes made every panel as tall as it was wide. Observed — the deck reads it to frame the panel.
     /// Cleared with the rest of the HUD state, never persisted.
     public var hudHeightPercent: Int?
+
+    /// hudFontSize is the point size the live HUD's surface was created at: the caller's `HudSpec.fontSize`
+    /// or the session's size at open. Measuring reads it, so a session zoom after open cannot change the
+    /// cell a HUD is sized with. Cleared with the rest of the HUD state, never persisted.
+    @ObservationIgnored public var hudFontSize: Double?
 
     /// Bumped on every overlay-slot OPEN so the deck can key the panel's view identity on it. A HUD is
     /// REPLACED in place — `closeOverlay` then `openOverlay` inside one store call — so `overlayActive`
@@ -482,10 +491,12 @@ public final class Session: Identifiable {
         let withdraw = onHudWithdrawn
         onHudDiscarded = nil
         onHudWithdrawn = nil
+        onHudGeometryChange = nil
         hudSpec = nil
         hudPaneIdentity = nil
         hudFile = nil
         hudHeightPercent = nil
+        hudFontSize = nil
         hudExpiresAt = nil
         hudResizedWidthPercent = nil
         remotePresentation?.hudBridged = false
@@ -514,6 +525,10 @@ public final class Session: Identifiable {
     /// Cancels the app's auto-hide timer for this panel; `discardHudBody` calls and clears it. Every teardown
     /// that drops a HUD already routes through that one method, which is why the hook hangs there.
     public var onHudDiscarded: (() -> Void)?
+
+    /// onHudGeometryChange tells the app the live HUD panel's measured size changed, so it can rewrite the
+    /// grid in the body header; `discardHudBody` clears it with the rest of the HUD state.
+    @ObservationIgnored public var onHudGeometryChange: (() -> Void)?
 
     /// Whether the overlay slot holds a HUD rather than a caller's program. The one predicate separating the
     /// two occupants, so the deck's passivity exemptions and the program-overlay questions below cannot
@@ -636,6 +651,13 @@ public final class Session: Identifiable {
     public var subtitleDetail: String {
         if let title = focusedOscTitle?.trimmedOrNil, title != displayName { return title }
         return focusedCwd
+    }
+
+    /// `subtitleDetail` led by `remoteHost` for a session attached from another Mac. An attached session
+    /// reports its cwd on that Mac, so without the host its row reads exactly like a local one.
+    public var switcherDetail: String {
+        guard let remoteHost else { return subtitleDetail }
+        return "\(remoteHost) · \(subtitleDetail)"
     }
 
     /// The live `currentCwd` once a PWD report arrived, else `initialCwd`. Always the PRIMARY pane's, never
@@ -969,51 +991,6 @@ public final class Session: Identifiable {
         searchTotal = nil
         searchSelected = nil
         searchSurface = nil
-    }
-}
-
-/// The outcome of checking a `session.context` value, carrying the message the control response reports
-/// on rejection so the caller learns which rule it broke.
-enum SessionContextValidation: Sendable, Equatable {
-    case valid(String)
-    case invalid(String)
-}
-
-extension Session {
-    /// Largest accepted `context`, in UTF-8 BYTES. It bounds the snapshot and the JSON read-back, not the
-    /// rendered width — the title bar truncates for pixels on its own. A character count is not a byte
-    /// bound, so anything non-ASCII would slip past one.
-    nonisolated static let contextByteLimit = 256
-
-    /// Checks a `session.context` value, trimming outer spaces and returning the trimmed string. Rejects an
-    /// empty result, one over `contextByteLimit`, and any control character or line/paragraph separator.
-    /// A blank set is a rejection rather than a clear: `--clear` is the only clearing form, so there is no
-    /// second undocumented path to nil.
-    ///
-    /// The scan reads `raw`, NOT `trimmed`: trimming first would silently repair `"PR #517\n"` into a valid
-    /// value, which both accepts input the contract rejects and lets the snapshot decoder rewrite a
-    /// hand-edited value instead of dropping it.
-    ///
-    /// `nonisolated` so `SessionSnapshot`'s decoder can drop an invalid stored value; it only reads a String.
-    nonisolated static func validateContext(_ raw: String) -> SessionContextValidation {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return .invalid("context must not be empty (use --clear to remove it)") }
-        if trimmed.utf8.count > contextByteLimit {
-            return .invalid("context must be at most \(contextByteLimit) UTF-8 bytes")
-        }
-        if raw.unicodeScalars.contains(where: breaksContextLine) {
-            return .invalid("context must not contain control characters or line breaks")
-        }
-        return .valid(trimmed)
-    }
-
-    /// Whether a scalar would break the single-line title-bar label. `lineSeparator` and
-    /// `paragraphSeparator` (U+2028/U+2029) are NOT control characters, so a `Cc`-only check misses both.
-    private nonisolated static func breaksContextLine(_ scalar: Unicode.Scalar) -> Bool {
-        switch scalar.properties.generalCategory {
-        case .control, .lineSeparator, .paragraphSeparator: return true
-        default: return false
-        }
     }
 }
 

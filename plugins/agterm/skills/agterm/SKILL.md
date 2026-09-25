@@ -219,6 +219,7 @@ omitted before any set, and refreshed by every set including idle and a re-push 
 `now - statusChangedAt` is how long ago the status was last written; automatic and manual clears count
 too; ephemeral, so it does not survive a restart), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
+`paneBackgrounds` (per-pane overrides from `session background --pane`; an absent pane inherits `background`),
 `unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
 seen`; omitted when zero), `commandWait`/`splitCommandWait` (whether either pane's `--command` was
 created with `--wait` to hold open after exit, the read side of `session new --wait`; each omitted for a
@@ -228,7 +229,7 @@ overlay resize` for a record-then-restore zoom), `paneOverlays` (the panes cover
 `["left"]`, `["right"]` or `["left","right"]`, omitted when neither is; the read side of `session overlay
 open --pane`, independent of the session-wide `overlay` flag),
 `hud` (the message panel occupying the session-wide slot — `{message, detail?, spinner, backgroundColor?,
-textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter}`, the two percents being the panel's width and height
+textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?}`, the two percents being the panel's width and height
 shares and `hideAfter` the configured auto-hide in seconds, 0 for a panel that stays — omitted when none is
 up; the read side of `session hud`. `position` and `spinner`
 always report the EFFECTIVE value, `center` and a static panel's `none` included, so a caller who omitted
@@ -374,6 +375,9 @@ omitted when expanded).
   legacy left/right behavior. The GUI actions are ⌘D for vertical and ⌘⇧D for horizontal; either
   transposes a shown split of the other orientation. Hide keeps it alive; `close` destroys the pane and
   whatever runs in it.
+- `session lead [--pane left|right]`: for a session shared with another Mac, take the lead of a pane here
+  (what a key press on its "in use" cover does). `tree`'s `surfaces[].lead` reads `leader`/`follower`/
+  `unowned`. On the Mac the session runs on, a covered pane still takes `session type`/`text`.
 - `session swap`: exchange the two terminals' physical positions and primary/split roles without restarting
   them. Focus follows the terminal; axis and divider ratio stay fixed. Works on shown or hidden splits and
   under zoom/dashboard; errors when there is no split or either surface is not ready. Read the new primary
@@ -402,8 +406,10 @@ omitted when expanded).
   title bar: a PR number, an issue, the task in hand. Use it when you
   start work a session's name cannot describe. Exactly one of TEXT or `--clear`; a blank TEXT is an error,
   not a second way to clear. Trimmed; max 256 UTF-8 bytes; no control characters (tabs included) or line
-  breaks. Persists
-  across a relaunch until cleared. Read it back from the tree node's `context` field.
+  breaks. Persists across a relaunch for local sessions. On an attached row, a local value overrides the
+  origin's mirrored context; `--clear` removes that override and reveals the origin's latest value.
+  The mirrored value is never persisted. Read the shown value from the tree node's `context` field;
+  setting the text already shown emits no `tree.changed` event.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a
   no-op when already zero. Read the current count from the tree node's `unseen` field. Use it so an
@@ -424,9 +430,11 @@ omitted when expanded).
   it must not carry secrets. See examples.md.
 - `session background image <path> [--opacity F] [--fit contain|cover|stretch|none] [--position P] [--repeat]` ·
   `session background text <text> [--color #rrggbb] [--opacity F] [--fit ...] [--position ...]` ·
-  `session background color <#rrggbb>` · `session background clear` — composite an image (PNG/JPEG) or rasterized text
-  behind the terminal as a watermark (auto-fitting the window, re-fits on resize), or set a solid
-  terminal background color. Per session; survives restart. `--opacity` 0.0–1.0. (An image/text watermark
+  `session background color <#rrggbb>` · `session background clear`, each `[--pane left|right|scratch]` — composite an
+  image (PNG/JPEG) or rasterized text behind the terminal as a watermark (auto-fitting the window, re-fits on resize),
+  or set a solid terminal background color. Without `--pane` it is the session default, which survives restart;
+  `--pane` sets that pane's override instead (left/right survive restart, a scratch one ends with the scratch),
+  and `clear --pane` returns the pane to the default. `--opacity` 0.0–1.0. (An image/text watermark
   renders the pane opaque, overriding window translucency, so it shows; a `color` takes no opacity and
   honors the Settings window translucency instead.)
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
@@ -667,7 +675,8 @@ stale-socket cleanup is not a kill · `zmx kill --target ID --pane left|right --
 daemon and the process in it; all three are required because this kills a backend process that reaches a
 pane no window is showing and every client attached to it, and none of its outcomes gets the undo grace ·
 `zmx reset --force` - Agterm ▸ Reset Live Sessions… without the dialog: ends every live session this app
-does not supervise at the next launch and recreates it under the session host, quitting and reopening
+does not supervise, or that predates the last Live sessions update, at the next launch and recreates it under
+the session host, quitting and reopening
 agterm right after the reply; refused outside Live mode, on an incomplete inventory, and with nothing to
 reset ·
 `zmx tree [HOST]` - attachable sessions across EVERY open window, on another Mac with a HOST or this app
@@ -681,9 +690,10 @@ chosen open local window's current workspace (default: frontmost after discovery
 keeps the frontmost window unchanged; an invalid or closed target fails. Takes the ID from that
 listing, not the name, and resolves the remote again first, so a session that has gone fails instead of
 handing back a fresh shell wearing its name. Closing it here ends only this side's connection and it is
-never restored after a relaunch. The attached row mirrors the origin session's status, `notify`
-notifications and HUD over a stream that reconnects by itself ([details](reference.md#restore)); read
-`presentation.state` in `tree`, and expect mirrored status and HUD to clear while it is down. One
+never restored after a relaunch. The attached row mirrors the origin session's status, context, `notify`
+notifications, HUD and the layout of attached panes over a stream that reconnects by itself
+([details](reference.md#restore)); read
+`presentation.state` in `tree`, and expect mirrored status, context and HUD to clear while it is down. One
 attached row per session holds the presenter role: an `ask open` or `session overlay open` newly aimed at
 the session on the origin is handed to it, the overlay's program still runs once on the origin, and a remote
 `overlay close` replies when the cancel is requested

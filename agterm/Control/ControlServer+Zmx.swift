@@ -56,17 +56,18 @@ extension ControlServer {
         case .cancelled:
             return ControlResponse(ok: false, error: "zmx.reset was cancelled")
         case .confirmed(let selection):
-            let status = ControlLiveResetStatus(sessions: selection.sessionCount, panes: selection.targets.count, pending: true)
-            return ControlResponse(ok: true, result: ControlResult(text: LiveReset.dialogText(sessionCount: selection.sessionCount).body,
-                                                                    liveReset: status))
+            let outdated = selection.outdatedSessionCount
+            let status = ControlLiveResetStatus(sessions: selection.sessionCount, panes: selection.targets.count, pending: true,
+                                                outdated: outdated > 0 ? outdated : nil)
+            let text = LiveReset.dialogText(sessionCount: selection.sessionCount, outdatedSessions: outdated).body
+            return ControlResponse(ok: true, result: ControlResult(text: text, liveReset: status))
         }
     }
 
-    /// The panes Agterm ▸ Reset Live Sessions… would reset: every claim, open or saved, whose daemon leader
-    /// is orphaned or attributed to this app. Nil when the listing failed, which refuses the action.
+    /// liveResetSelection covers open and saved panes; nil when the listing failed, which refuses the action.
     func liveResetSelection() -> LiveReset.Selection? {
         guard let zmxClient, let records = zmxClient.sessionRecords() else { return nil }
-        return LiveReset.select(claims: library.paneClaims(), records: records,
+        return LiveReset.select(claims: library.paneClaims(), records: records, outdatedBefore: zmxOutdatedBefore,
                                 classify: liveAttributionProbe.classifier(endpoint: zmxClient.endpoint))
     }
 
@@ -85,8 +86,8 @@ extension ControlServer {
         let result = ZmxInventory.join(observed: observed, claims: walk.claims,
                                        inventoryComplete: walk.complete)
         let inventory = ControlZmxInventory(restore: restoreStatus(), result: result,
-                                            socketDirectory: client.socketDirectory,
-                                            endpoint: client.endpoint, liveReset: liveResetReadback())
+                                            socketDirectory: client.socketDirectory, endpoint: client.endpoint,
+                                            liveReset: liveResetReadback(), outdatedBefore: zmxOutdatedBefore)
         return ControlResponse(ok: true, result: ControlResult(zmx: inventory))
     }
 }
@@ -144,7 +145,8 @@ extension ControlServer {
                                                                       claims: walk.claims,
                                                                       inventoryComplete: walk.complete),
                                             socketDirectory: client.socketDirectory,
-                                            endpoint: client.endpoint, liveReset: liveResetReadback())
+                                            endpoint: client.endpoint, liveReset: liveResetReadback(),
+                                            outdatedBefore: zmxOutdatedBefore)
         // a live store IS the open-window test, the same one `openCounts` uses: a closed window has no
         // store, and its panes are not attachable from here anyway
         let windows = library.windows.compactMap { entry in
@@ -195,13 +197,15 @@ extension ControlServer {
         let right = byRole[.right]
         let primary: String
         let split: String?
+        // attaching is the user asking for the session HERE, so every pane claims the lead at once
+        let leads = (left: ZmxLeadAttachment(claim: true), right: ZmxLeadAttachment(claim: true))
         do {
             primary = try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: left,
-                                                          session: remote.name, pane: .left,
+                                                          session: remote.name, pane: .left, lead: leads.left,
                                                           transport: transport)
             split = try right.map {
                 try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: $0,
-                                                    session: remote.name, pane: .right,
+                                                    session: remote.name, pane: .right, lead: leads.right,
                                                     transport: transport)
             }
         } catch {
@@ -230,9 +234,15 @@ extension ControlServer {
                                      axis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)) ?? .leftRight)
         }
         var daemons = [created.paneIdentity: left]
-        if let right, let local = created.splitPaneIdentity { daemons[local] = right }
+        ZmxLeadBook.shared.begin(leads.left, pane: created.paneIdentity)
+        if let right, let local = created.splitPaneIdentity {
+            daemons[local] = right
+            ZmxLeadBook.shared.begin(leads.right, pane: local)
+        }
+        let origin = RemoteBinding.Origin(host: host, endpoint: tree.endpoint, sessionName: remote.name)
         store.bindRemote(RemoteBinding(remoteSessionID: remote.id, daemonsByLocalPane: daemons,
-                                       presentationVersion: tree.presentation), forSession: created.id)
+                                       presentationVersion: tree.presentation, origin: origin),
+                         forSession: created.id)
         // the row's created event fired inside `addSession`, before the binding existed
         startRemotePresentation(for: created)
         // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck

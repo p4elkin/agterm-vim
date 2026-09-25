@@ -24,6 +24,8 @@ public struct RemotePresentationEffects {
     public var hud: @MainActor (PresentationHud?) -> Void
     public var notify: @MainActor (PresentationNotify) -> Void
     public var connection: @MainActor (RemotePresentationConnection) -> Void
+    public var context: @MainActor (String?) -> Void
+    public var layout: @MainActor (PresentationLayout) -> Void
     public var mode: @MainActor (PresentationMode) -> Void
     /// Shows an ask the origin handed over; false when it cannot, which the client reports as a refusal.
     public var askRequest: @MainActor (PresentationAsk) -> Bool
@@ -39,18 +41,22 @@ public struct RemotePresentationEffects {
                 hud: @escaping @MainActor (PresentationHud?) -> Void,
                 notify: @escaping @MainActor (PresentationNotify) -> Void,
                 connection: @escaping @MainActor (RemotePresentationConnection) -> Void,
+                context: @escaping @MainActor (String?) -> Void = { _ in },
                 mode: @escaping @MainActor (PresentationMode) -> Void = { _ in },
                 askRequest: @escaping @MainActor (PresentationAsk) -> Bool = { _ in false },
                 askDismiss: @escaping @MainActor (PresentationAskRef) -> Void = { _ in },
                 overlayRequest: @escaping @MainActor (PresentationOverlay) -> Bool = { _ in false },
                 overlayClose: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
                 overlayResize: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
+                layout: @escaping @MainActor (PresentationLayout) -> Void = { _ in },
                 warn: @escaping @MainActor (String) -> Void) {
         self.status = status
         self.snapshotStatus = snapshotStatus
         self.hud = hud
         self.notify = notify
         self.connection = connection
+        self.context = context
+        self.layout = layout
         self.mode = mode
         self.askRequest = askRequest
         self.askDismiss = askDismiss
@@ -181,9 +187,13 @@ public final class RemotePresentationClient {
             failures = 0
             warnedReason = nil
             report(.connected)
+            if let layout = snapshot.layout { applyLayout(layout) }
             effects.snapshotStatus(snapshot.status)
             effects.hud(snapshot.hud)
+            effects.context(snapshot.context)
         case .status(let status): effects.status(status)
+        case .context(let context): effects.context(context)
+        case .layout(let layout): applyLayout(layout)
         case .hud(let hud): effects.hud(hud)
         case .notify(let notify): effects.notify(notify)
         case .ping: send(.ack, on: link)
@@ -200,6 +210,14 @@ public final class RemotePresentationClient {
         case .overlayResize(let change): effects.overlayResize(change)
         case .hello, .ack, .presenterAcquire, .askResolve, .askRejected, .overlayRejected, .overlayClosed, .unknown: break
         }
+    }
+
+    private func applyLayout(_ layout: PresentationLayout) {
+        guard layout.isValid else {
+            effects.warn("invalid layout")
+            return
+        }
+        effects.layout(layout)
     }
 
     private func launch() {

@@ -44,6 +44,7 @@ class MockControlActionsBase {
         case sessionSplit(target: String?, window: String?, String?, SplitAxis?, command: ControlSplitCommand?)
         case sessionSplitClose(target: String?, window: String?)
         case sessionSwap(target: String?, window: String?)
+        case sessionLead(target: String?, window: String?, pane: StatusPane?)
         case sessionScratch(target: String?, window: String?, String?, command: String?)
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
@@ -408,6 +409,11 @@ class MockControlActionsBase {
     func swapSessionPanes(_ target: String?, window: String?) async -> ControlResponse {
         calls.append(.sessionSwap(target: target, window: window))
         return nextSessionSwapResponse
+    }
+
+    func takeSessionLead(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse {
+        calls.append(.sessionLead(target: target, window: window, pane: pane))
+        return ControlResponse(ok: true, result: ControlResult(id: "session-id"))
     }
 
     func scratchSession(_ target: String?, window: String?, mode: String?,

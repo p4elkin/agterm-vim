@@ -119,7 +119,7 @@ s=$(agtermctl zmx tree studio.local --json |
 The row is marked remote and carries `remoteHost` in the tree. Closing it ends only this side's connection,
 and it does not come back after a relaunch.
 
-Status, `notify` and HUD calls made by a program inside that session show on both Macs. Check the
+Status, context, `notify` and HUD calls made by a program inside that session show on both Macs. Check the
 mirroring stream, which needs `agtermctl` on the far side's ssh PATH:
 
 ```sh
@@ -450,7 +450,8 @@ Outside agterm (`AGTERM_ENABLED` unset) there is no overlay — fall back to `op
 
 A persistent backdrop behind the terminal grid (distinct from `show-image.sh`, which is a transient
 overlay). An image or rasterized-text watermark (auto-fitting the window, re-fitting on resize), or a
-solid terminal background color — per session, surviving a relaunch.
+solid terminal background color — per session, or per pane with `--pane`. The session default and left/right
+pane labels survive a relaunch; a scratch label ends with its scratch terminal.
 
 ```bash
 # rasterized text watermark on this session, faint
@@ -464,6 +465,11 @@ agtermctl session background color '#3a0d0d' --target "$AGTERM_SESSION_ID"
 
 # remove it
 agtermctl session background clear --target "$AGTERM_SESSION_ID"
+
+# label each agent of a two-agent split; a pane override wins over the session default
+agtermctl session background text "DRIVER" --opacity 0.12 --pane left --target "$AGTERM_SESSION_ID"
+agtermctl session background text "PEER" --opacity 0.12 --pane right --target "$AGTERM_SESSION_ID"
+agtermctl session background clear --pane right --target "$AGTERM_SESSION_ID"   # back to the default
 ```
 
 `--opacity` is 0.0–1.0; `--fit` is `contain` (default) / `cover` / `stretch` / `none`; `--position` is
@@ -1091,6 +1097,33 @@ The visible navigation scope applies, exactly as it does to `session go`: in fla
 workspace focus filter is applied, the list carries only sessions inside that set. A session that was
 never selected has no entry, so this array can be shorter than the session count — tree order stays the
 fallback for a complete list.
+
+### Keep a status board in a HUD
+
+A controller agent driving worker sessions can keep a short status board in a corner of its own session
+instead of printing it into its chat. Write the board to a file and post it with `--markdown`; `--font-size`
+keeps it small, and a later `update` replaces it in place:
+
+```bash
+cat > /tmp/status.md <<'EOF'
+## Workers
+- **api** refactor: tests green
+- **web** login page: waiting on review
+- **infra** migration: *blocked*, needs a token
+EOF
+
+agtermctl session hud --file /tmp/status.md --markdown --font-size 11 --position top-right \
+  --target "$AGTERM_SESSION_ID"
+
+# after rewriting the file
+agtermctl session hud update --file /tmp/status.md --markdown --position top-right \
+  --target "$AGTERM_SESSION_ID"
+```
+
+An update replaces the whole spec, so repeat `--markdown` and `--position`; the font stays what the panel
+opened with. A single newline inside a paragraph is a space, so keep entries as list items or end a line with
+two spaces. A board taller than the panel is clipped, its excess rows giving way to a dim `… N more`. The
+file is read once per command; nothing watches it, so push each change with an `update`.
 
 ## Navigate and manage windows
 

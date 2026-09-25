@@ -2528,9 +2528,20 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
               which turns it on by itself, with
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">dot</span> blinking rather than
               animating — and an update may switch style in place;
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--background-color</span> is the
-              exception, read once when the panel is created and kept — in the panel and in the read-back — across every
-              update, which is why an update does not take it at all.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--background-color</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--font-size</span> are the exceptions, read once when the panel is created and kept — in the panel and in
+              the read-back — across every update, which is why an update does not take them at all.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--markdown</span> turns the panel into a small board: headings, bold, lists, code blocks, quotes and
+              tables render, and the message may run to 4096 characters. Standard markdown rules apply, so a single newline
+              inside a paragraph is a space; use list items, or end a line with two spaces, to keep rows apart. A board taller
+              than the panel is clipped, its excess rows giving way to a dim <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">… N more</span>. The file is read once per
+              command, so push each change with an update.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--file status.md</span> reads the message from a file, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--font-size PT</span> gives the panel its own
+              font size, set when it opens. A controller agent can keep one in a corner of its session with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session hud --file status.md --markdown --font-size 11 --position top-right</span> and refresh it with
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session hud update --file status.md --markdown --position top-right</span>.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               It shares the overlay slot, so a second
@@ -2630,12 +2641,14 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
             </div>
 
             <h3
+              id="remote-sessions"
               style="
                 font-family: &quot;JetBrains Mono&quot;, monospace;
                 font-weight: 600;
                 font-size: 16px;
                 color: #5ea1f2;
                 margin: 28px 0 12px;
+                scroll-margin-top: 88px;
               "
             >
               Remote sessions
@@ -2708,18 +2721,29 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
               A remote session is never written to disk, so it does not come back after a relaunch. Its tree node carries
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">remoteHost</span>.
               The title bar shows a cloud and the remote host, which you can hide with the Remote host toggle in Settings ▸ Interface.
+              The Ctrl-Tab switcher and the title-bar recent and attention lists mark the row with the same cloud and name the host.
             </p>
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 16px 0 0">
               A program in an attached session runs on the other Mac and talks to that Mac's agterm, so every attach also opens a
-              presentation stream back to it: this Mac mirrors the session's status, its
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">notify</span> notifications and its HUD. It needs nothing beyond
+              presentation stream back to it: this Mac mirrors the layout of panes already attached, the session's status, its session context, its
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">notify</span> notifications and its HUD. A context set on this Mac's
+              row wins over the mirrored one, and clearing it here shows the other Mac's again. A far side running an agterm
+              from before context mirroring still connects and mirrors the rest, with no context. It needs nothing beyond
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl</span> on the far side's ssh PATH. The session's tree node reports it as
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">presentation</span>, where <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">connected</span> means
               mirroring works and says nothing about the panes' own ssh connections; a far side too old for the stream reads
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unsupported</span> and the attach still works.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 12px 0 0">
-              When the stream drops, the mirrored status and HUD are cleared here and come back on reconnect, which is retried after
+              Two existing remote panes follow the origin's split direction, hide/show and swaps. Local panes, divider ratio and
+              keyboard focus stay local. This never opens a pane: a split opened on the origin after attach requires closing and
+              attaching the row again, and a replica closed here stays closed. Older origins leave the layout alone.
+              Confirmed origin removal closes its replica without requiring a keypress, even if it already shows a disconnect
+              prompt. The last replica waits for its ssh exit and may then close the row; automatic primary removal is skipped
+              while a local split is pending. An ordinary connection failure still holds the disconnect line for you to read.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 12px 0 0">
+              When the stream drops, the mirrored status, context and HUD are cleared here and come back on reconnect, which is retried after
               1, 2, 4, 8, 16 then 30 seconds, slows to every 5 minutes after eight failures in a row, and never stops. A notification
               raised while it is down is never shown here. A terminal notification (OSC 9/777) is not mirrored, because it already
               arrives in the pane's bytes and is raised here once. A timed HUD closes on this Mac's own countdown of the time the
@@ -2741,12 +2765,14 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
               ends. Retrying is automatic; close and reattach the session to retry at once.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 12px 0 0">
-              An attach joins as a follower, and pinned zmx has one leader per pane, so the pane arrives at the <em>other</em>
-              machine's window size and ignores input until your first <em>classified</em> key — a printable character, Return, Tab or
-              Backspace — takes the lead and reflows it. Until then the mouse, focus reporting and Ctrl-L do not reach the far side,
-              so a mouse-driven TUI looks dead, and an ordinary control key may not wake it either. Because the lead is per pane, typing in one half of a split
-              leaves the other at the remote's geometry, and after you close the session the far side keeps your size until something
-              there resizes it. When a connection drops, the pane holds on Ghostty's press-any-key prompt under one line naming the
+              Each pane has one Mac that leads it, and the program inside sees that Mac's window size. Attaching takes the
+              lead in every pane at once, so the session arrives at <em>your</em> size with nothing to press, and the same
+              panes on the Mac the session runs on are covered with a note that it is in use elsewhere. Pressing a key on a
+              cover, or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl session lead</span>, takes the lead back and covers the pane on the other
+              side. Scripts typing into a covered pane on the Mac the session runs on still work, and so do their reads of
+              its screen: both go through the session itself, not the covered view. When you close the session the panes
+              on the far side uncover by themselves. Both Macs need an agterm with this behaviour; against an older one
+              the attach still arrives at the other Mac's size until you type. When a connection drops, the pane holds on Ghostty's press-any-key prompt under one line naming the
               host, the session, the pane and the exit status.
             </p>
 
@@ -3463,8 +3489,9 @@ command = "'/Users/you/.config/agterm/agent-status/agterm-codex-status.sh' stop"
                 asks for the microphone again after every update. <strong style="color: #e6e1d7">Agterm ▸ Reset Live Sessions…</strong>
                 replaces every such session at once: the dialog says how many it resets, agterm quits and reopens itself with the
                 same sessions and layout, and each captured command starts again where possible. Other work running in those
-                sessions stops, and agent conversations may need to be resumed by hand. Sessions already under the host are left
-                alone, and a notification afterwards says how many sessions the reset covered.
+                sessions stops, and agent conversations may need to be resumed by hand. The same item also recreates sessions that
+                predate the last Live sessions update, so they pick up its changes. Other sessions under the host are left alone,
+                and a notification afterwards says how many sessions the reset covered.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx reset --force</span> does the same without the dialog.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx list</span> shows every daemon and the pane that claims it,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl zmx prune</span> clears the ones nothing claims, and

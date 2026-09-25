@@ -67,6 +67,9 @@ extension ControlServer {
             connection: { [weak self] connection in
                 self?.library.store(forSession: id)?.setRemoteConnection(connection, forSession: id)
             },
+            context: { [weak self] context in
+                self?.library.store(forSession: id)?.applyRemoteContext(context, forSession: id)
+            },
             mode: { [weak self] mode in self?.library.store(forSession: id)?.setRemoteMode(mode, forSession: id) },
             askRequest: { [weak self] ask in self?.showReplicaAsk(ask, forSession: id) ?? false },
             askDismiss: { [weak self] ref in self?.library.store(forSession: id)?.dismissReplicaAsk(ref, forSession: id) },
@@ -77,8 +80,12 @@ extension ControlServer {
             overlayResize: { [weak self] change in
                 self?.library.store(forSession: id)?.resizeReplicaOverlay(change, forSession: id)
             },
+            layout: { [weak self] layout in
+                guard let self, let store = library.store(forSession: id) else { return }
+                agtermApp.applyRemoteLayout(layout, store: store, sessionID: id, library: library)
+            },
             warn: { reason in
-                remoteLogger.warning("presentation stream for \(id, privacy: .public) is down: \(reason, privacy: .public)")
+                remoteLogger.warning("presentation stream for \(id, privacy: .public): \(reason, privacy: .public)")
             })
     }
 
@@ -135,7 +142,7 @@ extension ControlServer {
         let spec = HudSpec(message: hud.spec.message, detail: hud.spec.detail, spinner: hud.spec.spinner,
                            backgroundColor: hud.spec.backgroundColor, textColor: hud.spec.textColor,
                            sizePercent: hud.spec.sizePercent, position: hud.spec.position,
-                           hideAfter: hud.remaining)
+                           hideAfter: hud.remaining, markdown: hud.spec.markdown, fontSize: hud.spec.fontSize)
         // resolved the same way for an open and an update: `hud.update` accepts a pane the deck does not
         // lay out, which would move a panel already shown session-wide onto a hidden pane and unmount it
         let pane = store.localPane(hud.pane, in: session).flatMap { session.rendersPane($0) ? $0 : nil }

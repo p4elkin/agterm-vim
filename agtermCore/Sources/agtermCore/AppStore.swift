@@ -331,7 +331,8 @@ public final class AppStore {
                     let paneCwd = surface == .split ? (session.splitCwd ?? session.initialSplitCwd) : nil
                     return ControlSurfaceNode(id: id, kind: surface.rawValue, active: surface.isActive(in: session),
                                               visible: surface.isVisible(in: session), cwd: paneCwd,
-                                              backedByZmx: session.zmxBacking(for: surface))
+                                              backedByZmx: session.zmxBacking(for: surface),
+                                              lead: ZmxLeadBook.shared.role(pane: session.paneIdentity(for: surface)))
                 }
                 return ControlSessionNode(id: session.id.uuidString, name: session.displayName,
                                           cwd: session.effectiveCwd, title: session.oscTitle,
@@ -369,6 +370,7 @@ public final class AppStore {
                                           statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
                                           statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
                                           background: session.backgroundWatermark,
+                                          paneBackgrounds: session.paneBackgrounds.isEmpty ? nil : session.paneBackgrounds,
                                           unseen: session.unseenCount > 0 ? session.unseenCount : nil,
                                           turn: session.turnCounter > 0 ? session.turnCounter : nil,
                                           // supplied by the host like the font sizes: the bookmark store is
@@ -382,7 +384,7 @@ public final class AppStore {
                                           // no app-side closure like the font sizes above. An empty slot is
                                           // false, not omitted — "no terminal" either way to a caller.
                                           realized: session.surface?.isRealized ?? false,
-                                          context: session.context, remoteHost: session.remoteHost,
+                                          context: session.effectiveContext, remoteHost: session.remoteHost,
                                           splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
                                           liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
                                           presentation: presentationNode(of: session), presenters: presentersNode(of: session),
@@ -425,7 +427,8 @@ public final class AppStore {
                               backgroundColor: spec.backgroundColor, textColor: spec.textColor,
                               sizePercent: session.overlaySizePercent,
                               heightPercent: session.hudHeightPercent, position: spec.position.rawValue,
-                              pane: session.hudTargetPane?.rawValue, hideAfter: spec.effectiveHideAfter)
+                              pane: session.hudTargetPane?.rawValue, hideAfter: spec.effectiveHideAfter,
+                              markdown: spec.markdown, fontSize: spec.fontSize)
     }
 
     /// Creates a workspace and appends it. With `revealNewWorkspace` (the default) and the filter ON, the new
@@ -606,7 +609,7 @@ public final class AppStore {
         removed.scratchSurface?.teardown()
         removed.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
         sessionDidFinalize?(removed.id)
-        WatermarkStorage.removeRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
+        WatermarkStorage.removeAllRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         sessionRecency.remove(sessionID)
         if wasActive {
             selectedSessionID = closeReselectionTarget(after: location)
@@ -647,7 +650,7 @@ public final class AppStore {
             session.teardownPaneOverlays()
             session.scratchSurface?.teardown()
             session.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
-            WatermarkStorage.removeRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
+            WatermarkStorage.removeAllRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
             sessionRecency.remove(session.id)
         }
         dropFocusMember(workspaceID) // a marked root is gone; the filter goes with the last member

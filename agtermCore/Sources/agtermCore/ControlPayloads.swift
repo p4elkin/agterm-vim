@@ -61,8 +61,10 @@ public struct ControlZmxEntry: Codable, Sendable, Equatable {
     public let sessionID: String?
     public let sessionName: String?
     public let pane: String?
+    /// outdated is true when the daemon was created before the launch's recorded zmx build change; omitted otherwise.
+    public let outdated: Bool?
 
-    public init(row: ZmxInventoryRow) {
+    public init(row: ZmxInventoryRow, outdatedBefore: Date? = nil) {
         daemon = row.daemon
         state = row.state.rawValue
         observation = row.observation.rawValue
@@ -76,6 +78,7 @@ public struct ControlZmxEntry: Codable, Sendable, Equatable {
         sessionID = row.claim?.sessionID.uuidString
         sessionName = row.claim?.sessionName
         pane = row.claim?.pane.rawValue
+        outdated = LiveReset.isOutdated(created: row.createdAt, cutoff: outdatedBefore) ? true : nil
     }
 }
 
@@ -190,12 +193,13 @@ public struct ControlZmxInventory: Codable, Sendable, Equatable {
     public let socketDirectory: String?
 
     public init(restore: ControlRestoreStatus, result: ZmxInventoryResult, socketDirectory: String,
-                endpoint: ControlZmxEndpoint? = nil, liveReset: ControlLiveResetReadback? = nil) {
+                endpoint: ControlZmxEndpoint? = nil, liveReset: ControlLiveResetReadback? = nil,
+                outdatedBefore: Date? = nil) {
         self.restore = restore
         inventoryComplete = result.inventoryComplete
         self.endpoint = endpoint
         self.liveReset = liveReset
-        entries = result.rows.map(ControlZmxEntry.init(row:))
+        entries = result.rows.map { ControlZmxEntry(row: $0, outdatedBefore: outdatedBefore) }
         self.socketDirectory = socketDirectory
     }
 }
@@ -206,11 +210,14 @@ public struct ControlLiveResetStatus: Codable, Sendable, Equatable {
     public let sessions: Int
     public let panes: Int
     public let pending: Bool
+    /// outdated is how many of `sessions` predate the recorded zmx build change; omitted when none.
+    public let outdated: Int?
 
-    public init(sessions: Int, panes: Int, pending: Bool) {
+    public init(sessions: Int, panes: Int, pending: Bool, outdated: Int? = nil) {
         self.sessions = sessions
         self.panes = panes
         self.pending = pending
+        self.outdated = outdated
     }
 }
 

@@ -131,7 +131,11 @@ public enum RemoteSession {
     /// to `isPlainMoshServer` rather than escaped. The LOCAL `mosh` is resolved off `moshCandidates`
     /// rather than left bare, because libghostty spawns the pane with the GUI launch PATH; `moshCandidates`
     /// and `fileExists` are injectable so a test drives the probe without touching the real filesystem.
+    ///
+    /// `lead` opts the far zmx client into explicit leadership; an origin whose zmx predates it ignores
+    /// the two variables and the pane behaves as it did before.
     public static func attachCommand(host: String, endpoint: ControlZmxEndpoint, daemon: String,
+                                     lead: ZmxLeadAttachment? = nil,
                                      connectTimeout: Int = 5,
                                      transport: RemoteTransport = .ssh,
                                      moshCandidates: [String] = RemoteSession.moshClientCandidates,
@@ -148,8 +152,9 @@ public enum RemoteSession {
             // `ZMX_SESSION` makes attach SWITCH session instead, never reaching the create-only guard,
             // and an inherited prefix resolves a name agterm never created.
             "/usr/bin/env", "ZMX_SESSION=", "ZMX_SESSION_PREFIX=", "ZMX_NO_DETACH_KEY=1",
-            "ZMX_DIR=" + endpoint.socketDirectory, endpoint.executable,
-            "attach", daemon, "/bin/sh", "-c", guardScript,
+            "ZMX_DIR=" + endpoint.socketDirectory,
+        ] + (lead?.assignments ?? []) + [
+            endpoint.executable, "attach", daemon, "/bin/sh", "-c", guardScript,
         ]
         let prefix = try transportArguments(host: host, transport: transport, connectTimeout: connectTimeout,
                                             moshCandidates: moshCandidates, fileExists: fileExists)
@@ -171,13 +176,14 @@ public enum RemoteSession {
     /// `disconnected, exit 0` after a vanished daemon is expected there.
     public static func attachPaneCommand(host: String, endpoint: ControlZmxEndpoint, daemon: String,
                                          session: String, pane: ZmxPaneRole,
+                                         lead: ZmxLeadAttachment? = nil,
                                          connectTimeout: Int = 5,
                                          transport: RemoteTransport = .ssh,
                                          moshCandidates: [String] = RemoteSession.moshClientCandidates,
                                          fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) })
         throws -> String {
         let attach = CommandRestore.shellQuotedLine(
-            try attachCommand(host: host, endpoint: endpoint, daemon: daemon,
+            try attachCommand(host: host, endpoint: endpoint, daemon: daemon, lead: lead,
                               connectTimeout: connectTimeout, transport: transport,
                               moshCandidates: moshCandidates, fileExists: fileExists))
         let label = CommandRestore.shellQuotedLine(

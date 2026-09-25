@@ -483,7 +483,9 @@ struct WindowContentView: View {
     /// replaces another (split-survivor promotion): `updateNSView` cannot replace the view `makeNSView`
     /// returned, so session identity alone would keep hosting the torn-down prior primary.
     func primarySurfaceID(_ session: Session) -> String {
-        "\(session.id.uuidString)-primary-\(session.primarySurfaceHostRevision)"
+        // the revision is not observed, and a fresh attach bumps it with nothing else changing
+        _ = ZmxLeadBook.shared.attachments
+        return "\(session.id.uuidString)-primary-\(session.primarySurfaceHostRevision)"
     }
 
     /// Opacity of the mute wash, shared by the inactive split pane and the backdrop behind a floating panel
@@ -504,17 +506,10 @@ struct WindowContentView: View {
         windowFullscreen || reduceTransparency ? 1 : windowOpacity
     }
 
-    /// The wash color for a session: its own solid background when it set one, else the theme background.
-    /// The wash must blend background→background to fade text alone, so a session running on a different
-    /// background needs that color or the wash tints it.
-    ///
-    /// Sampled at redraw, and neither source is observed: `backgroundWatermark` is `@ObservationIgnored`
-    /// and a live OSC 11 color lives on the surface view. Every path that PUTS a wash on screen re-reads it
-    /// (overlay, quick-terminal and split-focus state are all observed), so only a background set while a
-    /// wash is already painted holds the old color, until the next observed change.
-    func washColor(for session: Session) -> Color {
-        guard let watermark = session.backgroundWatermark, watermark.kind == .color,
-              let nsColor = NSColor(agtermHex: watermark.colorHex) else { return terminalColor }
+    /// washColor blends background→background so the wash fades only text: the pane's solid color, else
+    /// the theme. Unobserved, so a background set under a painted wash shows at the next observed change.
+    func washColor(hex: String?) -> Color {
+        guard let nsColor = NSColor(agtermHex: hex) else { return terminalColor }
         return Color(nsColor: nsColor)
     }
 
@@ -568,7 +563,7 @@ struct WindowContentView: View {
     }
 
     /// The terminal theme's foreground color, with a light fallback if libghostty hasn't reported one.
-    private static func resolvedChromeText() -> Color {
+    static func resolvedChromeText() -> Color {
         Color(nsColor: GhosttyApp.shared.terminalForegroundColor ?? .labelColor)
     }
 

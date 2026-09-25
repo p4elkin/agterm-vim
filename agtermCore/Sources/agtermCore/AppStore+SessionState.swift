@@ -22,9 +22,11 @@ extension AppStore {
     @discardableResult
     public func setContext(_ context: String?, forSession id: UUID) -> Bool {
         guard let session = session(withID: id), session.context != context else { return false }
+        let previous = session.effectiveContext
         session.context = context
         save()
-        scheduleTreeChanged()
+        presentationHub?.publish(.context(context), session: id)
+        if previous != session.effectiveContext { scheduleTreeChanged() }
         return true
     }
 
@@ -46,20 +48,27 @@ extension AppStore {
         }
     }
 
-    /// Sets (or clears) a session's background watermark and persists it; clean no-op for an unknown id or an
-    /// unchanged spec, so a repeated `session.background` is idempotent. Returns whether the spec CHANGED, so
-    /// the app target can gate its (retained, teardown-only-freed) per-surface config apply on a real change
-    /// — without that a scripted set-loop keeps appending owned configs. The store owns only the spec; the
-    /// C-boundary apply lives app-side in `ControlServer`/`GhosttySurfaceView`.
+    /// setBackgroundWatermark writes the session default when `pane` is nil, leaving pane overrides in
+    /// place, or that pane's override, where nil returns the pane to inheriting. Returns whether it changed.
     @discardableResult
-    public func setBackgroundWatermark(_ watermark: BackgroundWatermark?, forSession id: UUID) -> Bool {
-        guard let session = session(withID: id), session.backgroundWatermark != watermark else { return false }
-        let previous = session.backgroundWatermark
-        session.backgroundWatermark = watermark
-        // a `.text` watermark owns a rendered `<id>.png`; switching away leaves it unreferenced. `clear` and
-        // teardown sweep the same file, so this is only the eager reclaim for text→image/nil.
+    public func setBackgroundWatermark(_ watermark: BackgroundWatermark?, forSession id: UUID,
+                                       pane: StatusPane? = nil) -> Bool {
+        guard let session = session(withID: id) else { return false }
+        let previous = pane.map { session.paneBackgrounds[$0] } ?? session.backgroundWatermark
+        guard previous != watermark else { return false }
+        if let pane {
+            session.paneBackgrounds[pane] = watermark
+        } else {
+            session.backgroundWatermark = watermark
+        }
+        // a `.text` watermark owns a rendered PNG that switching away leaves unreferenced. for a pane override
+        // this is the only removal short of the pane closing: `clear --pane` sweeps nothing app-side.
         if previous?.kind == .text, watermark?.kind != .text {
-            WatermarkStorage.removeRenderedText(sessionID: id)
+            if let pane {
+                session.backgroundFileKey(for: pane).map { WatermarkStorage.removeRenderedText(sessionID: id, paneKey: $0) }
+            } else {
+                WatermarkStorage.removeRenderedText(sessionID: id)
+            }
         }
         save()
         return true

@@ -49,6 +49,9 @@ struct PresentationFramesTests {
         PresentationFrame(gen: 1, rev: 25, body: .overlayClose(PresentationOverlayChange(job: "j1"))),
         PresentationFrame(gen: 1, rev: 26, body: .overlayResize(PresentationOverlayChange(job: "j1", sizePercent: 40))),
         PresentationFrame(gen: 1, rev: 27, body: .overlayClosed(PresentationOverlayChange(job: "j1"))),
+        PresentationFrame(gen: 1, rev: 28, body: .context("PR #517")),
+        PresentationFrame(gen: 1, rev: 29, body: .context(nil)),
+        PresentationFrame(gen: 1, rev: 30, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: "PR #517"))),
     ]
 
     @Test(arguments: frames)
@@ -67,12 +70,39 @@ struct PresentationFramesTests {
                                                                         body: .unknown("future.kind")))
     }
 
+    @Test func aSnapshotFromAnOriginWithoutContextDecodesWithNone() throws {
+        let line = Data(#"{"kind":"snapshot","gen":1,"rev":1,"snapshot":{}}"#.utf8)
+
+        #expect(try PresentationCodec.decode(line) == PresentationFrame(
+            gen: 1, rev: 1, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: nil))))
+    }
+
     @Test func anOversizeLineIsRefusedBeforeDecoding() {
         let line = Data(repeating: UInt8(ascii: "x"), count: PresentationCodec.maxFrameBytes + 1)
 
         #expect(throws: PresentationCodec.FrameError.oversize(line.count)) {
             try PresentationCodec.decode(line)
         }
+    }
+
+    @Test func aMarkdownHudWithItsFontSizeSurvivesAFrame() throws {
+        let hud = PresentationHud(spec: HudSpec(message: "# Tasks\n\n- build", markdown: true, fontSize: 18),
+                                  pane: nil, generation: 2, remaining: nil)
+        let frame = PresentationFrame(gen: 1, rev: 3, body: .hud(hud))
+
+        let line = try PresentationCodec.encode(frame)
+
+        #expect(try PresentationCodec.decode(line.dropLast()) == frame)
+    }
+
+    @Test func theLargestMarkdownHudFitsAFrame() throws {
+        let message = String(repeating: "\u{1F600}", count: HudSpec.maxMarkdownLength)
+        let hud = PresentationHud(spec: HudSpec(message: message, detail: String(repeating: "\u{1F600}", count: HudSpec.maxTextLength),
+                                                markdown: true), pane: nil, generation: 1, remaining: nil)
+
+        let line = try PresentationCodec.encode(PresentationFrame(gen: 1, rev: 1, body: .hud(hud)))
+
+        #expect(line.count <= PresentationCodec.maxFrameBytes)
     }
 
     @Test func aFrameThatWouldEncodeOversizeIsRefused() {

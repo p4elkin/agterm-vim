@@ -16,7 +16,7 @@ struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
         subcommands: [New.self, Duplicate.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
-                      Split.self, Swap.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
+                      Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
                       Text.self, Status.self, Restore.self, FlagCommand.self, Park.self, Context.self,
                       Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
@@ -459,6 +459,10 @@ struct Session: ParsableCommand {
             subcommands: [Image.self, Text.self, Color.self, Clear.self]
         )
 
+        static let paneHelp = "Set only this pane's override: left, right, or scratch (primary/top and split/bottom "
+            + "are aliases). Omitted sets the session default, which every pane without an override inherits; "
+            + "`clear --pane` returns that pane to the default."
+
         /// Shared input validation against the host-free `WatermarkConfig`, so a bad value is a clean parse
         /// error before any socket round-trip, matching the server's rejection exactly. The enum checks
         /// reject `""` too, so no separate empty-string case is needed.
@@ -491,14 +495,18 @@ struct Session: ParsableCommand {
             @Option(name: .long, help: "Fit: contain (default), cover, stretch, or none.") var fit: String?
             @Option(name: .long, help: "Position: center (default) or an edge/corner anchor (top-left, bottom-right, …).") var position: String?
             @Flag(name: .customLong("repeat"), help: "Tile the image to fill blank space.") var repeatImage = false
+            @Option(name: .long, help: ArgumentHelp(Background.paneHelp)) var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            func validate() throws { try Background.validate(fit: fit, position: position, opacity: opacity, path: path) }
+            func validate() throws {
+                try Background.validate(fit: fit, position: position, opacity: opacity, path: path)
+                try validatePaneArgument(pane)
+            }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionBackground, target: target.target,
-                               args: options.withWindow(ControlArgs(mode: "image", path: path, opacity: opacity,
+                               args: options.withWindow(ControlArgs(mode: "image", pane: pane, path: path, opacity: opacity,
                                                                     fit: fit, position: position,
                                                                     repeats: repeatImage ? true : nil)))
             }
@@ -511,16 +519,18 @@ struct Session: ParsableCommand {
             @Option(name: .long, help: "Opacity 0.0-1.0 (default 1.0).") var opacity: Double?
             @Option(name: .long, help: "Fit: contain (default), cover, stretch, or none.") var fit: String?
             @Option(name: .long, help: "Position: center (default) or an edge/corner anchor (top-left, bottom-right, …).") var position: String?
+            @Option(name: .long, help: ArgumentHelp(Background.paneHelp)) var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
             func validate() throws {
                 try Background.validate(fit: fit, position: position, opacity: opacity, color: color, text: text)
+                try validatePaneArgument(pane)
             }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionBackground, target: target.target,
-                               args: options.withWindow(ControlArgs(text: text, mode: "text", color: color,
+                               args: options.withWindow(ControlArgs(text: text, mode: "text", pane: pane, color: color,
                                                                     opacity: opacity, fit: fit, position: position)))
             }
         }
@@ -529,25 +539,32 @@ struct Session: ParsableCommand {
             static let configuration = CommandConfiguration(
                 abstract: "Set a solid background color for the terminal (honors the Settings window translucency).")
             @Argument(help: "Background color as #rrggbb.") var color: String
+            @Option(name: .long, help: ArgumentHelp(Background.paneHelp)) var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            func validate() throws { try Background.validate(color: color) }
+            func validate() throws {
+                try Background.validate(color: color)
+                try validatePaneArgument(pane)
+            }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionBackground, target: target.target,
-                               args: options.withWindow(ControlArgs(mode: "color", color: color)))
+                               args: options.withWindow(ControlArgs(mode: "color", pane: pane, color: color)))
             }
         }
 
         struct Clear: RequestCommand {
             static let configuration = CommandConfiguration(abstract: "Remove the session's background (watermark or solid color).")
+            @Option(name: .long, help: ArgumentHelp(Background.paneHelp)) var pane: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
+            func validate() throws { try validatePaneArgument(pane) }
+
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionBackground, target: target.target,
-                               args: options.withWindow(ControlArgs(mode: "clear")))
+                               args: options.withWindow(ControlArgs(mode: "clear", pane: pane)))
             }
         }
     }
@@ -781,10 +798,51 @@ struct Session: ParsableCommand {
             return style ?? (spinner ? HudSpinner.defaultStyle.rawValue : nil)
         }
 
+        static func validateMessageSource(_ message: String?, file: String?) throws {
+            if message == nil, file == nil { throw ValidationError("provide MESSAGE or --file") }
+            if message != nil, file != nil { throw ValidationError("MESSAGE and --file are mutually exclusive") }
+        }
+
+        /// messageText is the argument, or the UTF-8 contents of `file` with CRLF line endings normalized and
+        /// one trailing newline dropped: files end with one, and a plain panel rejects newlines. The dispatcher still applies every cap and rejection.
+        static func messageText(_ message: String?, file: String?) throws -> String {
+            guard let file else { return message ?? "" }
+            let data: Data
+            do {
+                data = try Data(contentsOf: URL(fileURLWithPath: file))
+            } catch {
+                throw ValidationError("cannot read --file \(file): \(error.localizedDescription)")
+            }
+            guard var text = String(data: data, encoding: .utf8) else {
+                throw ValidationError("--file \(file) is not valid UTF-8")
+            }
+            text = text.replacingOccurrences(of: "\r\n", with: "\n")
+            if text.hasSuffix("\n") { text.removeLast() }
+            return text
+        }
+
+        static func validateFontSize(_ points: Double?) throws {
+            if let points, !HudSpec.isValidFontSize(points) {
+                throw ValidationError(
+                    "font-size must be \(Int(HudSpec.fontSizeRange.lowerBound))...\(Int(HudSpec.fontSizeRange.upperBound)) points")
+            }
+        }
+
         struct Open: RequestCommand {
             static let configuration = CommandConfiguration(
                 abstract: "Post a message panel over the session; the session keeps focus and stays typable.")
-            @Argument(help: "Message shown in the panel.") var message: String
+            @Argument(help: "Message shown in the panel (omit with --file).") var message: String?
+            @Option(name: .long, help: "Read the message from FILE instead of the argument.") var file: String?
+            @Flag(name: .long, help: """
+                Render the message as markdown, up to \(HudSpec.maxMarkdownLength) characters. A single newline \
+                inside a paragraph is a soft break; end a line with two spaces or a backslash to break it.
+                """)
+            var markdown = false
+            @Option(name: .customLong("font-size"), help: """
+                The panel's own font size in points, \(Int(HudSpec.fontSizeRange.lowerBound))-\
+                \(Int(HudSpec.fontSizeRange.upperBound)); omit to use the session's. Fixed for the panel's life.
+                """)
+            var fontSize: Double?
             @Option(name: .long, help: "Dim second line under the message (e.g. what the caller is waiting on).") var detail: String?
             @Flag(name: .long, help: "Animate a spinner glyph in the panel, in the default style.")
             var spinner = false
@@ -830,6 +888,8 @@ struct Session: ParsableCommand {
                 try Hud.validatePosition(position)
                 try Hud.validateSpinnerStyle(spinnerStyle)
                 try Hud.validateHideAfter(hideAfter)
+                try Hud.validateMessageSource(message, file: file)
+                try Hud.validateFontSize(fontSize)
                 try Session.validateSizePercent(sizePercent)
                 try Overlay.validatePane(pane)
             }
@@ -837,11 +897,11 @@ struct Session: ParsableCommand {
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionHudOpen, target: target.target,
                                args: options.withWindow(ControlArgs(
-                                   sizePercent: sizePercent, message: message, detail: detail,
-                                   spinner: Hud.spinnerValue(spinner: spinner, style: spinnerStyle),
-                                   hideAfter: hideAfter,
+                                   sizePercent: sizePercent, message: try Hud.messageText(message, file: file),
+                                   detail: detail, spinner: Hud.spinnerValue(spinner: spinner, style: spinnerStyle),
+                                   hideAfter: hideAfter, markdown: markdown ? true : nil,
                                    pane: pane, paneID: paneID, color: backgroundColor,
-                                   textColor: textColor, position: position)))
+                                   textColor: textColor, position: position, fontSize: fontSize)))
             }
         }
 
@@ -852,7 +912,10 @@ struct Session: ParsableCommand {
         struct Update: RequestCommand {
             static let configuration = CommandConfiguration(
                 abstract: "Replace the panel's text in place (no re-spawn, no blink).")
-            @Argument(help: "New message; it replaces the old one entirely.") var message: String
+            @Argument(help: "New message; it replaces the old one entirely (omit with --file).") var message: String?
+            @Option(name: .long, help: "Read the new message from FILE instead of the argument.") var file: String?
+            @Flag(name: .long, help: "Render the message as markdown; omit to return the panel to plain text.")
+            var markdown = false
             @Option(name: .long, help: "Dim second line under the message; omit to drop the old one.") var detail: String?
             @Flag(name: .long, help: "Keep (or start) the spinner in the default style; omit to stop it.")
             var spinner = false
@@ -886,6 +949,7 @@ struct Session: ParsableCommand {
                 try Hud.validatePosition(position)
                 try Hud.validateSpinnerStyle(spinnerStyle)
                 try Hud.validateHideAfter(hideAfter)
+                try Hud.validateMessageSource(message, file: file)
                 try Session.validateSizePercent(sizePercent)
                 try Overlay.validatePane(pane)
             }
@@ -893,9 +957,9 @@ struct Session: ParsableCommand {
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionHudUpdate, target: target.target,
                                args: options.withWindow(ControlArgs(
-                                   sizePercent: sizePercent, message: message, detail: detail,
-                                   spinner: Hud.spinnerValue(spinner: spinner, style: spinnerStyle),
-                                   hideAfter: hideAfter,
+                                   sizePercent: sizePercent, message: try Hud.messageText(message, file: file),
+                                   detail: detail, spinner: Hud.spinnerValue(spinner: spinner, style: spinnerStyle),
+                                   hideAfter: hideAfter, markdown: markdown ? true : nil,
                                    pane: pane, paneID: paneID, textColor: textColor, position: position)))
             }
         }

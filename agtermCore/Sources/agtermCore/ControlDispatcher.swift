@@ -74,6 +74,9 @@ public protocol ControlActions {
     /// Exchange the two live pane roles. The default below keeps existing hosts source-compatible and
     /// reports that the optional operation is unsupported.
     func swapSessionPanes(_ target: String?, window: String?) async -> ControlResponse
+    /// Take the lead of a pane's zmx daemon for this Mac, as a key press on the pane's cover does. The
+    /// default below keeps existing hosts source-compatible.
+    func takeSessionLead(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse
     func scratchSession(_ target: String?, window: String?, mode: String?, command: String?) -> ControlResponse
     func focusSessionPane(_ target: String?, window: String?, pane: String?) -> ControlResponse
     func resizeSplit(_ target: String?, window: String?, resize: ControlSplitResize) -> ControlResponse
@@ -254,8 +257,8 @@ public struct ControlDispatcher {
             return await dispatchSessionCommand(request)
         case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
             return await dispatchSessionBookmark(request)
-        case .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionScratch, .sessionFocus, .sessionResize,
-                .surfaceZoom, .surfaceCursor, .sessionType,
+        case .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionScratch, .sessionFocus,
+                .sessionResize, .surfaceZoom, .surfaceCursor, .sessionType,
                 .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
                 .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .sessionOverlayCopy,
                 .sessionOverlayText, .sessionBackground,
@@ -642,6 +645,11 @@ public struct ControlDispatcher {
             return actions.closeSessionSplit(request.target, window: request.args?.window)
         case .sessionSwap:
             return await actions.swapSessionPanes(request.target, window: request.args?.window)
+        case .sessionLead:
+            switch parseSurfacePane(request.args?.pane) {
+            case .pane(let pane): return actions.takeSessionLead(request.target, window: request.args?.window, pane: pane)
+            case .rejected(let rejection): return rejection
+            }
         case .sessionScratch:
             return actions.scratchSession(request.target, window: request.args?.window, mode: request.args?.mode,
                                           command: request.args?.command)
@@ -896,8 +904,12 @@ public struct ControlDispatcher {
             return ControlResponse(ok: false,
                                    error: "invalid background mode: \(request.args?.mode ?? "") (image|text|color|clear)")
         }
-        return actions.setSessionBackground(request.target, window: request.args?.window,
-                                            options: ControlSessionBackgroundOptions(watermark: watermark))
+        switch parsePane(request.args?.pane) {
+        case .pane(let pane):
+            return actions.setSessionBackground(request.target, window: request.args?.window,
+                                                options: ControlSessionBackgroundOptions(watermark: watermark, pane: pane))
+        case .rejected(let rejection): return rejection
+        }
     }
 
     /// How much of a buffer a read covers, or the rejection its arm returns as-is. Shared by `session.text`

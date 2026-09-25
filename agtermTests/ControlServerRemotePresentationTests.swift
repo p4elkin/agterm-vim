@@ -58,6 +58,41 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertEqual(fix.session.remotePresentation?.hudBridged, true)
     }
 
+    func testAMirroredHudKeepsMarkdownAndFontSizeOnOpenAndUpdate() throws {
+        let fix = try fixture()
+        let spec = HudSpec(message: "**deploying**", hideAfter: 600, markdown: true, fontSize: 18)
+
+        fix.server.showRemoteHud(PresentationHud(spec: spec, pane: nil, generation: 1, remaining: nil),
+                                 forSession: fix.session.id)
+
+        XCTAssertEqual(fix.session.hudSpec?.markdown, true)
+        XCTAssertEqual(fix.session.hudSpec?.fontSize, 18)
+        XCTAssertEqual(fix.session.hudFontSize, 18)
+        XCTAssertTrue(body(of: fix.session).contains("\u{1B}[1mdeploying\u{1B}[22m"))
+
+        let update = HudSpec(message: "**done**", hideAfter: 600, markdown: true, fontSize: 18)
+        fix.server.showRemoteHud(PresentationHud(spec: update, pane: nil, generation: 2, remaining: nil),
+                                 forSession: fix.session.id)
+
+        XCTAssertEqual(fix.session.hudSpec?.markdown, true)
+        XCTAssertEqual(fix.session.hudFontSize, 18)
+        XCTAssertTrue(body(of: fix.session).contains("\u{1B}[1mdone\u{1B}[22m"))
+    }
+
+    func testAnOriginReopenAtAnotherFontRecreatesTheReplicaAtIt() throws {
+        let fix = try fixture()
+        fix.server.showRemoteHud(PresentationHud(spec: HudSpec(message: "a", hideAfter: 600, fontSize: 12), pane: nil,
+                                                 generation: 1, remaining: nil), forSession: fix.session.id)
+        let generation = fix.session.overlaySlotGeneration
+
+        fix.server.showRemoteHud(nil, forSession: fix.session.id)
+        fix.server.showRemoteHud(PresentationHud(spec: HudSpec(message: "b", hideAfter: 600, fontSize: 30), pane: nil,
+                                                 generation: 3, remaining: nil), forSession: fix.session.id)
+
+        XCTAssertGreaterThan(fix.session.overlaySlotGeneration, generation, "the replica is a new surface")
+        XCTAssertEqual(fix.session.hudFontSize, 30)
+    }
+
     func testTheViewerCountsDownWhatIsLeftNotTheConfiguredInterval() throws {
         let fix = try fixture()
         let start = Date(timeIntervalSince1970: 1_789_000_000)
@@ -474,6 +509,29 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         waitUntil("the viewer's stream connects") { viewer.remotePresentation?.connection == .connected }
         waitUntil("the viewer is granted the presenter role") { viewer.remotePresentation?.mode == .presenter }
         return BridgedPair(server: server, store: store, origin: origin, viewer: viewer, socketPath: socketPath, cli: cli)
+    }
+
+    func testLayoutTravelsOverTheBridgeWithoutOpeningPanesAndClosesARemovedHeldReplica() throws {
+        let pair = try bridgedPair()
+        let services = agtermApp.SurfaceServices(library: pair.server.library, actions: AppActions(library: pair.server.library),
+                                                 zmxForegroundResolver: nil, spawnRegistry: nil,
+                                                 launchContext: agtermApp.LaunchSpawnContext())
+        let replica = agtermApp.makeSurface(for: pair.viewer, store: pair.store, env: [:], services: services)
+        pair.viewer.surface = replica
+        pair.store.setSplitVisibility(pair.origin.id, shown: true, axis: .topBottom)
+        pair.store.applyControlStatus(AgentIndicator(status: .blocked), forSession: pair.origin.id)
+        waitUntil("the update after the layout arrives") { pair.viewer.agentIndicator.status == .blocked }
+        XCTAssertFalse(pair.viewer.hasSplit)
+        XCTAssertNil(pair.viewer.splitSurface)
+        try XCTUnwrap(replica.onExitHeld)()
+        XCTAssertNotNil(pair.store.session(withID: pair.viewer.id))
+
+        pair.origin.splitSurface = GhosttySurfaceView(workingDirectory: "/tmp", backedByZmx: true)
+        pair.store.closePrimaryPane(pair.origin.id)
+
+        waitUntil("the layout removes the held replica") { pair.store.session(withID: pair.viewer.id) == nil }
+        XCTAssertTrue(replica.isDestroyed)
+        XCTAssertNil(pair.server.remoteClients[pair.viewer.id])
     }
 
     func testStatusAndHudTravelFromAnOriginSessionToItsViewerAndLeaveWithTheStream() throws {
