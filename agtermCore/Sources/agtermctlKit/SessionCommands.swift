@@ -397,23 +397,6 @@ struct Session: ParsableCommand {
         }
     }
 
-    struct Park: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Mark a session parked: the row is kept, its agent is not (on|off|toggle).")
-        @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
-        @OptionGroup var target: TargetOptions
-        @OptionGroup var options: ClientOptions
-
-        func validate() throws {
-            guard ["on", "off", "toggle"].contains(mode) else {
-                throw ValidationError("mode must be on, off, or toggle")
-            }
-        }
-
-        func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .sessionPark, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
-        }
-    }
-
     struct Seen: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Clear a session's unseen-notification badge without changing the selection or focus (idempotent).")
         @OptionGroup var target: TargetOptions
@@ -572,7 +555,8 @@ struct Session: ParsableCommand {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Resize.self, Result.self, Copy.self, Text.self, RunJob.self]
+            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Result.self, Copy.self, Text.self,
+                          RunJob.self]
         )
 
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
@@ -585,9 +569,23 @@ struct Session: ParsableCommand {
         }
 
         struct Open: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Open an overlay running COMMAND; it closes when COMMAND exits.")
-            @Argument(help: "Program to run in the overlay (e.g. revdiff).") var command: String
-            @Option(name: .long, help: "Working directory (default: the session's current directory).") var cwd: String?
+            static let configuration = CommandConfiguration(
+                abstract: "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html or --url.")
+            @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html or --url.") var command: String?
+            @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
+            @Option(name: .long, help: """
+                Show this http or https URL instead of running COMMAND; links to its own origin load in place. \
+                localhost means the Mac running agterm.
+                """)
+            var url: String?
+            @Flag(name: .long, help: "With --html or --url, add navigation buttons: back, forward, reload, open in browser.")
+            var navigation = false
+            @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
+            @Option(name: .long, help: """
+                Working directory (default: the session's current directory). With --html, grants read access \
+                inside this directory; relative links resolve beside FILE. Without --cwd, the page has no file access.
+                """)
+            var cwd: String?
             @Flag(name: .long, help: "Keep the overlay open after COMMAND exits (press any key to close).") var wait = false
             @Flag(name: .long, help: "Block until COMMAND exits and exit with its status (the program renders normally; capture its output via the program's own output file).") var block = false
             @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
@@ -611,6 +609,13 @@ struct Session: ParsableCommand {
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
+                if [command, html, url].compactMap({ $0 }).count != 1 {
+                    throw ValidationError("provide exactly one of COMMAND, --html or --url")
+                }
+                if command == nil, wait || block { throw ValidationError("a page cannot be combined with --wait or --block") }
+                if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
+                if javascript, command != nil { throw ValidationError("--js requires --html or --url") }
+                if url != nil, cwd != nil { throw ValidationError("--cwd cannot be combined with --url") }
                 if let backgroundColor, !WatermarkConfig.isValidColorHex(backgroundColor) {
                     throw ValidationError("background-color must be a #rrggbb hex value")
                 }
@@ -623,10 +628,14 @@ struct Session: ParsableCommand {
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionOverlayOpen, target: target.target,
-                               args: options.withWindow(ControlArgs(cwd: cwd, command: command, wait: wait ? true : nil,
+                               args: options.withWindow(ControlArgs(cwd: html == nil ? cwd : cwd.map(Overlay.absolutePath),
+                                                                     command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
                                                                      resolved: resolved ? true : nil,
-                                                                     pane: pane, color: backgroundColor)))
+                                                                     pane: pane, color: backgroundColor,
+                                                                     html: html.map(Overlay.absolutePath),
+                                                                     navigation: navigation ? true : nil, url: url,
+                                                                     javascript: javascript ? true : nil)))
             }
 
             /// The `--block` poll request. Extracted from `run()` so the `--pane` forwarding is assertable

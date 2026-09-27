@@ -129,6 +129,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- normal mode yields the keyboard to an HTML or URL overlay the way it does to a program overlay, so its
+  bare-key binds no longer take keys meant for the page. Upstream's new page overlays stopped counting as
+  a program overlay, which the yield asked.
 - `tree` and `window list` no longer stall the app for 3 seconds per call once four Live daemons exist.
   `ZmxClient.run` read the child's output only after it exited; zmx writes the listing row by row, so the
   pipe never grows past its initial 512 bytes, zmx blocked on write, the app blocked on exit, and every call

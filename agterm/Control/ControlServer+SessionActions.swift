@@ -28,9 +28,13 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let page = options.page {
+                return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
+            }
             // phase one of the two-phase protocol: a redirect answer opens NOTHING here, not even --follow,
             // because the overlay is about to open on the other machine. `resolved` is agtermctl's already
-            // wrapped re-send, which must never re-enter the decision.
+            // wrapped re-send, which must never re-enter the decision. A page never redirects: the redirect
+            // wraps a command in ssh and a page has none, hence the page branch above.
             if !options.resolved, let redirect = self.overlayRedirect(for: id, store: store) {
                 return ControlResponse(ok: true, result: ControlResult(id: id.uuidString,
                                                                        overlayRedirect: redirect))
@@ -70,6 +74,49 @@ extension ControlServer: ControlActions {
                                        mirrors: session?.mirrorsSession,
                                        viewer: session?.viewer,
                                        now: Date().timeIntervalSince1970).redirect
+    }
+
+    // a page never takes the remote program-job path: the store refuses it while a presenter owns the session
+    private func openHtmlOverlay(in store: AppStore, sessionID id: UUID, page: HtmlSource,
+                                 options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        if store.session(withID: id)?.remoteOverlays.slot(options.pane) != nil {
+            return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
+        }
+        if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: HtmlOverlay(source: page,
+                                                                                    navigation: options.navigation,
+                                                                                    javascript: options.javascript),
+                                               sizePercent: options.sizePercent, backgroundColor: options.backgroundColor) {
+            return ControlResponse(ok: false, error: failure.message(pane: options.pane))
+        }
+        if options.follow { store.selectSession(id) }
+        return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+    }
+
+    func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            if let failure = HtmlOverlayRegistry.shared.reload(sessionID: id, pane: pane,
+                                                               target: current ? .current : .original, store: store) {
+                return ControlResponse(ok: false, error: failure.message)
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
+                                navigation: HtmlNavigation) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            if let failure = store.htmlOverlayCommandFailure(id, pane: pane) {
+                return ControlResponse(ok: false, error: failure.message)
+            }
+            let session = store.session(withID: id)
+            guard let page = pane.map({ session?.paneOverlay($0)?.html }) ?? session?.htmlOverlay else {
+                return ControlResponse(ok: false, error: OverlayHtmlError.notHtml)
+            }
+            if let error = HtmlOverlayRegistry.shared.navigate(page.id, navigation) {
+                return ControlResponse(ok: false, error: error)
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
     }
 
     private func paneOverlayFailure(_ failure: PaneOverlayOpenFailure, target: String?) -> ControlResponse {
@@ -180,6 +227,9 @@ extension ControlServer: ControlActions {
             }
             if let slot = session.remoteOverlays.slot(pane), !slot.ended {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
+            }
+            if session.htmlCovers(pane) {
+                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
             }
             let (running, exitCode) = pane.map { (session.paneOverlay($0) != nil, session.paneOverlayExitCode($0)) }
                 ?? (session.programOverlayActive, session.overlayExitCode)

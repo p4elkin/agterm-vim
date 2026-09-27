@@ -51,6 +51,18 @@ struct OverlayRedirectSshTests {
         #expect(effects.ssh.isEmpty)
     }
 
+    @Test func aPageNeverRedirectsEvenWhenTheAppAnswersWithOne() throws {
+        let effects = Effects()
+        effects.responses = [redirected(.init(outcome: .mirrorOf, host: "p4studio.local"), id: "9f3c")]
+        let open = try Session.Overlay.Open.parse(["--url", "https://example.com"])
+
+        try open.runRedirecting(environment: effects.environment, send: effects.send)
+
+        #expect(effects.requests == [try open.makeRequest()])
+        #expect(effects.ssh.isEmpty)
+        #expect(effects.scripts.isEmpty)
+    }
+
     // MARK: - mirror-of: open here, run there
 
     @Test func mirrorOfOpensHereWithTheProgramWrappedInSshToTheSourceHost() throws {

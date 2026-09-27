@@ -137,8 +137,8 @@ paths:
   A program overlay is a YIELD, not a fifth exit, and the question is an EVENT rather than a state:
   host-free `NormalModeOverlayHandover` remembers the keyboard target (active session id plus
   `focusedPane`) it saw at the previous key, and the mode yields only when
-  `Session.programOverlayOwnsKeyboard` (the session-wide overlay or the FOCUSED pane's own, never a HUD)
-  turned true on that same unchanged target.
+  `Session.programOverlayOwnsKeyboard` (the session-wide program or page, or the FOCUSED pane's own
+  overlay, never a HUD) turned true on that same unchanged target.
   So an overlay opened from an `nmap` bind takes the keys at once and quitting it lands back in the mode,
   while walking onto a session or pane whose overlay is ALREADY running is an arrival and keeps the keys,
   so `j`/`k` carry past it instead of trapping her there.

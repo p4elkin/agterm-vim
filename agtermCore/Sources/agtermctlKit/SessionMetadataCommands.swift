@@ -2,7 +2,7 @@ import ArgumentParser
 import agtermCore
 
 // The `session` subcommands carrying per-session METADATA rather than driving a surface: the agent status
-// glyph, the restore-command pin, flagged membership, and the title-bar context. Split out of
+// glyph, the restore-command pin, flagged and parked membership, and the title-bar context. Split out of
 // `SessionCommands.swift` for the file and type size limits.
 extension Session {
     struct Status: RequestCommand {
@@ -129,6 +129,23 @@ extension Session {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionFlag, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    struct Park: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Mark a session parked: the row is kept, its agent is not (on|off|toggle).")
+        @Argument(help: "Mode: on, off, or toggle (default).") var mode: String = "toggle"
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard ["on", "off", "toggle"].contains(mode) else {
+                throw ValidationError("mode must be on, off, or toggle")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionPark, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
         }
     }
 

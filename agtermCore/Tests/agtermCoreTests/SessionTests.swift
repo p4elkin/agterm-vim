@@ -592,6 +592,13 @@ struct SessionTests {
         #expect(session.programOverlayOwnsKeyboard == true)
     }
 
+    @Test func aSessionWidePageOwnsTheKeyboardLikeAProgram() {
+        let session = Session(initialCwd: "/repo")
+        session.overlayActive = true
+        session.htmlOverlay = HtmlOverlay(source: .file(path: "/tmp/a/report.html", grantRoot: nil))
+        #expect(session.programOverlayOwnsKeyboard == true)
+    }
+
     @Test func programOverlayActiveSpansBothCoverageVariantsButNeverAHud() {
         let session = Session(initialCwd: "/repo")
         #expect(session.programOverlayActive == false)

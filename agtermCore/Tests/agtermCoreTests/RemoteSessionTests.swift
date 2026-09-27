@@ -335,7 +335,8 @@ struct RemoteSessionTests {
         let command = try RemoteSession.attachPaneCommand(
             host: "buildbox", endpoint: endpoint, daemon: daemon, session: "build", pane: .left,
             transport: .mosh(server: server, client: nil), fileExists: { _ in false })
-        #expect(command.contains(CommandRestore.shellQuotedLine(mosh)))
+        let script = CommandRestore.shellQuotedLine([CommandRestore.shellQuotedLine(mosh) + "; status="]).dropLast()
+        #expect(command.hasPrefix(CommandRestore.shellQuotedLine(["/usr/bin/env", "/bin/sh", "-c"]) + " " + script))
     }
 
     // MARK: - validation

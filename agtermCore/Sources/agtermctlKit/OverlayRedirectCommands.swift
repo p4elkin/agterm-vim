@@ -379,7 +379,9 @@ extension Session.Overlay.Open {
     func runRedirecting(environment: OverlayRedirectEnvironment,
                         send: (ControlRequest) throws -> SocketReply) throws {
         let opened = try send(makeRequest())
-        guard opened.response.ok, let result = opened.response.result, let redirect = result.overlayRedirect else {
+        // a page (`--html`/`--url`) has no command to wrap, and the app never answers one with a redirect
+        guard opened.response.ok, let result = opened.response.result, let redirect = result.overlayRedirect,
+              let command else {
             try finishLocally(opened, send: send)
             return
         }
@@ -411,7 +413,7 @@ extension Session.Overlay.Open {
             try finishLocally(try send(try resolvedRequest(command: wrapped, cwd: nil, target: result.id)),
                               send: send)
         case .watchedBy:
-            try sendToViewer(redirect, id: result.id, environment: environment, send: send)
+            try sendToViewer(redirect, command: command, id: result.id, environment: environment, send: send)
         }
     }
 
@@ -437,6 +439,7 @@ extension Session.Overlay.Open {
     }
 
     private func sendToViewer(_ redirect: ControlOverlayRedirect,
+                              command: String,
                               id: String?,
                               environment: OverlayRedirectEnvironment,
                               send: (ControlRequest) throws -> SocketReply) throws {
@@ -514,7 +517,7 @@ extension Session.Overlay.Open {
 
     /// The re-send is the caller's OWN request with three fields moved, never a second hand-written copy of
     /// the option set: a new `session overlay open` flag then reaches both redirect arms with no edit here.
-    private func resolvedRequest(command: String, cwd: String?, target: String?) throws -> ControlRequest {
+    private func resolvedRequest(command: String?, cwd: String?, target: String?) throws -> ControlRequest {
         let base = try makeRequest()
         var args = base.args ?? ControlArgs()
         args.command = command

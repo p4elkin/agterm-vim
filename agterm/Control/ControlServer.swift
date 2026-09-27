@@ -603,6 +603,7 @@ final class ControlServer {
                 .sidebarWidth, .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
                 .sessionPaste, .sessionSelectAll,
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
+                .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect, .windowGo,

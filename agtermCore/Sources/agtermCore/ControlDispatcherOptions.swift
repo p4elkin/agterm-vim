@@ -25,9 +25,14 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     /// The two-phase resolved re-send (see `ControlArgs.resolved`): true only on `agtermctl`'s second,
     /// already-wrapped request. The host must skip the redirect decision and open plainly when this is true.
     public let resolved: Bool
+    /// page is the file or web page to show instead of running `command`, which is then empty, as is `cwd`.
+    public let page: HtmlSource?
+    public let navigation: Bool
+    public let javascript: Bool
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
-                follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false) {
+                follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
+                navigation: Bool = false, javascript: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
@@ -36,6 +41,9 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
         self.follow = follow
         self.pane = pane
         self.resolved = resolved
+        self.page = page
+        self.navigation = navigation
+        self.javascript = javascript
     }
 }
 

@@ -261,6 +261,8 @@ agtermctl" and never aborts `reconcile_once`.
 
 - **The status HUD** and the two config-editing overlays (`agterm/AppActions.swift:351,378`) — see
   the design doc's "Left out on purpose" for why.
+- **HTML and URL overlays** (`--html`, `--url`). The app opens a page before the decision, so it never
+  redirects: the redirect wraps a command in ssh, a page has none, and its file or `localhost` names this Mac.
 - **Two viewers at once.** One `viewer` field, no contention rule.
 - **Pulling the laptop's attention** to a redirected overlay. `--follow` passes through unchanged;
   redirect does not decide it.
