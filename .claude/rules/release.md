@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/release.sh"
+  - "scripts/sign-local.sh"
 ---
 
 ## Release (`scripts/release.sh`)
@@ -47,6 +48,32 @@ in the script itself; the fifth is a standing condition, not a bug:
   ⚠️ The release body says so too, and must keep saying so: macOS quarantines an unsigned DMG and reports
   the app as damaged, so the note carries the `xattr -dr com.apple.quarantine` line users need. Restoring
   the signed wording without a real certificate sends every downloader into that error.
+
+### Local deploy signing (`scripts/sign-local.sh`)
+
+`make deploy` re-signs the Release app with a self-signed `agterm Local Signing` certificate before copying
+it, giving the helpers fixed identifiers (`com.umputun.agterm.agterm-session-host`, `.agtermctl`, `.zmx`).
+Ad-hoc signing names a helper `agterm-session-host-<hash>` with a cdhash requirement, so every build is a new
+app to TCC: the Local Network grant is lost and the background session host cannot prompt, so LAN hosts
+answer `No route to host` from every shell (measured 2026-09-23). The certificate makes the designated
+requirement `identifier … and certificate leaf = H"…"`, which survives rebuilds.
+
+- The identity lives in its own keychain, `~/Library/Keychains/agterm-signing.keychain-db`, with an EMPTY
+  password, so a build over ssh unlocks it without a prompt. The login keychain was rejected: its password
+  can differ from the login password, and `codesign` prompts for it on first use.
+- No keychain, no change: the build stays ad-hoc and the script says so.
+- Recreating it (a new certificate changes the leaf hash, so every grant is asked again):
+
+      security create-keychain -p "" ~/Library/Keychains/agterm-signing.keychain-db
+      security set-keychain-settings ~/Library/Keychains/agterm-signing.keychain-db
+      # openssl req -x509 … -days 3650 with keyUsage=digitalSignature, extendedKeyUsage=codeSigning,
+      # CN "agterm Local Signing"; pkcs12 -export; then:
+      security import id.p12 -k ~/Library/Keychains/agterm-signing.keychain-db -P <p12-pass> -T /usr/bin/codesign
+      security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" ~/Library/Keychains/agterm-signing.keychain-db
+      security list-keychains -d user -s <existing keychains…> ~/Library/Keychains/agterm-signing.keychain-db
+
+- `security find-identity -p codesigning` shows it as `CSSMERR_TP_NOT_TRUSTED`. That is expected and
+  harmless: `codesign` signs with it and a locally built app carries no quarantine.
 
 Fork release notes live in `CHANGELOG-fork.md`, never `CHANGELOG.md`: [[fork-merge]] takes upstream's
 copy whole on every rebase, so a note written there is erased by the next daily run. Upstream has no such

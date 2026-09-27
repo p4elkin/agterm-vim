@@ -243,6 +243,19 @@ struct HtmlOverlayTests {
         #expect(session.paneOverlayExitCode(.right) == nil)
     }
 
+    @Test func paneOpenFreesAnOrphanSurfaceAndMintsANewGeneration() {
+        split()
+        #expect(store.openPaneOverlay(session.id, pane: .right, command: "true") == nil)
+        let programGeneration = session.paneOverlayGeneration(.right)
+        let orphan = SpySurface(paneToken: "right-overlay")
+        session.setPaneOverlay(nil, pane: .right)
+        session.setPaneOverlaySurface(orphan, pane: .right)
+
+        #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
+        #expect(session.paneOverlaySurface(.right) == nil)
+        #expect(session.paneOverlayGeneration(.right) != programGeneration)
+    }
+
     @Test func openIsRefusedWhileAPresenterOwnsTheSession() throws {
         let hub = PresentationHub(staleTimeout: 30)
         let presenter = Sink()

@@ -36,6 +36,10 @@ public enum OverlayPane: String, CaseIterable, Codable, Sendable {
         self == .left ? \.leftOverlayExitCode : \.rightOverlayExitCode
     }
 
+    @MainActor public var generationSlot: ReferenceWritableKeyPath<Session, Int> {
+        self == .left ? \.leftOverlayGeneration : \.rightOverlayGeneration
+    }
+
     /// The zoom surface addressing this pane's overlay (`surface:<id>:overlay-left|overlay-right`).
     public var zoomSurface: TerminalZoomSurface {
         self == .left ? .overlayLeft : .overlayRight
@@ -571,6 +575,17 @@ public final class Session: Identifiable {
     /// The right pane overlay program's exit status (see `leftOverlayExitCode`).
     @ObservationIgnored public var rightOverlayExitCode: Int?
 
+    /// The pane-slot analogue of `overlaySlotGeneration`, minted on every `openPaneOverlay` and keyed into
+    /// that pane's overlay host ids. It travels with the overlay through a swap or promotion, so a moved
+    /// overlay keeps its host and its surface's callbacks still recognize the slot. Observed, never persisted.
+    public var leftOverlayGeneration: Int = 0
+
+    /// The right pane's overlay generation (see `leftOverlayGeneration`).
+    public var rightOverlayGeneration: Int = 0
+
+    /// Source of both panes' generations, so a value moved between panes can never be minted again.
+    @ObservationIgnored private var paneOverlayGenerationSeed = 0
+
     /// Whether the scratch terminal covers this session (full single-pane size, like a full overlay); the
     /// detail pane shows/hides it. A third per-session shell that, unlike the ephemeral overlay, behaves like
     /// the split: hiding it keeps the shell alive, so a re-show reuses it. Not persisted.
@@ -728,6 +743,15 @@ public final class Session: Identifiable {
     /// `session.overlay.result --pane` can report it; nil until one exits or after the next open on that pane.
     public func paneOverlayExitCode(_ pane: OverlayPane) -> Int? { self[keyPath: pane.exitCodeSlot] }
 
+    /// The generation of the overlay opened on `pane` most recently, 0 before the first open.
+    public func paneOverlayGeneration(_ pane: OverlayPane) -> Int { self[keyPath: pane.generationSlot] }
+
+    /// Gives `pane` a generation no overlay on either pane has held.
+    public func mintPaneOverlayGeneration(_ pane: OverlayPane) {
+        paneOverlayGenerationSeed += 1
+        self[keyPath: pane.generationSlot] = paneOverlayGenerationSeed
+    }
+
     /// The panes with an overlay up, ordered left then right — the `paneOverlays` tree read-back source.
     public var openPaneOverlays: [OverlayPane] {
         OverlayPane.allCases.filter { paneOverlay($0) != nil }
@@ -852,6 +876,7 @@ public final class Session: Identifiable {
         setPaneOverlay(rightOverlay, pane: .left)
         setPaneOverlaySurface(rightOverlaySurface, pane: .left)
         setPaneOverlayExitCode(rightOverlayExitCode, pane: .left)
+        leftOverlayGeneration = rightOverlayGeneration
         setPaneOverlay(nil, pane: .right)
         setPaneOverlaySurface(nil, pane: .right)
         setPaneOverlayExitCode(nil, pane: .right)

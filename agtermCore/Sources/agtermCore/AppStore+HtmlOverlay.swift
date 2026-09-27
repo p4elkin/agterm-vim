@@ -44,8 +44,10 @@ extension AppStore {
         if let pane {
             guard session.paneOverlay(pane) == nil else { return .alreadyOpen }
             guard session.rendersPane(pane) else { return .paneNotVisible }
+            discardOrphanPaneOverlaySurface(session, pane: pane)
             session.setPaneOverlayExitCode(nil, pane: pane)
             session.remoteOverlays.clearFailure(pane)
+            session.mintPaneOverlayGeneration(pane)
             session.setPaneOverlay(PaneOverlay(html: overlay, backgroundColor: backgroundColor), pane: pane)
             return nil
         }

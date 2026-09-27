@@ -1028,6 +1028,21 @@ struct SessionTests {
         #expect(overlaySurface.teardownCount == 0, "promotion must not tear the migrating surface down")
     }
 
+    @Test func paneOverlayGenerationsNeverRepeatAcrossAPromotion() {
+        let session = Session(initialCwd: "/repo")
+        session.mintPaneOverlayGeneration(.left)
+        let retired = session.paneOverlayGeneration(.left)
+        session.mintPaneOverlayGeneration(.right)
+        let promoted = session.paneOverlayGeneration(.right)
+        session.teardownPaneOverlay(.left)
+        session.promotePaneOverlay()
+        #expect(session.paneOverlayGeneration(.left) == promoted)
+        session.mintPaneOverlayGeneration(.right)
+        session.mintPaneOverlayGeneration(.left)
+        #expect(![retired, promoted].contains(session.paneOverlayGeneration(.left)))
+        #expect(![retired, promoted].contains(session.paneOverlayGeneration(.right)))
+    }
+
     @Test func focusedOverlayPaneIsLeftAfterAPromotion() {
         // the survivor moves into surface while splitSurface is nilled, so the migrated overlay reads as left before splitFocused settles.
         let session = Session(initialCwd: "/repo")

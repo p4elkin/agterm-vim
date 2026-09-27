@@ -27,7 +27,8 @@ run: ## debug build + launch (scripts/run.sh)
 release: ## release build, no launch (scripts/build.sh)
 	./scripts/build.sh
 
-deploy: release ## release build + copy to ~/Applications
+deploy: release ## release build + local signing + copy to /Applications
+	./scripts/sign-local.sh "$(RELEASE_APP)"
 	rm -rf "$(INSTALL_DIR)/agterm.app"
 	cp -R "$(RELEASE_APP)" "$(INSTALL_DIR)/agterm.app"
 	@echo "installed $(INSTALL_DIR)/agterm.app"

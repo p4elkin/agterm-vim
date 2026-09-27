@@ -691,7 +691,13 @@ struct agtermApp: App {
     static func makeOverlaySurface(for session: Session, store: AppStore, pane: OverlayPane?,
                                    env: [String: String]) -> GhosttySurfaceView {
         let sessionID = session.id
-        let spec = Self.overlaySpec(for: session, pane: pane)
+        guard let spec = Self.overlaySpec(for: session, pane: pane) else {
+            // a host mounted from a stale pass after the overlay closed. A torn-down view has no callbacks
+            // and never spawns; the next open or close on the pane frees it from the slot.
+            let stillborn = GhosttySurfaceView(workingDirectory: NSHomeDirectory())
+            stillborn.teardown()
+            return stillborn
+        }
         // the session-wide slot's occupant decides passivity; the body file is what that occupant needs
         let isHud = pane == nil && session.hudActive
         let hudFile = isHud ? session.hudFile : nil
@@ -718,23 +724,35 @@ struct agtermApp: App {
         // the captured `pane`: `closePrimaryPane` MOVES a right-pane overlay into the left slot without
         // rebuilding the view (`TerminalView.makeNSView` reuses a non-nil slot), so a captured `.right` would
         // close nothing, record the status where `session.overlay.result --pane left` can't read it, and leave
-        // the promoted pane under a dead overlay forever. The captured value is the pre-realization fallback,
-        // for the window between the open and the slot holding this surface.
+        // the promoted pane under a dead overlay forever. Swap and promotion carry the generation along, so
+        // a generation mismatch means a later overlay owns the slot: an orphan must neither close nor score it.
+        // The captured pane is the fallback only for the window before the slot holds this surface.
         if let pane {
-            let livePane: @MainActor () -> OverlayPane = { [weak view] in
-                guard let view else { return pane }
-                return store.session(withID: sessionID)?.paneOverlayRole(of: view) ?? pane
+            let generation = session.paneOverlayGeneration(pane)
+            let livePane: @MainActor () -> OverlayPane? = { [weak view] in
+                guard let view, let live = store.session(withID: sessionID) else { return nil }
+                let role = live.paneOverlayRole(of: view) ?? pane
+                return live.paneOverlayGeneration(role) == generation ? role : nil
             }
-            view.onExitCodeCaptured = { store.recordPaneOverlayExit(sessionID, pane: livePane(), code: $0) }
-            view.onExit = { store.closePaneOverlay(sessionID, pane: livePane()) }
-            view.onExitHeld = { store.replicaOverlayHeld(forSession: sessionID, pane: livePane()) }
+            view.onExitCodeCaptured = { code in
+                guard let pane = livePane() else { return }
+                store.recordPaneOverlayExit(sessionID, pane: pane, code: code)
+            }
+            view.onExit = {
+                guard let pane = livePane() else { return }
+                store.closePaneOverlay(sessionID, pane: pane)
+            }
+            view.onExitHeld = {
+                guard let pane = livePane() else { return }
+                store.replicaOverlayHeld(forSession: sessionID, pane: pane)
+            }
             // a PANE overlay tracks its pane's focus like the pane itself does: clicking it moves
             // `splitFocused`, so the deck's per-pane focus gate keeps it active instead of resigning first
             // responder on the next update, and `focusedOverlayPane` (⌘W rung, search, `topmostSurface`)
             // agrees with what the user sees.
             view.onFocusChange = { focused in
-                guard focused else { return }
-                store.session(withID: sessionID)?.splitFocused = livePane() == .right
+                guard focused, let pane = livePane() else { return }
+                store.session(withID: sessionID)?.splitFocused = pane == .right
             }
         } else {
             // a HUD records nothing: its "program" is the app's own painter, so an exit status would put a
@@ -753,15 +771,16 @@ struct agtermApp: App {
 
     /// The four fields the overlay factory reads, from the session-wide slot (`pane == nil`) or that pane's
     /// slot. `PaneOverlay` carries them for both kinds; the session-wide slot has no such value type and its
-    /// extra `overlaySizePercent` is geometry the factory never reads. The empty pane fallback is unreachable
-    /// — every mount site tests the same slot in the pass that reaches this factory — but keeps it total.
+    /// extra `overlaySizePercent` is geometry the factory never reads. nil for an empty pane slot, which a
+    /// host still reaches when SwiftUI mounts it from a pass that predates the close: an empty command there
+    /// would run `eval ""`, exit 0, and close and score the pane's next overlay.
     @MainActor
-    private static func overlaySpec(for session: Session, pane: OverlayPane?) -> PaneOverlay {
+    private static func overlaySpec(for session: Session, pane: OverlayPane?) -> PaneOverlay? {
         guard let pane else {
             return PaneOverlay(command: session.overlayCommand ?? "", cwd: session.overlayCwd,
                                backgroundColor: session.overlayBackgroundColor, wait: session.overlayWait)
         }
-        return session.paneOverlay(pane) ?? PaneOverlay(command: "")
+        return session.paneOverlay(pane)
     }
 
     /// Scratch-terminal surface factory: a third per-session shell, full-overlay rendered. Like the overlay it is

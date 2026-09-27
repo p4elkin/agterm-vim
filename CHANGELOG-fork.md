@@ -132,6 +132,15 @@ publishes an empty body with only a warning on stderr.
 - normal mode yields the keyboard to an HTML or URL overlay the way it does to a program overlay, so its
   bare-key binds no longer take keys meant for the page. Upstream's new page overlays stopped counting as
   a program overlay, which the yield asked.
+- `session overlay open --pane` no longer loses runs to an empty command (3 of 10 measured). A pane
+  overlay host SwiftUI mounted after the previous overlay closed built a surface running `""`, which exited
+  0 and closed the next overlay on that pane before its program started, so `overlay result --pane`
+  reported `exit 0` for a command that never ran. Each open now gets its own host generation, a pane with
+  no overlay builds no program, and a surface left in an empty slot is freed on the next open or close.
+- shells in agterm can reach the local network again after a rebuild. `make deploy` now signs the app,
+  `agterm-session-host`, `agtermctl` and `zmx` with a local self-signed certificate and fixed identifiers,
+  so the Local Network permission is not lost on every build. Without the certificate the build is
+  ad-hoc signed as before; `.claude/rules/release.md` has the one-time setup.
 - `tree` and `window list` no longer stall the app for 3 seconds per call once four Live daemons exist.
   `ZmxClient.run` read the child's output only after it exited; zmx writes the listing row by row, so the
   pipe never grows past its initial 512 bytes, zmx blocked on write, the app blocked on exit, and every call

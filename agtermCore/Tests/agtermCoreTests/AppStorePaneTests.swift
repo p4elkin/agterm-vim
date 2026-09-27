@@ -1507,6 +1507,68 @@ struct AppStorePaneTests {
         #expect(store.closePaneOverlay(session.id, pane: .left) == false)
     }
 
+    @Test func openPaneOverlayMintsAGenerationNoOtherOpenHeld() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.isSplit = true
+        session.splitSurface = SpySurface()
+        #expect(session.paneOverlayGeneration(.left) == 0)
+        store.openPaneOverlay(session.id, pane: .left, command: "revdiff")
+        let first = session.paneOverlayGeneration(.left)
+        store.closePaneOverlay(session.id, pane: .left)
+        #expect(session.paneOverlayGeneration(.left) == first)
+        store.openPaneOverlay(session.id, pane: .left, command: "revdiff")
+        store.openPaneOverlay(session.id, pane: .right, command: "htop")
+        let second = session.paneOverlayGeneration(.left)
+        #expect(Set([0, first, second, session.paneOverlayGeneration(.right)]).count == 4)
+        #expect(store.openPaneOverlay(session.id, pane: .left, command: "htop") == .alreadyOpen)
+        #expect(session.paneOverlayGeneration(.left) == second)
+    }
+
+    @Test func openPaneOverlayFreesASurfaceLeftInTheEmptySlot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let orphan = SpySurface()
+        session.leftOverlaySurface = orphan
+        session.leftOverlayExitCode = 0
+        #expect(store.openPaneOverlay(session.id, pane: .left, command: "revdiff") == nil)
+        #expect(orphan.teardownCount == 1)
+        #expect(session.leftOverlaySurface == nil)
+        #expect(session.leftOverlayExitCode == nil)
+        #expect(session.leftOverlay?.command == "revdiff")
+    }
+
+    @Test func closePaneOverlayFreesASurfaceLeftInTheEmptySlot() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        let orphan = SpySurface()
+        session.leftOverlaySurface = orphan
+        session.leftOverlayExitCode = 7
+        #expect(store.closePaneOverlay(session.id, pane: .left) == false)
+        #expect(orphan.teardownCount == 1)
+        #expect(session.leftOverlaySurface == nil)
+        #expect(session.leftOverlayExitCode == 7)
+    }
+
+    @Test func closePrimaryPaneCarriesTheRightOverlayGenerationLeft() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        session.surface = SpySurface()
+        session.isSplit = true
+        session.hasSplit = true
+        session.splitSurface = SpySurface()
+        store.openPaneOverlay(session.id, pane: .left, command: "revdiff")
+        store.openPaneOverlay(session.id, pane: .right, command: "htop")
+        let right = session.paneOverlayGeneration(.right)
+        session.rightOverlaySurface = SpySurface()
+        store.closePrimaryPane(session.id)
+        #expect(session.paneOverlayGeneration(.left) == right)
+    }
+
     @Test func recordPaneOverlayExitTargetsOnlyItsOwnPane() {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")

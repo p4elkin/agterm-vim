@@ -163,12 +163,12 @@ extension WindowContentView {
             TerminalView(session: session, surfaceKeyPath: \.leftOverlaySurface,
                          makeSurface: { makeOverlaySurface($0, .left) },
                          isActive: true, deckVisible: true, reportsFocusChange: false)
-                .id("\(session.id.uuidString)-zoom-overlay-left-\(hostToken)")
+                .id("\(session.id.uuidString)-zoom-overlay-left-\(session.paneOverlayGeneration(.left))-\(hostToken)")
         case .overlayRight:
             TerminalView(session: session, surfaceKeyPath: \.rightOverlaySurface,
                          makeSurface: { makeOverlaySurface($0, .right) },
                          isActive: true, deckVisible: true, reportsFocusChange: false)
-                .id("\(session.id.uuidString)-zoom-overlay-right-\(hostToken)")
+                .id("\(session.id.uuidString)-zoom-overlay-right-\(session.paneOverlayGeneration(.right))-\(hostToken)")
         }
     }
 

@@ -71,6 +71,8 @@ struct AppStorePaneSwapTests {
         let rightOverlaySurface: ObjectIdentifier?
         let leftOverlayExitCode: Int?
         let rightOverlayExitCode: Int?
+        let leftOverlayGeneration: Int
+        let rightOverlayGeneration: Int
         let indicator: AgentIndicator
         let statusChangedAt: Date?
         let isSplit: Bool
@@ -108,6 +110,8 @@ struct AppStorePaneSwapTests {
             rightOverlaySurface = session.rightOverlaySurface.map { ObjectIdentifier($0) }
             leftOverlayExitCode = session.leftOverlayExitCode
             rightOverlayExitCode = session.rightOverlayExitCode
+            leftOverlayGeneration = session.leftOverlayGeneration
+            rightOverlayGeneration = session.rightOverlayGeneration
             indicator = session.agentIndicator
             statusChangedAt = session.statusChangedAt
             isSplit = session.isSplit
@@ -159,6 +163,8 @@ struct AppStorePaneSwapTests {
         session.setPaneOverlaySurface(rightOverlay, pane: .right)
         session.setPaneOverlayExitCode(7, pane: .left)
         session.setPaneOverlayExitCode(9, pane: .right)
+        session.leftOverlayGeneration = 3
+        session.rightOverlayGeneration = 5
         session.agentIndicator = AgentIndicator(status: .blocked, statusPane: .left)
         session.statusChangedAt = Date(timeIntervalSince1970: 123)
         session.paneBackgrounds = PaneBackgrounds(left: BackgroundWatermark(kind: .text, text: "DRIVER"),
@@ -201,6 +207,8 @@ struct AppStorePaneSwapTests {
         #expect(session.rightOverlaySurface === fixture.leftOverlay)
         #expect(session.leftOverlayExitCode == 9)
         #expect(session.rightOverlayExitCode == 7)
+        #expect(session.leftOverlayGeneration == 5)
+        #expect(session.rightOverlayGeneration == 3)
         #expect(session.agentIndicator.statusPane == .right)
         #expect(session.statusChangedAt == Date(timeIntervalSince1970: 123))
         #expect(!session.isSplit)

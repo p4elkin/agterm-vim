@@ -150,6 +150,8 @@ extension AppStore {
         // rendered text files are keyed by pane identity, which swapped above, so they follow without a move
         (session.paneBackgrounds.left, session.paneBackgrounds.right) =
             (session.paneBackgrounds.right, session.paneBackgrounds.left)
+        (session.leftOverlayGeneration, session.rightOverlayGeneration) =
+            (session.rightOverlayGeneration, session.leftOverlayGeneration)
 
         var indicator = session.agentIndicator
         if indicator.status == .idle {
@@ -474,8 +476,12 @@ extension AppStore {
         // an unrendered pane never gets a nonzero backing size, so its surface would never be created and
         // the slot would sit active with no program — reject instead of opening a dead overlay.
         guard session.rendersPane(pane) else { return .paneNotVisible }
+        // a surface left in an empty slot would be reused by the next host's `makeNSView`, baked with the
+        // retired overlay's command. Freed first, so the exit code it may report is reset below.
+        discardOrphanPaneOverlaySurface(session, pane: pane)
         session.setPaneOverlayExitCode(nil, pane: pane)
         session.remoteOverlays.clearFailure(pane)
+        session.mintPaneOverlayGeneration(pane)
         session.setPaneOverlay(PaneOverlay(command: command, cwd: cwd, backgroundColor: backgroundColor,
                                            wait: wait), pane: pane)
         return nil
@@ -491,13 +497,24 @@ extension AppStore {
     /// overlay, never kept alive. The exit code SURVIVES, cleared only by the next open on that pane. Used
     /// on explicit close and when the program exits. No-op (false) with no overlay on that pane.
     @discardableResult public func closePaneOverlay(_ sessionID: UUID, pane: OverlayPane) -> Bool {
-        guard let session = session(withID: sessionID), let overlay = session.paneOverlay(pane) else { return false }
+        guard let session = session(withID: sessionID) else { return false }
+        guard let overlay = session.paneOverlay(pane) else {
+            discardOrphanPaneOverlaySurface(session, pane: pane)
+            return false
+        }
         HtmlOverlayReleases.shared.release(overlay.html)
         session.setPaneOverlay(nil, pane: pane)
         session.paneOverlaySurface(pane)?.teardown()
         session.setPaneOverlaySurface(nil, pane: pane)
         if let replica = overlay.replica { session.onReplicaOverlayClosed?(replica.job) }
         return true
+    }
+
+    /// Frees a surface sitting in a pane slot whose overlay is already gone.
+    func discardOrphanPaneOverlaySurface(_ session: Session, pane: OverlayPane) {
+        guard session.paneOverlay(pane) == nil, let orphan = session.paneOverlaySurface(pane) else { return }
+        orphan.teardown()
+        session.setPaneOverlaySurface(nil, pane: pane)
     }
 
     /// Toggles the scratch terminal — a third, full-overlay login shell. Its surface is created lazily by the

@@ -72,6 +72,8 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
   `.claude/rules/control-api.md`.
 - `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
   `CHANGELOG-fork.md` as the release body. `.claude/rules/release.md`.
+- `make deploy` signs the app and its helpers with a local self-signed certificate and fixed identifiers,
+  so macOS grants such as Local Network survive a rebuild. `.claude/rules/release.md`.
 
 ## Leader sequences for built-in actions
 

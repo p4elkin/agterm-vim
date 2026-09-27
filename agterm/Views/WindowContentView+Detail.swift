@@ -418,7 +418,9 @@ extension WindowContentView {
                                  makeSurface: { makeOverlaySurface($0, pane) },
                                  isActive: isActive, deckVisible: deckVisible, onScreen: gates.onScreen)
                         .overlay { paneDim(!focused, session: session, color: overlayWashColor(session, pane: pane)) }
-                        .id("\(session.id.uuidString)-overlay-\(pane.rawValue)-\(PaneHostIdentity.token(for: pane.zoomSurface, in: session))")
+                        // the generation gives each open its own host, as `overlaySlotGeneration` does above
+                        .id("\(session.id.uuidString)-overlay-\(pane.rawValue)-\(session.paneOverlayGeneration(pane))-"
+                            + PaneHostIdentity.token(for: pane.zoomSurface, in: session))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
