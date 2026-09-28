@@ -21,6 +21,7 @@ struct HtmlOverlayView: View {
     var body: some View {
         VStack(spacing: 0) {
             strip
+            Rectangle().fill(foreground.opacity(0.1)).frame(height: 1)
             HtmlWebViewHost(store: store, session: session, overlay: overlay, backgroundColor: backgroundColor,
                             isActive: isActive, visible: visible)
                 .background(backgroundColor.flatMap { NSColor(agtermHex: $0) }.map { Color(nsColor: $0) } ?? background)
@@ -63,6 +64,7 @@ struct HtmlOverlayView: View {
         .foregroundStyle(foreground)
         .padding(.horizontal, 10)
         .frame(height: 28)
+        .background(foreground.opacity(0.06))
         .background(background)
     }
 
