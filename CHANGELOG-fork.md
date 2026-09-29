@@ -44,7 +44,8 @@ publishes an empty body with only a warning on stderr.
   the file opens over that pane, markdown in plannotator and code in revdiff. The path is found even when
   it is relative to another directory: the pane's, the git root, the main checkout of a worktree, a
   matching suffix in the repo, then Spotlight. Several candidates open a picker; none shows a HUD that
-  hides itself. Needs `agterm-open-path` from agterm-agents on `~/.local/bin`
+  hides itself. A path in a pane running on p4linux opens the p4linux file, with the viewer running
+  there. Needs `agterm-open-path` from agterm-agents on `~/.local/bin` on both machines
 - a pane pinned with `--keep-shell-open` now starts ONE login shell instead of two. The command is typed
   into the login shell zmx spawns for the session rather than wrapped in another `zsh -lc` that has to
   `exec` a third. Nothing is resident either way, but the saved profile load is paid per pane at surface

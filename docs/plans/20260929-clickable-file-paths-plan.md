@@ -173,22 +173,33 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 
 ### Task 6: ➕ remote panes (spec, Remote panes)
 
-**Files:**
-- Modify: `agtermCore/Sources/agtermCore/OpenPathLaunch.swift`, `OpenPathLaunchTests.swift`
-- Modify: `~/dev/agterm-agents/bin/agterm-open-path`, `tests/test_agterm_open_path.py`
+No app change: the script reads the row from `tree --json` itself.
 
-- [ ] failing `OpenPathLaunchTests` first: attached session → `--host`, no `--cwd`; mirror row →
-      `--host` and `--cwd` from `mirrorsSession`; local session unchanged. Per-pane remoteness follows
-      the same predicate as `ControlProjection`'s per-pane `remote`
-- [ ] `OpenPathLaunch.arguments` emits them; `openFilePath` unchanged apart from the call
-- [ ] failing pytest cases first, with `ssh` stubbed on PATH: `--host` never touches the local
-      filesystem; `--resolve-only` prints JSON candidates and opens nothing; the chosen remote file is
-      copied under `remote/<host>/` and opened; ssh failure shows a HUD and opens nothing
-- [ ] script: `--host`, `--resolve-only`, `plocate` step when `mdfind` is absent, `$HOME` start without
-      `--cwd`
-- [ ] deploy the script to p4linux the way the `p4machines` skill says tooling is deployed there
-- [ ] manual: click a relative and an absolute path in a pane attached from p4linux, and a path whose
-      twin exists on the Mac; the remote file opens, never the local twin
+**Files:**
+- Modify: `~/dev/agterm-agents/bin/agterm-open-path`, `tests/test_agterm_open_path.py`
+- Modify: `CHANGELOG-fork.md`, `FORK-NOTES.md` (one clause each on remote panes)
+
+- [x] failing pytest cases first, with `agtermctl tree --json`, `ssh`, `zmx` and `plocate` stubbed:
+  - a mosh row runs ssh with `--` before the host and never touches the local filesystem, so a
+    same-named Mac file is not opened;
+  - the remote line reproduces a path holding `'`, `$(id)` and `;` literally;
+  - a split row uses `splitRestoreCommand` and passes `--pane right`; a right pane without one resolves
+    locally even when the left pane is remote;
+  - the remote line carries `AGTERM_REMOTE_SELF_HOST`, `ZMX_SESSION` and the parsed `ZMX_DIR` (mosh and
+    ssh forms), and a relative helper path;
+  - a `new --host` row pinning `${AGTERM_SESSION_ID…}` falls back to `<row>-<pane>` as the key;
+  - a `remoteHost` row shows the HUD and runs nothing;
+  - ssh failure shows a HUD;
+  - `--zmx-key` mode derives the cwd from the stubbed `zmx list` and a fake `/proc` root, falls back to
+    `$HOME`, and uses `plocate` when `mdfind` is absent
+- [x] Mac side: host from `host_of`'s patterns, key from `row_keys`' patterns, `ZMX_DIR`; refuse a host
+      with a leading `-` or whitespace
+- [x] host side: `--zmx-key`, `/proc` cwd lookup (root injectable for tests), `plocate` step
+- [x] fork docs
+- [ ] after merge, with Sasha's go: push agterm-agents, then `install.sh --host p4linux` (its links point
+      at its own checkout, which must pull first)
+- [ ] manual: in a p4linux pane, a relative path, an absolute path, and a path whose twin exists on the
+      Mac; each opens the p4linux file
 
 ## Post-Completion
 

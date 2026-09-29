@@ -168,21 +168,47 @@ The capability is a script entry point, not an app state, and it uses the existi
 
 ## Remote panes
 
-A pane whose shell runs on another machine is handled on the Mac, so resolving it locally either misses
-or, worse, opens a same-named local file silently. Two kinds of session are remote:
+Most agent panes are p4linux shells shown in a Mac pane through mosh and zmx. The click is handled on the
+Mac, where that pane's cwd is a stale local directory (libghostty drops a remote shell's OSC 7 as not
+local), so a local lookup misses or, worse, opens a same-named Mac file.
 
-- attached (`zmx attach`): `Session.remoteHost` names the ssh destination; the remote cwd is unknown,
-  because libghostty drops the remote shell's OSC 7 as not local and `currentCwd` stays the local `$HOME`;
-- mirror rows: `Session.mirrorsSession` carries `host` and the remote `cwd` (`OverlayRedirect.swift`).
+`Session.remoteHost` does not mark these rows: it is set only by an agterm-to-agterm attach. The host,
+the zmx key and `ZMX_DIR` live in the pane's pinned restore command (`restoreCommand`, or
+`splitRestoreCommand` for the right pane), which `tree --json` projects. A right pane without its own
+restore command is a local shell and resolves locally, whatever the left pane runs.
 
-For a remote pane the app passes `--host <host>` (and `--cwd` only when the remote cwd is known), and
-the script never resolves on the Mac. It runs the same chain on the host,
-`ssh -n -o BatchMode=yes -o ConnectTimeout=5 -- <host> agterm-open-path --resolve-only …`, which prints
-the candidates as JSON; Linux uses `plocate` where the Mac uses Spotlight. Without a known cwd the chain
-starts at `$HOME`. The chosen file is copied to
-`~/.local/state/agterm-open-path/remote/<host>/<abs path>` and opened read-only in the usual viewer; the
-HUD says `remote copy from <host>`. Annotations therefore land on the copy, not the remote file.
-If ssh or the remote helper fails, the HUD says so; nothing falls back to a local lookup.
+- host: the patterns of `agterm-zmx`'s `host_of` (`mosh … --server="…" "<host>"`, `/usr/bin/ssh -tt "<host>"`);
+  a host with a leading `-` or whitespace is refused;
+- key: the patterns of `agterm-zmx`'s `row_keys` (`<UUID>-(left|right|scratch|overlay)`); rows made by
+  `new --host` pin `${AGTERM_SESSION_ID…}-${AGTERM_PANE…}` unexpanded, so the fallback is `<row>-<pane>`;
+- `ZMX_DIR`: pinned because a non-login ssh has no `TMPDIR`; written `ZMX_DIR="…"` in the mosh form and
+  `ZMX_DIR=\"…\"` in the ssh form.
+
+So the Mac script, for such a pane, runs itself on the host instead of resolving locally:
+`ssh -o BatchMode=yes -o ConnectTimeout=5 -- <host> env AGTERM_REMOTE_SELF_HOST=<host> ZMX_SESSION=<key>
+ZMX_DIR=<dir> .local/bin/agterm-open-path --zmx-key <key> --target <row> [--pane <side>] -- <path>`,
+every argument `shlex`-quoted, since ssh joins them into one remote shell line and the path is untrusted
+terminal text. ssh starts in `$HOME`, hence the relative helper path.
+
+- `AGTERM_REMOTE_SELF_HOST` is what the `agtermctl` shim needs to rewrite `session overlay open` into an
+  `ssh -tt` back to the host; only a row's own environment sets it, not `~/.zshenv`.
+- `ZMX_SESSION` lets the shim's `agterm-row-id --home-host` find the Mac the row belongs to, so a laptop
+  row is answered on the laptop, not on the Studio default.
+- No `-n` and no overall timeout: the host-side picker reads its items from stdin through the shim and
+  may wait for the user. Only the connection is bounded.
+
+On the host the script:
+
+- takes the cwd of the pane's foreground process: the zmx session's pid from `zmx list` (usually claude
+  itself), its terminal's foreground group from `/proc/<pid>/stat`, then `/proc/<pgid>/cwd`; `$HOME` if any
+  step fails;
+- runs the same chain, with `plocate` where the Mac uses Spotlight;
+- opens through the host's `agtermctl` shim like any remote overlay: revdiff runs on the host in a Mac
+  overlay (the shim rewrites the program into `ssh -tt <host> …`), and plannotator serves its page on
+  `http://<host>.local:195xx`. Annotations land on the real file.
+
+A Mac-to-Mac attached row (`remoteHost` set) gets the HUD `remote pane: path not opened` for now.
+If ssh fails, the HUD says so; nothing falls back to a local lookup.
 
 ## Open points
 

@@ -59,7 +59,8 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
   upstream declares but cannot parse. ⚠️ Shift is required and not optional, for plain URLs too — the
   terminal links section of `.claude/rules/libghostty.md` says why.
 - **Clickable file paths** — the same chord on a path opens it over the pane, markdown in plannotator and
-  code in revdiff, through `agterm-open-path`. Same terminal links section.
+  code in revdiff, through `agterm-open-path`; a p4linux pane's path opens on p4linux. Same terminal links
+  section.
 
 **Control API and tooling**
 
