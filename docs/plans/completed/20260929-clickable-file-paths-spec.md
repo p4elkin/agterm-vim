@@ -217,7 +217,7 @@ If ssh fails, the HUD says so; nothing falls back to a local lookup.
   `FORCE_HYPERLINK=1` is set (`plugins/agterm/skills/agterm/troubleshooting.md`). Setting it would route
   those clicks to Finder instead.
 - Line jump: neither `revdiff` nor plannotator takes a start line. v1 ignores `:N` when opening.
-- `revdiff --only` on a tracked file with local changes may show the diff, not the whole file. If so, the
-  code viewer switches to `revdiff --stdin --stdin-name=<name> < <file>`, which shows raw text.
+- `revdiff --only` shows the diff for a file with uncommitted changes and the whole file otherwise, so a
+  path an agent just edited opens as its change and a merely mentioned one opens whole.
 - The pane-scoped overlay (`--pane`) is passed only when `Session.isSplit`, so an unsplit pane uses the
   session-wide slot.

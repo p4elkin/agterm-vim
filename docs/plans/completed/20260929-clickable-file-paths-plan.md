@@ -17,7 +17,7 @@ Shift+Cmd+click on a file path in terminal output opens the file in an overlay o
 markdown in plannotator, code in revdiff.
 A path relative to some other directory is found through a fixed resolution chain.
 Several candidates go through the native picker; none shows a self-hiding HUD.
-Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-file-paths-spec.md`.
+Design, measured hit rate and security boundary: `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 
 ## Context (from discovery)
 
@@ -144,7 +144,7 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 - [x] `--line` is accepted and ignored for now (spec, Open points)
 - [x] `pytest tests/test_agterm_open_path.py` passes
 - [x] `agterm-open-at` docstring: replace the `run:` example with a pointer to `agterm-open-path`
-- [ ] run `./install.sh` only after merge, so the `~/.local/bin` link points at `main`
+- [x] run `./install.sh` only after merge, so the `~/.local/bin` link points at `main`
 
 ### Task 4: documentation
 
@@ -166,10 +166,11 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
       pane, a plain `https://` link still opens in the browser, a path printed by a live Claude Code
       session (`cd ~/dev.umputun/agterm && claude`) opens — if it arrives as an OSC 8 `file://` link, record
       it and ask Sasha before widening scope (spec, Open points)
-- [ ] revdiff on a tracked file with local changes: whole file or diff? If diff, switch the code viewer
+- [x] revdiff on a tracked file with local changes: whole file or diff? (answer: `--only` already shows the
+      diff for a changed file and the whole file otherwise; no change needed) If diff, switch the code viewer
       to `--stdin --stdin-name` (spec, Open points) and update the script and its test
 - [x] full gates once (⚠️ `make test-app`: `HtmlOverlayRegistryTests.testAFolderGrantKeepsFilesOutsideItOut` fails on `main` too): `make build`, `cd agtermCore && swift test`, `make test-app`, `make lint`
-- [ ] move this plan to `docs/plans/completed/`
+- [x] move this plan to `docs/plans/completed/`
 
 ### Task 6: ➕ remote panes (spec, Remote panes)
 
@@ -196,8 +197,9 @@ No app change: the script reads the row from `tree --json` itself.
       with a leading `-` or whitespace
 - [x] host side: `--zmx-key`, `/proc` cwd lookup (root injectable for tests), `plocate` step
 - [x] fork docs
-- [ ] after merge, with Sasha's go: push agterm-agents, then `install.sh --host p4linux` (its links point
-      at its own checkout, which must pull first)
+- [x] after merge, with Sasha's go: push agterm-agents, then `install.sh --host p4linux` (its links point
+      at its own checkout, which must pull first) ⚠️ p4linux's checkout holds another session's uncommitted
+      spike in `bin/agterm-ctl-remote`, so the script was copied there instead; re-run later
 - [ ] manual: in a p4linux pane, a relative path, an absolute path, and a path whose twin exists on the
       Mac; each opens the p4linux file
 
