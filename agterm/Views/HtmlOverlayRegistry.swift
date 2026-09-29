@@ -213,7 +213,7 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func reloadShown() {
         // before a first commit WebKit has nothing to reload, so the source is loaded again instead
-        if !textLoaded, webView.url != nil {
+        if !textLoaded, committed {
             loadPending = true
             webView.reload()
         } else {

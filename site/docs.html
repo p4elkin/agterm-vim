@@ -1450,7 +1450,8 @@
                 <strong style="color: #e6e1d7">Flagged view layout</strong> that picks a flat list or a workspace tree for the
                 flagged view in every window (the tree shares each workspace's collapse state with the ordinary tree, so
                 folding a group folds that workspace in both), where a new session opens (your home
-                directory by default, the current session's directory, or a fixed folder you pick), a restore mode for fresh shells,
+                directory by default, the current session's directory, or a fixed folder you pick), whether New Session adds
+                it at the end of the workspace or right after the current session, a restore mode for fresh shells,
                 re-run commands, or live sessions, an opt-in confirm before closing a session, and
                 whether to load your global Ghostty config.
               </div>
@@ -2748,7 +2749,8 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
               attaching the row again, and a replica closed here stays closed. Older origins leave the layout alone.
               Confirmed origin removal closes its replica without requiring a keypress, even if it already shows a disconnect
               prompt. The last replica waits for its ssh exit and may then close the row; automatic primary removal is skipped
-              while a local split is pending. An ordinary connection failure still holds the disconnect line for you to read.
+              while a local split is pending. An ordinary connection failure still shows the disconnect line, reconnecting on its own when
+              ssh itself failed and otherwise holding for a keypress.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 12px 0 0">
               When the stream drops, the mirrored status, context and HUD are cleared here and come back on reconnect, which is retried after
@@ -2782,8 +2784,13 @@ agtermctl notify "needs input" --target "$AGT_SESSION_ID" --socket "$AGT_SOCKET"
               side. Scripts typing into a covered pane on the Mac the session runs on still work, and so do their reads of
               its screen: both go through the session itself, not the covered view. When you close the session the panes
               on the far side uncover by themselves. Both Macs need an agterm with this behaviour; against an older one
-              the attach still arrives at the other Mac's size until you type. When a connection drops, the pane holds on Ghostty's press-any-key prompt under one line naming the
-              host, the session, the pane and the exit status.
+              the attach still arrives at the other Mac's size until you type. When a connection drops, the pane keeps its last screen. If ssh
+              itself failed (exit 255, which is also what a refused login gives), a bar under it names the host and says it is reconnecting,
+              under whatever ssh printed, and agterm attaches the pane again once the host answers, retried on the
+              schedule the stream uses; any key retries at once and ⌘W still closes the session. The last screen is replaced when the host answers, before the new connection is up, so if the link drops again right away the pane waits on an empty terminal with only the bar. The pane comes back without taking the lead, so
+              if the other Mac leads it by then, it arrives covered, and also while the other Mac still counts this Mac's dropped connection
+              as the leader, which clears by itself once that connection times out. Any other exit prints one line naming the host, the
+              session, the pane and the exit status, and holds on Ghostty's press-any-key prompt.
             </p>
 
             <div

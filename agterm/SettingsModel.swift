@@ -313,6 +313,8 @@ final class SettingsModel {
     func setNewSessionDirectory(_ value: String?) { settings.newSessionDirectory = value; try? settingsStore.save(settings) }
     /// Persist the fixed directory used when `newSessionDirectory` is `custom` (nil/empty falls back to home).
     func setNewSessionCustomDirectory(_ value: String?) { settings.newSessionCustomDirectory = value; try? settingsStore.save(settings) }
+    /// setNewSessionPlacement persists placement for future session creation; nil restores `end`.
+    func setNewSessionPlacement(_ value: String?) { settings.newSessionPlacement = value; try? settingsStore.save(settings) }
     /// Persist whether a GUI session close first asks for confirmation (nil = off). `AppActions` reads it on
     /// demand at close time, so it just saves.
     func setConfirmCloseSession(_ value: Bool?) { settings.confirmCloseSession = value; try? settingsStore.save(settings) }
