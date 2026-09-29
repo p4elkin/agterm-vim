@@ -10,6 +10,7 @@
 - [Security boundary](#security-boundary)
 - [Control API](#control-api)
 - [Out of scope](#out-of-scope)
+- [Remote panes](#remote-panes)
 - [Open points](#open-points)
 
 ## Problem
@@ -164,6 +165,24 @@ The capability is a script entry point, not an app state, and it uses the existi
 - Opening files in an editor. revdiff is read-only with annotations; an editor is one picker away later.
 - A custom `link` rule in `ghostty.conf`. The built-in link already delivers every path this needs, and it
   is matched before any user rule, so a custom rule for paths could never fire.
+
+## Remote panes
+
+A pane whose shell runs on another machine is handled on the Mac, so resolving it locally either misses
+or, worse, opens a same-named local file silently. Two kinds of session are remote:
+
+- attached (`zmx attach`): `Session.remoteHost` names the ssh destination; the remote cwd is unknown,
+  because libghostty drops the remote shell's OSC 7 as not local and `currentCwd` stays the local `$HOME`;
+- mirror rows: `Session.mirrorsSession` carries `host` and the remote `cwd` (`OverlayRedirect.swift`).
+
+For a remote pane the app passes `--host <host>` (and `--cwd` only when the remote cwd is known), and
+the script never resolves on the Mac. It runs the same chain on the host,
+`ssh -n -o BatchMode=yes -o ConnectTimeout=5 -- <host> agterm-open-path --resolve-only …`, which prints
+the candidates as JSON; Linux uses `plocate` where the Mac uses Spotlight. Without a known cwd the chain
+starts at `$HOME`. The chosen file is copied to
+`~/.local/state/agterm-open-path/remote/<host>/<abs path>` and opened read-only in the usual viewer; the
+HUD says `remote copy from <host>`. Annotations therefore land on the copy, not the remote file.
+If ssh or the remote helper fails, the HUD says so; nothing falls back to a local lookup.
 
 ## Open points
 

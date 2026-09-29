@@ -155,12 +155,12 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 - [x] `CHANGELOG-fork.md`: user-facing entry under `## Unreleased`
 - [x] `libghostty.md`, `link` section: update the disposition count and add the path disposition in one
       sentence, pointing at the spec
-- [ ] ask Sasha whether `LinkPolicy.swift` joins the `flagged` list in `.claude/rules/fork-merge.md`
-      (answer recorded either way, never assumed)
+- [x] ask Sasha whether `LinkPolicy.swift` joins the `flagged` list in `.claude/rules/fork-merge.md`
+      (answer: yes, flagged)
 
 ### Task 5: verify acceptance criteria
 
-- [ ] isolated Debug instance (short `/tmp` `AGTERM_STATE_DIR`, `windows/` marker), one click per outcome:
+- [x] isolated Debug instance (short `/tmp` `AGTERM_STATE_DIR`, `windows/` marker), one click per outcome:
       md in pane dir, `x.swift:12` in a subfolder via suffix, file in main checkout from a worktree pane,
       several candidates → picker, missing → HUD that hides itself, split right pane opens over the right
       pane, a plain `https://` link still opens in the browser, a path printed by a live Claude Code
@@ -168,8 +168,27 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
       it and ask Sasha before widening scope (spec, Open points)
 - [ ] revdiff on a tracked file with local changes: whole file or diff? If diff, switch the code viewer
       to `--stdin --stdin-name` (spec, Open points) and update the script and its test
-- [ ] full gates once: `make build`, `cd agtermCore && swift test`, `make test-app`, `make lint`
+- [x] full gates once (⚠️ `make test-app`: `HtmlOverlayRegistryTests.testAFolderGrantKeepsFilesOutsideItOut` fails on `main` too): `make build`, `cd agtermCore && swift test`, `make test-app`, `make lint`
 - [ ] move this plan to `docs/plans/completed/`
+
+### Task 6: ➕ remote panes (spec, Remote panes)
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/OpenPathLaunch.swift`, `OpenPathLaunchTests.swift`
+- Modify: `~/dev/agterm-agents/bin/agterm-open-path`, `tests/test_agterm_open_path.py`
+
+- [ ] failing `OpenPathLaunchTests` first: attached session → `--host`, no `--cwd`; mirror row →
+      `--host` and `--cwd` from `mirrorsSession`; local session unchanged. Per-pane remoteness follows
+      the same predicate as `ControlProjection`'s per-pane `remote`
+- [ ] `OpenPathLaunch.arguments` emits them; `openFilePath` unchanged apart from the call
+- [ ] failing pytest cases first, with `ssh` stubbed on PATH: `--host` never touches the local
+      filesystem; `--resolve-only` prints JSON candidates and opens nothing; the chosen remote file is
+      copied under `remote/<host>/` and opened; ssh failure shows a HUD and opens nothing
+- [ ] script: `--host`, `--resolve-only`, `plocate` step when `mdfind` is absent, `$HOME` start without
+      `--cwd`
+- [ ] deploy the script to p4linux the way the `p4machines` skill says tooling is deployed there
+- [ ] manual: click a relative and an absolute path in a pane attached from p4linux, and a path whose
+      twin exists on the Mac; the remote file opens, never the local twin
 
 ## Post-Completion
 

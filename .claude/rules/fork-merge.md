@@ -10,6 +10,7 @@ flagged:
   - "agtermCore/Sources/agtermCore/BuiltinAction.swift"
   - "agtermCore/Sources/agtermCore/NormalModeState.swift"
   - "agtermCore/Sources/agtermCore/KeybindMatcher.swift"
+  - "agtermCore/Sources/agtermCore/LinkPolicy.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
