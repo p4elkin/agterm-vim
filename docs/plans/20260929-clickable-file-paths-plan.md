@@ -94,18 +94,18 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 - Modify: `agtermCore/Tests/agtermCoreTests/LinkPolicyTests.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/OpenPathLaunchTests.swift`
 
-- [ ] find the `agterm-linux` fork (`gh search repos agterm-linux --include-forks=true`), shallow-clone it
+- [x] find the `agterm-linux` fork (`gh search repos agterm-linux --include-forks=true`), shallow-clone it
       into the scratchpad, grep for a `switch` over `LinkDisposition`; if one exists, note it in the PR
       description
-- [ ] failing `LinkPolicyTests` rows first, as listed in Testing Strategy
-- [ ] `LinkDisposition.openPath(path: String, line: Int?)`; in `disposition(for:)`, schemeless input goes
+- [x] failing `LinkPolicyTests` rows first, as listed in Testing Strategy
+- [x] `LinkDisposition.openPath(path: String, line: Int?)`; in `disposition(for:)`, schemeless input goes
       to `openPathDisposition(_:)` before the scheme guard. Rules from the spec's Security boundary.
       Extension allowlist: `md markdown swift py go ts tsx js jsx java kt sh zsh zig rs c h m mm yaml yml
       json toml conf`
-- [ ] extend the type doc comment by one clause; do not repeat the xchat reasoning
-- [ ] failing `OpenPathLaunchTests` first, then `OpenPathLaunch.arguments(path:line:cwd:sessionID:
+- [x] extend the type doc comment by one clause; do not repeat the xchat reasoning
+- [x] failing `OpenPathLaunchTests` first, then `OpenPathLaunch.arguments(path:line:cwd:sessionID:
       pane:isSplit:socket:)` returning the script argv, path last after `--`
-- [ ] `swift test --filter 'LinkPolicyTests|OpenPathLaunchTests'` passes
+- [x] `swift test --filter 'LinkPolicyTests|OpenPathLaunchTests'` passes
 
 ### Task 2: app launch of `agterm-open-path`
 
@@ -114,13 +114,13 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 - Modify: the file that makes `controlServer.resolvedSocketPath` reachable, only if the surface cannot
   reach it already
 
-- [ ] make the control socket path reachable from the surface
-- [ ] fold `openXchatMessage`'s helper lookup and launch into one private `runAgentHelper(_ name:,
+- [x] make the control socket path reachable from the surface (already there: the surface's `env["AGTERM_SOCKET"]`)
+- [x] fold `openXchatMessage`'s helper lookup and launch into one private `runAgentHelper(_ name:,
       arguments:)` so both links share it
-- [ ] `.openPath` case in `openLink`: builds argv with `OpenPathLaunch.arguments`, pane cwd is
+- [x] `.openPath` case in `openLink`: builds argv with `OpenPathLaunch.arguments`, pane cwd is
       `session.cwd(for: .right)` for a split surface, else `effectiveCwd`
-- [ ] missing helper logs a warning, like the xchat path
-- [ ] `make build` compiles
+- [x] missing helper logs a warning, like the xchat path
+- [x] `make build` compiles
 
 ### Task 3: `agterm-open-path` script, `agterm-open-at` docstring (agterm-agents)
 
@@ -129,21 +129,21 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 - Create: `~/dev/agterm-agents/tests/test_agterm_open_path.py`
 - Modify: `~/dev/agterm-agents/bin/agterm-open-at` (docstring only)
 
-- [ ] failing pytest cases first, as listed in Testing Strategy
-- [ ] PATH append of `~/.local/bin` and `/opt/homebrew/bin`, as in `xchat-open`
-- [ ] argparse: `--cwd`, `--target`, `--pane`, `--socket`, `--line`, then `--` and the path
-- [ ] `resolve(path, cwd) -> (candidates, step)`: the chain from the spec, first non-empty step wins,
+- [x] failing pytest cases first, as listed in Testing Strategy
+- [x] PATH append of `~/.local/bin` and `/opt/homebrew/bin`, as in `xchat-open`
+- [x] argparse: `--cwd`, `--target`, `--pane`, `--socket`, `--line`, then `--` and the path
+- [x] `resolve(path, cwd) -> (candidates, step)`: the chain from the spec, first non-empty step wins,
       regular files only, git calls with `-c core.fsmonitor=`, Spotlight capped at 20 and filtered by full
       `/<path>` suffix
-- [ ] outcomes: none → `session hud "File not found: <path>" --hide-after 4 --target`; one from a repo step
+- [x] outcomes: none → `session hud "File not found: <path>" --hide-after 4 --target`; one from a repo step
       → open; one from Spotlight or several → `agtermctl pick` with full paths, exit 2 ends quietly
-- [ ] open: `.md`/`.markdown` → `agterm-plannotate <abs> --target [--pane] [--socket]`, detached;
+- [x] open: `.md`/`.markdown` → `agterm-plannotate <abs> --target [--pane] [--socket]`, detached;
       other → `agtermctl session overlay open "<shutil.which('revdiff')> --only=<quoted abs>" --cwd <dir>
       --target [--pane] [--socket]`
-- [ ] every `agtermctl` call passes `--socket` when given, so a Debug instance never reaches the live one
-- [ ] `--line` is accepted and ignored for now (spec, Open points)
-- [ ] `pytest tests/test_agterm_open_path.py` passes
-- [ ] `agterm-open-at` docstring: replace the `run:` example with a pointer to `agterm-open-path`
+- [x] every `agtermctl` call passes `--socket` when given, so a Debug instance never reaches the live one
+- [x] `--line` is accepted and ignored for now (spec, Open points)
+- [x] `pytest tests/test_agterm_open_path.py` passes
+- [x] `agterm-open-at` docstring: replace the `run:` example with a pointer to `agterm-open-path`
 - [ ] run `./install.sh` only after merge, so the `~/.local/bin` link points at `main`
 
 ### Task 4: documentation
@@ -151,9 +151,9 @@ Design, measured hit rate and security boundary: `docs/plans/20260929-clickable-
 **Files:**
 - Modify: `FORK-NOTES.md`, `CHANGELOG-fork.md`, `.claude/rules/libghostty.md`
 
-- [ ] `FORK-NOTES.md`: one or two lines next to the clickable xchat entry
-- [ ] `CHANGELOG-fork.md`: user-facing entry under `## Unreleased`
-- [ ] `libghostty.md`, `link` section: update the disposition count and add the path disposition in one
+- [x] `FORK-NOTES.md`: one or two lines next to the clickable xchat entry
+- [x] `CHANGELOG-fork.md`: user-facing entry under `## Unreleased`
+- [x] `libghostty.md`, `link` section: update the disposition count and add the path disposition in one
       sentence, pointing at the spec
 - [ ] ask Sasha whether `LinkPolicy.swift` joins the `flagged` list in `.claude/rules/fork-merge.md`
       (answer recorded either way, never assumed)

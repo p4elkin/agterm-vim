@@ -221,11 +221,16 @@ paths:
 - A clicked link arrives as `GHOSTTY_ACTION_OPEN_URL` and lands in `GhosttySurfaceView.openLink`. The
   decision is host-free, in `agtermCore`'s `LinkPolicy.disposition(for:)`, so it is unit-tested without an
   app; the view only performs the outcome.
-- Four dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
+- Five dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
   Finder and never opened — opening goes through LaunchServices, so a click on `file:///…/X.app` or
-  `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.ignore` for
-  everything else, which is most things: a terminal renders untrusted program output, so any escape
-  sequence can carry any scheme.
+  `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.openPath` for a
+  schemeless file path. `.ignore` for everything else, which is most things: a terminal renders untrusted
+  program output, so any escape sequence can carry any scheme.
+- `.openPath` needs no `link` rule. Ghostty's built-in link already matches paths and is checked before any
+  user rule, so a custom path rule could never fire; on click it delivers the pwd-resolved absolute path
+  when that file exists, else the raw text with any `:N`. `openFilePath` hands it to `agterm-open-path`
+  with the pane's cwd. What `LinkPolicy` accepts, and why, is in
+  `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 - ⚠️ **Follow a link with SHIFT+Cmd+click, not Cmd+click.** Ghostty turns link hovering off entirely while
   an application has mouse reporting on. The gate is `mouse_event == .none OR (mouse.mods.shift AND
   !mouseShiftCapture())`, in both `Surface.zig:4590` (pointer moved) and `Surface.zig:2704` (modifiers

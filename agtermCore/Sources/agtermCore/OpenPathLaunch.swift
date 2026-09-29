@@ -5,13 +5,14 @@ import Foundation
 public enum OpenPathLaunch {
     public static let helperName = "agterm-open-path"
 
-    /// `--pane` is passed only for a split session's left or right pane; otherwise the overlay takes the
-    /// session-wide slot.
-    public static func arguments(path: String, line: Int?, cwd: String, sessionID: UUID,
-                                 pane: CommandContext.Pane, isSplit: Bool, socket: String?) -> [String] {
-        var args = ["--cwd", cwd, "--target", sessionID.uuidString]
+    /// `--cwd` is the clicked pane's directory. `--pane` is passed only for a split session's left or right
+    /// pane; otherwise the overlay takes the session-wide slot.
+    @MainActor
+    public static func arguments(path: String, line: Int?, session: Session, pane: CommandContext.Pane,
+                                 socket: String?) -> [String] {
+        var args = ["--cwd", session.cwd(for: pane), "--target", session.id.uuidString]
         if let socket { args += ["--socket", socket] }
-        if isSplit, pane != .scratch { args += ["--pane", pane.rawValue] }
+        if session.isSplit, pane != .scratch { args += ["--pane", pane.rawValue] }
         if let line { args += ["--line", String(line)] }
         return args + ["--", path]
     }

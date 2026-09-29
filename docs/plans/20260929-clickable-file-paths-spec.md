@@ -167,10 +167,10 @@ The capability is a script entry point, not an app state, and it uses the existi
 
 ## Open points
 
-- OSC 8 links are matched before the built-in link. If Claude Code prints file references as OSC 8
-  `file://` hyperlinks, those clicks reveal in Finder instead. Task 5 checks a live Claude Code click; if
-  it is OSC 8, `file://` handling for allowed extensions joins this feature.
-
+- OSC 8 links are matched before the built-in link, and a `file://` one reveals in Finder. Claude Code
+  sends none here: its hyperlink allowlist lacks `TERM_PROGRAM=agterm`, so it prints plain paths unless
+  `FORCE_HYPERLINK=1` is set (`plugins/agterm/skills/agterm/troubleshooting.md`). Setting it would route
+  those clicks to Finder instead.
 - Line jump: neither `revdiff` nor plannotator takes a start line. v1 ignores `:N` when opening.
 - `revdiff --only` on a tracked file with local changes may show the diff, not the whole file. If so, the
   code viewer switches to `revdiff --stdin --stdin-name=<name> < <file>`, which shows raw text.

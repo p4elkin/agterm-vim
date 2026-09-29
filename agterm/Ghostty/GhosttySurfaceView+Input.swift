@@ -598,8 +598,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     private func openFilePath(_ path: String, line: Int?) {
         guard let session else { return }
         let pane: CommandContext.Pane = isSplitPane ? .right : .left
-        let arguments = OpenPathLaunch.arguments(path: path, line: line, cwd: session.cwd(for: pane),
-                                                 sessionID: session.id, pane: pane, isSplit: session.isSplit,
+        let arguments = OpenPathLaunch.arguments(path: path, line: line, session: session, pane: pane,
                                                  socket: env["AGTERM_SOCKET"])
         runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
     }
