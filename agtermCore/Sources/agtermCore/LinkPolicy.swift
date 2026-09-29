@@ -4,7 +4,8 @@ import Foundation
 /// renders UNTRUSTED program output, so an escape-sequence link can carry any scheme. `disposition(for:)`
 /// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
-/// `agterm-xchat://msg/<id>` scheme, or IGNORE anything else. `file://` is revealed, never
+/// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
+/// `agterm-open-path` viewer script, or IGNORE anything else. `file://` is revealed, never
 /// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
 /// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder
@@ -31,6 +32,7 @@ public enum LinkPolicy {
         case open(URL)
         case reveal(URL)
         case xchat(id: String)
+        case openPath(path: String, line: Int?)
         case ignore
     }
 
@@ -109,6 +111,9 @@ public enum LinkPolicy {
     /// can't sneak through), or any other scheme / schemeless / unparseable input → `.ignore`. `localHosts`
     /// is injected (default: this machine's names) so the decision stays host-free and unit-testable.
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
+        if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
+            return openPathDisposition(raw)
+        }
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
         if permittedSchemes.contains(scheme) { return .open(url) }
         if scheme == xchatScheme { return xchatDisposition(url) }
@@ -144,5 +149,45 @@ public enum LinkPolicy {
         guard !id.contains(where: \.isNewline) else { return .ignore }
         guard id.range(of: xchatIDPattern, options: .regularExpression) != nil else { return .ignore }
         return .xchat(id: id)
+    }
+
+    /// Extensions a clicked path may carry: markdown for plannotator, the rest for revdiff.
+    static let openPathExtensions: Set<String> = [
+        "md", "markdown", "swift", "py", "go", "ts", "tsx", "js", "jsx", "java", "kt", "sh", "zsh", "zig",
+        "rs", "c", "h", "m", "mm", "yaml", "yml", "json", "toml", "conf",
+    ]
+
+    /// Relative paths need a `/` and no leading `-` (the script takes the path after `--`, but a gate should
+    /// not lean on that). Only an absolute path may hold a space: ghostty resolves a match against the pane's
+    /// pwd, so a pane under `Application Support` delivers one.
+    static let openPathPatterns = [
+        #"^[\w.@+][\w.@+~-]*(?:/[\w.@+~-]+)+$"#,
+        #"^~(?:/[\w.@+~-]+)+$"#,
+        #"^(?:/[\w.@+~ -]+)+$"#,
+    ]
+
+    /// A schemeless link is terminal text or an OSC 8 target, so it is refused unless it looks exactly like a
+    /// file path with an allowed extension. Trailing prose punctuation ghostty's regex keeps (`.`, markdown
+    /// `**`) is stripped, then an editor-style `:N`, `:N-M` or `:N:C` suffix becomes the line.
+    static func openPathDisposition(_ raw: String) -> LinkDisposition {
+        guard raw.count <= 1024, !raw.contains(where: { $0.isNewline || $0.asciiValue.map { $0 < 0x20 } == true })
+        else { return .ignore }
+        var path = Substring(raw)
+        while let last = path.last, ".*;!?".contains(last) { path = path.dropLast() }
+        var line: Int?
+        if let suffix = path.range(of: #":([0-9]+)(?:-[0-9]+|:[0-9]+)?$"#, options: .regularExpression) {
+            let digits = path[suffix].dropFirst().prefix { $0.isNumber }
+            guard let value = Int(digits), value > 0 else { return .ignore }
+            line = value
+            path = path[..<suffix.lowerBound]
+        }
+        let candidate = String(path)
+        guard openPathPatterns.contains(where: { candidate.range(of: $0, options: .regularExpression) != nil })
+        else { return .ignore }
+        let name = candidate.split(separator: "/").last ?? ""
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex,
+              openPathExtensions.contains(name[name.index(after: dot)...].lowercased())
+        else { return .ignore }
+        return .openPath(path: candidate, line: line)
     }
 }

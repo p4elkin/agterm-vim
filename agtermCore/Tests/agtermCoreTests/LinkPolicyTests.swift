@@ -225,4 +225,53 @@ struct LinkPolicyTests {
         #expect(decision != .open(URL(string: "agterm-xchat://msg/msg-133434-cad8")!))
         #expect(decision == .xchat(id: "msg-133434-cad8"))
     }
+
+    // MARK: schemeless file paths — what ghostty's built-in link delivers for a path match
+
+    @Test(arguments: [
+        ("docs/plans/x-spec.md", "docs/plans/x-spec.md", nil),
+        ("agterm/Ghostty/GhosttySurfaceView+Input.swift:566", "agterm/Ghostty/GhosttySurfaceView+Input.swift", 566),
+        ("src/a.ts:10-20", "src/a.ts", 10),
+        ("src/a.go:10:4", "src/a.go", 10),
+        ("../sibling/README.md", "../sibling/README.md", nil),
+        ("~/notes.md", "~/notes.md", nil),
+        ("~/dev/x/plan.md", "~/dev/x/plan.md", nil),
+        ("/x.md", "/x.md", nil),
+        ("/Users/me/dev/x/y.py", "/Users/me/dev/x/y.py", nil),
+        ("/Users/me/Library/Application Support/x/y.json", "/Users/me/Library/Application Support/x/y.json", nil),
+        ("docs/x.md.", "docs/x.md", nil),
+        ("docs/x.md**", "docs/x.md", nil),
+        ("src/x.swift:12;", "src/x.swift", 12),
+        ("docs/x.md?", "docs/x.md", nil),
+        ("web/app.tsx", "web/app.tsx", nil),
+        ("config/app.json", "config/app.json", nil),
+        ("Docs/X.MD", "Docs/X.MD", nil),
+    ] as [(String, String, Int?)])
+    func pathOpens(_ raw: String, _ path: String, _ line: Int?) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .openPath(path: path, line: line))
+    }
+
+    @Test(arguments: [
+        "README.md",                     // bare name, no `/`
+        "x.md:12",                       // bare name with a line
+        "-rf/x.md",                      // leading `-` would read as an option
+        "docs/my plan.md",               // a relative path with a space
+        "docs/x.md\nrm -rf ~",           // newline
+        "docs/$HOME/x.md",               // `$` outside the class
+        "docs/x%0A.md",                  // `%` outside the class
+        "docs/x.md#frag",                // `#` outside the class
+        "bin/tool.exe",                  // extension outside the allowlist
+        "../../etc/passwd",              // no extension
+        "docs/.md",                      // no stem
+        "//server/share/x.md",           // UNC-style
+        "src/x.swift:0",                 // line 0
+    ])
+    func pathRefused(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test func overlongPathRefused() {
+        let raw = "docs/" + String(repeating: "a", count: 1020) + ".md"
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
 }

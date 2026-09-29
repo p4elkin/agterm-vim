@@ -568,6 +568,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         case let .open(url): NSWorkspace.shared.open(url)
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case let .xchat(id): openXchatMessage(id)
+        case let .openPath(path, line): openFilePath(path, line: line)
         case .ignore: return
         }
     }
@@ -589,21 +590,36 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     /// belongs in the log, not in a dialog.
     private func openXchatMessage(_ id: String) {
         guard let sessionID = session?.id else { return }
-        let candidates = ["\(NSHomeDirectory())/.local/bin/xchat-open", "/opt/homebrew/bin/xchat-open"]
+        runAgentHelper("xchat-open", arguments: [id], sessionID: sessionID)
+    }
+
+    /// Open a clicked file path (ghostty's built-in path link) through `agterm-open-path`, which resolves it
+    /// against this pane's directory and its fallbacks and picks the viewer. Same launch rules as xchat.
+    private func openFilePath(_ path: String, line: Int?) {
+        guard let session else { return }
+        let pane: CommandContext.Pane = isSplitPane ? .right : .left
+        let arguments = OpenPathLaunch.arguments(path: path, line: line, cwd: session.cwd(for: pane),
+                                                 sessionID: session.id, pane: pane, isSplit: session.isSplit,
+                                                 socket: env["AGTERM_SOCKET"])
+        runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
+    }
+
+    private func runAgentHelper(_ name: String, arguments: [String], sessionID: UUID) {
+        let candidates = ["\(NSHomeDirectory())/.local/bin/\(name)", "/opt/homebrew/bin/\(name)"]
         guard let tool = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            logger.warning("xchat link clicked but xchat-open is not installed")
+            logger.warning("link clicked but \(name, privacy: .public) is not installed")
             return
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = [id]
-        var env = ProcessInfo.processInfo.environment
-        env["AGTERM_SESSION_ID"] = sessionID.uuidString
-        process.environment = env
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["AGTERM_SESSION_ID"] = sessionID.uuidString
+        process.environment = environment
         do {
             try process.run()
         } catch {
-            logger.warning("xchat-open failed to launch: \(error.localizedDescription, privacy: .public)")
+            logger.warning("\(name, privacy: .public) failed to launch: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
