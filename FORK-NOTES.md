@@ -61,6 +61,10 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 - **Clickable file paths** — the same chord on a path opens it over the pane, markdown in plannotator and
   code in revdiff, through `agterm-open-path`; a p4linux pane's path opens on p4linux. Same terminal links
   section.
+- **Clickable Jira keys and MR links** — the same chord on a Jira key or a GitLab merge request URL shows
+  the item over the pane (a terminal view, a rendered page, or the browser, per kind), through
+  `agterm-open-link`; every other web link still opens the browser. Jira keys need a `link` rule in
+  `ghostty.conf`. Same terminal links section.
 
 **Control API and tooling**
 

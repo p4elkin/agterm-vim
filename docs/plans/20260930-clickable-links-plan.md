@@ -189,10 +189,10 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - Modify: `FORK-NOTES.md`
 - Modify: `CHANGELOG-fork.md`
 
-- [ ] `LinkPolicy` header comment: one clause, a pane's web link goes through `agterm-open-link` when installed
-- [ ] `libghostty.md`, the `link` section: the same fact, and that clicks inside an overlay still go to the browser
-- [ ] `FORK-NOTES.md`: a **Clickable Jira keys and MR links** line beside **Clickable file paths**
-- [ ] `CHANGELOG-fork.md`: an entry in the next release section
+- [x] `LinkPolicy` header comment: one clause, a pane's web link goes through `agterm-open-link` when installed
+- [x] `libghostty.md`, the `link` section: the same fact, and that clicks inside an overlay still go to the browser
+- [x] `FORK-NOTES.md`: a **Clickable Jira keys and MR links** line beside **Clickable file paths**
+- [x] `CHANGELOG-fork.md`: an entry in the next release section
 
 ### Task 7: verify
 
@@ -202,6 +202,7 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - [ ] measure the delay a plain web link now pays (helper start to `open`), write it into the spec's Open points
 - [ ] print for Sasha: the `link` line for `ghostty.conf` and a sample `open-link.conf`
 - [ ] move this plan and the spec to `docs/plans/completed/`
+- [ ] ➕ repoint the spec path in `libghostty.md` and in `bin/agterm-open-link`'s docstring to `completed/`
 
 ## Post-Completion
 

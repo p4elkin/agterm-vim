@@ -2,7 +2,8 @@ import Foundation
 
 /// Decides what agterm does when a terminal hyperlink is clicked (`GHOSTTY_ACTION_OPEN_URL`). A terminal
 /// renders UNTRUSTED program output, so an escape-sequence link can carry any scheme. `disposition(for:)`
-/// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`), REVEAL a LOCAL `file://` link in Finder
+/// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`, or `agterm-open-link` for a pane's web
+/// link when installed), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
 /// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
 /// `agterm-open-path` viewer script, or IGNORE anything else. `file://` is revealed, never
