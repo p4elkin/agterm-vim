@@ -142,28 +142,33 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - Modify: `tests/test_agterm_open_link.py`
 - Create: `tests/fixtures/jira-workitem.json`
 
-- [ ] capture `acli jira workitem view MGNLPN-823 --fields summary,status,assignee,description,comment --json`,
+- [x] capture `acli jira workitem view MGNLPN-823 --fields summary,status,assignee,description,comment --json`,
       trim it to one example of each ADF node the converter covers, replace names and text with neutral ones,
       and add an ESC and a C1 byte to one text node
-- [ ] failing cases first: ADF conversion, control stripping, the Jira and MR overlay commands, and the
+- [x] failing cases first: ADF conversion, control stripping, the Jira and MR overlay commands, and the
       measured not-found, tool-missing, failure and timeout outcomes
-- [ ] `adf_to_markdown(node)`: the nodes and marks from the spec; unknown nodes give their text; every text run
+- [x] `adf_to_markdown(node)`: the nodes and marks from the spec; unknown nodes give their text; every text run
       stripped of C0 controls except newline and tab, and of C1 controls
-- [ ] Jira: fetch once (timeout 10 s), write `~/.local/state/agterm-open-link/<KEY>.md` (title, status line,
+- [x] Jira: fetch once (timeout 10 s), write `~/.local/state/agterm-open-link/<KEY>.md` (title, status line,
       assignee, description, comments with author and date, the browse URL), overlay `glow -p <file>` with
       `PAGER='less -R'`
-- [ ] MR: the helper runs `glab mr view <n> -R <host>/<project> --comments` (`GLAB_PAGER=cat`, timeout 10 s),
+- [x] MR: the helper runs `glab mr view <n> -R <host>/<project> --comments` (`GLAB_PAGER=cat`, timeout 10 s),
       strips control bytes, appends the canonical URL, writes `<project>-<n>.txt`; overlay `less -R <file>`
-- [ ] `strip_controls(text)` shared by the Jira converter and the MR capture
-- [ ] `Fetching <item>…` HUD before a fetch, closed before the view opens or the fallback runs
-- [ ] ➕ the HUD and the overlay share one slot and `overlay open` is refused while a HUD holds it, so a test
+- [x] `strip_controls(text)` shared by the Jira converter and the MR capture
+- [x] `Fetching <item>…` HUD before a fetch, closed before the view opens or the fallback runs
+- [x] ➕ the HUD and the overlay share one slot and `overlay open` is refused while a HUD holds it, so a test
       asserts `session hud close` comes before `session overlay open`
-- [ ] ➕ glab runs with `NO_COLOR=1`, and `strip_controls` removes whole CSI and OSC sequences before single
+- [x] ➕ glab runs with `NO_COLOR=1`, and `strip_controls` removes whole CSI and OSC sequences before single
       control bytes, so no `[1m` remnant survives
-- [ ] on start, delete files older than one day in `~/.local/state/agterm-open-link/`
-- [ ] outcome detection from exit status plus the measured stderr text; HUD texts from the spec
-- [ ] overlay wrapper reuses the `agterm-open-path` pattern; every value through `shlex.quote`; tools by absolute path
-- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
+- [x] on start, delete files older than one day in `~/.local/state/agterm-open-link/`
+- [x] outcome detection from exit status plus the measured stderr text; HUD texts from the spec
+- [x] overlay wrapper reuses the `agterm-open-path` pattern; every value through `shlex.quote`; tools by absolute path
+- [x] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
+- [x] ➕ found in implementation: glow gets `-w <tty cols>` (`tput cols` reads 79 in an overlay, as in
+      `xchat-open`); `emoji`, `hardBreak` and `inlineCard` render (the real capture has emoji); a missing
+      `glow` counts as a missing tool; a refused `overlay open` opens the browser; the MR file name keeps
+      only `[A-Za-z0-9_-]` of the project path; `AGTERM_OPEN_LINK_APPEND` and `AGTERM_OPEN_LINK_TIMEOUT` are
+      test knobs, the first so the real tools in `/opt/homebrew/bin` cannot answer a "not installed" case
 
 ### Task 5: HTML view (agterm-agents)
 
@@ -209,5 +214,6 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - After a week of use, decide whether the generic Jira key pattern is too noisy and switch to a key list.
 - If `glab mr view` does not style comments, move the MR TUI view to the JSON-to-Markdown-to-`glow` route.
 - GitLab issues and pipelines: add a classifier row each.
+- Jira tables fall back to their text, one cell per line (the real capture has three); render them if that reads badly.
 
 <!-- plan-review: planning:plan-review 2026-09-30 findings=19 resolved -->
