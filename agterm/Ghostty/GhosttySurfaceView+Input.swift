@@ -565,7 +565,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     /// host-free `LinkPolicy`. A `file://` link is REVEALED in Finder, never opened — reveal executes nothing.
     func openLink(_ raw: String) {
         switch LinkPolicy.disposition(for: raw) {
-        case let .open(url): NSWorkspace.shared.open(url)
+        case let .open(url): openWebLink(url)
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case let .xchat(id): openXchatMessage(id)
         case let .openPath(path, line): openFilePath(path, line: line)
@@ -603,11 +603,24 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
     }
 
-    private func runAgentHelper(_ name: String, arguments: [String], sessionID: UUID) {
+    /// A pane's web link goes through `agterm-open-link`, which shows a Jira or merge request view or opens the
+    /// browser itself. An overlay surface has no session, so a link clicked inside a view opens the browser.
+    private func openWebLink(_ url: URL) {
+        if OpenLinkLaunch.handles(url), let session {
+            let pane: CommandContext.Pane = isSplitPane ? .right : .left
+            let arguments = OpenLinkLaunch.arguments(url: url, session: session, pane: pane,
+                                                     socket: env["AGTERM_SOCKET"])
+            if runAgentHelper(OpenLinkLaunch.helperName, arguments: arguments, sessionID: session.id) { return }
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    @discardableResult
+    private func runAgentHelper(_ name: String, arguments: [String], sessionID: UUID) -> Bool {
         let candidates = ["\(NSHomeDirectory())/.local/bin/\(name)", "/opt/homebrew/bin/\(name)"]
         guard let tool = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             logger.warning("link clicked but \(name, privacy: .public) is not installed")
-            return
+            return false
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
@@ -617,8 +630,10 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         process.environment = environment
         do {
             try process.run()
+            return true
         } catch {
             logger.warning("\(name, privacy: .public) failed to launch: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 }

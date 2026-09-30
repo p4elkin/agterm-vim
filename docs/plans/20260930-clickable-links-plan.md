@@ -113,11 +113,11 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 **Files:**
 - Modify: `agterm/Ghostty/GhosttySurfaceView+Input.swift`
 
-- [ ] `runAgentHelper` returns `Bool` (`@discardableResult`): true once `process.run()` succeeded
-- [ ] `.open(url)`: when `OpenLinkLaunch.handles(url)` and the surface has a session,
+- [x] `runAgentHelper` returns `Bool` (`@discardableResult`): true once `process.run()` succeeded
+- [x] `.open(url)`: when `OpenLinkLaunch.handles(url)` and the surface has a session,
       `runAgentHelper(OpenLinkLaunch.helperName, …)`; `NSWorkspace.shared.open(url)` when it returns false or
       either condition fails
-- [ ] `make build` compiles
+- [x] `make build` compiles
 
 ### Task 3: `agterm-open-link` skeleton, classification, browser view (agterm-agents)
 
