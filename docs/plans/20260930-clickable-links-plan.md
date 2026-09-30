@@ -125,15 +125,15 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - Create: `bin/agterm-open-link`
 - Create: `tests/test_agterm_open_link.py`
 
-- [ ] failing pytest cases first: classification, host spoofing, canonical MR URL, config, the browser outcomes,
+- [x] failing pytest cases first: classification, host spoofing, canonical MR URL, config, the browser outcomes,
       the catch-all
-- [ ] argparse `--target`, `--pane`, `--socket`, then `--` and the URL; PATH append as in `agterm-open-path`
-- [ ] `classify(url, config) -> ("jira", key) | ("mr", host, project, number) | ("other", url)`, using
+- [x] argparse `--target`, `--pane`, `--socket`, then `--` and the URL; PATH append as in `agterm-open-path`
+- [x] `classify(url, config) -> ("jira", key) | ("mr", host, project, number) | ("other", url)`, using
       `urlparse(url).hostname` compared exactly
-- [ ] `~/.config/agterm/open-link.conf` reader, `key = value`, defaults from the spec, unknown view means `tui`
-- [ ] `open_browser(url)`: re-checks `http`/`https`, runs `open`
-- [ ] `main` wraps everything; any exception ends in `open_browser` when the URL is `http`/`https`
-- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
+- [x] `~/.config/agterm/open-link.conf` reader, `key = value`, defaults from the spec, unknown view means `tui`
+- [x] `open_browser(url)`: re-checks `http`/`https`, runs `open`
+- [x] `main` wraps everything; any exception ends in `open_browser` when the URL is `http`/`https`
+- [x] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
 
 ### Task 4: TUI views (agterm-agents)
 
