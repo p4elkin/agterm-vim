@@ -103,10 +103,10 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - Create: `agtermCore/Sources/agtermCore/OpenLinkLaunch.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/OpenLinkLaunchTests.swift`
 
-- [ ] failing `OpenLinkLaunchTests` first, as listed in Testing Strategy
-- [ ] `helperName = "agterm-open-link"`; `handles(_ url: URL) -> Bool`; `arguments(url:session:pane:socket:)`,
+- [x] failing `OpenLinkLaunchTests` first, as listed in Testing Strategy
+- [x] `helperName = "agterm-open-link"`; `handles(_ url: URL) -> Bool`; `arguments(url:session:pane:socket:)`,
       shaped like `OpenPathLaunch.arguments` without `--cwd` and `--line`
-- [ ] `swift test --filter OpenLinkLaunchTests` passes
+- [x] `swift test --filter OpenLinkLaunchTests` passes
 
 ### Task 2: route web clicks from a pane to the helper
 
@@ -133,7 +133,7 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - [ ] `~/.config/agterm/open-link.conf` reader, `key = value`, defaults from the spec, unknown view means `tui`
 - [ ] `open_browser(url)`: re-checks `http`/`https`, runs `open`
 - [ ] `main` wraps everything; any exception ends in `open_browser` when the URL is `http`/`https`
-- [ ] `python3 -m pytest tests/test_agterm_open_link.py -q` passes
+- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
 
 ### Task 4: TUI views (agterm-agents)
 
@@ -156,10 +156,14 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
       strips control bytes, appends the canonical URL, writes `<project>-<n>.txt`; overlay `less -R <file>`
 - [ ] `strip_controls(text)` shared by the Jira converter and the MR capture
 - [ ] `Fetching <item>…` HUD before a fetch, closed before the view opens or the fallback runs
+- [ ] ➕ the HUD and the overlay share one slot and `overlay open` is refused while a HUD holds it, so a test
+      asserts `session hud close` comes before `session overlay open`
+- [ ] ➕ glab runs with `NO_COLOR=1`, and `strip_controls` removes whole CSI and OSC sequences before single
+      control bytes, so no `[1m` remnant survives
 - [ ] on start, delete files older than one day in `~/.local/state/agterm-open-link/`
 - [ ] outcome detection from exit status plus the measured stderr text; HUD texts from the spec
 - [ ] overlay wrapper reuses the `agterm-open-path` pattern; every value through `shlex.quote`; tools by absolute path
-- [ ] `python3 -m pytest tests/test_agterm_open_link.py -q` passes
+- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
 
 ### Task 5: HTML view (agterm-agents)
 
@@ -174,7 +178,8 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - [ ] `pandoc -f markdown-raw_html-raw_attribute --standalone --metadata title=<item> --include-in-header <csp>`,
       the header holding `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`, to
       `~/.local/state/agterm-open-link/<name>.html`, shown with `session overlay open --html <file>`, never `--js`
-- [ ] `python3 -m pytest tests/test_agterm_open_link.py -q` passes
+- [ ] ➕ a minimal `--template` instead of pandoc's default, whose hard-coded light background fights a dark overlay
+- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
 
 ### Task 6: fork docs
 
@@ -192,7 +197,7 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 ### Task 7: verify
 
 - [ ] fork: `swift test`, `make test-app`, `make lint`, `make build`
-- [ ] agterm-agents: `python3 -m pytest tests/ -q`
+- [ ] agterm-agents: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/ -q`
 - [ ] isolated Debug instance with a copy of `ghostty.conf` plus the Jira rule; one click per Outcomes row
 - [ ] measure the delay a plain web link now pays (helper start to `open`), write it into the spec's Open points
 - [ ] print for Sasha: the `link` line for `ghostty.conf` and a sample `open-link.conf`
