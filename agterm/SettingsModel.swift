@@ -79,6 +79,7 @@ final class SettingsModel {
         // live chrome/config, since it drives only the overlay-open decision and the title-bar pill.
         OverlayRedirectController.shared.setEnabled(settings.overlayRedirectEnabled ?? false)
         applyFlaggedViewLayout()
+        applyHtmlOverlayZoom()
         ensureStarterKeymap()
         loadKeymap()
         ensureStarterHooks()
@@ -320,6 +321,14 @@ final class SettingsModel {
     func setConfirmCloseSession(_ value: Bool?) { settings.confirmCloseSession = value; try? settingsStore.save(settings) }
     /// Persist whether GUI closes use the short undo grace period. nil = on; false = close immediately.
     func setCloseGraceUndoEnabled(_ value: Bool?) { settings.closeGraceUndoEnabled = value; try? settingsStore.save(settings) }
+    /// stepHtmlOverlayZoom moves every HTML page's zoom by a font binding action and persists it. Saves and
+    /// mirrors only: no chrome or config depends on it.
+    func stepHtmlOverlayZoom(_ action: String) {
+        guard let zoom = HtmlZoom.applying(fontAction: action, to: settings.effectiveHtmlOverlayZoom) else { return }
+        settings.htmlOverlayZoom = zoom == 1 ? nil : zoom
+        try? settingsStore.save(settings)
+        applyHtmlOverlayZoom()
+    }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
     /// Persist the overlay-redirect toggle and fan it into `OverlayRedirectController`, the value the pill
@@ -784,6 +793,10 @@ final class SettingsModel {
 
     private func applyFlaggedViewLayout() {
         GhosttyApp.shared.setFlaggedViewLayout(settings.effectiveFlaggedViewLayout)
+    }
+
+    private func applyHtmlOverlayZoom() {
+        HtmlOverlayRegistry.shared.setZoom(settings.effectiveHtmlOverlayZoom)
     }
 
     private func applyAutoHideSidebarInactiveWindows() {

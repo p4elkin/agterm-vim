@@ -90,7 +90,8 @@ paths:
   Its NORMAL pill is likewise NOT a hideable `InterfaceElement`: a mode that swallows every bare key must
   never be invisible. Do not re-open either question without asking the maintainer.
 - Font shortcuts call libghostty binding actions on the key window's first-responder surface, falling back
-  to the active session. Persistence still flows from cell-size callbacks.
+  to the active session, unless an HTML page owns the keys, which zooms the pages instead ([[control-api]]).
+  Persistence still flows from cell-size callbacks.
 - `shortcutGlyph` delegates to host-free `Keymap.glyphHint`. Use it for palette hints and the ten built-in
   toolbar/sidebar tooltips so rebinds update both. This visual text is keep-in-sync exempt.
 
