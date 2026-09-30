@@ -234,8 +234,8 @@ paths:
 - `.open` of an `http`/`https` link from a pane goes to `agterm-open-link` when it is installed, which shows
   a Jira issue or merge request over the pane or opens the browser; `NSWorkspace` is the fallback. A Jira
   key reaches it as a URL through a user `link` rule; an MR URL through the built-in URL link. Overlay
-  surfaces carry no session, so a link clicked inside a view still opens the browser.
-  `docs/plans/20260930-clickable-links-spec.md`.
+  surfaces carry no session, so a link clicked inside a view still opens the browser; see
+  `docs/plans/completed/20260930-clickable-links-spec.md`.
 - ⚠️ **Follow a link with SHIFT+Cmd+click, not Cmd+click.** Ghostty turns link hovering off entirely while
   an application has mouse reporting on. The gate is `mouse_event == .none OR (mouse.mods.shift AND
   !mouseShiftCapture())`, in both `Surface.zig:4590` (pointer moved) and `Surface.zig:2704` (modifiers

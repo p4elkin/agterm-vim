@@ -44,8 +44,8 @@ publishes an empty body with only a warning on stderr.
   an MR link and the issue or MR opens over that pane: summary, status, description and comments, in a
   terminal view by default, or as a rendered page or in the browser, chosen per kind in
   `~/.config/agterm/open-link.conf`. Every other web link opens the browser as before. Needs
-  `agterm-open-link` from agterm-agents on `~/.local/bin`, `acli` and `glab` logged in, and a `link` rule
-  in `ghostty.conf` for Jira keys
+  `agterm-open-link` from agterm-agents on `~/.local/bin`, `acli` and `glab` (logged in) and `glow`,
+  `pandoc` for the page view, and a `link` rule in `ghostty.conf` for Jira keys
 - a file path printed in any pane is clickable. Shift+Cmd+click `docs/plans/x.md` or `src/a.swift:12` and
   the file opens over that pane, markdown in plannotator and code in revdiff. The path is found even when
   it is relative to another directory: the pane's, the git root, the main checkout of a worktree, a
