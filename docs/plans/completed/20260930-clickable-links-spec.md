@@ -111,40 +111,41 @@ The helper therefore wraps its whole body and runs `open <url>` on any unexpecte
   older than one day.
 - Remote panes: `acli` and `glab` run on the Mac, whatever the pane is attached to, and both overlay opens
   pass `--resolved`, so a mirrored row's overlay redirect never runs the local wrapper over ssh.
-- View and pandoc input files are unique per run (`mkstemp`, stem capped at 100 characters): two clicks can run
+- View and renderer input files are unique per run (`mkstemp`, stem capped at 100 characters): two clicks can run
   at once, and `safe_name` folds `group/sub-proj` and `group-sub/proj` into one stem.
 
 ## Views
 
 **Browser.** `open <url>`.
 
-**TUI, MR.** `glab mr view <url>` reads the current directory's git remotes before the URL, and fails
-outside a GitLab checkout (measured: "None of the git remotes configured for this repository point to a known
-GitLab host"). The helper therefore passes the parts:
-`glab mr view <number> -R https://<host>/<project> --comments` (measured working from a non-GitLab directory).
-The URL form matters: glab reads a bare `<host>/<project>` as a gitlab.com group when it is not logged in to
-`<host>`.
-The helper runs it itself with `GLAB_PAGER=cat` and the timeout, so a 404, a missing glab or a timeout reaches
-the Outcomes table like any Jira failure.
-It strips control bytes from the output, appends the canonical URL, writes the view file,
-and the overlay runs `less -R <file>`, which stays up until `q`.
+**Markdown.** Both kinds are fetched as JSON and turned into Markdown by the helper, which every non-browser view shows.
+- Jira: `acli jira workitem view KEY --json` with `summary,status,assignee,description,comment`.
+  Plain mode drops the comments (measured on `MGNLPN-823`: the description shows, its 6 comments do not).
+  The ADF converter covers paragraphs, headings, lists, code blocks, block quotes, tables, links, mentions,
+  attachments (named, not fetched) and the marks `strong`, `em`, `code`, `strike`; any other node falls back
+  to its text.
+- MR: `glab mr view <number> -R https://<host>/<project> -F json` for the title, state, author and description, plus
+  `glab api --hostname <host> projects/<project>/merge_requests/<number>/discussions?per_page=100` for the threads,
+  system notes skipped.
+  glab gets the parts, not the URL: `glab mr view <url>` reads the current directory's git remotes first and fails
+  outside a GitLab checkout, and a bare `<host>/<project>` reads as a gitlab.com group.
+  Both run with `GLAB_PAGER=cat`.
+- Every fetched text is stripped of control bytes, and the file ends with the canonical URL.
 
-**TUI, Jira.** `acli jira workitem view KEY` in plain mode drops the comments
-(measured on `MGNLPN-823`: the description shows, its 6 comments do not), and its `--json` carries them.
-So the helper fetches `--json` with `summary,status,assignee,description,comment`,
-converts the ADF description and comments to Markdown itself, writes a temp `.md`,
-and the overlay runs `glow -p <file>` with `PAGER='less -R'`.
-The ADF converter covers paragraphs, headings, bullet and ordered lists, code blocks, block quotes,
-links, mentions, and the inline marks `strong`, `em`, `code`, `strike`; any other node falls back to its text.
-The file ends with the browse URL.
+**TUI.** The overlay runs `revdiffm --stdin --stdin-name <item>.md --preview --wrap`, the patched revdiff with a
+glamour preview that draws mermaid as box art; without it, `glow` paged through `less -R`.
+After an MR view closes, a prompt offers `r`, which re-runs the helper detached with `--review`:
+it fetches `glab mr diff <number> -R … --raw`, closes the overlay and starts `agterm-plannotate --review <patch>`.
+That needs the `agterm-plannotate` from agterm-agents' `feat/live-code-review`.
 
-**HTML.** The same Markdown (Jira), or for an MR the `glab mr view … -F json` fields (title, state, author,
-description) plus the `--comments` text, converted with
-`pandoc --standalone` reading Markdown with raw HTML and every attribute syntax off
-(`-raw_html-raw_attribute-bracketed_spans-fenced_divs-header_attributes-link_attributes-inline_code_attributes-fenced_code_attributes-yaml_metadata_block`),
-with a header carrying
-`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`,
-and shown with `session overlay open --html <file>`.
+**HTML.** The Markdown is rendered by `cmark-gfm`, GitHub's own renderer, with the table, strikethrough, autolink and
+tasklist extensions, into a page styled by github-markdown-css.
+The stylesheet is vendored as `share/agterm-open-link/github-markdown.css`, built by
+`scripts/build-github-markdown-css.py` from the light and dark sheets: each colour becomes `light-dark()`, so it
+follows the `color-scheme` the overlay sets from the terminal theme, and the page background stays the terminal's.
+The page carries
+`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`
+and is shown with `session overlay open --html <file>`, without `--js`.
 A live Jira or GitLab page in the overlay is not possible:
 the overlay's web view is `.nonPersistent()` (no login cookies) and cancels the cross-origin redirects SSO needs.
 
@@ -184,9 +185,9 @@ Measured failure shapes, used by the tests:
     control characters except newline and tab, and of all C1 controls;
     this matters because `less -R` (version 668 here) passes colour and OSC 8 hyperlink sequences, so unstripped
     text could draw fake links or reach OSC 52 through the pager;
-  - pandoc reads Markdown with raw HTML, attribute syntax and YAML metadata off, so a description cannot inject
-    frames, refreshes, `style=`/`on…=` attributes (`[x]{style=…}` would otherwise draw a fake panel), or a
-    metadata block that swallows the text after a `---` line;
+  - cmark-gfm runs without `--unsafe`: raw HTML becomes a comment, `javascript:`, `vbscript:`, `file:` and
+    non-image `data:` targets are dropped, and CommonMark has no attribute syntax, so a description cannot inject
+    frames, refreshes or `style=`/`on…=` attributes;
   - the page's Content-Security-Policy `default-src 'none'` stops Markdown images and any other subresource
     from loading, since the overlay's navigation policy only rules on page loads;
     the page is shown without `--js`.
@@ -196,26 +197,25 @@ Measured failure shapes, used by the tests:
 - Fork, `agtermCore`: `OpenLinkLaunch.handles` (http, https, mailto, ftp) and its argv (plain, split pane,
   socket), in the style of `OpenPathLaunch`'s tests.
 - Fork, app: the helper-or-`NSWorkspace` choice in `openLink`; checked by hand in a Debug instance.
-- agterm-agents, `tests/test_agterm_open_link.py`, stubs for `agtermctl`, `acli`, `glab`, `glow`, `pandoc`, `open`
+- agterm-agents, `tests/test_agterm_open_link.py`, stubs for `agtermctl`, `acli`, `glab`, `glow`, `cmark-gfm`, `open`
   as in `test_agterm_open_path.py`:
   - URL classification, host spoofing (`user@host`, `:port`, upper case, a lookalike host) and the canonical MR URL;
   - each view per kind builds the expected overlay or `open` call;
   - ADF to Markdown on a fixture trimmed from a real `acli --json` answer, including control-byte stripping;
   - control bytes in stubbed glab output do not reach the MR view file;
-  - pandoc called with raw HTML off and the CSP header;
+  - cmark-gfm called without `--unsafe`, the page carrying the CSP, the escaped title and the stylesheet;
+  - with the real cmark-gfm: raw HTML and `javascript:` links dropped, GFM tables, strikethrough and task lists;
   - the fetching HUD is closed on every path; old view files are removed;
   - not found, tool missing, fetch failure and timeout outcomes, using the measured failure shapes.
 
 ## Out of scope
 
 - GitLab issues, pipelines and commits; Jira filters and boards. The classifier is the extension point.
-- The MR diff (`glab mr diff`).
+- An MR diff view of its own: `r` hands the diff to plannotator instead.
 - Any upstream agterm change: this is fork plus agterm-agents only.
 
 ## Open points
 
 - The generic key pattern underlines `UTF-8`, `SHA-256` and `GPT-4` on hover.
   If that is noisy in practice, the rule switches to a list of project keys; nothing else changes.
-- Whether `glab mr view` styles comments as Markdown is unverified; if not, the MR TUI view could use the
-  same JSON-to-Markdown-to-`glow` route as Jira.
-- Every web link now starts Python before the browser opens; Task 6 of the plan measures the delay.
+- Every web link now starts Python before the browser opens: measured about 50 ms warm, 456 ms cold.
