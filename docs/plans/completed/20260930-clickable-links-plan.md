@@ -16,7 +16,7 @@
 Shift+Cmd+click on a Jira key or a GitLab merge request URL opens the item in a terminal view in an overlay
 over the clicked pane; per kind, config switches that to a rendered HTML overlay or the browser.
 Every other URL still opens in the browser.
-Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-links-spec.md`.
+Design, views, outcomes and security boundary: `docs/plans/completed/20260930-clickable-links-spec.md`.
 
 ## Context (from discovery)
 
@@ -205,13 +205,15 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 
 ### Task 7: verify
 
-- [ ] fork: `swift test`, `make test-app`, `make lint`, `make build`
-- [ ] agterm-agents: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/ -q`
+- [x] fork: `swift test`, `make test-app`, `make lint`, `make build` (test-app: `HtmlOverlayRegistryTests.testAFolderGrantKeepsFilesOutsideItOut` fails as on clean upstream)
+- [x] agterm-agents: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/ -q` (needs `--with pyyaml`; `test_session_chat_pairing::test_resync_pairs…` fails as on the base `927edf6`)
 - [ ] isolated Debug instance with a copy of `ghostty.conf` plus the Jira rule; one click per Outcomes row
 - [ ] measure the delay a plain web link now pays (helper start to `open`), write it into the spec's Open points
 - [ ] print for Sasha: the `link` line for `ghostty.conf` and a sample `open-link.conf`
-- [ ] move this plan and the spec to `docs/plans/completed/`
-- [ ] ➕ repoint the spec path in `libghostty.md` and in `bin/agterm-open-link`'s docstring to `completed/`
+- [x] move this plan and the spec to `docs/plans/completed/`
+- [x] ➕ repoint the spec path in `libghostty.md` and in `bin/agterm-open-link`'s docstring to `completed/`
+
+- [x] ➕ revmux `codex-claude` round 1: 3 major, 5 minor, all fixed in agterm-agents `a85236d` (refused HUD falls back to the browser, `--resolved` overlays, unique view files, YAML metadata off, safe Jira fence, `-R` as a URL)
 
 ## Post-Completion
 
