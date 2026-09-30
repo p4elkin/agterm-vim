@@ -109,7 +109,10 @@ The helper therefore wraps its whole body and runs `open <url>` on any unexpecte
   A HUD `Fetching <item>…` is up meanwhile; the helper closes it before opening the view or falling back.
 - Each view is written to a file under `~/.local/state/agterm-open-link/`; on start the helper deletes files there
   older than one day.
-- Remote panes need nothing special: `acli` and `glab` run on the Mac, whatever the pane is attached to.
+- Remote panes: `acli` and `glab` run on the Mac, whatever the pane is attached to, and both overlay opens
+  pass `--resolved`, so a mirrored row's overlay redirect never runs the local wrapper over ssh.
+- View and pandoc input files are unique per run (`mkstemp`, stem capped at 100 characters): two clicks can run
+  at once, and `safe_name` folds `group/sub-proj` and `group-sub/proj` into one stem.
 
 ## Views
 
@@ -118,10 +121,12 @@ The helper therefore wraps its whole body and runs `open <url>` on any unexpecte
 **TUI, MR.** `glab mr view <url>` reads the current directory's git remotes before the URL, and fails
 outside a GitLab checkout (measured: "None of the git remotes configured for this repository point to a known
 GitLab host"). The helper therefore passes the parts:
-`glab mr view <number> -R <host>/<project> --comments` (measured working from a non-GitLab directory).
+`glab mr view <number> -R https://<host>/<project> --comments` (measured working from a non-GitLab directory).
+The URL form matters: glab reads a bare `<host>/<project>` as a gitlab.com group when it is not logged in to
+`<host>`.
 The helper runs it itself with `GLAB_PAGER=cat` and the timeout, so a 404, a missing glab or a timeout reaches
 the Outcomes table like any Jira failure.
-It strips control bytes from the output, appends the canonical URL, writes `<project>-<n>.txt`,
+It strips control bytes from the output, appends the canonical URL, writes the view file,
 and the overlay runs `less -R <file>`, which stays up until `q`.
 
 **TUI, Jira.** `acli jira workitem view KEY` in plain mode drops the comments
@@ -136,7 +141,7 @@ The file ends with the browse URL.
 **HTML.** The same Markdown (Jira), or for an MR the `glab mr view … -F json` fields (title, state, author,
 description) plus the `--comments` text, converted with
 `pandoc --standalone` reading Markdown with raw HTML and every attribute syntax off
-(`-raw_html-raw_attribute-bracketed_spans-fenced_divs-header_attributes-link_attributes-inline_code_attributes-fenced_code_attributes`),
+(`-raw_html-raw_attribute-bracketed_spans-fenced_divs-header_attributes-link_attributes-inline_code_attributes-fenced_code_attributes-yaml_metadata_block`),
 with a header carrying
 `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`,
 and shown with `session overlay open --html <file>`.
@@ -151,6 +156,7 @@ the overlay's web view is `.nonPersistent()` (no login cookies) and cancels the 
 | view `browser`, or any other URL | the browser |
 | Jira key Jira does not know (`UTF-8`) | HUD `Not in Jira, or no access: UTF-8`, hides after 4 s |
 | MR that does not exist | HUD `No such merge request: <project>!<n>`, hides after 4 s |
+| either not-found HUD refused (a program overlay holds the slot) | the browser |
 | `acli` / `glab` not installed | the browser, plus a HUD naming the tool |
 | fetch fails otherwise (auth, network, timeout) | the browser |
 | helper not installed, or the click came from an overlay | the browser, from Swift |
@@ -160,7 +166,7 @@ Measured failure shapes, used by the tests:
 - `acli jira workitem view UTF-8 --json` and `… ZZZQX-1 --json`: exit 1, stderr
   `✗ Error: Issue does not exist or you do not have permission to see it.`
   Jira gives the same answer for a missing key and a hidden one, so the HUD says both.
-- `glab mr view 99999 -R <host>/<project>`, with `-F json` and with `--comments`: exit 1, stderr contains
+- `glab mr view 99999 -R https://<host>/<project>`, with `-F json` and with `--comments`: exit 1, stderr contains
   `404 Not Found`.
 - The HTML MR view makes two glab calls, so its worst case waits twice the timeout.
 
@@ -178,8 +184,9 @@ Measured failure shapes, used by the tests:
     control characters except newline and tab, and of all C1 controls;
     this matters because `less -R` (version 668 here) passes colour and OSC 8 hyperlink sequences, so unstripped
     text could draw fake links or reach OSC 52 through the pager;
-  - pandoc reads Markdown with raw HTML and attribute syntax off, so a description cannot inject frames,
-    refreshes, or `style=`/`on…=` attributes (`[x]{style=…}` would otherwise draw a fake panel);
+  - pandoc reads Markdown with raw HTML, attribute syntax and YAML metadata off, so a description cannot inject
+    frames, refreshes, `style=`/`on…=` attributes (`[x]{style=…}` would otherwise draw a fake panel), or a
+    metadata block that swallows the text after a `---` line;
   - the page's Content-Security-Policy `default-src 'none'` stops Markdown images and any other subresource
     from loading, since the overlay's navigation policy only rules on page loads;
     the page is shown without `--js`.
