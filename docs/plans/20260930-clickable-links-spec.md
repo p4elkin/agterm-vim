@@ -135,7 +135,9 @@ The file ends with the browse URL.
 
 **HTML.** The same Markdown (Jira), or for an MR the `glab mr view … -F json` fields (title, state, author,
 description) plus the `--comments` text, converted with
-`pandoc -f markdown-raw_html-raw_attribute --standalone`, with a header carrying
+`pandoc --standalone` reading Markdown with raw HTML and every attribute syntax off
+(`-raw_html-raw_attribute-bracketed_spans-fenced_divs-header_attributes-link_attributes-inline_code_attributes-fenced_code_attributes`),
+with a header carrying
 `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`,
 and shown with `session overlay open --html <file>`.
 A live Jira or GitLab page in the overlay is not possible:
@@ -176,7 +178,8 @@ Measured failure shapes, used by the tests:
     control characters except newline and tab, and of all C1 controls;
     this matters because `less -R` (version 668 here) passes colour and OSC 8 hyperlink sequences, so unstripped
     text could draw fake links or reach OSC 52 through the pager;
-  - pandoc reads Markdown with raw HTML off, so a description cannot inject frames or refreshes;
+  - pandoc reads Markdown with raw HTML and attribute syntax off, so a description cannot inject frames,
+    refreshes, or `style=`/`on…=` attributes (`[x]{style=…}` would otherwise draw a fake panel);
   - the page's Content-Security-Policy `default-src 'none'` stops Markdown images and any other subresource
     from loading, since the overlay's navigation policy only rules on page loads;
     the page is shown without `--js`.

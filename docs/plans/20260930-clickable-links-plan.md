@@ -187,6 +187,8 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - [x] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
 - [x] ➕ Task 3 review minors: `urlparse` guard in `open_browser`, plain-segment MR project paths, empty `jira.host` means no Jira; only `http`/`https`/`mailto` hrefs survive ADF
 - [x] ➕ pandoc reads the Markdown from a file under the state dir, not stdin
+- [x] ⚠️ review: raw HTML off is not enough, attribute syntax (`{style=…}`, `{onclick=…}`, `::: {…}`) also turned off; tested with the real pandoc
+- [x] ➕ one `Fetching` HUD over both MR fetches
 
 ### Task 6: fork docs
 
