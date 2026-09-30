@@ -145,7 +145,10 @@ The stylesheet is vendored as `share/agterm-open-link/github-markdown.css`, buil
 follows the `color-scheme` the overlay sets from the terminal theme, and the page background stays the terminal's.
 The page carries
 `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`
-and is shown with `session overlay open --html <file>`, without `--js`.
+and is shown with `session overlay open --html <file>`.
+A Jira page runs no script. An MR page carries a Review button (`data-agterm="session.overlay.submit"`, value
+`review`) and a `r` key handler, and opens with `--js --block`: the CSP admits that one script by its hash, the
+helper waits on the page, and a `review` answer runs the same `--review` flow as the TUI prompt.
 A live Jira or GitLab page in the overlay is not possible:
 the overlay's web view is `.nonPersistent()` (no login cookies) and cancels the cross-origin redirects SSO needs.
 
@@ -190,7 +193,7 @@ Measured failure shapes, used by the tests:
     frames, refreshes or `style=`/`on…=` attributes;
   - the page's Content-Security-Policy `default-src 'none'` stops Markdown images and any other subresource
     from loading, since the overlay's navigation policy only rules on page loads;
-    the page is shown without `--js`.
+    a Jira page is shown without `--js`, and an MR page's CSP admits only the helper's own script by hash.
 
 ## Tests
 
