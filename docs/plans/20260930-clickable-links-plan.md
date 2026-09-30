@@ -176,15 +176,17 @@ Design, views, outcomes and security boundary: `docs/plans/20260930-clickable-li
 - Modify: `bin/agterm-open-link`
 - Modify: `tests/test_agterm_open_link.py`
 
-- [ ] failing cases first: Jira and MR `html` views, a raw `<img>` that does not survive as a tag, the CSP header,
+- [x] failing cases first: Jira and MR `html` views, a raw `<img>` that does not survive as a tag, the CSP header,
       and an MR `html` fetch timing out: the HUD closes and the browser opens
-- [ ] MR Markdown from `glab mr view <n> -R <host>/<project> -F json` (title, state, author, description)
+- [x] MR Markdown from `glab mr view <n> -R <host>/<project> -F json` (title, state, author, description)
       plus the `--comments` text; Jira reuses Task 4's Markdown
-- [ ] `pandoc -f markdown-raw_html-raw_attribute --standalone --metadata title=<item> --include-in-header <csp>`,
+- [x] `pandoc -f markdown-raw_html-raw_attribute --standalone --metadata title=<item> --include-in-header <csp>`,
       the header holding `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`, to
       `~/.local/state/agterm-open-link/<name>.html`, shown with `session overlay open --html <file>`, never `--js`
-- [ ] ➕ a minimal `--template` instead of pandoc's default, whose hard-coded light background fights a dark overlay
-- [ ] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
+- [x] ➕ a minimal `--template` instead of pandoc's default, whose hard-coded light background fights a dark overlay
+- [x] `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q` passes
+- [x] ➕ Task 3 review minors: `urlparse` guard in `open_browser`, plain-segment MR project paths, empty `jira.host` means no Jira; only `http`/`https`/`mailto` hrefs survive ADF
+- [x] ➕ pandoc reads the Markdown from a file under the state dir, not stdin
 
 ### Task 6: fork docs
 
