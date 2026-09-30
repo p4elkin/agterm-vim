@@ -324,6 +324,9 @@ paths:
   `CustomCommandRunner.rebuild` feeds `keymap.binding(for: .normalMode)` into `builtinSequences` and even a
   SINGLE-chord `map ctrl+space normal_mode` is dispatched by the sequence engine. All are absent from
   `keymap list`'s `menu` by design.
+  `close_session` keeps its menu item, but `CustomCommandRunner` also matches its chord while an
+  `HtmlOverlayWebView` holds focus: WebKit hands key equivalents to the page first and reports a cancelled
+  keydown as handled, so the menu would never see it.
 - ⚠️ **A KEYLESS built-in (nil `defaultChord`, no menu item) needs its own merge line in
   `CustomCommandRunner.rebuild()`** — `settings.keymap.binding(for: .theAction)` folded into
   `builtinSequences` — or a bound chord parses, resolves, and fires nothing. A single-chord `map` line to a

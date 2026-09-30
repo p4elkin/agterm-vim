@@ -40,7 +40,7 @@
     <meta name="theme-color" content="#191d20" />
     <link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=2" />
   </head>
   <body>
     <div
@@ -1069,9 +1069,10 @@
                   session focused and typable underneath. With <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--html</span>
                   the overlay shows a local HTML page instead, such as a report or chart an agent just generated, or with
                   <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--url</span> a web page such as a running dev server, under a strip
-                  naming the file or site with a close button and, with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span>,
+                  naming the file or site, then the page's title dimmed, with a close button and, with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span>,
                   back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL;
-                  ⌘W closes it like any overlay. ⌘+, ⌘− and ⌘0 zoom the page, and every later page opens at that zoom. A page runs no JavaScript of its
+                  ⌘W closes it like any overlay. A file page opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span>
+                  has no strip, so a dashboard fills its session or split pane like a native view. ⌘+, ⌘− and ⌘0 zoom the page, and every later page opens at that zoom. A page runs no JavaScript of its
                   own unless opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span>. A link the page opens in your browser
                   asks you first. Pages can match the terminal
                   through the theme's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-*</span> CSS variables, and
@@ -1606,16 +1607,16 @@
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">opt</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">shift</span>) joined by
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">+</span> and a base key (a single
-              character or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tab</span>/<span
+              character or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tab</span>/<wbr /><span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >space</span
-              >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">return</span>/<span
+              >/<wbr /><span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">return</span>/<wbr /><span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >delete</span
-              >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">left</span>/<span
+              >/<wbr /><span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">left</span>/<wbr /><span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >right</span
-              >/<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">up</span>/<span
+              >/<wbr /><span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">up</span>/<wbr /><span
                 style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
                 >down</span
               >, or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">f1</span> through

@@ -290,6 +290,8 @@ C-boundary concurrency before changing the bridge.
   redirects with 308.
 - Assets are self-hosted: CSS, latin woff2 fonts, WebP screenshots, 1200x630 social card, and favicons.
   Inline page styles come from a design-tool export whose source archive is on the maintainer's Desktop.
+- Browsers cache `style.css` for 4 hours, so a page change that depends on a `style.css` change bumps the
+  `?v=` on its `<link>` in every page, or cached visitors get new HTML with old CSS.
 - Hero images must match the fixed `1187 / 696` ratio, about 1.70:1; capture dense dashboards at that
   ratio before WebP conversion; existing shots are 2374x1392. Dashboard images may floor near 200k versus
   85-172k for single-window shots. Crossfade duration is slides times 5 seconds, delays advance by

@@ -29,10 +29,11 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let page: HtmlSource?
     public let navigation: Bool
     public let javascript: Bool
+    public let chromeless: Bool
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
-                navigation: Bool = false, javascript: Bool = false) {
+                navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
@@ -44,6 +45,7 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
         self.page = page
         self.navigation = navigation
         self.javascript = javascript
+        self.chromeless = chromeless
     }
 }
 
