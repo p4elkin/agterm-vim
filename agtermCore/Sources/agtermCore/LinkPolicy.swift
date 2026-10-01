@@ -5,12 +5,11 @@ import Foundation
 /// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`, or `agterm-open-link` for a pane's web
 /// link when installed), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
-/// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
-/// `agterm-open-path` viewer script (as is a bare file name minted as `agterm-path:<name>`), hand a forge ref
-/// minted as `agterm-ref:<ref>` to `agterm-open-link`, or
-/// IGNORE anything else. `file://` is revealed, never
-/// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
-/// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
+/// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) or a bare file
+/// name minted as `agterm-path:<name>` to the `agterm-open-path` viewer script, hand a forge ref minted as
+/// `agterm-ref:<ref>` to `agterm-open-link`, or IGNORE anything else. `file://` is revealed, never opened:
+/// opening goes through LaunchServices (the Finder double-click path), so a click on `file:///…/X.app` or
+/// `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder
 /// network/SMB mount. Host-free (Foundation-only) so it is unit-tested — the local host names are injected;
 /// the app-side glue only calls the two `NSWorkspace` methods (same split as `ShellEscape`).
@@ -203,8 +202,8 @@ public enum LinkPolicy {
     ]
 
     /// Relative paths need a `/` and no leading `-` (the script takes the path after `--`, but a gate should
-    /// not lean on that); a bare name comes only through `pathScheme`. Only an absolute path may hold a space: ghostty resolves a match against the pane's
-    /// pwd, so a pane under `Application Support` delivers one.
+    /// not lean on that); a bare name comes only through `pathScheme`. Only an absolute path may hold a space:
+    /// ghostty resolves a match against the pane's pwd, so a pane under `Application Support` delivers one.
     static let openPathPatterns = [
         #"^[\w.@+][\w.@+~-]*(?:/[\w.@+~-]+)+$"#,
         #"^~(?:/[\w.@+~-]+)+$"#,
