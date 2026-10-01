@@ -332,9 +332,17 @@ Existing outcomes stay. New ones:
 Every HUD text goes through `hud_text`, so it fits.
 
 The failure shapes these rely on must be measured when each builder is written, and the tests use them.
-Unmeasured today: `glab issue view` on a missing issue, `gh api` on a missing issue and on a bad sha,
-GitLab's commit endpoint on a short sha, `glab api --paginate` output for a JSON array,
-and `git rev-parse --verify --quiet` stderr for an ambiguous prefix.
+Measured on 2026-10-01 against `gitlab.magnolia-platform.com`:
+
+- `glab issue view N -R https://H/P -F json` takes the URL form. A missing issue exits 1 with a boxed
+  `ERROR` and `404 Not Found.` on stderr.
+- `glab api` on a missing pipeline, job or job trace exits 1 with `glab: 404 Not found (HTTP 404)`.
+  A missing commit gives `glab: 404 Commit Not Found (HTTP 404)`. So the 404 check ignores case.
+- The jobs list comes newest first, and a pipeline has no stage list. The stage order is the order of each
+  stage's lowest job id.
+- A job trace line starts `<ISO time> 00O ` or `00O+`. A section marker line ends in `\r` and keeps nothing after it.
+  The view drops the prefix too.
+- Still unmeasured: `gh api` on a missing issue and on a bad sha (stage 4).
 
 ## Config
 
