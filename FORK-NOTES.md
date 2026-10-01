@@ -65,6 +65,9 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
   the item over the pane (a terminal view, a rendered page, or the browser, per kind), through
   `agterm-open-link`; every other web link still opens the browser. Jira keys need a `link` rule in
   `ghostty.conf`. Same terminal links section.
+- **Clickable forge references** — `!482`, `#12`, a commit hash, `group/proj!12` and GitLab issue, commit,
+  pipeline and job or GitHub PR, issue and commit URLs open the same way, resolved against the pane's
+  checkout; a commit opens a plannotator review. Same terminal links section.
 
 **Control API and tooling**
 
