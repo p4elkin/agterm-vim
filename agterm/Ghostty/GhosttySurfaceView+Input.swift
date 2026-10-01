@@ -569,6 +569,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case let .xchat(id): openXchatMessage(id)
         case let .openPath(path, line): openFilePath(path, line: line)
+        case .ref: return
         case .ignore: return
         }
     }

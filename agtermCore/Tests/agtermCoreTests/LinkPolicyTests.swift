@@ -274,4 +274,24 @@ struct LinkPolicyTests {
         let raw = "docs/" + String(repeating: "a", count: 1020) + ".md"
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
     }
+
+    // MARK: agterm-ref (forge references minted by the link rules)
+
+    @Test(arguments: ["!12", "#34", "c865bc6c", "group/sub/proj#34", "owner/repo@c865bc6c"])
+    func refPayloadsAreAccepted(_ payload: String) {
+        #expect(LinkPolicy.disposition(for: "agterm-ref:" + payload, localHosts: Self.localHosts) == .ref(payload))
+    }
+
+    @Test(arguments: [
+        "agterm-ref:", "agterm-ref:!12a", "agterm-ref:#0x1", "agterm-ref:c865bc", "agterm-ref:" + String(repeating: "a", count: 41),
+        "agterm-ref:C865BC6C", "agterm-ref:../x!1", "agterm-ref:.x/y!1", "agterm-ref:!1\n", "agterm-ref:!1%0A",
+        "agterm-ref:" + String(repeating: "a/", count: 150) + "p!1", "AGTERM-REF:!1", "agterm-ref:!1?x",
+    ])
+    func malformedRefsAreIgnored(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test func refSchemeIsNotSystemOpenable() {
+        #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.refScheme))
+    }
 }

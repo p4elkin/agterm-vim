@@ -28,12 +28,28 @@ public enum LinkPolicy {
     /// id rather than a path that gets resolved.
     static let xchatIDPattern = "^msg-[0-9]{6}-[0-9a-f]{4}$"
 
+    /// `agterm-ref:<ref>` carries a forge reference (`!12`, `#34`, a commit hash, `group/proj!12`) minted by the
+    /// `link` rules agterm-agents ships, for `agterm-open-link` to resolve against the pane's repository. Not in
+    /// `permittedSchemes`, and never parsed through `URL(string:)`: that would move the `34` of `group/proj#34`
+    /// into a fragment.
+    public static let refScheme = "agterm-ref"
+
+    /// Each accepted ref shape, anchored. A project segment cannot start with `.`, so `..` is never a segment.
+    static let refPatterns = [
+        #"^[!#][0-9]{1,9}$"#,
+        #"^[0-9a-f]{7,40}$"#,
+        crossProjectRefPattern,
+    ]
+    static let crossProjectRefPattern =
+        #"^[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+(?:[!#][0-9]{1,9}|@[0-9a-f]{7,40})$"#
+
     /// What a link click should do. Carries the target URL for `.open`/`.reveal`.
     public enum LinkDisposition: Equatable {
         case open(URL)
         case reveal(URL)
         case xchat(id: String)
         case openPath(path: String, line: Int?)
+        case ref(String)
         case ignore
     }
 
@@ -115,6 +131,7 @@ public enum LinkPolicy {
         if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
             return openPathDisposition(raw)
         }
+        if raw.hasPrefix(refScheme + ":") { return refDisposition(String(raw.dropFirst(refScheme.count + 1))) }
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
         if permittedSchemes.contains(scheme) { return .open(url) }
         if scheme == xchatScheme { return xchatDisposition(url) }
@@ -150,6 +167,15 @@ public enum LinkPolicy {
         guard !id.contains(where: \.isNewline) else { return .ignore }
         guard id.range(of: xchatIDPattern, options: .regularExpression) != nil else { return .ignore }
         return .xchat(id: id)
+    }
+
+    /// The newline guard covers a regex `$` matching just before a trailing newline; `%0A` stays literal and
+    /// fails every pattern.
+    static func refDisposition(_ payload: String, patterns: [String] = refPatterns) -> LinkDisposition {
+        guard payload.count <= 300, !payload.contains(where: \.isNewline) else { return .ignore }
+        guard patterns.contains(where: { payload.range(of: $0, options: .regularExpression) != nil })
+        else { return .ignore }
+        return .ref(payload)
     }
 
     /// Extensions a clicked path may carry: markdown for plannotator, the rest for revdiff.
