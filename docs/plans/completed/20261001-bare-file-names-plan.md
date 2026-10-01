@@ -1,6 +1,6 @@
 # Clickable bare file names — plan
 
-Spec: `docs/plans/20261001-bare-file-names-spec.md` (approved 2026-10-01).
+Spec: `docs/plans/completed/20261001-bare-file-names-spec.md` (approved 2026-10-01).
 
 ## Contents
 
