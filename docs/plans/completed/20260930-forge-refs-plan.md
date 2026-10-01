@@ -412,12 +412,12 @@ Every task in this stage edits `bin/agterm-open-link`, `tests/test_agterm_open_l
 - Modify: `.claude/rules/libghostty.md`
 - Modify: `agtermCore/Sources/agtermCore/LinkPolicy.swift`
 
-- [ ] `libghostty.md`, Terminal links: six dispositions; `.ref` and why it skips `URL(string:)`; the reclaim of dotted
+- [x] `libghostty.md`, Terminal links: six dispositions; `.ref` and why it skips `URL(string:)`; the reclaim of dotted
       refs from the built-in path link; far panes are the helper's decision; the Control API exemption (spec, Control API);
       the spec cited by its final path, `docs/plans/completed/20260930-forge-refs-spec.md`
-- [ ] `LinkPolicy` header comment: one clause for `.ref`
-- [ ] check: `cd agtermCore && swift build`, then read the Terminal links section back against the spec
-- [ ] commit in the fork
+- [x] `LinkPolicy` header comment: one clause for `.ref`
+- [x] check: `cd agtermCore && swift build`, then read the Terminal links section back against the spec
+- [x] commit in the fork
 
 #### Task 25: `FORK-NOTES.md` and `CHANGELOG-fork.md`
 
@@ -425,15 +425,15 @@ Every task in this stage edits `bin/agterm-open-link`, `tests/test_agterm_open_l
 - Modify: `FORK-NOTES.md`
 - Modify: `CHANGELOG-fork.md`
 
-- [ ] `FORK-NOTES.md`, the libghostty group: a **Clickable forge references** line beside
+- [x] `FORK-NOTES.md`, the libghostty group: a **Clickable forge references** line beside
       **Clickable Jira keys and MR links**, pointing at the Terminal links section
-- [ ] `CHANGELOG-fork.md` under `## Unreleased`, New Features: one user-facing entry naming the refs, the URL kinds,
+- [x] `CHANGELOG-fork.md` under `## Unreleased`, New Features: one user-facing entry naming the refs, the URL kinds,
       the commit review, the far-pane HUD, and what it needs (`gh`, `glab`, `agterm-plannotate`, the `config-file` line)
-- [ ] answer the `.claude/rules/release.md` question: does this feature add a file to `flagged` in `fork-merge.md`'s
+- [x] answer the `.claude/rules/release.md` question: does this feature add a file to `flagged` in `fork-merge.md`'s
       frontmatter? `LinkPolicy.swift` is already listed. Decide for `OpenLinkLaunch.swift` and
       `GhosttySurfaceView+Input.swift`, add any that qualify, and write the answer and its reason in the commit message
-- [ ] check: both entries read back against the spec's What the user does section
-- [ ] commit in the fork
+- [x] check: both entries read back against the spec's What the user does section
+- [x] commit in the fork
 
 #### Task 26: the helper's spec docs
 
@@ -442,32 +442,40 @@ Every task in this stage edits `bin/agterm-open-link`, `tests/test_agterm_open_l
 - Modify: `share/agterm-open-link/links.conf` (agterm-agents)
 - Modify: `docs/plans/20260930-forge-refs-spec.md` (fork)
 
-- [ ] the helper's docstring: the ref route, `--cwd`, the new kinds, and the forge-refs spec cited by its final path,
+- [x] the helper's docstring: the ref route, `--cwd`, the new kinds, and the forge-refs spec cited by its final path,
       `docs/plans/completed/20260930-forge-refs-spec.md`, beside the clickable-links one
-- [ ] the spec describes the system as built: measured failure shapes in Outcomes, the `~` answer in Decisions,
+- [x] the spec describes the system as built: measured failure shapes in Outcomes, the `~` answer in Decisions,
       every ➕ task from this plan that changed a design point
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
       (the docstring is in the tested file)
-- [ ] commit in agterm-agents and in the fork
+- [x] commit in agterm-agents and in the fork
 
 #### Task 27: print the config lines for Sasha
 
-- [ ] print the `config-file` line for `~/.config/agterm/ghostty.conf` with the main-checkout path,
+- [x] print the `config-file` line for `~/.config/agterm/ghostty.conf` with the main-checkout path,
       `~/dev/agterm-agents/share/agterm-open-link/links.conf` (or its absolute form, as Task 14 settled),
       because the main checkout outlives the worktree
-- [ ] print this note with it: "exists at that path only after agterm-agents merges `clickable-links`;
+- [x] print this note with it: "exists at that path only after agterm-agents merges `clickable-links`;
       Sasha adds the `config-file` line after that merge"
-- [ ] print the new `open-link.conf` keys with their defaults (spec, Config)
-- [ ] check: `test -f /Users/sasha/dev/agterm-agents/.worktrees/clickable-links/share/agterm-open-link/links.conf`
+- [x] print the new `open-link.conf` keys with their defaults (spec, Config)
+- [x] check: `test -f /Users/sasha/dev/agterm-agents/.worktrees/clickable-links/share/agterm-open-link/links.conf`
       (the worktree copy), and the printed keys match what `read_config` reads
 
 #### Task 28: gates
 
-- [ ] fork, once, from the worktree root: `(cd agtermCore && swift test)`, then `make test-app`, then `make lint`
-- [ ] agterm-agents: `uv run --quiet --python 3.12 --with pytest --with pyyaml python -m pytest tests/ -q`;
+- [x] fork, once, from the worktree root: `(cd agtermCore && swift test)`, then `make test-app`, then `make lint`
+      2026-10-01: `swift test` 4452 passed; `make lint` clean; `make test-app` 1163 run, 1 failure:
+      `HtmlOverlayRegistryTests.testAFolderGrantKeepsFilesOutsideItOut` (a folder-granted page ran `../outside.js`).
+      ⚠️ A base failure: the same assertion fails at fork `main` `abdecc1e`, in a throwaway worktree. This branch
+      touches no HTML overlay code. Recorded, not fixed; Sasha chose to check main first and then carry on.
+- [x] agterm-agents: `uv run --quiet --python 3.12 --with pytest --with pyyaml python -m pytest tests/ -q`;
       known base failures are recorded, not fixed
-- [ ] move this plan and the spec to `docs/plans/completed/`. Nothing to repoint: Tasks 24 and 26 already cite the final path
-- [ ] commit in the fork
+      2026-10-01: 4560 passed, 4 skipped, 1 failed:
+      `test_session_chat_pairing.py::test_resync_pairs_the_claude_in_that_zmx_session_with_the_row_the_label_names`
+      (`mgnl-perf-lab-a8@p4linux` != `@p4studio`, a host-name expectation). It reproduces alone; this branch
+      changes only `bin/agterm-open-link` under `bin/`. Recorded, not fixed.
+- [x] move this plan and the spec to `docs/plans/completed/`. Nothing to repoint: Tasks 24 and 26 already cite the final path
+- [x] commit in the fork
 
 ## Post-Completion
 
