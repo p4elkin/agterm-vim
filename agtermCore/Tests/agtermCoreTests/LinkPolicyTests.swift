@@ -294,4 +294,17 @@ struct LinkPolicyTests {
     @Test func refSchemeIsNotSystemOpenable() {
         #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.refScheme))
     }
+
+    @Test(arguments: [("group/my.proj!12", "group/my.proj!12"), ("group/proj!12.", "group/proj!12"),
+                      ("owner/repo@c865bc6c),", "owner/repo@c865bc6c")])
+    func dottedCrossProjectRefsAreReclaimedFromThePathLink(_ raw: String, _ payload: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ref(payload))
+    }
+
+    @Test func reclaimLeavesPathsAndShortRefsAlone() {
+        #expect(LinkPolicy.disposition(for: "src/a.swift", localHosts: Self.localHosts) == .openPath(path: "src/a.swift", line: nil))
+        for raw in ["a/b.c#x", "!12", "c865bc6c"] {
+            #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+        }
+    }
 }

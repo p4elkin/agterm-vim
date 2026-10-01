@@ -129,7 +129,7 @@ public enum LinkPolicy {
     /// is injected (default: this machine's names) so the decision stays host-free and unit-testable.
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
         if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
-            return openPathDisposition(raw)
+            return reclaimedRefDisposition(raw, path: openPathDisposition(raw))
         }
         if raw.hasPrefix(refScheme + ":") { return refDisposition(String(raw.dropFirst(refScheme.count + 1))) }
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
@@ -176,6 +176,16 @@ public enum LinkPolicy {
         guard patterns.contains(where: { payload.range(of: $0, options: .regularExpression) != nil })
         else { return .ignore }
         return .ref(payload)
+    }
+
+    /// Ghostty's built-in path link is checked before user rules, so it claims a dotted cross-project ref such as
+    /// `group/my.proj!12` or one ending a sentence. Only the cross-project shape is taken back: a bare `!12` or hash
+    /// never reaches here through the path link.
+    static func reclaimedRefDisposition(_ raw: String, path: LinkDisposition) -> LinkDisposition {
+        guard path == .ignore else { return path }
+        var payload = Substring(raw)
+        while let last = payload.last, ".,;:)".contains(last) { payload = payload.dropLast() }
+        return refDisposition(String(payload), patterns: [crossProjectRefPattern])
     }
 
     /// Extensions a clicked path may carry: markdown for plannotator, the rest for revdiff.
