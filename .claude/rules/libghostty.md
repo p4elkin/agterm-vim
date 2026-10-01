@@ -241,7 +241,8 @@ paths:
   `link` rules in agterm-agents' `share/agterm-open-link/links.conf`. It is matched on the raw string, never
   through `URL(string:)`, which would move the `34` of `group/proj#34` into a fragment. The built-in path link
   claims a dotted cross-project ref (`group/my.proj!12`, or one ending a sentence) before any user rule, so the
-  schemeless branch takes back the cross-project shape only, after `openPathDisposition` refused it. `openRef`
+  schemeless branch takes back the cross-project shape only, after `openPathDisposition` refused it. If a file of
+  that name exists, ghostty delivers its absolute path, and the ref is not reclaimed. `openRef`
   passes the pane's `--cwd`; whether that directory may be trusted, a far pane's is not, is the helper's
   decision. No control command: the click is a route into a script that uses `tree`, `session hud` and
   `session overlay open`, all already read back. See `docs/plans/completed/20260930-forge-refs-spec.md`.

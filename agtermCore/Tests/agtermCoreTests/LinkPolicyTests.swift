@@ -296,7 +296,8 @@ struct LinkPolicyTests {
     }
 
     @Test(arguments: [("group/my.proj!12", "group/my.proj!12"), ("group/proj!12.", "group/proj!12"),
-                      ("owner/repo@c865bc6c),", "owner/repo@c865bc6c")])
+                      ("owner/repo@c865bc6c),", "owner/repo@c865bc6c"), ("group/my.proj!12?", "group/my.proj!12"),
+                      ("group/proj!12**.", "group/proj!12"), ("group/proj#3!=&", "group/proj#3")])
     func dottedCrossProjectRefsAreReclaimedFromThePathLink(_ raw: String, _ payload: String) {
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ref(payload))
     }

@@ -181,9 +181,9 @@ Three user rules, in this order. They ship as one file in agterm-agents,
 
 ```
 # cross-project: group/proj!12, group/sub/proj#34, owner/repo@c865bc6c
-link = open:agterm-ref:$0,(?<![\w./-])[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+(?:[!#][0-9]+|@[0-9a-f]{7,40})(?![\w-])
+link = open:agterm-ref:$0,(?<![\w./-])[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+(?:[!#][0-9]{1,9}|@[0-9a-f]{7,40})(?![\w-])
 # short MR or issue: !12, #34
-link = open:agterm-ref:$0,(?<![\w/.!#&$-])[!#][0-9]+(?![\w-])
+link = open:agterm-ref:$0,(?<![\w/.!#&$-])[!#][0-9]{1,9}(?![\w-])
 # bare commit hash, 7 to 40 lowercase hex
 link = open:agterm-ref:$0,(?<![\w./@-])[0-9a-f]{7,40}(?![\w-])
 ```

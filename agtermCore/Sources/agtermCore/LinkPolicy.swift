@@ -180,12 +180,13 @@ public enum LinkPolicy {
     }
 
     /// Ghostty's built-in path link is checked before user rules, so it claims a dotted cross-project ref such as
-    /// `group/my.proj!12` or one ending a sentence. Only the cross-project shape is taken back: a bare `!12` or hash
-    /// never reaches here through the path link.
+    /// `group/my.proj!12`, with whatever prose punctuation its greedy match kept. Only the cross-project shape is
+    /// taken back: a bare `!12` or hash never reaches here through the path link. When a file of that name exists,
+    /// ghostty delivers its absolute path instead, and that is left alone: which segments named the project is lost.
     static func reclaimedRefDisposition(_ raw: String, path: LinkDisposition) -> LinkDisposition {
         guard path == .ignore else { return path }
         var payload = Substring(raw)
-        while let last = payload.last, ".,;:)".contains(last) { payload = payload.dropLast() }
+        while let last = payload.last, ".,;:)?!*=&".contains(last) { payload = payload.dropLast() }
         return refDisposition(String(payload), patterns: [crossProjectRefPattern])
     }
 
