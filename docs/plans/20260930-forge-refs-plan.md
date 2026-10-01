@@ -354,53 +354,55 @@ Every task in this stage edits `bin/agterm-open-link`, `tests/test_agterm_open_l
 
 #### Task 19: measure the GitHub failure shapes
 
-- [ ] against a public repository: `gh api repos/O/R/issues/N` for an issue, a PR (the `pull_request` key) and a
+- [x] against a public repository: `gh api repos/O/R/issues/N` for an issue, a PR (the `pull_request` key) and a
       missing number; `gh api -H "Accept: application/vnd.github.diff" repos/O/R/commits/<sha>` for a real and a bad sha;
       `gh pr view N -R github.com/O/R --json …` for a missing PR
-- [ ] trim one real answer each into fixtures: issue, issue comments, PR view, PR line comments, commit diff
-- [ ] check: the shapes are written into the spec's Outcomes section
-- [ ] commit the fixtures in agterm-agents and the spec edit in the fork
+- [x] trim one real answer each into fixtures: issue, issue comments, PR view, PR line comments, commit diff
+- [x] check: the shapes are written into the spec's Outcomes section
+- [x] commit the fixtures in agterm-agents and the spec edit in the fork
 
 #### Task 20: GitHub classification and `#N` resolution
 
-- [ ] failing tests first: the three GitHub URL rows, host spoofing on them, `O` and `R` limits; `/issues/N` and
+- [x] failing tests first: the three GitHub URL rows, host spoofing on them, `O` and `R` limits; `/issues/N` and
       `#N` in a GitHub checkout call the issues API once and pick PR or issue from `pull_request`; `!12` in a GitHub
       checkout gives HUD `GitHub has no !N references: !12`; `gh` gets `GH_PAGER=cat NO_COLOR=1 GH_PROMPT_DISABLED=1
       GH_NO_UPDATE_NOTIFIER=1`
-- [ ] the GitHub rows in `classify`, the GitHub branch of `resolve_ref`
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the GitHub rows in `classify`, the GitHub branch of `resolve_ref`
+- ➕ the resolution runs in `show`, under its own `Fetching` HUD, only when the view is not `browser`
+      (an `/issues/N` URL opens a PR's page too). The answer rides on `Item.answer` into the issue view
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 21: GitHub issues
 
-- [ ] failing tests first: the Markdown from the resolution answer plus the comments call, each answered through the
+- [x] failing tests first: the Markdown from the resolution answer plus the comments call, each answered through the
       argv map; TUI and HTML views, no script on the page; `github.view = browser` opens the browser; missing gives HUD
       `No such pull request or issue: owner/repo#12`
-- [ ] `gh_issue_markdown`, the builder, reusing the resolution answer rather than fetching it twice
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `gh_issue_markdown`, the builder, reusing the resolution answer rather than fetching it twice
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 22: GitHub pull requests
 
-- [ ] failing tests first: the Markdown has body, conversation comments, review bodies, and line-comment threads
+- [x] failing tests first: the Markdown has body, conversation comments, review bodies, and line-comment threads
       grouped by `in_reply_to_id` with `— on path:line`, oldest first; the TUI `r` prompt and the page's Review button
       run `--review`, which fetches `gh pr diff N -R H/O/R --color never` and starts plannotator; `--review` on a PR URL
       is honoured, as on an MR URL
-- [ ] `pr_markdown`, the builder, `review_pr` beside `review_mr`
-- [ ] `pr` joins `mr` in the review checks in `show` and `main`; `review_prompt` says "this pull request" for a PR
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `pr_markdown`, the builder, `review_pr` beside `review_mr`
+- [x] `pr` joins `mr` in the review checks in `show` and `main`; `review_prompt` says "this pull request" for a PR
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 23: GitHub commits
 
-- [ ] failing tests first, in a stubbed GitHub checkout (`remote get-url origin` answers `git@github.com:owner/repo.git`):
+- [x] failing tests first, in a stubbed GitHub checkout (`remote get-url origin` answers `git@github.com:owner/repo.git`):
       a `/commit/<SHA>` URL, `owner/repo@c865bc6c`, and a local miss all fetch the diff with the
       `application/vnd.github.diff` header and start plannotator; a bad sha gives HUD `No commit c865bc6c in owner/repo`
-- [ ] one more case: the same `owner/repo@c865bc6c` clicked with `--cwd` at `$HOME` (no repository) goes to the GitLab
+- [x] one more case: the same `owner/repo@c865bc6c` clicked with `--cwd` at `$HOME` (no repository) goes to the GitLab
       default host, not to GitHub
-- [ ] the GitHub branch of the forge commit fetch
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the GitHub branch of the forge commit fetch
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 ### Stage 5: docs and gates
 
