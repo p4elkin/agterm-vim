@@ -248,6 +248,8 @@ Per forge:
 
 - GitLab: `!N` → mr, `#N` → issue, hash → commit.
 - GitHub: `#N` → issue or pr. `gh api repos/O/R/issues/N` answers both; a `pull_request` key means a PR.
+  The call runs when the item is shown, under its own `Fetching` HUD, and not for the `browser` view, since an
+  `/issues/N` URL opens a PR's page too. The issue view reuses that answer.
   `!N` → HUD `GitHub has no !N references: !12`.
 
 For a cross-project ref, the host is:
@@ -281,6 +283,7 @@ Every Markdown view ends with the canonical URL, as today.
 A job log is not Markdown, and its end is what matters.
 So the job TUI view is a plain text file shown with `less +G`, which opens at the last line.
 The job HTML view is a page with the tail in one fenced block (`fence()` already guards backtick runs).
+The trace is read as bytes and decoded by hand: text mode's universal newlines would turn every `\r` into a line.
 Before the tail is cut, each line keeps only its text after the last `\r`,
 and GitLab's `section_start:<ts>:<name>` and `section_end:…` markers are removed.
 
@@ -289,7 +292,9 @@ A URL clicked inside any view opens the browser, as today. A job URL in a pipeli
 ## Commit review
 
 1. Find the diff.
-   - Bare hash in a local pane: `git -c core.fsmonitor= -C <cwd> rev-parse --verify --quiet --end-of-options <h>^{commit}`.
+   - Bare hash in a local pane: `git -c core.fsmonitor= -C <cwd> rev-parse --verify --end-of-options <h>^{commit}`,
+     with `LC_ALL=C`. Not `--quiet`: with it an ambiguous prefix exits 1 with empty stderr, like a missing one.
+     Without it an ambiguous prefix exits 128 with `is ambiguous` on stderr, which gives its own HUD.
      Found → `git -c core.fsmonitor= -C <cwd> show --no-color --no-ext-diff --no-textconv --diff-merges=first-parent --format= --patch <sha>`,
      with `GIT_PAGER=cat GIT_OPTIONAL_LOCKS=0`.
      Not found and origin is a known forge → the forge fetch below (see Decisions, forge fallback).
