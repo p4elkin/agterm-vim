@@ -6,7 +6,8 @@ import Foundation
 /// link when installed), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
 /// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
-/// `agterm-open-path` viewer script, or IGNORE anything else. `file://` is revealed, never
+/// `agterm-open-path` viewer script, hand a forge ref minted as `agterm-ref:<ref>` to `agterm-open-link`, or
+/// IGNORE anything else. `file://` is revealed, never
 /// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
 /// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder

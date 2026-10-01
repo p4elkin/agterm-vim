@@ -221,10 +221,10 @@ paths:
 - A clicked link arrives as `GHOSTTY_ACTION_OPEN_URL` and lands in `GhosttySurfaceView.openLink`. The
   decision is host-free, in `agtermCore`'s `LinkPolicy.disposition(for:)`, so it is unit-tested without an
   app; the view only performs the outcome.
-- Five dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
+- Six dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
   Finder and never opened — opening goes through LaunchServices, so a click on `file:///…/X.app` or
   `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.openPath` for a
-  schemeless file path. `.ignore` for everything else, which is most things: a terminal renders untrusted
+  schemeless file path. `.ref` for a forge reference. `.ignore` for everything else, which is most things: a terminal renders untrusted
   program output, so any escape sequence can carry any scheme.
 - `.openPath` needs no `link` rule. Ghostty's built-in link already matches paths and is checked before any
   user rule, so a custom path rule could never fire; on click it delivers the pwd-resolved absolute path
@@ -236,6 +236,14 @@ paths:
   key reaches it as a URL through a user `link` rule; an MR URL through the built-in URL link. Overlay
   surfaces carry no session, so a link clicked inside a view still opens the browser; see
   `docs/plans/completed/20260930-clickable-links-spec.md`.
+- `.ref(payload)` carries `!12`, `#34`, a commit hash or `group/proj!12`, minted as `agterm-ref:<ref>` by the
+  `link` rules in agterm-agents' `share/agterm-open-link/links.conf`. It is matched on the raw string, never
+  through `URL(string:)`, which would move the `34` of `group/proj#34` into a fragment. The built-in path link
+  claims a dotted cross-project ref (`group/my.proj!12`, or one ending a sentence) before any user rule, so the
+  schemeless branch takes back the cross-project shape only, after `openPathDisposition` refused it. `openRef`
+  passes the pane's `--cwd`; whether that directory may be trusted, a far pane's is not, is the helper's
+  decision. No control command: the click is a route into a script that uses `tree`, `session hud` and
+  `session overlay open`, all already read back. See `docs/plans/completed/20260930-forge-refs-spec.md`.
 - ⚠️ **Follow a link with SHIFT+Cmd+click, not Cmd+click.** Ghostty turns link hovering off entirely while
   an application has mouse reporting on. The gate is `mouse_event == .none OR (mouse.mods.shift AND
   !mouseShiftCapture())`, in both `Surface.zig:4590` (pointer moved) and `Surface.zig:2704` (modifiers
