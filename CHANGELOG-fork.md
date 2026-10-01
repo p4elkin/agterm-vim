@@ -40,6 +40,10 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- a bare file name printed in any pane is clickable: Shift+Cmd+click `links.conf` or `README.md:12` and it
+  opens like a path with a directory. It is looked up in the pane's directory and repository first, then in
+  the repositories open in other agterm rows, then in zoxide's most-used ones; several matches in one place
+  open a chooser. Needs the same `links.conf` include as forge references.
 - forge references printed in any pane are clickable. Shift+Cmd+click `!482`, `#12`, a commit hash such as
   `c865bc6c`, or `group/proj!12`, `group/proj#34` and `owner/repo@c865bc6c`: the MR, PR or issue opens over
   that pane, resolved against the pane's checkout and its `origin` on GitLab or GitHub. A commit always opens

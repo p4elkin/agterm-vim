@@ -227,10 +227,13 @@ paths:
   schemeless file path. `.ref` for a forge reference.
   `.ignore` for everything else, which is most things: a terminal renders untrusted
   program output, so any escape sequence can carry any scheme.
-- `.openPath` needs no `link` rule. Ghostty's built-in link already matches paths and is checked before any
-  user rule, so a custom path rule could never fire; on click it delivers the pwd-resolved absolute path
-  when that file exists, else the raw text with any `:N`. `openFilePath` hands it to `agterm-open-path`
-  with the pane's cwd. What `LinkPolicy` accepts, and why, is in
+- `.openPath` for a path with a `/` needs no `link` rule. Ghostty's built-in link already matches it and is
+  checked before any user rule, so a custom path rule could never fire; on click it delivers the
+  pwd-resolved absolute path when that file exists, else the raw text with any `:N`.
+  The built-in link never matches a bare name (`links.conf`), so agterm-agents' `links.conf` mints
+  `agterm-path:<name>` for one with an `openPathExtensions` extension, and `disposition(for:)` routes it to
+  `bareNameDisposition`.
+  `openFilePath` hands either to `agterm-open-path` with the pane's cwd. What `LinkPolicy` accepts, and why, is in
   `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 - `.open` of an `http`/`https` link from a pane goes to `agterm-open-link` when it is installed, which shows
   a Jira issue or merge request over the pane or opens the browser; `NSWorkspace` is the fallback. A Jira

@@ -594,8 +594,9 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         runAgentHelper("xchat-open", arguments: [id], sessionID: sessionID)
     }
 
-    /// Open a clicked file path (ghostty's built-in path link) through `agterm-open-path`, which resolves it
-    /// against this pane's directory and its fallbacks and picks the viewer. Same launch rules as xchat.
+    /// Open a clicked file path (ghostty's built-in path link, or a bare name's `agterm-path:` rule) through
+    /// `agterm-open-path`, which resolves it against this pane's directory and its fallbacks and picks the
+    /// viewer. Same launch rules as xchat.
     private func openFilePath(_ path: String, line: Int?) {
         guard let session else { return }
         let pane: CommandContext.Pane = isSplitPane ? .right : .left
