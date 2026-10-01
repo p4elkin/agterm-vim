@@ -67,7 +67,8 @@ link = open:agterm-path:$0,(?<![\w./@~$-])[\w@+][\w.@+~-]*\.(?i:EXTS)(?::[1-9][0
 - `public static let pathScheme = "agterm-path"`, checked next to `refScheme` on the raw string, before
   `URL(string:)`.
 - `bareNameDisposition(_ payload:)`:
-  - at most 255 characters, no newline or control character;
+  - at most 255 characters, nothing in `CharacterSet.controlCharacters` (control and format characters, so a
+    hidden U+200D or U+202E is refused while `Заметки.md` is accepted, as the rule's Unicode `\w` underlines it);
   - trailing `.,;:)?!*` stripped: `openPathDisposition`'s `.*;!?` plus the `,:)` prose leaves after a name;
   - an optional `:N`, `:N-M` or `:N:M` suffix parsed into `line` by the same code as `openPathDisposition`;
   - the name must match `^[\w@+][\w.@+~-]*$` (no `/`) and carry an extension in `openPathExtensions`;

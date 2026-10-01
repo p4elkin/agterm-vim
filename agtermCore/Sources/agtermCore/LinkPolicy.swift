@@ -227,12 +227,13 @@ public enum LinkPolicy {
     }
 
     static func bareNameDisposition(_ payload: String) -> LinkDisposition {
-        guard payload.count <= 255, !payload.contains(where: { $0.isNewline || $0.asciiValue.map { $0 < 0x20 } == true })
+        // `controlCharacters` holds the format characters too (U+200D and kin), which `\w` would admit unseen.
+        guard payload.count <= 255, !payload.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
         else { return .ignore }
         var name = Substring(payload)
         while let last = name.last, ".,;:)?!*".contains(last) { name = name.dropLast() }
         guard let (candidate, line) = splitLine(name),
-              candidate.range(of: #"^[A-Za-z0-9_@+][A-Za-z0-9_.@+~-]*$"#, options: .regularExpression) != nil,
+              candidate.range(of: #"^[\w@+][\w.@+~-]*$"#, options: .regularExpression) != nil,
               hasOpenableExtension(Substring(candidate))
         else { return .ignore }
         return .openPath(path: candidate, line: line)

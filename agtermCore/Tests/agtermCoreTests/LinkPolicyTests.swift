@@ -285,6 +285,8 @@ struct LinkPolicyTests {
         ("README.MD", "README.MD", nil),
         ("notes.md).", "notes.md", nil),
         ("@types.ts", "@types.ts", nil),
+        ("Заметки.md", "Заметки.md", nil),
+        ("résumé.md", "résumé.md", nil),
     ] as [(String, String, Int?)])
     func bareNameOpens(_ payload: String, _ path: String, _ line: Int?) {
         #expect(LinkPolicy.disposition(for: "agterm-path:" + payload, localHosts: Self.localHosts)
@@ -295,7 +297,7 @@ struct LinkPolicyTests {
         "agterm-path:", "agterm-path:docs/x.md", "agterm-path:-x.md", "agterm-path:x.exe", "agterm-path:Makefile",
         "agterm-path:.md", "agterm-path:x.md\n", "agterm-path:x.swift:0", "agterm-path:~x.md", "agterm-path:x y.md",
         "agterm-path:" + String(repeating: "a", count: 253) + ".md", "AGTERM-PATH:x.md", "agterm-path:x\u{200D}.md",
-        "agterm-path:é.md",
+        "agterm-path:x\u{202E}dm.md",
     ])
     func malformedBareNamesAreIgnored(_ raw: String) {
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
