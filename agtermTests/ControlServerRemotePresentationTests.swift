@@ -235,6 +235,87 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         return (fix, transport)
     }
 
+    private func lead(_ pane: UUID, _ role: String) throws {
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: "lead-\(pane.uuidString.prefix(8))", claim: true), pane: pane)
+        let notice = try XCTUnwrap(ZmxLeadNotice(title: "zmx-role;lead-\(pane.uuidString.prefix(8)):\(role):1"))
+        _ = ZmxLeadBook.shared.apply(notice, pane: pane)
+    }
+
+    func testThePrimaryPaneTakingTheLeadTakesThePresenterRole() throws {
+        let (fix, transport) = try connected()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+
+        try lead(pane, "follower")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertFalse(transport.links[0].sent.contains(.presenterTake), "a follower takes nothing")
+
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
+    }
+
+    func testTheSplitPaneTakingTheLeadTakesNothing() throws {
+        let (fix, transport) = try connected()
+        let split = UUID()
+        defer { ZmxLeadBook.shared.forget(pane: split) }
+
+        try lead(split, "leader")
+        fix.server.paneLeadChanged(pane: split, inSession: fix.session.id)
+
+        XCTAssertFalse(transport.links[0].sent.contains(.presenterTake))
+    }
+
+    func testARowWhosePrimaryAlreadyLeadsTakesOnHello() throws {
+        let fix = try fixture()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        try lead(pane, "leader")
+        let transport = Transport()
+        fix.server.remoteTransport = transport
+        fix.server.startRemotePresentation(for: fix.session)
+
+        try transport.feed(.hello(PresentationHello(version: 1, kinds: ["status"], mode: .presenter)), rev: 0)
+
+        XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
+    }
+
+    func testSeeingARemoteRowTellsItsOriginOnce() throws {
+        let (fix, transport) = try connected()
+        fix.server.attachPresentationHub()
+        fix.session.unseenCount = 3
+
+        fix.store.clearUnseen(fix.session.id)
+
+        XCTAssertEqual(fix.session.unseenCount, 0)
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .seen }.count, 1)
+    }
+
+    func testSelectingARemoteRowTellsItsOrigin() throws {
+        let (fix, transport) = try connected()
+        fix.server.attachPresentationHub()
+        let workspace = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let other = try XCTUnwrap(fix.store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory()))
+        fix.store.selectSession(other.id)
+        let before = transport.links[0].sent.filter { $0 == .seen }.count
+
+        fix.store.selectSession(fix.session.id)
+
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .seen }.count, before + 1)
+    }
+
+    func testSeeingALocalRowSendsNothing() throws {
+        let (fix, transport) = try connected()
+        fix.server.attachPresentationHub()
+        let workspace = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let local = try XCTUnwrap(fix.store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory()))
+        let before = transport.links[0].sent
+
+        fix.store.clearUnseen(local.id)
+
+        XCTAssertEqual(transport.links[0].sent, before)
+    }
+
     func testStartingOpensTheBridgeForTheOriginsSession() throws {
         let (fix, transport) = try connected()
 

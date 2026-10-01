@@ -149,6 +149,20 @@ extension ControlServer {
     /// Points every open store at the hub. Stores are created by the window library, which this file cannot
     /// reach into, so the server assigns wherever it already walks the open windows.
     func attachPresentationHub() {
+        presentationHub.onPresenterWillChange = { [weak self] id in
+            guard let self, let session = self.library.store(forSession: id)?.session(withID: id) else { return }
+            if let ask = session.askPending, let owner = session.askRemoteOwner {
+                self.presentationHub.sendToPresenter(.askDismiss(PresentationAskRef(id: ask.id, owner: owner)), session: id)
+            }
+            for slot in session.remoteOverlays.slots {
+                self.presentationHub.sendToPresenter(.overlayClose(PresentationOverlayChange(job: slot.job)), session: id)
+            }
+        }
+        presentationHub.onPresenterChanged = { [weak self] id in
+            guard let store = self?.library.store(forSession: id) else { return }
+            store.reofferRemoteAsk(forSession: id, includeWaiting: false)
+            store.remoteOverlayPresenterLost(forSession: id)
+        }
         presentationHub.onPresenterLost = { [weak self] session in
             self?.takeBackRemoteAsk(forSession: session)
             self?.library.store(forSession: session)?.remoteOverlayPresenterLost(forSession: session)
@@ -166,6 +180,9 @@ extension ControlServer {
             store.overlayJobs = overlayJobs
             store.onRemoteRowVisibility = { [weak self] session, shown in
                 MainActor.assumeIsolated { self?.remoteRowVisibilityChanged(session, shown: shown) }
+            }
+            store.onRemoteSessionSeen = { [weak self] id in
+                MainActor.assumeIsolated { self?.remoteClients[id]?.markSeen() }
             }
         }
         dropOrphanedPresentationStreams()

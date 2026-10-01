@@ -233,6 +233,45 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertFalse(response.error?.contains("rm -rf") ?? true)
     }
 
+    func testNewOnAHostCreatesThereThenAttachesThatSession() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let before = store.workspaces.flatMap(\.sessions).count
+        let created = RemoteCommandResult(status: 0, stdout: #"{"ok":true,"result":{"id":"s1"}}"#, stderr: "")
+        let runner = FakeRemoteRunner(results: [created, RemoteCommandResult(status: 0, stdout: Self.projection, stderr: "")])
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let dispatched = await ControlDispatcher(actions: server).dispatch(ControlRequest(cmd: .zmxNew,
+            args: ControlArgs(name: "build", cwd: "/repo", host: "buildbox", command: "make")))
+
+        let response = try XCTUnwrap(dispatched)
+        XCTAssertTrue(response.ok, "\(String(describing: response.error))")
+        XCTAssertEqual(runner.invocations.count, 2)
+        XCTAssertEqual(runner.invocations, [
+            try RemoteSession.newCommand(host: "buildbox", options: ControlZmxNewOptions(name: "build", command: "make", cwd: "/repo")),
+            try RemoteSession.treeCommand(host: "buildbox"),
+        ])
+        let sessions = store.workspaces.flatMap(\.sessions)
+        XCTAssertEqual(sessions.count, before + 1)
+        let row = try XCTUnwrap(sessions.first { $0.id.uuidString == response.result?.id })
+        XCTAssertEqual(row.remoteHost, "buildbox")
+        XCTAssertEqual(row.customName, "build")
+    }
+
+    func testAFarRefusalOfNewIsReturnedAsItCameAndCreatesNoRow() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let before = store.workspaces.flatMap(\.sessions).count
+        let refusal = #"{"ok":false,"error":"zmx.new is not available here"}"#
+        let runner = FakeRemoteRunner(result: RemoteCommandResult(status: 1, stdout: refusal, stderr: ""))
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let response = await server.createRemoteSession(host: "buildbox", options: ControlZmxNewOptions(name: "t"), window: nil)
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "zmx.new is not available here")
+        XCTAssertEqual(runner.invocations.count, 1, "no attach after a refusal")
+        XCTAssertEqual(store.workspaces.flatMap(\.sessions).count, before)
+    }
+
     func testAttachTargetsABackgroundWindowWithoutChangingTheActiveWindow() async throws {
         let front = try XCTUnwrap(library.activeWindowID)
         let frontStore = try XCTUnwrap(library.activeStore)
@@ -358,6 +397,9 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertTrue(command.contains("--server=/opt/homebrew/bin/mosh-server"),
                       "a requested mosh must reach the pane command instead of silently attaching over ssh")
         XCTAssertFalse(command.contains("-tt"), "the ssh attach shape must not be used")
+        XCTAssertEqual(created.remotePresentation?.binding.origin?.transport,
+                       .mosh(server: "/opt/homebrew/bin/mosh-server", client: nil),
+                       "a reattach and the saved row rebuild from the origin, so it must carry the transport")
     }
 
     func testAttachResolvesTheRemoteAgainRatherThanTrustingTheCaller() async {
@@ -1066,18 +1108,26 @@ final class ControlServerZmxTests: XCTestCase {
 private final class FakeRemoteRunner: RemoteCommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [[String]] = []
-    private let result: RemoteCommandResult
+    /// Answered in order; the last one repeats.
+    private var results: [RemoteCommandResult]
     private let beforeReturn: (@MainActor @Sendable () -> Void)?
 
     var invocations: [[String]] { lock.withLock { recorded } }
 
-    init(result: RemoteCommandResult, beforeReturn: (@MainActor @Sendable () -> Void)? = nil) {
+    convenience init(result: RemoteCommandResult, beforeReturn: (@MainActor @Sendable () -> Void)? = nil) {
+        self.init(results: [result], beforeReturn: beforeReturn)
+    }
+
+    init(results: [RemoteCommandResult], beforeReturn: (@MainActor @Sendable () -> Void)? = nil) {
         self.beforeReturn = beforeReturn
-        self.result = result
+        self.results = results
     }
 
     func run(_ argv: [String], deadline _: TimeInterval) async -> RemoteCommandResult {
-        lock.withLock { recorded.append(argv) }
+        let result = lock.withLock {
+            recorded.append(argv)
+            return results.count > 1 ? results.removeFirst() : results[0]
+        }
         await beforeReturn?()
         return result
     }

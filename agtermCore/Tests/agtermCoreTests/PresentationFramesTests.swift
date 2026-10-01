@@ -133,4 +133,22 @@ struct PresentationFramesTests {
     func aPeerBelowVersionOneCannotBeNegotiated(_ theirs: Int) {
         #expect(PresentationCodec.negotiatedVersion(ours: 1, theirs: theirs) == nil)
     }
+    @Test func presenterTakeRoundTripsWithoutAPayload() throws {
+        let frame = PresentationFrame(gen: 7, rev: 2, body: .presenterTake)
+        let line = try PresentationCodec.encode(frame)
+        #expect(try PresentationCodec.decode(line.dropLast()) == frame)
+        let object = try #require(JSONSerialization.jsonObject(with: line) as? [String: Any])
+        #expect(object["kind"] as? String == "presenter.take")
+        #expect(Set(object.keys) == ["kind", "gen", "rev"])
+    }
+
+    @Test func seenRoundTripsWithoutAPayload() throws {
+        let frame = PresentationFrame(gen: 7, rev: 0, body: .seen)
+        let line = try PresentationCodec.encode(frame)
+        #expect(try PresentationCodec.decode(line.dropLast()) == frame)
+        let object = try #require(JSONSerialization.jsonObject(with: line) as? [String: Any])
+        #expect(object["kind"] as? String == "seen")
+        #expect(Set(object.keys) == ["kind", "gen", "rev"])
+    }
+
 }

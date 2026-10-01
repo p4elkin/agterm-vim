@@ -226,4 +226,211 @@ struct PresentationHubTests {
 
         #expect(sink.frames.count == 2)
     }
+
+    @Test func aFirstAcquireNotifiesChangedOnceAndNeverWillChange() throws {
+        let hub = makeHub()
+        let sink = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: Self.session, hello: hello, sink: sink) { Self.empty }
+        var changed: [UUID] = []
+        var willChange: [UUID] = []
+        hub.onPresenterChanged = { changed.append($0) }
+        hub.onPresenterWillChange = { willChange.append($0) }
+
+        for _ in 0..<2 {
+            hub.receive(PresentationFrame(gen: sink.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        }
+
+        #expect(changed == [Self.session])
+        #expect(willChange.isEmpty)
+    }
+
+    @Test func aDisconnectHandsOffToTheEarliestPresenterModeViewer() throws {
+        let hub = makeHub()
+        let first = Sink()
+        let earliest = Sink()
+        let later = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: Self.session, hello: hello, sink: first) { Self.empty }
+        try hub.subscribe(session: Self.session, hello: hello, sink: earliest) { Self.empty }
+        try hub.subscribe(session: Self.session, hello: hello, sink: later) { Self.empty }
+        hub.receive(PresentationFrame(gen: first.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        var events: [String] = []
+        hub.onPresenterWillChange = { session in
+            #expect(session == Self.session)
+            #expect(hub.hasPresenter(session: session))
+            events.append("will")
+        }
+        hub.onPresenterChanged = { session in
+            #expect(session == Self.session)
+            #expect(earliest.bodies.last == .presenterGranted)
+            events.append("changed")
+        }
+        hub.onPresenterLost = { _ in events.append("lost") }
+
+        hub.unsubscribe(id)
+
+        #expect(events == ["will", "changed"])
+        #expect(hub.hasPresenter(session: Self.session))
+        #expect(earliest.bodies.last == .presenterGranted)
+        #expect(later.frames.count == 2)
+    }
+
+    @Test(arguments: [false, true])
+    func aReleaseWithNoEligibleViewerNotifiesWillChangeThenLost(withMirror: Bool) throws {
+        let hub = makeHub()
+        let sink = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: Self.session, hello: hello, sink: sink) { Self.empty }
+        let mirror = Sink()
+        if withMirror {
+            try hub.subscribe(session: Self.session, hello: Self.hello, sink: mirror) { Self.empty }
+        }
+        hub.receive(PresentationFrame(gen: sink.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        var events: [String] = []
+        hub.onPresenterWillChange = { _ in events.append("will") }
+        hub.onPresenterChanged = { _ in events.append("changed") }
+        hub.onPresenterLost = { _ in events.append("lost") }
+
+        hub.unsubscribe(id)
+
+        #expect(events == ["will", "lost"])
+        #expect(!hub.hasPresenter(session: Self.session))
+        #expect(!mirror.bodies.contains(.presenterGranted))
+    }
+
+    @Test func aRefusedAcquireFiresNoPresenterCallback() throws {
+        let hub = makeHub()
+        let first = Sink()
+        let second = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: Self.session, hello: hello, sink: first) { Self.empty }
+        let other = try hub.subscribe(session: Self.session, hello: hello, sink: second) { Self.empty }
+        hub.receive(PresentationFrame(gen: first.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        var events: [String] = []
+        hub.onPresenterWillChange = { _ in events.append("will") }
+        hub.onPresenterChanged = { _ in events.append("changed") }
+        hub.onPresenterLost = { _ in events.append("lost") }
+
+        hub.receive(PresentationFrame(gen: second.frames[0].gen, rev: 0, body: .presenterAcquire), from: other)
+
+        #expect(second.bodies.last == .presenterRefused)
+        #expect(events.isEmpty)
+    }
+
+    @Test func aTakeDismissesThroughTheOldHolderBeforeGrantingTheNewOne() throws {
+        let hub = makeHub()
+        let first = Sink(), second = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let firstID = try hub.subscribe(session: Self.session, hello: hello, sink: first) { Self.empty }
+        let secondID = try hub.subscribe(session: Self.session, hello: hello, sink: second) { Self.empty }
+        hub.receive(PresentationFrame(gen: first.frames[0].gen, rev: 0, body: .presenterAcquire), from: firstID)
+        let owner = hub.presenterGeneration(session: Self.session)
+        var callbacks: [String] = []
+        hub.onPresenterWillChange = { session in
+            #expect(session == Self.session)
+            #expect(hub.presenterGeneration(session: session) == owner)
+            #expect(hub.sendToPresenter(.context("old holder"), session: session))
+            #expect(first.bodies.last == .context("old holder"))
+            callbacks.append("will")
+        }
+        hub.onPresenterChanged = { session in
+            #expect(session == Self.session)
+            #expect(first.bodies.last == .presenterRefused)
+            #expect(second.bodies.last == .presenterGranted)
+            #expect(hub.presenterGeneration(session: session) == owner + 1)
+            #expect(hub.sendToPresenter(.context("new holder"), session: session))
+            #expect(second.bodies.last == .context("new holder"))
+            callbacks.append("changed")
+        }
+        hub.onPresenterLost = { _ in Issue.record("take must keep a presenter") }
+        let take = PresentationFrame(gen: second.frames[0].gen, rev: 0, body: .presenterTake)
+        hub.receive(take, from: secondID)
+        #expect(callbacks == ["will", "changed"])
+        hub.receive(take, from: secondID)
+        #expect(callbacks == ["will", "changed"])
+        #expect(hub.presenterGeneration(session: Self.session) == owner + 1)
+        #expect(second.bodies.last == .presenterGranted)
+        hub.receive(PresentationFrame(gen: first.frames[0].gen + 100, rev: 0, body: .presenterTake), from: firstID)
+        #expect(hub.presenterGeneration(session: Self.session) == owner + 1)
+    }
+
+    @Test func aTakeOnAVacantSessionGrantsWithoutWillChange() throws {
+        let hub = makeHub()
+        let sink = Sink()
+        let id = try hub.subscribe(session: Self.session,
+            hello: PresentationHello(version: 1, kinds: [], mode: .presenter), sink: sink) { Self.empty }
+        var changes = 0
+        hub.onPresenterWillChange = { _ in Issue.record("no previous holder") }
+        hub.onPresenterChanged = { _ in changes += 1 }
+        hub.receive(PresentationFrame(gen: sink.frames[0].gen, rev: 0, body: .presenterTake), from: id)
+        #expect(sink.bodies.last == .presenterGranted)
+        #expect(changes == 1)
+        #expect(hub.presenterGeneration(session: Self.session) == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func aStalledOldViewerDoesNotDuplicateTheNewGrantCallback(dismissalStalls: Bool) throws {
+        let hub = makeHub()
+        let first = Sink(), next = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let firstID = try hub.subscribe(session: Self.session, hello: hello, sink: first) { Self.empty }
+        let nextID = try hub.subscribe(session: Self.session, hello: hello, sink: next) { Self.empty }
+        hub.receive(PresentationFrame(gen: first.frames[0].gen, rev: 0, body: .presenterAcquire), from: firstID)
+        first.capacity = first.frames.count
+        var changed = 0
+        hub.onPresenterWillChange = { session in
+            if dismissalStalls { hub.sendToPresenter(.context("dismiss"), session: session) }
+        }
+        hub.onPresenterChanged = { _ in changed += 1 }
+        hub.receive(PresentationFrame(gen: next.frames[0].gen, rev: 0, body: .presenterTake), from: nextID)
+        #expect(first.closed == .stalled)
+        #expect(next.bodies.last == .presenterGranted)
+        #expect(changed == 1)
+        #expect(hub.subscriberCount(session: Self.session) == 1)
+    }
+
+    @Test func aStalledTakerReturnsTheRoleToASurvivingViewer() throws {
+        let hub = makeHub()
+        let first = Sink(), next = Sink()
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let firstID = try hub.subscribe(session: Self.session, hello: hello, sink: first) { Self.empty }
+        let nextID = try hub.subscribe(session: Self.session, hello: hello, sink: next) { Self.empty }
+        hub.receive(PresentationFrame(gen: first.frames[0].gen, rev: 0, body: .presenterAcquire), from: firstID)
+        next.capacity = next.frames.count
+        var changed = 0
+        hub.onPresenterChanged = { _ in changed += 1 }
+        hub.receive(PresentationFrame(gen: next.frames[0].gen, rev: 0, body: .presenterTake), from: nextID)
+        #expect(next.closed == .stalled)
+        #expect(first.bodies.suffix(2) == [.presenterRefused, .presenterGranted])
+        #expect(changed == 1)
+        #expect(hub.hasPresenter(session: Self.session))
+    }
+
+    @Test(arguments: [PresentationMode.presenter, .mirror])
+    func seenRoutesFromAnyCurrentViewerToItsOwnSession(mode: PresentationMode) throws {
+        let hub = makeHub()
+        let sink = Sink()
+        let session = UUID()
+        let id = try hub.subscribe(session: session,
+            hello: PresentationHello(version: 1, kinds: [], mode: mode), sink: sink) { Self.empty }
+        let generation = try #require(sink.frames.first?.gen)
+        if mode == .presenter {
+            hub.receive(PresentationFrame(gen: generation, rev: 0, body: .presenterAcquire), from: id)
+        }
+        var seen: [UUID] = []
+        hub.onSeen = { seen.append($0) }
+        hub.onPresenterFrame = { _, _ in Issue.record("seen is separate from presenter work") }
+        hub.receive(PresentationFrame(gen: generation + 1, rev: 0, body: .seen), from: id)
+        #expect(seen.isEmpty)
+        let count = sink.frames.count
+        hub.receive(PresentationFrame(gen: generation, rev: 0, body: .seen), from: id)
+        #expect(seen == [session])
+        #expect(sink.frames.count == count)
+        #expect(hub.hasPresenter(session: session) == (mode == .presenter))
+        hub.unsubscribe(id)
+        hub.receive(PresentationFrame(gen: generation, rev: 0, body: .seen), from: id)
+        #expect(seen == [session])
+    }
+
 }

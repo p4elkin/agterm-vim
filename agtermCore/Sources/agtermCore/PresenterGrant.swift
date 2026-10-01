@@ -1,7 +1,6 @@
 import Foundation
 
-/// PresenterGrant decides which viewer connection is a session's sole presenter. The first acquire wins and
-/// keeps the role until its connection goes; nothing preempts it and nothing hands it back early.
+/// PresenterGrant tracks the sole presenter. Acquire keeps the holder; transfer replaces it.
 ///
 /// Every change of holder bumps the session's generation, which is what later work owned by a presenter is
 /// bound to, so an answer from a connection that lost the role can be told apart from a current one.
@@ -17,6 +16,12 @@ struct PresenterGrant {
             return true
         }
         return holder == subscriber
+    }
+
+    mutating func transfer(session: UUID, to subscriber: PresentationHub.SubscriberID) {
+        guard holders[session] != subscriber else { return }
+        holders[session] = subscriber
+        generations[session, default: 0] += 1
     }
 
     /// Takes the role back from a connection that went away. Returns the sessions it held.

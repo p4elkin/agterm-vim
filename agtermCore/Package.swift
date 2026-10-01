@@ -16,6 +16,8 @@ let package = Package(
     targets: [
         .target(name: "agtermCore", dependencies: [.product(name: "TOMLDecoder", package: "TOMLDecoder")]),
         .target(name: "AgtermResponsibility"),
+        .target(name: "AgtermHeadlessKit", dependencies: ["agtermCore"]),
+        .testTarget(name: "AgtermHeadlessKitTests", dependencies: ["AgtermHeadlessKit"]),
         .testTarget(name: "agtermCoreTests", dependencies: ["agtermCore"]),
         .target(
             name: "agtermctlKit",
@@ -44,4 +46,10 @@ package.targets += [
                 dependencies: ["SessionHostRuntime", "agterm-session-host", "session-host-test-client",
                                "session-host-pty-probe"]),
 ]
+#endif
+
+// The headless origin for Linux hosts; see docs/plans/20260929-headless-origin-spec.md.
+#if os(Linux)
+package.products.append(.executable(name: "agterm-headless", targets: ["agterm-headless"]))
+package.targets.append(.executableTarget(name: "agterm-headless", dependencies: ["agtermCore", "AgtermHeadlessKit"]))
 #endif

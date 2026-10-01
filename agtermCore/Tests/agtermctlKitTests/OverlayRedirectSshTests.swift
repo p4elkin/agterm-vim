@@ -511,6 +511,7 @@ struct OverlayRedirectSshTests {
         #expect(!FileManager.default.fileExists(atPath: directory))
     }
 
+    #if canImport(Darwin)
     // The other half of the same leak: a redirect the viewer never ran leaves a directory nothing revisits,
     // so writing a new script sweeps the abandoned ones. A pending one (written now) is never swept.
     @Test func writingAScriptSweepsDirectoriesOldEnoughToBeAbandoned() throws {
@@ -525,6 +526,7 @@ struct OverlayRedirectSshTests {
         #expect(!FileManager.default.fileExists(atPath: stale))
         #expect(FileManager.default.fileExists(atPath: fresh))
     }
+    #endif
 
     // A second invocation must never land in the first one's directory: whichever script finishes first
     // `rm -rf`s it, taking the other's pending script with it.

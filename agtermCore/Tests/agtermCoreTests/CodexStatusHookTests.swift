@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 import Darwin
 import Foundation
 import Testing
@@ -255,3 +256,4 @@ struct CodexStatusHookTests {
         #expect(result.statusCalls.isEmpty)
     }
 }
+#endif

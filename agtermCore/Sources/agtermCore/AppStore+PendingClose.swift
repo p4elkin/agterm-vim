@@ -56,6 +56,8 @@ struct PendingCloseMember {
     let session: Session
     let workspaceID: UUID
     let workspaceName: String
+    let sessionIndex: Int
+    let closeID: UUID
 }
 
 extension AppStore {
@@ -64,17 +66,18 @@ extension AppStore {
     /// Every session hidden by an undoable close, oldest first. Reads the existing records rather than
     /// tracking its own list, so it cannot drift from what an undo would restore.
     func pendingCloseMembers() -> [PendingCloseMember] {
-        pendingCloseOrder.compactMap { pendingCloseRecords[$0] }.flatMap { record -> [PendingCloseMember] in
+        pendingCloseOrder.flatMap { id -> [PendingCloseMember] in
+            guard let record = pendingCloseRecords[id] else { return [] }
             switch record {
             case .sessions(let close):
                 return close.sessions.map {
                     PendingCloseMember(session: $0.session, workspaceID: $0.workspaceID,
-                                       workspaceName: $0.workspaceName)
+                                       workspaceName: $0.workspaceName, sessionIndex: $0.sessionIndex, closeID: id)
                 }
             case .workspace(let close):
-                return close.workspace.sessions.map {
-                    PendingCloseMember(session: $0, workspaceID: close.workspace.id,
-                                       workspaceName: close.workspace.name)
+                return close.workspace.sessions.enumerated().map { index, session in
+                    PendingCloseMember(session: session, workspaceID: close.workspace.id,
+                                       workspaceName: close.workspace.name, sessionIndex: index, closeID: id)
                 }
             }
         }

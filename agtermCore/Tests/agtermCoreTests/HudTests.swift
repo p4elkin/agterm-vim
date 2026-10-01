@@ -299,13 +299,16 @@ struct HudTests {
         #expect(spec.sizePercent == nil)
     }
 
+    #if canImport(Darwin)
     @Test func aMarkdownBodyCarriesItsBlockWidthAndEncodedRows() {
         let body = HudLayout.renderedBody(for: HudSpec(message: "**hi** there", markdown: true),
                                           grid: (columns: 20, rows: 5), ownerPid: 4242)
 
         #expect(body == "20 5 0 4242 0.5 - 8\n\u{1B}[1mhi\u{1B}[22m there\n")
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func aSpinningMarkdownBodyIndentsEveryRowAfterTheFirstByTheGutter() {
         let body = HudLayout.markdownBody(for: HudSpec(message: "- a\n- bb", spinner: .bar, markdown: true),
                                           grid: (columns: 20, rows: 6))
@@ -313,7 +316,9 @@ struct HudTests {
         #expect(body.lines == ["• a", "  • bb"])
         #expect(body.blockWidth == 4 + HudLayout.spinnerWidth)
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func aMarkdownBodyIsClippedToTheGridLessItsPadding() {
         let message = (1...10).map { "- item \($0)" }.joined(separator: "\n")
 
@@ -322,6 +327,7 @@ struct HudTests {
         #expect(body.lines == ["• it…", "• it…", "\u{1B}[2m… 8 \u{1B}[22m…"])
         #expect(body.blockWidth == 5)
     }
+    #endif
 
     @Test func aOneRowSpinningMarkdownBodyShowsOnlyTheMarker() {
         let body = HudLayout.markdownBody(for: HudSpec(message: "a\n\nb", spinner: .bar, markdown: true),

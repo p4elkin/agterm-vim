@@ -67,6 +67,8 @@ class MockControlActionsBase {
         case zmxPrune
         case zmxKill(target: String, window: String?, pane: ZmxPaneRole)
         case zmxReset
+        case zmxNew(ControlZmxNewOptions)
+        case zmxNewRemote(host: String, options: ControlZmxNewOptions, window: String?)
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
         case zmxPresent(session: String)
@@ -847,6 +849,16 @@ class MockControlActionsBase {
 /// would witness the conformance and the production default would answer for nobody.
 @MainActor
 final class MockControlActions: MockControlActionsBase, ControlActions {
+    func createAttachableSession(_ options: ControlZmxNewOptions) -> ControlResponse {
+        calls.append(.zmxNew(options))
+        return ControlResponse(ok: true)
+    }
+
+    func createRemoteSession(host: String, options: ControlZmxNewOptions, window: String?) async -> ControlResponse {
+        calls.append(.zmxNewRemote(host: host, options: options, window: window))
+        return ControlResponse(ok: true)
+    }
+
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
                       command: ControlSplitCommand?) -> ControlResponse {
         calls.append(.sessionSplit(target: target, window: window, mode, axis, command: command))

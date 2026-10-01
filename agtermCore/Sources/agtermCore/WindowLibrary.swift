@@ -100,6 +100,10 @@ public final class WindowLibrary {
     @ObservationIgnored private let controlEventRing: ControlEventRing
     /// Every event after the ring sequences it, debounced `tree.changed` included: what `events.read` will show.
     @ObservationIgnored public var onControlEvent: ((ControlEvent) -> Void)?
+    /// A closed window's store has been loaded again at runtime; launch loads are handled separately.
+    @ObservationIgnored public var onStoreLoaded: (@MainActor (UUID, AppStore) -> Void)?
+    /// A session's real teardown, which a soft close reaches only when its undo grace ends with no tree change.
+    @ObservationIgnored public var onSessionFinalized: (@MainActor (UUID) -> Void)?
     @ObservationIgnored private let paneFinalizer: (([UUID]) -> Void)?
     @ObservationIgnored private let launchPaneDrop: (([UUID]) -> Void)?
     @ObservationIgnored private let launchInventorySink: ((Set<UUID>?) -> Void)?
@@ -441,6 +445,7 @@ public final class WindowLibrary {
             store.scheduleTreeChanged()
         }
         saveIndex()
+        if !launchRestore { onStoreLoaded?(id, store) }
         return store
     }
 
@@ -752,7 +757,10 @@ public final class WindowLibrary {
             // undo grace, so dropping there loses the bookmarks of a close the user then undoes. A window
             // that closes while keeping its sessions never reaches here, which is what lets their bookmarks
             // survive for a later reopen.
-            sessionDidFinalize: { [weak self] id in self?.bookmarks.dropSession(id) },
+            sessionDidFinalize: { [weak self] id in
+                self?.bookmarks.dropSession(id)
+                self?.onSessionFinalized?(id)
+            },
             paneFinalizer: paneFinalizer,
             launchPaneDrop: launchPaneDrop
         )
@@ -984,7 +992,11 @@ public final class WindowLibrary {
     /// are real panes whose daemons would otherwise read as unclaimed. Nil when the directory itself could
     /// not be read, which is not the same answer as "no stray files".
     private func strayWindowFileIDs(indexed: Set<UUID>) -> [UUID]? {
-        guard let contents = try? FileManager.default.contentsOfDirectory(at: windowsDirectory,
+        // corelibs Foundation lists a regular file as an empty directory instead of throwing
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: windowsDirectory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              let contents = try? FileManager.default.contentsOfDirectory(at: windowsDirectory,
                                                                           includingPropertiesForKeys: nil) else {
             return nil
         }

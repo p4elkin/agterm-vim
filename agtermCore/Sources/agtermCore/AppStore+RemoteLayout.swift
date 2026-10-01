@@ -1,6 +1,14 @@
 import Foundation
 
 extension AppStore {
+    /// Finds a new origin pane without recreating a closed replica or replacing a local split.
+    public func remoteLayoutAddedPane(_ layout: PresentationLayout, forSession id: UUID) -> UUID? {
+        guard layout.isValid, layout.panes.count == 2, let session = session(withID: id), !session.hasSplit,
+              let binding = session.remotePresentation?.binding,
+              let origin = binding.remotePane(forLocal: session.paneIdentity), layout.panes.contains(origin) else { return nil }
+        return layout.panes.first { binding.localPane(forRemote: $0) == nil }
+    }
+
     /// Applies layout to existing replicas and returns local identities eligible for confirmed-removal handling.
     @discardableResult
     public func applyRemoteLayout(_ layout: PresentationLayout, forSession id: UUID) -> [UUID] {
@@ -41,6 +49,11 @@ extension AppStore {
         guard let session = session(withID: id), session.paneRole(forIdentity: local) != nil,
               session.remotePresentation?.binding.remotePane(forLocal: local) != nil else { return }
         session.remotePresentation?.heldPanes.insert(local)
+    }
+
+    /// Forgets a held exit once a fresh attach replaces the replica's surface.
+    public func releaseRemotePaneHold(_ local: UUID, forSession id: UUID) {
+        session(withID: id)?.remotePresentation?.heldPanes.remove(local)
     }
 
     /// Whether a held exit was recorded for this local replica identity.

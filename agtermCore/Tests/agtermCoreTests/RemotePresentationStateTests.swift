@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 @testable import agtermCore
 
@@ -20,6 +21,25 @@ struct RemotePresentationStateTests {
         #expect(binding.daemon(forLocalPane: local) == daemon)
         #expect(binding.daemon(forLocalPane: UUID()) == nil)
         #expect(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: 1).origin == nil)
+    }
+
+    @Test func addingAPaneKeepsTheBindingAndMapsBothWays() {
+        let localA = UUID(), localB = UUID()
+        let origin = RemoteBinding.Origin(host: "origin",
+            endpoint: ControlZmxEndpoint(executable: "/zmx", socketDirectory: "/tmp/z"), sessionName: "work")
+        let binding = RemoteBinding(remoteSessionID: "s1",
+            daemonsByLocalPane: [localA: ZmxSupport.daemonName(for: Self.remoteLeft)], presentationVersion: 1, origin: origin)
+        let grown = binding.adding(localPane: localB, daemon: ZmxSupport.daemonName(for: Self.remoteRight))
+        #expect(grown.remoteSessionID == binding.remoteSessionID)
+        #expect(grown.presentationVersion == binding.presentationVersion)
+        #expect(grown.origin == origin)
+        #expect(grown.localPane(forRemote: Self.remoteLeft) == localA)
+        #expect(grown.localPane(forRemote: Self.remoteRight) == localB)
+        #expect(grown.remotePane(forLocal: localA) == Self.remoteLeft)
+        #expect(grown.remotePane(forLocal: localB) == Self.remoteRight)
+        #expect(grown.daemon(forLocalPane: localA) == binding.daemon(forLocalPane: localA))
+        #expect(grown.daemon(forLocalPane: localB) == ZmxSupport.daemonName(for: Self.remoteRight))
+        #expect(binding.localPane(forRemote: Self.remoteRight) == nil)
     }
 
     private func attached(version: Int? = 1, split: Bool = true, store: AppStore? = nil) throws -> (AppStore, Session) {
@@ -754,4 +774,33 @@ struct RemotePresentationStateTests {
 
         #expect(!session.overlayActive)
     }
+    @Test func anOriginDefaultsToSshAndKeepsAnExplicitTransportWhenTheBindingGrows() {
+        let endpoint = ControlZmxEndpoint(executable: "/zmx", socketDirectory: "/tmp/z")
+        #expect(RemoteBinding.Origin(host: "origin", endpoint: endpoint, sessionName: "work").transport == .ssh)
+        let transport = RemoteTransport.mosh(server: "/opt/mosh-server", client: "/opt/mosh")
+        let origin = RemoteBinding.Origin(host: "origin", endpoint: endpoint, sessionName: "work", transport: transport)
+        let binding = RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: 1, origin: origin)
+        let grown = binding.adding(localPane: UUID(), daemon: ZmxSupport.daemonName(for: Self.remoteLeft))
+        #expect(grown.origin?.transport == transport)
+    }
+
+    @Test func rowStateKeepsOtherPresentationStateAndOverridesTheStreamNotice() throws {
+        let (store, session) = try attached()
+        store.setRemoteMode(.presenter, forSession: session.id)
+        store.setRemoteConnection(.connected, forSession: session.id)
+        var expected = try #require(session.remotePresentation)
+        #expect(expected.rowState == .attached)
+        for state in [RemoteRowState.disconnected, .endedOnHost, .attached] {
+            expected.rowState = state
+            store.setRemoteRowState(state, forSession: session.id)
+            #expect(session.remotePresentation == expected)
+            #expect(session.remotePresentation?.rowNotice(host: "p4linux") == state.rowNotice(host: "p4linux"))
+        }
+        store.setRemoteConnection(.connecting, forSession: session.id)
+        #expect(session.remotePresentation?.rowNotice(host: "p4linux") == RemotePresentationConnection.connecting.rowNotice(host: "p4linux"))
+        store.setRemoteRowState(.endedOnHost, forSession: session.id)
+        #expect(session.remotePresentation?.rowNotice(host: "p4linux") == "Ended on p4linux. Close the row to remove it")
+        store.setRemoteRowState(.disconnected, forSession: UUID())
+    }
+
 }

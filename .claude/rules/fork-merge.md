@@ -71,6 +71,9 @@ lands.
 ⚠️ `swift test`, `make lint` and `make release` do not compile `agtermTests`. A merge that breaks the
 hosted test target passes all three. Run `make test-app` as well, every time.
 
+After a merge that touches `agtermCore`, also run `swift build --product agterm-headless` on p4linux: the
+headless origin is Linux-only, and no Mac gate links its executable. See [[headless-origin]].
+
 ⚠️ **The conflict count predicts nothing.** The 2026-08-10 run shipped two defects. One came out of a
 resolved conflict; the other came from a file with no conflict at all — upstream added `FullScreenChordTests`
 against a three-argument `CustomCommandRunner` initializer while the fork's takes `performBuiltin` too, and
@@ -94,6 +97,10 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
 - `agtermCore/Sources/agtermCore/{Keymap,BuiltinAction,NormalModeState}.swift` — the fork widens the keymap
   grammar (`nmap`, leader sequences, `KeybindTarget`), so an upstream keymap fix usually needs re-applying
   onto a wider type rather than taking one side.
+- `agtermCore/Sources/AgtermHeadlessKit/HeadlessCatalog.swift` — never conflicts, but a new upstream `Command`
+  fails the Mac `swift test` build there, and a new `ControlActions` requirement without a default fails
+  `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
+  arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].

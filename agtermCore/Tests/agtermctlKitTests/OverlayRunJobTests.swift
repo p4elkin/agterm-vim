@@ -14,9 +14,13 @@ struct OverlayRunJobTests {
 
         init() {
             var pair: [Int32] = [-1, -1]
+            #if canImport(Darwin)
             socketpair(AF_UNIX, SOCK_STREAM, 0, &pair)
             var noSigPipe: Int32 = 1
             for fd in pair { setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size)) }
+            #else
+            socketpair(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0, &pair)
+            #endif
             helper = pair[0]
             origin = pair[1]
         }
@@ -93,6 +97,7 @@ struct OverlayRunJobTests {
         return nil
     }
 
+    #if canImport(Darwin)
     @Test func aProgramExitingThreeReportsThreeAndTheHelperExitsThree() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("exit 3"))
@@ -104,6 +109,28 @@ struct OverlayRunJobTests {
         #expect(origin.frames() == [.started, .exited(3)])
     }
 
+    #endif
+
+    #if os(Linux)
+    @Test func programOverlaysReportUnsupportedOnLinux() throws {
+        let origin = FakeOrigin()
+        defer { close(origin.origin) }
+        origin.serve(reply: Self.okReply, context: context("exit 0"))
+        let runner = OverlayJobRunner(socket: origin.helper)
+
+        let status = runner.run(try runner.claim("job"), baseEnvironment: Self.base)
+
+        #expect(status == 127)
+        let frames = origin.frames()
+        #expect(frames.count == 1)
+        guard case .launchFailed(let message)? = frames.first else {
+            Issue.record("expected launch-failed")
+            return
+        }
+        #expect(message.contains("not supported on Linux"))
+    }
+    #endif
+
     @Test func aRefusedClaimLaunchesNothing() {
         let origin = FakeOrigin()
         origin.serve(reply: #"{"ok":false,"error":"job not claimable"}"#, context: nil)
@@ -113,6 +140,7 @@ struct OverlayRunJobTests {
         #expect(origin.frames().isEmpty)
     }
 
+    #if canImport(Darwin)
     @Test func aCancelFromTheAppEndsTheProgramCanceled() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("sleep 30"))
@@ -208,6 +236,8 @@ struct OverlayRunJobTests {
         #expect(origin.frames() == [.started, .canceled])
     }
 
+    #endif
+
     @Test func runJobParsesUnderSessionOverlay() throws {
         let command = try #require(try Agtermctl.parseAsRoot(["session", "overlay", "run-job", "job-id"])
             as? agtermctlKit.Session.Overlay.RunJob)
@@ -215,6 +245,7 @@ struct OverlayRunJobTests {
         #expect(command.job == "job-id")
     }
 
+    #if canImport(Darwin)
     @Test func aProgramThatCannotStartReportsLaunchFailed() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply,
@@ -230,4 +261,5 @@ struct OverlayRunJobTests {
             return
         }
     }
+    #endif
 }

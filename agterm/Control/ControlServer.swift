@@ -86,6 +86,8 @@ final class ControlServer {
     /// This Mac as a VIEWER: one client per attached session. `ControlServer+RemotePresentation` owns the
     /// logic. The transport is injectable so a hosted test needs no ssh.
     var remoteClients: [UUID: RemotePresentationClient] = [:]
+    var remoteRowBook: RemoteRowBookWriter?
+    var remoteRowSupervisor: RemoteRowSupervisor?
     var remoteTransport: RemotePresentationTransport = RemotePresentationProcess()
     var remoteTick: Task<Void, Never>?
 
@@ -511,7 +513,7 @@ final class ControlServer {
     /// Commands whose dispatch awaits an ssh round trip. `zmx.attach` re-resolves the remote first, so it
     /// carries the same wait; local `zmx.list` blocks too, but bounded, and stays inline to keep cache order.
     nonisolated private static func waitsOnNetwork(_ cmd: Command) -> Bool {
-        cmd == .zmxTree || cmd == .zmxAttach
+        cmd == .zmxTree || cmd == .zmxAttach || cmd == .zmxNew
     }
 
     /// Read bytes from `conn` up to (and excluding) the first newline. Returns nil on EOF-before-newline, a
@@ -609,7 +611,7 @@ final class ControlServer {
                 .windowNew, .windowList, .windowSelect, .windowGo,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
-                .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree,
+                .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
                 .zmxAttach, .zmxPresent, .sessionOverlayJobRun, .dashboard, .version:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:

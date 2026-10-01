@@ -51,6 +51,45 @@ final class RemoteLayoutCloseTests: XCTestCase {
                                    store: store, sessionID: session.id, library: library)
     }
 
+    private func attachableReplica() throws -> Session {
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp",
+                                                     command: "ssh origin", wait: true, remoteHost: "origin"))
+        let endpoint = ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/zmx-origin")
+        store.bindRemote(RemoteBinding(remoteSessionID: "origin", daemonsByLocalPane: [
+            session.paneIdentity: ZmxSupport.daemonName(for: origin),
+        ], presentationVersion: 1, origin: .init(host: "origin", endpoint: endpoint, sessionName: "build")),
+                         forSession: session.id)
+        return session
+    }
+
+    func testASplitOpenedOnTheOriginGrowsAPaneAttachedToItsDaemon() throws {
+        let session = try attachableReplica()
+        let added = UUID()
+        let layout = PresentationLayout(panes: [origin, added], primary: origin, axis: SplitAxis.topBottom.rawValue, shown: true)
+
+        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library)
+
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        defer { ZmxLeadBook.shared.forget(pane: split) }
+        XCTAssertTrue(session.isSplit)
+        XCTAssertEqual(session.splitAxis, .topBottom)
+        XCTAssertTrue(session.splitCommandWait)
+        XCTAssertTrue(try XCTUnwrap(session.splitInitialCommand).contains(ZmxSupport.daemonName(for: added)))
+        XCTAssertEqual(session.remotePresentation?.binding.daemon(forLocalPane: split), ZmxSupport.daemonName(for: added))
+        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library)
+        XCTAssertEqual(session.splitPaneIdentity, split, "a repeated frame grows nothing")
+    }
+
+    func testASplitTheOriginKeepsHiddenDoesNotGrow() throws {
+        let session = try attachableReplica()
+        let added = UUID()
+        agtermApp.applyRemoteLayout(PresentationLayout(panes: [origin, added], primary: origin,
+                                                       axis: SplitAxis.leftRight.rawValue, shown: false),
+                                   store: store, sessionID: session.id, library: library)
+        XCTAssertFalse(session.hasSplit)
+    }
+
     func testHeldReplicaForgetsItsLeadAndClosesOnlyAfterConfirmedRemoval() async throws {
         for removed in [false, true] {
             let setupChanged = expectation(description: "fixture tree change delivered")

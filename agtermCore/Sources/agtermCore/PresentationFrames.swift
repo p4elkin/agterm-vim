@@ -215,6 +215,8 @@ public struct PresentationFrame: Equatable, Sendable {
         case hello(PresentationHello)
         case ping
         case ack
+        /// A viewer has seen the session, including a mirror viewer.
+        case seen
         case snapshot(PresentationSnapshot)
         case status(PresentationStatus?)
         case context(String?)
@@ -223,8 +225,10 @@ public struct PresentationFrame: Equatable, Sendable {
         case notify(PresentationNotify)
         /// A viewer asking to be the session's sole presenter. Sent only after the origin's hello offered it.
         case presenterAcquire
+        /// Transfers the presenter role to this viewer, replacing any current holder.
+        case presenterTake
         case presenterGranted
-        /// The role is held by another viewer; this one stays a mirror until it reconnects.
+        /// The role is held by another viewer.
         case presenterRefused
         case askRequest(PresentationAsk)
         case askResolve(PresentationAskAnswer)
@@ -247,6 +251,7 @@ public struct PresentationFrame: Equatable, Sendable {
             case .hello: return "hello"
             case .ping: return "ping"
             case .ack: return "ack"
+            case .seen: return "seen"
             case .snapshot: return "snapshot"
             case .status: return "status"
             case .context: return "context"
@@ -254,6 +259,7 @@ public struct PresentationFrame: Equatable, Sendable {
             case .hud: return "hud"
             case .notify: return "notify"
             case .presenterAcquire: return "presenter.acquire"
+            case .presenterTake: return "presenter.take"
             case .presenterGranted: return "presenter.granted"
             case .presenterRefused: return "presenter.refused"
             case .askRequest: return "ask.request"
@@ -295,6 +301,7 @@ extension PresentationFrame: Codable {
         case "hello": body = .hello(try container.decode(PresentationHello.self, forKey: .hello))
         case "ping": body = .ping
         case "ack": body = .ack
+        case "seen": body = .seen
         case "snapshot": body = .snapshot(try container.decode(PresentationSnapshot.self, forKey: .snapshot))
         case "status": body = .status(try container.decodeIfPresent(PresentationStatus.self, forKey: .status))
         case "context": body = .context(try container.decodeIfPresent(String.self, forKey: .context))
@@ -302,6 +309,7 @@ extension PresentationFrame: Codable {
         case "hud": body = .hud(try container.decodeIfPresent(PresentationHud.self, forKey: .hud))
         case "notify": body = .notify(try container.decode(PresentationNotify.self, forKey: .notify))
         case "presenter.acquire": body = .presenterAcquire
+        case "presenter.take": body = .presenterTake
         case "presenter.granted": body = .presenterGranted
         case "presenter.refused": body = .presenterRefused
         case "ask.request": body = .askRequest(try container.decode(PresentationAsk.self, forKey: .ask))
@@ -338,7 +346,7 @@ extension PresentationFrame: Codable {
         case .overlayRejected(let change), .overlayClose(let change), .overlayResize(let change),
              .overlayClosed(let change):
             try container.encode(change, forKey: .overlay)
-        case .ping, .ack, .presenterAcquire, .presenterGranted, .presenterRefused, .unknown: break
+        case .ping, .ack, .seen, .presenterAcquire, .presenterTake, .presenterGranted, .presenterRefused, .unknown: break
         }
     }
 }

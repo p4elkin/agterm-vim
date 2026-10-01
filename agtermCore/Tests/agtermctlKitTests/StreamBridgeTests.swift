@@ -12,11 +12,13 @@ final class StreamBridgeTests {
 
     init() throws {
         var sockets: [Int32] = [-1, -1]
-        try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0)
+        try #require(socketpair(AF_UNIX, streamSocketType, 0, &sockets) == 0)
+        #if canImport(Darwin)
         for fd in sockets {
             var on: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         }
+        #endif
         var input: [Int32] = [-1, -1]
         var output: [Int32] = [-1, -1]
         try #require(pipe(&input) == 0)
@@ -99,7 +101,7 @@ final class StreamBridgeTests {
         #expect(running.done.wait(timeout: .now() + 3) == .success)
         closeOwned(bridge.socket)
         var reused: [Int32] = [-1, -1]
-        try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &reused) == 0)
+        try #require(socketpair(AF_UNIX, streamSocketType, 0, &reused) == 0)
         owned += reused
         send("late input\n", to: stdinWrite)
 
@@ -138,4 +140,16 @@ final class StreamBridgeTests {
         #expect(running.done.wait(timeout: .now() + 3) == .success)
         #expect(running.result.error != nil)
     }
+
+    @Test func anAppGoneBeforeTheRequestIsAnErrorNotASignal() {
+        closeOwned(server)
+
+        #expect(throws: SocketClientError.self) { try bridge.open(Self.present) }
+    }
 }
+
+#if canImport(Darwin)
+private let streamSocketType = SOCK_STREAM
+#else
+private let streamSocketType = Int32(SOCK_STREAM.rawValue)
+#endif

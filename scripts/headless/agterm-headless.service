@@ -1,0 +1,14 @@
+[Unit]
+Description=agterm headless origin
+After=default.target
+
+[Service]
+ExecStart=%h/.local/opt/agterm-headless/agterm-headless serve
+Restart=on-failure
+RestartSec=2
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# The zmx daemons the server starts live in this unit's cgroup; the default control-group mode would kill every session on restart.
+KillMode=process
+
+[Install]
+WantedBy=default.target

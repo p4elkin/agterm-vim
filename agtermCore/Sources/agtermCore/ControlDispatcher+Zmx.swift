@@ -5,6 +5,14 @@ extension ControlDispatcher {
     /// the 1000-line limit, following `+Hud` and `+Pick`.
     func dispatchZmxCommand(_ request: ControlRequest) async -> ControlResponse {
         switch request.cmd {
+        case .zmxNew:
+            if let name = request.args?.name, name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) {
+                return ControlResponse(ok: false, error: "zmx.new name must not contain control characters")
+            }
+            let options = ControlZmxNewOptions(name: request.args?.name, command: request.args?.command, cwd: request.args?.cwd)
+            guard let host = request.args?.host?.trimmedOrNil else { return actions.createAttachableSession(options) }
+            guard RemoteSession.isPlain(host), !host.hasPrefix("-") else { return ControlResponse(ok: false, error: "invalid host") }
+            return await actions.createRemoteSession(host: host, options: options, window: request.args?.window?.trimmedOrNil)
         case .zmxTree:
             // no host is this app's own attachable sessions, which is also exactly what a `zmx tree HOST`
             // runs on the far side

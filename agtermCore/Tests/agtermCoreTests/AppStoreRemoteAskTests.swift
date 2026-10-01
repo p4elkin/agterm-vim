@@ -37,7 +37,7 @@ struct AppStoreRemoteAskTests {
         let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) {
             PresentationSnapshot(status: nil, hud: nil)
         }
-        try hub.subscribe(session: session.id, hello: hello, sink: mirror) { PresentationSnapshot(status: nil, hud: nil) }
+        try hub.subscribe(session: session.id, hello: PresentationHello(version: 1, kinds: [], mode: .mirror), sink: mirror) { PresentationSnapshot(status: nil, hud: nil) }
         hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
         return (session, id)
     }
@@ -320,4 +320,67 @@ struct AppStoreRemoteAskTests {
 
         #expect(received == [rejected])
     }
+
+    @Test func presentAskWithAnEmptyLeadBookSendsAskRequest() throws {
+        let (session, _) = try origin()
+        ZmxLeadBook.shared.forget(pane: session.paneIdentity)
+        let pending = ask()
+
+        #expect(store.presentAsk(pending, in: session, paneIdentity: nil, window: Self.window) == true)
+
+        #expect(presenter.bodies.last == .askRequest(PresentationAsk(pending, pane: nil, owner: owner(of: session))))
+        #expect(session.askPresentedRemotely)
+    }
+
+    @Test func afterAReofferCancelDismissesTheNewPresentersAsk() throws {
+        let (session, id) = try origin(split: true)
+        let pane = try #require(session.splitPaneIdentity)
+        let pending = ask()
+        store.presentAskRemotely(pending, in: session, paneIdentity: pane, window: Self.window)
+        let oldOwner = owner(of: session)
+        let next = Sink()
+        try hub.subscribe(session: session.id, hello: PresentationHello(version: 1, kinds: [], mode: .presenter),
+                          sink: next) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.onPresenterChanged = { [store] in store.reofferRemoteAsk(forSession: $0, includeWaiting: false) }
+
+        hub.unsubscribe(try #require(id))
+
+        #expect(next.bodies.last == .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner(of: session))))
+        #expect(session.askPaneIdentity == pane)
+        #expect(!store.resolveRemoteAsk(PresentationAskAnswer(id: pending.id, owner: oldOwner, button: "yes"),
+                                        forSession: session.id))
+        session.cancelAsk(id: pending.id)
+        #expect(next.bodies.last == .askDismiss(PresentationAskRef(id: pending.id, owner: owner(of: session))))
+        #expect(AskRegistry.shared.result(for: pending.id)?.windowID == Self.window)
+    }
+
+    @Test func aGrantWithALocallyDrawnAskMovesNothing() throws {
+        let (session, _) = try origin()
+        let pending = ask()
+        #expect(session.openAsk(pending, paneIdentity: session.paneIdentity))
+        AskRegistry.shared.register(id: pending.id, owner: .session(session.id, window: Self.window))
+        let count = presenter.frames.count
+
+        store.reofferRemoteAsk(forSession: session.id, includeWaiting: false)
+
+        #expect(session.askPending?.id == pending.id)
+        #expect(session.askPaneIdentity == session.paneIdentity)
+        #expect(!session.askPresentedRemotely)
+        #expect(presenter.frames.count == count)
+    }
+
+    @Test func aWaitingAskIsOfferedWithItsPane() throws {
+        let (session, _) = try origin(split: true)
+        let pending = ask()
+        let pane = try #require(session.splitPaneIdentity)
+        #expect(session.openAsk(pending, paneIdentity: pane))
+        AskRegistry.shared.register(id: pending.id, owner: .session(session.id, window: Self.window))
+
+        store.reofferRemoteAsk(forSession: session.id, includeWaiting: true)
+
+        #expect(presenter.bodies.last == .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner(of: session))))
+        #expect(session.askPaneIdentity == pane)
+        #expect(session.askPresentedRemotely)
+    }
+
 }

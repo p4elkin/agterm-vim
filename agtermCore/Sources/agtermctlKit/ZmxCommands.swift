@@ -15,7 +15,7 @@ struct Zmx: ParsableCommand {
         Every one needs a running agterm: only the app can join its live windows, its pending closes and \
         its persisted snapshots against what zmx reports. With agterm stopped there is nothing to ask.
         """,
-        subcommands: [List.self, Prune.self, Kill.self, Reset.self, Tree.self, Attach.self, Present.self]
+        subcommands: [List.self, Prune.self, Kill.self, Reset.self, New.self, Tree.self, Attach.self, Present.self]
     )
 
     struct Present: ParsableCommand {
@@ -125,6 +125,22 @@ struct Zmx: ParsableCommand {
             ControlRequest(cmd: .zmxAttach, target: session,
                            args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
                                              mosh: mosh, window: window))
+        }
+    }
+
+    struct New: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Create an attachable session here, or create and attach one on another host.")
+
+        @Argument(help: "The origin host. Omit to create on this origin.") var host: String?
+        @Option(name: .long, help: "Session name.") var name: String?
+        @Option(name: .long, help: "Command to run on the origin.") var command: String?
+        @Option(name: .long, help: "Working directory on the origin.") var cwd: String?
+        @Option(name: .long, help: "Local window to attach into when a host is given.") var window: String?
+        @OptionGroup var options: BasicOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .zmxNew, args: ControlArgs(name: name, cwd: cwd, host: host, command: command, window: window))
         }
     }
 

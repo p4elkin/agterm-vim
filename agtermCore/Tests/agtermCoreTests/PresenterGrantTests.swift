@@ -84,7 +84,7 @@ struct PresenterGrantTests {
         #expect(hub.presenterGeneration(session: Self.session) == generation)
     }
 
-    @Test func aClosedStreamRevokesTheRoleAndBumpsTheGeneration() throws {
+    @Test func aClosedStreamHandsTheRoleToTheWaitingViewerAndBumpsTheGeneration() throws {
         let hub = makeHub()
         let first = Sink()
         let second = Sink()
@@ -95,8 +95,8 @@ struct PresenterGrantTests {
 
         hub.unsubscribe(firstID)
 
-        #expect(!hub.hasPresenter(session: Self.session))
-        #expect(hub.presenterGeneration(session: Self.session) == generation + 1)
+        #expect(hub.hasPresenter(session: Self.session))
+        #expect(hub.presenterGeneration(session: Self.session) == generation + 2)
         acquire(hub, secondID, gen: second.frames[0].gen)
         #expect(second.bodies.last == .presenterGranted)
     }
@@ -149,4 +149,26 @@ struct PresenterGrantTests {
         #expect(first.bodies.last == .presenterGranted)
         #expect(second.bodies.last == .presenterGranted)
     }
+    @Test func transferMovesTheHolderOnceAndLeavesOtherSessionsAlone() {
+        var grant = PresenterGrant()
+        let first = PresentationHub.SubscriberID(generation: 1)
+        let second = PresentationHub.SubscriberID(generation: 2)
+        let other = UUID()
+        let acquired = grant.acquire(session: Self.session, by: first)
+        let acquiredOther = grant.acquire(session: other, by: first)
+        #expect(acquired)
+        #expect(acquiredOther)
+        grant.transfer(session: Self.session, to: second)
+        #expect(grant.holder(of: Self.session) == second)
+        #expect(grant.generation(of: Self.session) == 2)
+        #expect(grant.holder(of: other) == first)
+        #expect(grant.generation(of: other) == 1)
+        grant.transfer(session: Self.session, to: second)
+        #expect(grant.generation(of: Self.session) == 2)
+        let vacant = UUID()
+        grant.transfer(session: vacant, to: second)
+        #expect(grant.holder(of: vacant) == second)
+        #expect(grant.generation(of: vacant) == 1)
+    }
+
 }

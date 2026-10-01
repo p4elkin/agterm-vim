@@ -124,6 +124,8 @@ struct agtermApp: App {
                                             socketProvider: { controlServer.resolvedSocketPath })
         controlServer.hookStatus = { hookController.scheduler.status }
         _hookController = State(initialValue: hookController)
+        // after the hook controller: the writer chains the library event observer it installed
+        controlServer.remoteRowBook = RemoteRowBookWriter(library: library, book: RemoteRowBook(directory: stateDirectory))
         // follows macOS light/dark via KVO on NSApp.effectiveAppearance; dependency-free, started in `.task`.
         _appearanceObserver = State(initialValue: SystemAppearanceObserver())
         // follows Reduce Motion / Reduce Transparency via NSWorkspace's accessibility-display notification,
@@ -141,6 +143,25 @@ struct agtermApp: App {
                 logger.debug("launch spawn queue drained in \(drained / .milliseconds(1), format: .fixed(precision: 0)) ms")
             }
             logger.debug("launch spawn queue armed with \(plan.order.count) panes, \(plan.burst.count) in the burst")
+            // saved remote rows come back in every restore mode: they carry no command to replay
+            let rowBook = RemoteRowBook(directory: stateDirectory)
+            controlServer.restoreRemoteRows(from: rowBook)
+            library.onStoreLoaded = { [weak controlServer] id, store in
+                controlServer?.restoreRemoteRows(rowBook.load(), windowID: id, store: store)
+            }
+            let supervisor = RemoteRowSupervisor(
+                library: library,
+                tree: { [weak controlServer] host in
+                    await controlServer?.remoteTree(host: host) ?? ControlResponse(ok: false, error: "control server is gone")
+                },
+                sleep: { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) },
+                reattach: { [library] pane in
+                    guard let session = library.store(forSession: pane.session)?.session(withID: pane.session) else { return }
+                    let surface = session.paneIdentity == pane.local ? session.surface : session.splitSurface
+                    if let view = surface as? GhosttySurfaceView { PaneLead.reattach?(view, false) }
+                })
+            controlServer.remoteRowSupervisor = supervisor
+            Self.remotePaneExitHeld = { local, session in supervisor.paneExited(local, inSession: session) }
         }
     }
 
@@ -239,8 +260,12 @@ struct agtermApp: App {
                         NotificationManager.shared.start()
                         let paneServices = surfaceServices
                         PaneLead.reattach = { old, claim in Self.reattachPane(old, claim: claim, services: paneServices) }
-                        PaneLead.roleChanged = { [library] view in
-                            view.session.flatMap { library.store(forSession: $0.id) }?.leadRoleChanged()
+                        PaneLead.roleChanged = { [library, controlServer] view in
+                            guard let session = view.session else { return }
+                            library.store(forSession: session.id)?.leadRoleChanged()
+                            if let pane = UUID(uuidString: view.paneToken) {
+                                controlServer.paneLeadChanged(pane: pane, inSession: session.id)
+                            }
                         }
                         // drive the Dock badge (via UNUserNotifications) from the app-wide unseen total — the
                         // sidebar pills' Session.unseenCount summed across windows.
