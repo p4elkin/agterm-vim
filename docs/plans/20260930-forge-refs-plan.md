@@ -100,12 +100,14 @@ This plan does not repeat them. Each task names the spec section it implements.
 
 #### Task 1: check `agterm-linux` for an exhaustive switch on `LinkDisposition`
 
-- [ ] find which repository `agterm-linux` takes `agtermCore` from (its `Package.swift` dependency, through
+- [x] find which repository `agterm-linux` takes `agtermCore` from (its `Package.swift` dependency, through
       GitHub with `fork:true`, or a shallow read-only clone into the session scratchpad)
-- [ ] it builds from upstream `umputun/agterm`: write that one line here; the task ends
-- [ ] it builds from this fork: record each `switch` over `LinkDisposition` with no `default`, with its file.
+- [x] it builds from upstream `umputun/agterm`: write that one line here; the task ends
+      Found 2026-10-01: `melonamin/agterm-linux` is a GitHub fork of upstream `umputun/agterm` and carries its own
+      in-tree `agtermCore` (`agtermCore/Sources/agtermCore/LinkPolicy.swift`); this fork's new case cannot reach it.
+- [x] (not applicable) it builds from this fork: record each `switch` over `LinkDisposition` with no `default`, with its file.
       One found: add a ⚠️ task to tell Sasha before Task 2 lands; do not edit that repository
-- [ ] check: the finding is written into this task
+- [x] check: the finding is written into this task
 
 #### Task 2: `LinkPolicy` accepts the `agterm-ref:` scheme
 
@@ -114,14 +116,14 @@ This plan does not repeat them. Each task names the spec section it implements.
 - Modify: `agtermCore/Tests/agtermCoreTests/LinkPolicyTests.swift`
 - Modify: `agterm/Ghostty/GhosttySurfaceView+Input.swift`
 
-- [ ] failing tests first: the five accepted payloads give `.ref(payload)`, `#` stays in the payload, and every
+- [x] failing tests first: the five accepted payloads give `.ref(payload)`, `#` stays in the payload, and every
       refused case from the spec's Tests section gives `.ignore`
-- [ ] `refScheme = "agterm-ref"`, not in `permittedSchemes`; `LinkDisposition.ref(String)`
-- [ ] in `disposition(for:)`, before the scheme regex: the `agterm-ref:` prefix goes to `refDisposition` with the
+- [x] `refScheme = "agterm-ref"`, not in `permittedSchemes`; `LinkDisposition.ref(String)`
+- [x] in `disposition(for:)`, before the scheme regex: the `agterm-ref:` prefix goes to `refDisposition` with the
       rest of the raw string; the three anchored patterns, the 300-character cap, the newline guard (spec, Recognition)
-- [ ] `openLink`'s switch gets a temporary `case .ref: return`, so the app target still compiles
-- [ ] check: `cd agtermCore && swift test --filter LinkPolicyTests`
-- [ ] commit in the fork
+- [x] `openLink`'s switch gets a temporary `case .ref: return`, so the app target still compiles
+- [x] check: `cd agtermCore && swift test --filter LinkPolicyTests`
+- [x] commit in the fork
 
 #### Task 3: `LinkPolicy` reclaims dotted cross-project refs from the path link
 
@@ -129,12 +131,12 @@ This plan does not repeat them. Each task names the spec section it implements.
 - Modify: `agtermCore/Sources/agtermCore/LinkPolicy.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/LinkPolicyTests.swift`
 
-- [ ] failing tests first: schemeless `group/my.proj!12` and `group/proj!12.` give `.ref`; `src/a.swift` still
+- [x] failing tests first: schemeless `group/my.proj!12` and `group/proj!12.` give `.ref`; `src/a.swift` still
       gives `.openPath`; `a/b.c#x`, schemeless `!12` and schemeless `c865bc6c` still give `.ignore`
-- [ ] in the schemeless branch: when `openPathDisposition` gives `.ignore`, strip trailing `.`, `,`, `;`, `:`, `)`
+- [x] in the schemeless branch: when `openPathDisposition` gives `.ignore`, strip trailing `.`, `,`, `;`, `:`, `)`
       and try the cross-project pattern only
-- [ ] check: `cd agtermCore && swift test --filter LinkPolicyTests`
-- [ ] commit in the fork
+- [x] check: `cd agtermCore && swift test --filter LinkPolicyTests`
+- [x] commit in the fork
 
 #### Task 4: `OpenLinkLaunch.arguments(ref:session:pane:socket:)`
 
@@ -142,22 +144,22 @@ This plan does not repeat them. Each task names the spec section it implements.
 - Modify: `agtermCore/Sources/agtermCore/OpenLinkLaunch.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/OpenLinkLaunchTests.swift`
 
-- [ ] failing tests first: `--cwd` from `cwd(for:)` for the primary pane and for a split's right pane;
+- [x] failing tests first: `--cwd` from `cwd(for:)` for the primary pane and for a split's right pane;
       `--socket` when given; `--pane` as for URLs; the argv ends `-- agterm-ref:<payload>`; the URL argv unchanged
-- [ ] the new function, shaped like `OpenPathLaunch.arguments`
-- [ ] check: `cd agtermCore && swift test --filter OpenLinkLaunchTests`
-- [ ] commit in the fork
+- [x] the new function, shaped like `OpenPathLaunch.arguments`
+- [x] check: `cd agtermCore && swift test --filter OpenLinkLaunchTests`
+- [x] commit in the fork
 
 #### Task 5: `openLink` routes `.ref` to the helper
 
 **Files:**
 - Modify: `agterm/Ghostty/GhosttySurfaceView+Input.swift`
 
-- [ ] replace the temporary case with `case let .ref(payload): openRef(payload)`
-- [ ] `openRef`: `guard let session else { return }`; the pane as in `openFilePath`;
+- [x] replace the temporary case with `case let .ref(payload): openRef(payload)`
+- [x] `openRef`: `guard let session else { return }`; the pane as in `openFilePath`;
       `runAgentHelper(OpenLinkLaunch.helperName, arguments: OpenLinkLaunch.arguments(ref:…), …)`; no `NSWorkspace` fallback
-- [ ] check: `make build`
-- [ ] commit in the fork
+- [x] check: `make build`
+- [x] commit in the fork
 
 ### Stage 2: helper core and commits
 
