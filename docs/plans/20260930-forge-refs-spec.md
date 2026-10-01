@@ -342,7 +342,17 @@ Measured on 2026-10-01 against `gitlab.magnolia-platform.com`:
   stage's lowest job id.
 - A job trace line starts `<ISO time> 00O ` or `00O+`. A section marker line ends in `\r` and keeps nothing after it.
   The view drops the prefix too.
-- Still unmeasured: `gh api` on a missing issue and on a bad sha (stage 4).
+
+Measured on 2026-10-01 against `github.com/cli/cli`, with `gh` and the GitHub environment above:
+
+- `gh api repos/O/R/issues/N` answers both kinds. A pull request carries a `pull_request` key, and an issue has none.
+  A missing number exits 1 with `gh: Not Found (HTTP 404)` on stderr.
+- The commit diff endpoint accepts a short sha. A sha it does not know exits 1 with
+  `gh: No commit found for SHA: c865bc6c (HTTP 422)`. It is a 422, not a 404.
+- `gh pr view N` on a missing number, or on an issue's number, exits 1 with
+  `GraphQL: Could not resolve to a PullRequest with the number of N.`.
+- A line comment's `in_reply_to_id` names its thread's first comment. `line` is `null` once the code has moved,
+  so the heading falls back to `original_line`.
 
 ## Config
 
