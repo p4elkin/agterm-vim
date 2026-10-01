@@ -30,4 +30,20 @@ struct OpenLinkLaunchTests {
         #expect(args == ["--target", session.id.uuidString, "--pane", "right", "--", "https://x.test/browse/AB-1"])
         #expect(!args.contains("--cwd"))
     }
+
+    @Test func refCarriesThePaneDirectory() {
+        let session = Session(initialCwd: "/repo")
+        let args = OpenLinkLaunch.arguments(ref: "!12", session: session, pane: .left, socket: "/tmp/a.sock")
+        #expect(args == ["--cwd", "/repo", "--target", session.id.uuidString, "--socket", "/tmp/a.sock",
+                         "--", "agterm-ref:!12"])
+    }
+
+    @Test func refFromASplitRightPaneUsesItsOwnDirectory() {
+        let session = Session(initialCwd: "/left")
+        session.isSplit = true
+        session.splitCwd = "/right"
+        let args = OpenLinkLaunch.arguments(ref: "group/proj#34", session: session, pane: .right, socket: nil)
+        #expect(args == ["--cwd", "/right", "--target", session.id.uuidString, "--pane", "right",
+                         "--", "agterm-ref:group/proj#34"])
+    }
 }

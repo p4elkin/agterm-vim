@@ -17,4 +17,13 @@ public enum OpenLinkLaunch {
         if session.isSplit, pane != .scratch { args += ["--pane", pane.rawValue] }
         return args + ["--", url.absoluteString]
     }
+
+    /// A forge ref names no project, so it carries the clicked pane's directory for the helper to resolve it in.
+    @MainActor
+    public static func arguments(ref: String, session: Session, pane: CommandContext.Pane, socket: String?) -> [String] {
+        var args = ["--cwd", session.cwd(for: pane), "--target", session.id.uuidString]
+        if let socket { args += ["--socket", socket] }
+        if session.isSplit, pane != .scratch { args += ["--pane", pane.rawValue] }
+        return args + ["--", LinkPolicy.refScheme + ":" + ref]
+    }
 }
