@@ -298,6 +298,8 @@ C-boundary concurrency before changing the bridge.
   5 seconds, and the opaque keyframe plateau is about `1/slides`.
 - Auto-fit feature grids can strand orphan cards. Use a fixed column count, explicit spans, and narrow
   media fallbacks as in `.surfaces-grid`.
+- Demo and screenshot staging shows two or three agent statuses at most, and never notification badges
+  next to statuses; they are alternative mechanisms.
 
 ## Path-scoped rules
 

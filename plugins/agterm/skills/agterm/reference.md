@@ -501,6 +501,9 @@ error keeps those names for compatibility.
 
 - `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--target] [--window W]` — inject text
   as real keystrokes (printable runs plus Return for each newline; no bracketed-paste markers).
+  A trailing newline's Return is sent a moment after the text, so a long line submits in an agent TUI;
+  Returns inside a multi-line payload are not spaced, so send an agent one line per call.
+  A shell's `$(...)` strips trailing newlines; pass the newline with `--stdin` or `$'...\n'`.
   `--stdin` reads the text from stdin instead of the argument. Any session is typable without `--select`,
   including a background one and one created moments ago: the main pane bounded-polls (12 × 30ms) for the
   surface, so `session new --no-select` followed straight away by `session type` does not race the mount.
@@ -1512,9 +1515,10 @@ parse diagnostics (0 = clean). App-global (no `--window`).
   same-chord sibling — so an entry marked `enabled: false` explains a dead binding by itself.
 
 **`actions` and `menu` can disagree, and that is what this command is for.** SwiftUI rebuilds the menu
-only on the next app activation, so right after `keymap reload` a chord can be correct in `actions` and
-stale in `menu`. It also resolves a chord collision by unbinding agterm's own item, so a stock item can
-end up holding a chord an action claims. If a keybinding "does not work" while `actions` looks right,
+lazily, on activation or key dispatch, so right after `keymap reload` a chord can be correct in `actions`
+and stale in `menu`. It also resolves a chord collision with a stock macOS item (Close All, Minimize, Hide,
+Quit, the Edit commands) by unbinding agterm's own item; agterm takes such a chord back from the stock
+item, so that mismatch is transient too. If a keybinding "does not work" while `actions` looks right,
 compare the two lists: find the action's `chord`, then look for that chord in `menu` and check which
 item carries it.
 
