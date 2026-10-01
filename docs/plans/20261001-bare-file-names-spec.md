@@ -94,9 +94,10 @@ The repo-suffix step already matches a bare name: `f == rel or f.endswith("/" + 
 
 - `agtermctl window list --json`, then `tree --json --window <id>` for each window with `open: true`, read-only
   (an untargeted `tree` answers only the active window; a closed window's `tree` is refused). A failed window
-  read drops only that window; a failed `window list` falls back to today's untargeted `tree --json`, so the
-  clicked pane's own far check never gets weaker. Each session's `cwd`, plus `splitCwd` when it has a split.
-  The same answer serves `pane_command`, so a click reads the tree once.
+  read drops only that window; a failed `window list` falls back to the untargeted `tree --json`. Each
+  session's `cwd`, plus `splitCwd` when it has a split. The windows are read only by this step, inside its
+  budget, and each window's repositories are searched before the next window is read. `pane_command` reads the
+  plain `tree` once, before the pane's own steps, for the clicked pane's far check.
 - Skipped: rows with `remoteHost`, a pane whose `restoreCommand` or `splitRestoreCommand` runs on a far host
   (`far_pane`'s patterns), cwds that are not directories here.
 - Each cwd becomes its `git rev-parse --show-toplevel`. The pane's own repository and duplicates are dropped.
