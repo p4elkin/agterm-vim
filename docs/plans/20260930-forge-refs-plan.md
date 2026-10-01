@@ -306,42 +306,45 @@ Every task in this stage edits `bin/agterm-open-link`, `tests/test_agterm_open_l
 
 #### Task 15: measure the GitLab failure shapes
 
-- [ ] `glab issue view <n> -R https://gitlab.magnolia-platform.com/<p> -F json` for a real and a missing issue:
+- [x] `glab issue view <n> -R https://gitlab.magnolia-platform.com/<p> -F json` for a real and a missing issue:
       does the URL form work, what is the exit status and stderr
-- [ ] `glab api` on a missing pipeline and a missing job: exit status and stderr
-- [ ] trim one real answer each into fixtures: issue, issue discussions, pipeline, pipeline jobs, pipeline bridges,
+- [x] `glab api` on a missing pipeline and a missing job: exit status and stderr
+- [x] trim one real answer each into fixtures: issue, issue discussions, pipeline, pipeline jobs, pipeline bridges,
       job, job trace (with `\r` progress lines and section markers kept)
-- [ ] check: the shapes are written into the spec's Outcomes section, replacing "Unmeasured today"
-- [ ] commit the fixtures in agterm-agents and the spec edit in the fork
+- [x] check: the shapes are written into the spec's Outcomes section, replacing "Unmeasured today"
+- [x] commit the fixtures in agterm-agents and the spec edit in the fork
 
 #### Task 16: GitLab issues
 
-- [ ] failing tests first: `/-/issues/N` and `/-/work_items/N` classify as issue; `#12` in a GitLab checkout and
+- [x] failing tests first: `/-/issues/N` and `/-/work_items/N` classify as issue; `#12` in a GitLab checkout and
       `magnolia/ui#12` resolve to it; the Markdown carries title, state, author, assignees, labels, description,
       threads without system notes, the URL; TUI and HTML views, the page runs no script; missing issue gives HUD
       `No such issue: magnolia/ui#12`
-- [ ] the issue row in `classify`, `issue_markdown`, the issue builder
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the issue row in `classify`, `issue_markdown`, the issue builder
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 17: GitLab pipelines
 
-- [ ] failing tests first: `/-/pipelines/N` and a tab such as `/failures` classify as pipeline; the Markdown has the
+- [x] failing tests first: `/-/pipelines/N` and a tab such as `/failures` classify as pipeline; the Markdown has the
       header fields and one table per stage in pipeline order, bridges included; TUI and HTML views; missing pipeline
       gives HUD `No such pipeline: magnolia/ui pipeline 55`; the three `glab api` calls get their own answers through
       the argv map
-- [ ] the pipeline row, `pipeline_markdown`, the builder; the three `glab api` calls under one `Fetching` HUD
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the pipeline row, `pipeline_markdown`, the builder; the three `glab api` calls under one `Fetching` HUD
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 18: GitLab jobs
 
-- [ ] failing tests first: `/-/jobs/N` and `/-/jobs/N/raw` classify as job; only the text after the last `\r` of a
+- [x] failing tests first: `/-/jobs/N` and `/-/jobs/N/raw` classify as job; only the text after the last `\r` of a
       line is kept; section markers are removed; the tail is 300 lines; control bytes are gone; the TUI overlay runs
       `less +G <file>`; the HTML page holds the tail in one fence; missing job gives HUD `No such job: magnolia/ui job 77`
-- [ ] the job row, `job_text`, the builder
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the job row, `job_text`, the builder
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
+
+➕ Found while building: the trace prefix `<ISO time> 00O ` is dropped too, and `glab api`'s 404 check ignores
+case (a missing pipeline or job says `Not found`). Both are in the spec's Outcomes section.
 
 ### Stage 4: GitHub
 
