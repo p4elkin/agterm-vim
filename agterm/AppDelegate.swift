@@ -399,6 +399,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DockBadgeController.shared.clear()
         // mark terminating so per-window willClose can't zero the open-set during quit — it must survive
         // for the next launch's reopen-all.
+        // the book's last write, while every window is still open; isTerminating stops the rest
+        controlServer?.remoteRowBook?.write()
         library?.isTerminating = true
         if let library {
             // flush the stores + index: cwd changes since the last structural mutation aren't auto-persisted.

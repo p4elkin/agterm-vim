@@ -178,6 +178,8 @@ the bundled skill, `site/commands.html` and `README.md` leave them out. The sync
 below applies to upstream commands.
   `restore.clear`, `restore.mode`, `version`
 - `zmx.list`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
+- `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
+  like the other fork-only commands)
 
 `terminfo install` is a CLI-only command with no protocol counterpart, the one exemption from the
 protocol/dispatcher contract: it runs `infocmp` and `ssh` locally and never opens the socket, so there is
@@ -1040,7 +1042,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   The basename comes from `stripLoginDash(argv)[0]`, in that order: `basename` splits on `/`, so it drops the
   login mark from `-/bin/zsh` but keeps it on the bare `-zsh`.
 - `remoteHost` names the machine a teleported session is attached to and is omitted for a local one. It is
-  live-only: a remote session is never persisted, so it cannot survive a relaunch.
+  absent from every snapshot; the row itself comes back from the remote row book (see Remote sessions).
+- `remoteState` (fork only) is a bound remote row's last classification: `attached`, `disconnected` or
+  `endedOnHost`, omitted for a local or unbound row. The sidebar notice names the last two.
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.
@@ -1289,6 +1293,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   recomputed from the process environment, which would duplicate runtime selection and break hosted tests
   that inject a client. Optional on the wire, so a remote reader tells an older server apart by absence and
   refuses rather than half-attaching.
+- `zmx.new [HOST] --name --command --cwd` creates a session. Bare, it creates one on this origin with no
+  local surface and answers its id; only the headless origin serves that form, and the Mac's default refuses.
+  With a host, the Mac runs the far side's bare form over ssh (`RemoteSession.newCommand`, each value one
+  `--flag=value` word) and then attaches the returned id exactly as `zmx.attach` does; a far refusal comes
+  back unchanged and creates no row. It waits on the network off the accept thread like `zmx.attach`.
 - `zmx.tree`'s host is OPTIONAL, and that is the whole design. Bare, it builds this app's own attachable
   sessions across every open window; with a host, it sshes once and runs the BARE form on the far side.
   So the far-side operation is an ordinary public command a user can run and test on its own, there is no
@@ -1382,7 +1391,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - The runner is async behind an injected seam. `ControlActions` is `@MainActor`, so a blocking wait would
   freeze the UI for the whole network deadline, and the fake is what lets the end-to-end tests run without
   a second Mac.
-- Four commands leave the accept thread, in two ways. `zmx.tree` and `zmx.attach` wait on the network,
+- Five commands leave the accept thread, in two ways. `zmx.tree`, `zmx.attach` and `zmx.new` wait on the network,
   so `handleConnection` moves each to a worker thread and that thread's descriptor close moves with it.
   `zmx.present` and `session.overlay.job.run` are streaming hand-offs: each is dispatched inline, its
   ordinary reply is written, and on ok the descriptor passes to a `ControlStreamOwner` whose reader thread
@@ -1435,6 +1444,16 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   producer — the launch snapshot, the Recent Closed session record, and a closed workspace's record, whose
   `sessionCount` and `selectedSessionID` are recomputed after filtering. The in-memory pending-close record
   keeps remote sessions, so the three-second undo still restores the row.
+- A remote row is saved OUTSIDE the snapshot, in `<stateDir>/remote-rows.json` (`RemoteRowBook`): window,
+  workspace, position, origin, transport and daemons by pane role, never a command, so every restore mode
+  brings it back and none replays an ssh line. `RemoteRowBookWriter` rewrites it after each tree change,
+  debounced, and once from `applicationWillTerminate` before `isTerminating` stops every later write. At
+  launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected, at their places,
+  without a lead claim; a reopened window restores its own through `WindowLibrary.onStoreLoaded`.
+- `RemoteRowSupervisor` takes a remote pane whose attach ended: one tree call per host classifies it,
+  `attached` reattaches through `PaneLead`'s path without a claim, `disconnected` retries every 30
+  seconds, `endedOnHost` stops. It never reattaches a pane the origin closed: the last layout removed it,
+  or the tree no longer lists its daemon, and an attach would create a fresh daemon under that name.
 - `Session.locallyManagedPaneIdentities` is the single local-ownership predicate, empty for a remote
   session, read by `finalizePaneIdentities`, the direct `closeSplit` finalizer path, `liveClaims` and live
   `finalizeWindowPanes`. Without it `liveClaims` invents an `agterm-<uuid>` claim for a pane whose daemon
@@ -1460,8 +1479,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   shown state, including an unrealized origin split. Invalid layouts are ignored without disconnecting.
   An older origin omits the field and leaves the viewer's layout alone.
 - Axis, visibility and swaps follow the origin only for an existing, realized pair of mapped replicas.
-  The viewer never creates a pane from a layout; newly opened origin splits require closing and attaching
-  the row again. A locally closed replica stays closed, and local panes keep their layout. Ratio and
+  The one pane a viewer creates from a layout is a shown two-pane layout adding an origin pane to a
+  one-pane replica (`remoteLayoutAddedPane`): the split opens attached to that pane's daemon, without a
+  lead claim, and `addRemotePane` grows the binding. A split the origin keeps hidden grows once shown. A locally closed replica stays closed, and local panes keep their layout. Ratio and
   keyboard focus stay local; hiding the split maximizes this Mac's focused pane.
 - Confirmed removal closes a mapped replica without requiring acknowledgement, including one already
   held after ssh exited. If it is the last realized replica, it stays until its ssh exits, then the row
@@ -1484,6 +1504,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   effective value: setting the text the mirror already shows emits nothing. Attach does not seed the
   context from `zmx.tree`, which would make the origin's label a local override that wins forever, so an
   origin predating the `context` frame mirrors none.
+- Seeing an attached row here (`AppStore.clearUnseen`, reached by selection, pane focus and the zoom refocus)
+  sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
+  session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count
+  alone, as here.
 - A mirrored HUD carries the origin's REMAINING time, and the viewer counts that down on its own clock.
   The two expiries are not synchronized, so the panels can close a moment apart; the origin's withdrawal
   frame closes the viewer's early. A mirrored HUD yields to a HUD or program overlay this Mac's own caller
@@ -1498,8 +1522,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ping. One warning per failure episode or changed reason. A soft close stops the client and undo starts a
   fresh one.
 - A stream a viewer opens asks for the PRESENTER role. The origin grants it to one stream per session and
-  refuses the rest, which stay mirrors and ask again only on their own reconnect; an origin predating the
-  role answers mirror. The role goes with its stream. Read back the viewer's `presentation.mode` and the
+  refuses the rest, which stay mirrors while that holder remains. When its stream goes, the earliest
+  remaining stream whose hello asked for presenter mode receives the role; mirror-mode streams never do.
+  `presenter.take` moves the role to the asking stream at once: the old holder is dismissed, then refused.
+  A viewer sends it when its row's primary pane becomes the zmx leader, and on hello instead of acquire
+  when that pane already leads, so the presenter follows the lead.
+  Never the reverse: a granted role leaves the pane cover up until a key press takes the lead.
+  An origin predating the role answers mirror. Read back the viewer's `presentation.mode` and the
   origin's `presenters.presenter`. A newly opened session-associated ask or program overlay goes to that
   presenter only when its target pane reports `follower` on the origin, or every existing pane does for
   session-wide placement; mixed, unknown or unowned roles stay local.
@@ -1507,11 +1536,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - An ask handed over keeps its slot and its id on the origin, which reads back `ask.remote`; the viewer draws
   a replica, `ask.replica`, whose answer carries only the button id and is checked against the stored
   buttons. It ends when answered or escaped on the viewer, or when the origin cancels it or tears down its
-  session or pane, which dismisses the replica. The viewer refusing it (its slot is taken, or a GUI target is
-  not on screen; a terminal replica for a hidden row waits hidden like a local one) or its stream being lost
-  hands it back: the origin owns it again as an ordinary ask, pending until its target is shown, and one it
-  cannot place ends `cancelled` with `reason: presentation-lost`, a field an older client ignores. A late
-  answer from the former presenter is refused.
+  session or pane, which dismisses the replica. A viewer refusing it because its slot is taken or a GUI
+  target is not on screen hands it back. A terminal replica for a hidden row waits hidden like a local one.
+  A lost presenter stream re-offers a remote ask with its original id and pane to the new holder, or hands
+  it back when no replacement exists. A handed-back ask is ordinary and pending until its target is shown;
+  one the origin cannot place ends `cancelled` with `reason: presentation-lost`, a field an older client ignores.
+  A late answer from the former presenter is refused.
 - An overlay handed over is a JOB. The origin reserves the slot, so the session stays uncovered here while
   no second overlay opens on it, and the viewer opens an ordinary overlay running
   `ssh -tt <origin> agtermctl session overlay run-job <job>`. That helper claims the job over

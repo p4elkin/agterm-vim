@@ -142,6 +142,8 @@ public final class AppStore {
     @ObservationIgnored public var overlayJobs: OverlayJobs?
     /// Told when an attached session's row is shown or leaves, undo and restoration included.
     @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
+    /// Told when an attached session is seen here, so its origin clears its own count and auto-reset status.
+    @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
@@ -334,62 +336,64 @@ public final class AppStore {
                                               backedByZmx: session.zmxBacking(for: surface),
                                               lead: ZmxLeadBook.shared.role(pane: session.paneIdentity(for: surface)))
                 }
-                return ControlSessionNode(id: session.id.uuidString, name: session.displayName,
-                                          cwd: session.effectiveCwd, title: session.oscTitle,
-                                          active: session.id == activeID,
-                                          split: session.isSplit, hasSplit: session.hasSplit ? true : nil,
-                                          backedByZmx: session.allPanesBackedByZmx,
-                                          splitAxis: session.hasSplit ? session.splitAxis.rawValue : nil,
-                                          splitRatio: session.hasSplit ? session.splitRatio : nil,
-                                          splitFocused: session.hasSplit ? session.splitFocused : nil,
-                                          overlay: session.coverOverlayActive,
-                                          overlaySizePercent: session.coverOverlayActive
-                                              ? session.overlaySizePercent : nil,
-                                          paneOverlays: paneOverlays(session), hud: hudNode(session),
-                                          ask: session.askPending.map {
-                                              ControlSessionAsk(id: $0.id, pane: session.askTargetPane?.rawValue,
-                                                                remote: session.askPresentedRemotely ? true : nil,
-                                                                replica: session.askReplica ? true : nil)
-                                          },
-                                          scratch: session.scratchActive, flagged: session.flagged,
-                                          parked: session.parked ? true : nil,
-                                          commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
-                                          splitCommandWait: (session.splitInitialCommand != nil && session.splitCommandWait)
-                                              ? true : nil,
-                                          foreground: mainPane?.command, splitForeground: splitPane?.command,
-                                          foregroundShell: mainPane?.shellName, splitForegroundShell: splitPane?.shellName,
-                                          // the PERSISTED overrides, not the transient pending payloads, so
-                                          // a read after one fired still reports what stays pinned.
-                                          restoreCommand: session.restoreCommand,
-                                          splitRestoreCommand: session.splitRestoreCommand,
-                                          mirrorsSession: session.mirrorsSession, viewer: session.viewer,
-                                          status: status,
-                                          statusPane: statusPane,
-                                          statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
-                                          statusColor: idle ? nil : session.agentIndicator.color,
-                                          statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
-                                          statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
-                                          background: session.backgroundWatermark,
-                                          paneBackgrounds: session.paneBackgrounds.isEmpty ? nil : session.paneBackgrounds,
-                                          unseen: session.unseenCount > 0 ? session.unseenCount : nil,
-                                          turn: session.turnCounter > 0 ? session.turnCounter : nil,
-                                          // supplied by the host like the font sizes: the bookmark store is
-                                          // app-global (the library's), not this window store's.
-                                          bookmarks: bookmarkCount(session),
-                                          fontSize: fontSize(session),
-                                          splitFontSize: splitFontSize(session),
-                                          scratchFontSize: scratchFontSize(session),
-                                          surfaces: surfaces,
-                                          // host-free: `isRealized` is on `TerminalSurface`, so this needs
-                                          // no app-side closure like the font sizes above. An empty slot is
-                                          // false, not omitted — "no terminal" either way to a caller.
-                                          realized: session.surface?.isRealized ?? false,
-                                          context: session.effectiveContext, remoteHost: session.remoteHost,
-                                          splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
-                                          liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
-                                          presentation: presentationNode(of: session), presenters: presentersNode(of: session),
-                                          remoteOverlays: remoteOverlayNodes(of: session),
-                                          htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
+                var node = ControlSessionNode(id: session.id.uuidString, name: session.displayName,
+                                              cwd: session.effectiveCwd, title: session.oscTitle,
+                                              active: session.id == activeID,
+                                              split: session.isSplit, hasSplit: session.hasSplit ? true : nil,
+                                              backedByZmx: session.allPanesBackedByZmx,
+                                              splitAxis: session.hasSplit ? session.splitAxis.rawValue : nil,
+                                              splitRatio: session.hasSplit ? session.splitRatio : nil,
+                                              splitFocused: session.hasSplit ? session.splitFocused : nil,
+                                              overlay: session.coverOverlayActive,
+                                              overlaySizePercent: session.coverOverlayActive
+                                                  ? session.overlaySizePercent : nil,
+                                              paneOverlays: paneOverlays(session), hud: hudNode(session),
+                                              ask: session.askPending.map {
+                                                  ControlSessionAsk(id: $0.id, pane: session.askTargetPane?.rawValue,
+                                                                    remote: session.askPresentedRemotely ? true : nil,
+                                                                    replica: session.askReplica ? true : nil)
+                                              },
+                                              scratch: session.scratchActive, flagged: session.flagged,
+                                              parked: session.parked ? true : nil,
+                                              commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
+                                              splitCommandWait: (session.splitInitialCommand != nil && session.splitCommandWait)
+                                                  ? true : nil,
+                                              foreground: mainPane?.command, splitForeground: splitPane?.command,
+                                              foregroundShell: mainPane?.shellName, splitForegroundShell: splitPane?.shellName,
+                                              // the PERSISTED overrides, not the transient pending payloads, so
+                                              // a read after one fired still reports what stays pinned.
+                                              restoreCommand: session.restoreCommand,
+                                              splitRestoreCommand: session.splitRestoreCommand,
+                                              mirrorsSession: session.mirrorsSession, viewer: session.viewer,
+                                              status: status,
+                                              statusPane: statusPane,
+                                              statusBlink: idle ? nil : (session.agentIndicator.blink ? true : nil),
+                                              statusColor: idle ? nil : session.agentIndicator.color,
+                                              statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
+                                              statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
+                                              background: session.backgroundWatermark,
+                                              paneBackgrounds: session.paneBackgrounds.isEmpty ? nil : session.paneBackgrounds,
+                                              unseen: session.unseenCount > 0 ? session.unseenCount : nil,
+                                              turn: session.turnCounter > 0 ? session.turnCounter : nil,
+                                              // supplied by the host like the font sizes: the bookmark store is
+                                              // app-global (the library's), not this window store's.
+                                              bookmarks: bookmarkCount(session),
+                                              fontSize: fontSize(session),
+                                              splitFontSize: splitFontSize(session),
+                                              scratchFontSize: scratchFontSize(session),
+                                              surfaces: surfaces,
+                                              // host-free: `isRealized` is on `TerminalSurface`, so this needs
+                                              // no app-side closure like the font sizes above. An empty slot is
+                                              // false, not omitted — "no terminal" either way to a caller.
+                                              realized: session.surface?.isRealized ?? false,
+                                              context: session.effectiveContext, remoteHost: session.remoteHost,
+                                              splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
+                                              liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
+                                              presentation: presentationNode(of: session), presenters: presentersNode(of: session),
+                                              remoteOverlays: remoteOverlayNodes(of: session),
+                                              htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
+                if session.remoteHost != nil { node.remoteState = session.remotePresentation?.rowState.rawValue }
+                return node
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,
                                         active: workspace.id == activeWorkspaceID,
@@ -543,7 +547,9 @@ public final class AppStore {
 
     /// Clears a session's unseen-notification badge; no-op for an unknown id, and never saves (ephemeral).
     public func clearUnseen(_ sessionID: UUID) {
-        session(withID: sessionID)?.unseenCount = 0
+        guard let session = session(withID: sessionID) else { return }
+        session.unseenCount = 0
+        if session.remotePresentation != nil { onRemoteSessionSeen?(sessionID) }
     }
 
     /// Advances a session's turn counter (`session.mark`) and returns the new number; nil for an unknown id.

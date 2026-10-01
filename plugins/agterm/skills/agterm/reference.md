@@ -143,6 +143,8 @@ omitted for non-Live and remote panes; the split field includes hidden splits an
 split; these describe attribution, not permission grants),
 `remoteHost` (the machine an attached session came from — the read side of `zmx attach`; omitted for a
 local session, and never present after a relaunch because a remote session is never written to disk),
+`remoteState` (fork only, on a bound remote row: `attached`, `disconnected`, or `endedOnHost`; describes
+pane attachment state separately from the presentation stream; omitted for local and unbound rows),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
 origin too old to stream, or `failed` with the reason in `error`, and `mode` is `presenter` when this
 row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not; it says whether the stream is up,

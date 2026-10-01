@@ -21,6 +21,74 @@ struct AppStoreRemoteLayoutTests {
         return (store, session)
     }
 
+    private func singlePane() throws -> (AppStore, Session) {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/tmp", remoteHost: "origin"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "origin",
+            daemonsByLocalPane: [session.paneIdentity: ZmxSupport.daemonName(for: originA)], presentationVersion: 1),
+            forSession: session.id)
+        return (store, session)
+    }
+
+    @Test func aReleasedHoldIsForgotten() throws {
+        let (store, session) = try singlePane()
+        store.remotePaneHeld(session.paneIdentity, forSession: session.id)
+        #expect(store.remotePaneIsHeld(session.paneIdentity, forSession: session.id))
+        store.releaseRemotePaneHold(session.paneIdentity, forSession: session.id)
+        #expect(!store.remotePaneIsHeld(session.paneIdentity, forSession: session.id))
+    }
+
+    @Test func growingTheBindingKeepsModeLayoutAndHeldPanes() throws {
+        let (store, session) = try singlePane()
+        store.setRemoteMode(.presenter, forSession: session.id)
+        store.setRemoteConnection(.connected, forSession: session.id)
+        let layout = PresentationLayout(panes: [originA, originB], primary: originA, axis: "vertical", shown: true)
+        store.applyRemoteLayout(layout, forSession: session.id)
+        store.remotePaneHeld(session.paneIdentity, forSession: session.id)
+        var expected = try #require(session.remotePresentation)
+        store.toggleSplit(session.id)
+        let local = try #require(session.splitPaneIdentity)
+        let daemon = ZmxSupport.daemonName(for: originB)
+        expected.binding = expected.binding.adding(localPane: local, daemon: daemon)
+        store.addRemotePane(local: local, daemon: daemon, forSession: session.id)
+        #expect(session.remotePresentation == expected)
+        #expect(session.remotePresentation?.binding.localPane(forRemote: originB) == local)
+    }
+
+    @Test(arguments: [false, true])
+    func aNewOriginPaneIsFoundRegardlessOfPrimaryOrder(reordered: Bool) throws {
+        let (store, session) = try singlePane()
+        let layout = PresentationLayout(panes: reordered ? [originB, originA] : [originA, originB],
+            primary: reordered ? originB : originA, axis: "horizontal", shown: false)
+        #expect(store.remoteLayoutAddedPane(layout, forSession: session.id) == originB)
+        #expect(!session.hasSplit)
+        #expect(session.remotePresentation?.layout == nil)
+    }
+
+    @Test func invalidUnrelatedAndAlreadyMappedLayoutsNeverGrowAReplica() throws {
+        let (store, session) = try singlePane()
+        let layouts = [
+            PresentationLayout(panes: [originA], primary: originA, shown: false),
+            PresentationLayout(panes: [originA, originA], primary: originA, axis: "vertical", shown: true),
+            PresentationLayout(panes: [originA, originB], primary: originA, axis: "bad", shown: true),
+            PresentationLayout(panes: [originA, originB], primary: UUID(), axis: "vertical", shown: true),
+            PresentationLayout(panes: [originB, UUID()], primary: originB, axis: "vertical", shown: true),
+        ]
+        for layout in layouts { #expect(store.remoteLayoutAddedPane(layout, forSession: session.id) == nil) }
+        let valid = PresentationLayout(panes: [originA, originB], primary: originA, axis: "vertical", shown: true)
+        #expect(store.remoteLayoutAddedPane(valid, forSession: UUID()) == nil)
+        store.addRemotePane(local: UUID(), daemon: ZmxSupport.daemonName(for: originB), forSession: session.id)
+        #expect(store.remoteLayoutAddedPane(valid, forSession: session.id) == nil)
+    }
+
+    @Test func anExistingLocalSplitPreventsOriginPaneGrowth() throws {
+        let (store, session) = try singlePane()
+        store.toggleSplit(session.id)
+        let layout = PresentationLayout(panes: [originA, originB], primary: originA, axis: "vertical", shown: true)
+        #expect(store.remoteLayoutAddedPane(layout, forSession: session.id) == nil)
+    }
+
     @Test func layoutReordersOnlyExistingReplicasAndKeepsFocusOnItsPane() throws {
         let (store, session) = try attached()
         let primary = session.paneIdentity

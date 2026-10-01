@@ -10,8 +10,14 @@ extension AppStore {
     /// cancel and teardown path that already ends an ask here ends this one too and tells the presenter.
     public func presentAskRemotely(_ ask: PendingAsk, in session: Session, paneIdentity: UUID?,
                                    window: WindowInfo.ID) -> Bool? {
-        guard let hub = presentationHub, hub.hasPresenter(session: session.id),
-              session.followsRemotely(paneIdentity: paneIdentity) else { return nil }
+        guard session.followsRemotely(paneIdentity: paneIdentity) else { return nil }
+        return presentAsk(ask, in: session, paneIdentity: paneIdentity, window: window)
+    }
+
+    /// Hands an ask to the current presenter without requiring a follower in the lead book.
+    public func presentAsk(_ ask: PendingAsk, in session: Session, paneIdentity: UUID?,
+                           window: WindowInfo.ID) -> Bool? {
+        guard let hub = presentationHub, hub.hasPresenter(session: session.id) else { return nil }
         let owner = hub.presenterGeneration(session: session.id)
         guard session.openAsk(ask, paneIdentity: paneIdentity, remoteOwner: owner) else { return false }
         AskRegistry.shared.register(id: ask.id, owner: .session(session.id, window: window))
@@ -21,6 +27,17 @@ extension AppStore {
         let request = PresentationAsk(ask, pane: paneIdentity.map { .identity($0) }, owner: owner)
         hub.sendToPresenter(.askRequest(request), session: session.id)
         return true
+    }
+
+    /// Moves a remote ask, or an explicitly included waiting ask, to the current presenter.
+    public func reofferRemoteAsk(forSession id: UUID, includeWaiting: Bool) {
+        guard let session = session(withID: id), let ask = session.askPending,
+              session.askPresentedRemotely || includeWaiting,
+              presentationHub?.hasPresenter(session: id) == true,
+              let window = AskRegistry.shared.owner(for: ask.id)?.windowID else { return }
+        let pane = session.askPaneIdentity
+        session.releaseAsk()
+        _ = presentAsk(ask, in: session, paneIdentity: pane, window: window)
     }
 
     /// Applies the presenter's answer. Refused unless it is for the ask this session is presenting under that

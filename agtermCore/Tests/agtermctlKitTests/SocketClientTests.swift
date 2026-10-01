@@ -1170,6 +1170,7 @@ struct SocketClientTests {
         #expect(!String(decoding: printed, as: UTF8.self).contains("client"))
     }
 
+    #if canImport(Darwin)
     @Test func refusedConnectWithAHeldOwnershipLockReportsThePresentOwner() throws {
         let socket = try RefusedSocket()
         defer { socket.stop() }
@@ -1180,6 +1181,7 @@ struct SocketClientTests {
         #expect(error.description.contains("the socket owner is present but not accepting connections"))
         #expect(error.description.contains("Connection refused"))
     }
+    #endif
 
     @Test func refusedConnectWithAnUnheldOwnershipLockDoesNotClaimTheAppIsGone() throws {
         let socket = try RefusedSocket()
@@ -1201,6 +1203,7 @@ struct SocketClientTests {
         #expect(error.description.contains("Connection refused"))
     }
 
+    #if canImport(Darwin)
     @Test func aMissingSocketWithAHeldOwnershipLockReportsThePresentOwner() throws {
         let path = NSTemporaryDirectory() + "agterm-unbound-\(UUID().uuidString.prefix(8)).sock"
         let lockPath = ControlResolve.ownershipLockPath(forSocket: path)
@@ -1213,6 +1216,7 @@ struct SocketClientTests {
         #expect(error.description.contains("the socket owner is present but not accepting connections"))
         #expect(error.description.contains("No such file or directory"))
     }
+    #endif
 
     @Test func aMissingSocketWithNoOwnershipLockStaysUncertainAndKeepsItsErrno() throws {
         let path = NSTemporaryDirectory() + "agterm-absent-\(UUID().uuidString.prefix(8)).sock"
@@ -1241,7 +1245,11 @@ private final class RefusedSocket {
 
     init() throws {
         path = NSTemporaryDirectory() + "agterm-refused-\(UUID().uuidString.prefix(8)).sock"
+        #if canImport(Darwin)
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #else
+        fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #endif
         guard fd >= 0 else { throw SocketClientError("refused socket() failed") }
         unlink(path)
         var addr = sockaddr_un()

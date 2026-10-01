@@ -40,6 +40,7 @@ final class OverlayJobRunner: @unchecked Sendable {
     /// signal that ended it, or 127 when it could not be launched. The program starts from `baseEnvironment`, the helper's own, with the context
     /// over it, so it keeps HOME, PATH and TERM. A report the app never receives changes nothing here.
     func run(_ context: OverlayLaunchContext, baseEnvironment: [String: String]) -> Int32 {
+        #if canImport(Darwin)
         let environment = baseEnvironment.merging(context.environment) { _, fromContext in fromContext }
         let tty = isatty(terminal) == 1 ? terminal : nil
         let pid: pid_t
@@ -76,6 +77,10 @@ final class OverlayJobRunner: @unchecked Sendable {
             report(.exited(Int(status)))
         }
         return status
+        #else
+        report(.launchFailed("program overlay jobs are not supported on Linux yet"))
+        return 127
+        #endif
     }
 
     /// Stops the program's whole process group: SIGTERM now, SIGKILL once the grace has passed. Safe from
@@ -120,7 +125,7 @@ final class OverlayJobRunner: @unchecked Sendable {
 
     private func report(_ frame: OverlayJobFrame) {
         guard let line = try? frame.line() else { return }
-        _ = StreamBridge.writeAll(socket, line)
+        _ = StreamBridge.sendAll(socket, line)
     }
 
     /// One byte at a time, so nothing behind a line is consumed before its reader asks for it.
@@ -145,6 +150,7 @@ final class OverlayJobRunner: @unchecked Sendable {
         return probe.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0
     }
 
+    #if canImport(Darwin)
     /// The program leads a process group of its own, which a cancel ends as a whole and which becomes the
     /// terminal's foreground, so it gets the keys and SIGWINCH directly. Under a terminal it starts
     /// suspended until that handoff is done. Its signal dispositions are reset to the defaults the helper
@@ -179,6 +185,7 @@ final class OverlayJobRunner: @unchecked Sendable {
         guard result == 0 else { throw SocketClientError("could not start the program: \(String(cString: strerror(result)))") }
         return pid
     }
+    #endif
 
     /// The program's status once it ended: its exit code, or 128 plus the signal that ended it. Nil when a
     /// non-blocking check finds it still running.

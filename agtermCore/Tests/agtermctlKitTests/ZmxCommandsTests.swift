@@ -305,4 +305,30 @@ struct ZmxCommandsTests {
     @Test func resetRefusesWithoutForce() {
         #expect(throws: (any Error).self) { try Zmx.Reset.parse([]) }
     }
+
+    @Test func newBuildsTheHostedCreationRequest() throws {
+        let command = try Zmx.New.parse(["p4linux", "--name", "t", "--command", "c", "--cwd", "/x", "--window", "W"])
+        let request = try command.makeRequest()
+
+        #expect(request.cmd == .zmxNew)
+        #expect(request.target == nil)
+        #expect(request.args?.host == "p4linux")
+        #expect(request.args?.name == "t")
+        #expect(request.args?.command == "c")
+        #expect(request.args?.cwd == "/x")
+        #expect(request.args?.window == "W")
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
+    }
+
+    @Test func newWithoutAHostBuildsTheLocalRequestAndAcceptsJson() throws {
+        let command = try Zmx.New.parse(["--json"])
+        let request = try command.makeRequest()
+
+        #expect(request.cmd == .zmxNew)
+        #expect(request.target == nil)
+        #expect(request.args?.host == nil)
+        #expect(command.options.json)
+        #expect(try Agtermctl.parseAsRoot(["zmx", "new", "--json"]) is Zmx.New)
+    }
+
 }

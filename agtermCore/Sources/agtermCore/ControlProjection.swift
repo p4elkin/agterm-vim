@@ -315,6 +315,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// The host a teleported session is attached to; nil/omitted for a local one. Live-only — a remote
     /// session is never persisted, so this never survives a relaunch.
     public let remoteHost: String?
+    /// Pane attachment state, separate from the presentation stream; omitted without a bound remote row.
+    public internal(set) var remoteState: String?
 
     /// This Mac's presentation stream to the session's origin, on an attached session only. `state` is
     /// `connecting`, `connected`, `unsupported` for an origin that predates the stream, or `failed` with

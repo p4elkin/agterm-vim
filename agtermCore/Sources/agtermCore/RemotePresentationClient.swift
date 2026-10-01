@@ -81,6 +81,7 @@ public final class RemotePresentationClient {
     private let presentationVersion: Int?
     private let transport: RemotePresentationTransport
     private let effects: RemotePresentationEffects
+    private let leads: @MainActor () -> Bool
     private let now: () -> Date
 
     private var link: RemotePresentationLink?
@@ -100,11 +101,13 @@ public final class RemotePresentationClient {
     private var mode: PresentationMode?
 
     public init(argv: [String], presentationVersion: Int?, transport: RemotePresentationTransport,
-                effects: RemotePresentationEffects, now: @escaping () -> Date = Date.init) {
+                effects: RemotePresentationEffects, leads: @escaping @MainActor () -> Bool = { false },
+                now: @escaping () -> Date = Date.init) {
         self.argv = argv
         self.presentationVersion = presentationVersion
         self.transport = transport
         self.effects = effects
+        self.leads = leads
         self.now = now
     }
 
@@ -132,6 +135,14 @@ public final class RemotePresentationClient {
     public func answer(_ body: PresentationFrame.Body) {
         guard let link else { return }
         send(body, on: link)
+    }
+
+    public func takePresenter() {
+        answer(.presenterTake)
+    }
+
+    public func markSeen() {
+        answer(.seen)
     }
 
     /// Reconnects when a retry is due and drops a link that has gone quiet.
@@ -193,7 +204,8 @@ public final class RemotePresentationClient {
         case .notify(let notify): effects.notify(notify)
         case .ping: send(.ack, on: link)
         // an origin that predates the role answers mirror, and nothing is asked of it
-        case .hello(let answer) where answer.mode == .presenter: send(.presenterAcquire, on: link)
+        case .hello(let answer) where answer.mode == .presenter:
+            send(leads() ? .presenterTake : .presenterAcquire, on: link)
         case .presenterGranted: report(.presenter)
         case .presenterRefused: report(.mirror)
         case .askRequest(let ask):
@@ -203,7 +215,7 @@ public final class RemotePresentationClient {
             if !effects.overlayRequest(overlay) { send(.overlayRejected(PresentationOverlayChange(job: overlay.job)), on: link) }
         case .overlayClose(let change): effects.overlayClose(change)
         case .overlayResize(let change): effects.overlayResize(change)
-        case .hello, .ack, .presenterAcquire, .askResolve, .askRejected, .overlayRejected, .overlayClosed, .unknown: break
+        case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed, .unknown: break
         }
     }
 

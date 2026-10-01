@@ -10,11 +10,13 @@ public struct RemoteBinding: Equatable, Sendable {
         public let host: String
         public let endpoint: ControlZmxEndpoint
         public let sessionName: String
+        public let transport: RemoteTransport
 
-        public init(host: String, endpoint: ControlZmxEndpoint, sessionName: String) {
+        public init(host: String, endpoint: ControlZmxEndpoint, sessionName: String, transport: RemoteTransport = .ssh) {
             self.host = host
             self.endpoint = endpoint
             self.sessionName = sessionName
+            self.transport = transport
         }
     }
 
@@ -39,6 +41,13 @@ public struct RemoteBinding: Equatable, Sendable {
             if let remote = ZmxSupport.paneIdentity(fromDaemonName: daemon) { mapping[remote] = local }
         }
         localByRemotePane = mapping
+    }
+
+    public func adding(localPane: UUID, daemon: String) -> RemoteBinding {
+        var daemons = daemonsByLocalPane
+        daemons[localPane] = daemon
+        return RemoteBinding(remoteSessionID: remoteSessionID, daemonsByLocalPane: daemons,
+                             presentationVersion: presentationVersion, origin: origin)
     }
 
     public func localPane(forRemote identity: UUID) -> UUID? { localByRemotePane[identity] }
@@ -73,9 +82,10 @@ public enum RemotePresentationConnection: Equatable, Sendable {
 
 /// RemotePresentationState is everything a viewer keeps about one attached session's presentation.
 public struct RemotePresentationState: Equatable, Sendable {
-    public let binding: RemoteBinding
+    public var binding: RemoteBinding
     public var connection: RemotePresentationConnection
     public var mode: PresentationMode = .mirror
+    public var rowState: RemoteRowState = .attached
     var layout: PresentationLayout?
     var heldPanes: Set<UUID> = []
     /// Whether the glyph on the row is the bridge's. A flag and not a comparison of values: a pane swap
@@ -95,6 +105,10 @@ public struct RemotePresentationState: Equatable, Sendable {
 
     /// Typing in a pane here must not clear a status that pane does not stand for.
     public var allowsKeystrokeStatusClear: Bool { !statusOwnerUnknown }
+
+    public func rowNotice(host: String) -> String? {
+        rowState.rowNotice(host: host) ?? connection.rowNotice(host: host)
+    }
 
     init(binding: RemoteBinding) {
         self.binding = binding

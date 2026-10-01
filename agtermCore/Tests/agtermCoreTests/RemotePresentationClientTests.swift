@@ -59,7 +59,7 @@ struct RemotePresentationClientTests {
     static let blocked = PresentationStatus(status: .blocked, blink: false, color: nil, shape: nil, pane: nil,
                                             changedAt: nil)
 
-    func makeClient(version: Int? = 1) -> RemotePresentationClient {
+    func makeClient(version: Int? = 1, leads: @escaping @MainActor () -> Bool = { false }) -> RemotePresentationClient {
         let recorder = recorder
         let clock = clock
         let effects = RemotePresentationEffects(
@@ -86,7 +86,7 @@ struct RemotePresentationClientTests {
             overlayResize: { recorder.overlayResizes.append($0) },
             warn: { recorder.warnings.append($0) })
         return RemotePresentationClient(argv: ["ssh", "buildbox", "present"], presentationVersion: version,
-                                        transport: transport, effects: effects, now: { clock.now })
+                                        transport: transport, effects: effects, leads: leads, now: { clock.now })
     }
 
     func line(_ body: PresentationFrame.Body, gen: Int = 7, rev: Int) -> Data {
@@ -557,4 +557,86 @@ struct RemotePresentationClientTests {
         #expect(recorder.connections.last == .connected)
         #expect(recorder.statuses.last == .some(Self.blocked))
     }
+    @Test func takePresenterUsesOnlyTheCurrentLink() throws {
+        let client = makeClient()
+        client.takePresenter()
+        #expect(transport.links.isEmpty)
+        client.start()
+        connect(client, mode: .presenter)
+        client.takePresenter()
+        #expect(transport.links[0].sent.last?.body == .presenterTake)
+        #expect(transport.links[0].sent.last?.gen == 7)
+        transport.close("gone")
+        let count = transport.links[0].sent.count
+        client.takePresenter()
+        #expect(transport.links[0].sent.count == count)
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, gen: 8, mode: .presenter)
+        client.takePresenter()
+        #expect(transport.links[1].sent.last?.body == .presenterTake)
+        #expect(transport.links[1].sent.last?.gen == 8)
+        client.stop()
+        let stoppedCount = transport.links[1].sent.count
+        client.takePresenter()
+        #expect(transport.links[1].sent.count == stoppedCount)
+    }
+
+    @Test(arguments: [false, true])
+    func reconnectQueriesTheCurrentLeadBeforeRequestingTheRole(initiallyLeads: Bool) {
+        var leads = initiallyLeads
+        let client = makeClient(leads: { leads })
+        client.start()
+        connect(client, mode: .presenter)
+        #expect(transport.links[0].sent.map(\.body) == [
+            .hello(PresentationHello(version: 1, kinds: PresentationHub.supportedKinds, mode: .presenter)),
+            initiallyLeads ? .presenterTake : .presenterAcquire,
+        ])
+        transport.close("gone")
+        leads.toggle()
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, gen: 8, mode: .presenter)
+        #expect(transport.links[1].sent.last?.body == (leads ? .presenterTake : .presenterAcquire))
+    }
+
+    @Test func aTakeReceivedFromTheOriginHasNoEffect() {
+        let client = makeClient()
+        client.start()
+        connect(client, mode: .presenter)
+        let count = transport.links[0].sent.count
+        transport.deliver(line(.presenterTake, rev: 2))
+        #expect(transport.links[0].sent.count == count)
+        #expect(recorder.modes == [.mirror])
+        #expect(recorder.warnings.isEmpty)
+    }
+
+    @Test func markSeenUsesOnlyTheCurrentLinkAndIgnoresAnIncomingSeen() {
+        let client = makeClient()
+        client.markSeen()
+        #expect(transport.links.isEmpty)
+        client.start()
+        connect(client)
+        client.markSeen()
+        #expect(transport.links[0].sent.last?.body == .seen)
+        #expect(transport.links[0].sent.last?.gen == 7)
+        let count = transport.links[0].sent.count
+        transport.deliver(line(.seen, rev: 2))
+        #expect(transport.links[0].sent.count == count)
+        #expect(recorder.warnings.isEmpty)
+        transport.close("gone")
+        client.markSeen()
+        #expect(transport.links[0].sent.count == count)
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, gen: 8)
+        client.markSeen()
+        #expect(transport.links[1].sent.last?.body == .seen)
+        #expect(transport.links[1].sent.last?.gen == 8)
+        client.stop()
+        let stoppedCount = transport.links[1].sent.count
+        client.markSeen()
+        #expect(transport.links[1].sent.count == stoppedCount)
+    }
+
 }

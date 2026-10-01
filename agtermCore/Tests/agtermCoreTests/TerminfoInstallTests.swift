@@ -97,6 +97,7 @@ struct TerminfoInstallTests {
         #expect(!remote.contains("\n"))
     }
 
+    #if canImport(Darwin)
     // sshd hands the command to the account's login shell, so it must parse under every common one
     @Test(arguments: ["/bin/sh", "/bin/bash", "/bin/zsh", "/bin/dash", "/bin/tcsh", "/bin/csh"])
     func theRemoteCommandCompilesTheSourceUnderEveryLoginShell(_ shell: String) throws {
@@ -110,7 +111,9 @@ struct TerminfoInstallTests {
         #expect(try fixture.ticStdin() == "xterm-ghostty|test,\n")
         #expect(FileManager.default.fileExists(atPath: "\(home.path)/.terminfo"))
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test(arguments: ["/bin/sh", "/bin/tcsh"])
     func theRemoteCommandSaysSoAndExits3WhenTheHostHasNoTic(_ shell: String) throws {
         let remote = try #require(TerminfoInstall.installCommand(TerminfoInstall.Connection(destination: "buildbox")).last)
@@ -122,6 +125,7 @@ struct TerminfoInstallTests {
         #expect(run.stderr.contains("tic is not installed on this host"))
         #expect(!FileManager.default.fileExists(atPath: "\(home.path)/.terminfo"))
     }
+    #endif
 
     @Test(arguments: ["", "-G", "-N", "host name", "host\tname", "\u{1b}host"])
     func anOptionLookingOrUnprintableDestinationIsRefused(_ destination: String) {
@@ -132,6 +136,7 @@ struct TerminfoInstallTests {
 
     // MARK: - the pipeline, with fake executables
 
+    #if canImport(Darwin)
     @Test func theDumpReachesSshStdinByteForByteAndEndsInEOF() throws {
         let env = try fixture.database(name: "env", layout: "78")
         let infocmp = try fixture.fakeInfocmp(printing: "xterm-ghostty|test,\n\tcols#80,\n")
@@ -145,6 +150,7 @@ struct TerminfoInstallTests {
         #expect(try fixture.sshArguments().first == "-T")
         #expect(try fixture.sshArguments().contains("buildbox"))
     }
+    #endif
 
     @Test func aFailedDumpNeverStartsSsh() throws {
         let env = try fixture.database(name: "env", layout: "78")
@@ -169,6 +175,7 @@ struct TerminfoInstallTests {
         #expect(!fixture.sshWasCalled())
     }
 
+    #if canImport(Darwin)
     @Test func aNonZeroRemoteStatusIsReportedAsItself() throws {
         let env = try fixture.database(name: "env", layout: "78")
         let infocmp = try fixture.fakeInfocmp(printing: "x")
@@ -179,7 +186,9 @@ struct TerminfoInstallTests {
 
         #expect(outcome == .exited(3))
     }
+    #endif
 
+    #if canImport(Darwin)
     // ssh prompts on the controlling tty, and a child in its own process group is stopped for that
     @Test func sshStaysInTheCallersProcessGroup() throws {
         let env = try fixture.database(name: "env", layout: "78")
@@ -192,7 +201,9 @@ struct TerminfoInstallTests {
         #expect(outcome == .exited(0))
         #expect(try fixture.sshProcessGroup() == getpgrp())
     }
+    #endif
 
+    #if canImport(Darwin)
     // a pipe end inherited from a concurrent spawn keeps the other child's stdin open past its EOF
     @Test func sshInheritsNoDescriptorBeyondItsStandardThree() throws {
         let env = try fixture.database(name: "env", layout: "78")
@@ -213,7 +224,9 @@ struct TerminfoInstallTests {
         #expect(outcome == .exited(0))
         #expect(try fixture.sshDescriptorProbe() == "absent")
     }
+    #endif
 
+    #if canImport(Darwin)
     // the spawning thread's mask is inherited, and a test worker blocks signals
     @Test func sshStartsWithSignalsUnblockedWhateverTheCallerBlocks() throws {
         let env = try fixture.database(name: "env", layout: "78")
@@ -231,7 +244,9 @@ struct TerminfoInstallTests {
 
         #expect(outcome == .signaled(SIGTERM))
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func anSshThatExitsBeforeReadingStdinStillReportsItsStatus() throws {
         let env = try fixture.database(name: "env", layout: "78")
         // larger than a pipe buffer, so the write would block or EPIPE against a reader that has gone
@@ -243,9 +258,11 @@ struct TerminfoInstallTests {
 
         #expect(outcome == .exited(255))
     }
+    #endif
 
     // MARK: - the real infocmp against a real compiled entry
 
+    #if canImport(Darwin)
     @Test func theRealInfocmpDumpsAnEntryTicCompiled() throws {
         let db = try fixture.compiledDatabase(source: "xterm-ghostty|agterm test entry,\n\tcols#80, lines#24,\n")
         let ssh = try fixture.fakeSSH(exitCode: 0)
@@ -258,6 +275,7 @@ struct TerminfoInstallTests {
         #expect(dumped.contains("xterm-ghostty|agterm test entry"))
         #expect(dumped.contains("cols#80"))
     }
+    #endif
 }
 
 /// A temp root holding fake `ssh`/`infocmp` scripts, a fake bundle, and what the fakes recorded.

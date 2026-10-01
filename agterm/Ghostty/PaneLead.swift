@@ -99,7 +99,7 @@ struct PaneReattach {
               let daemon = binding.daemon(forLocalPane: identity),
               let command = try? RemoteSession.attachPaneCommand(
                   host: origin.host, endpoint: origin.endpoint, daemon: daemon, session: origin.sessionName,
-                  pane: old.isSplitPane ? .right : .left, lead: lead)
+                  pane: old.isSplitPane ? .right : .left, lead: lead, transport: origin.transport)
         else { return nil }
         return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
     }

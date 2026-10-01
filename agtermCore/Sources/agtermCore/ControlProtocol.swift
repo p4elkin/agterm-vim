@@ -127,6 +127,7 @@ public enum Command: String, Codable, Sendable {
     case zmxPrune = "zmx.prune"
     case zmxKill = "zmx.kill"
     case zmxReset = "zmx.reset"
+    case zmxNew = "zmx.new"
     case zmxTree = "zmx.tree"
     case zmxAttach = "zmx.attach"
     case zmxPresent = "zmx.present"

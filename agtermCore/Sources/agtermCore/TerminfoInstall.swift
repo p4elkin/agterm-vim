@@ -151,6 +151,7 @@ public enum TerminfoInstall {
         return source
     }
 
+    #if canImport(Darwin)
     /// `posix_spawnp` rather than `Process`, which puts its child in a new process group: ssh reads its
     /// password and host-key prompts from the controlling tty, and a background group doing that is
     /// stopped by SIGTTIN, leaving the CLI waiting on a child that can never answer. Spawned this way the
@@ -221,6 +222,11 @@ public enum TerminfoInstall {
         let signal = status & 0x7f
         return signal == 0 ? .exited((status >> 8) & 0xff) : .signaled(signal)
     }
+    #else
+    private static func install(argv: [String], source: Data, environment: [String: String]) throws -> Outcome {
+        throw Failure.spawnFailed(operation: "posix_spawn", errno: ENOSYS)
+    }
+    #endif
 
     private static func check(_ result: Int32, _ operation: String) throws {
         guard result == 0 else { throw Failure.spawnFailed(operation: operation, errno: result) }

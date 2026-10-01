@@ -16,7 +16,7 @@ struct StreamBridge: Sendable {
     func open(_ request: ControlRequest) throws {
         var line = try JSONEncoder().encode(request)
         line.append(UInt8(ascii: "\n"))
-        guard Self.writeAll(socket, line) else { throw SocketClientError("could not send the request") }
+        guard Self.sendAll(socket, line) else { throw SocketClientError("could not send the request") }
         guard let reply = readReplyLine() else { throw SocketClientError("the app closed the connection without answering") }
         let response: ControlResponse
         do {
@@ -81,7 +81,7 @@ struct StreamBridge: Sendable {
             guard ready > 0, pollers[1].revents == 0 else { return }
             let count = chunk.withUnsafeMutableBytes { read(source, $0.baseAddress, $0.count) }
             if count < 0, errno == EINTR { continue }
-            guard count > 0, writeAll(destination, Data(chunk[0..<count])) else {
+            guard count > 0, sendAll(destination, Data(chunk[0..<count])) else {
                 shutdown(destination, Int32(SHUT_RDWR))
                 return
             }
@@ -98,11 +98,25 @@ struct StreamBridge: Sendable {
     }
 
     static func writeAll(_ fd: Int32, _ data: Data) -> Bool {
+        writeAll(fd, data) { write($0, $1, $2) }
+    }
+
+    /// `writeAll` for the app's socket. Glibc has no SO_NOSIGPIPE, so an app closing early would raise the
+    /// default-fatal SIGPIPE there instead of failing the write.
+    static func sendAll(_ fd: Int32, _ data: Data) -> Bool {
+        #if canImport(Darwin)
+        writeAll(fd, data)
+        #else
+        writeAll(fd, data) { Glibc.send($0, $1, $2, Int32(MSG_NOSIGNAL)) }
+        #endif
+    }
+
+    private static func writeAll(_ fd: Int32, _ data: Data, _ put: (Int32, UnsafeRawPointer, Int) -> Int) -> Bool {
         data.withUnsafeBytes { raw in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return true }
             var offset = 0
             while offset < data.count {
-                let count = write(fd, base + offset, data.count - offset)
+                let count = put(fd, base + offset, data.count - offset)
                 if count < 0, errno == EINTR { continue }
                 guard count > 0 else { return false }
                 offset += count

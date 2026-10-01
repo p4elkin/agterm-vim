@@ -29,15 +29,17 @@ public final class PresentationHub {
         let session: UUID
         let generation: Int
         let sink: PresentationSink
+        let mode: PresentationMode
         var revision = 0
         var lastAck: Date
         /// Deltas published while the snapshot is being taken, held so they land after it.
         var held: [PresentationFrame.Body]? = []
 
-        init(session: UUID, generation: Int, sink: PresentationSink, now: Date) {
+        init(session: UUID, generation: Int, sink: PresentationSink, mode: PresentationMode, now: Date) {
             self.session = session
             self.generation = generation
             self.sink = sink
+            self.mode = mode
             lastAck = now
         }
     }
@@ -52,11 +54,18 @@ public final class PresentationHub {
     private var layouts: [UUID: PresentationLayout] = [:]
     private var grant = PresenterGrant()
 
-    /// Called with a session whose presenter went away, after the role is released.
+    /// Called before replacing or releasing an existing holder.
+    public var onPresenterWillChange: (@MainActor (UUID) -> Void)?
+    /// Called after a new holder has received presenter.granted.
+    public var onPresenterChanged: (@MainActor (UUID) -> Void)?
+    /// Called after a release leaves no eligible viewer to take the role.
     public var onPresenterLost: (@MainActor (UUID) -> Void)?
     /// Called with what a session's current presenter sent about work it was handed. Frames of this kind
     /// from any other viewer are dropped before this is reached.
     public var onPresenterFrame: (@MainActor (UUID, PresentationFrame.Body) -> Void)?
+
+    /// Called when any subscribed viewer marks its session seen.
+    public var onSeen: (@MainActor (UUID) -> Void)?
 
     public init(staleTimeout: TimeInterval, now: @escaping () -> Date = Date.init) {
         self.staleTimeout = staleTimeout
@@ -76,7 +85,7 @@ public final class PresentationHub {
         }
         lastGeneration += 1
         let id = SubscriberID(generation: lastGeneration)
-        let subscriber = Subscriber(session: session, generation: lastGeneration, sink: sink, now: now())
+        let subscriber = Subscriber(session: session, generation: lastGeneration, sink: sink, mode: hello.mode, now: now())
         subscribers[id] = subscriber
 
         let state = snapshot()
@@ -95,7 +104,7 @@ public final class PresentationHub {
     public func unsubscribe(_ id: SubscriberID) {
         let session = subscribers.removeValue(forKey: id)?.session
         if let session, subscriberCount(session: session) == 0 { layouts[session] = nil }
-        release(id)
+        if let session { release(id, session: session) }
     }
 
     /// Sends `body` to `session`'s presenter alone. False when there is none, or it stalled and was dropped.
@@ -126,10 +135,16 @@ public final class PresentationHub {
         guard let subscriber = subscribers[id], frame.gen == subscriber.generation else { return }
         switch frame.body {
         case .ack: subscriber.lastAck = now()
+        case .seen: onSeen?(subscriber.session)
         case .ping: send(.ack, to: id)
         case .presenterAcquire:
+            let previous = grant.holder(of: subscriber.session)
             let granted = grant.acquire(session: subscriber.session, by: id)
-            send(granted ? .presenterGranted : .presenterRefused, to: id)
+            if send(granted ? .presenterGranted : .presenterRefused, to: id), granted, previous == nil,
+               grant.holder(of: subscriber.session) == id {
+                onPresenterChanged?(subscriber.session)
+            }
+        case .presenterTake: takePresenter(id, session: subscriber.session)
         case .askResolve, .askRejected, .overlayRejected, .overlayClosed:
             guard grant.holder(of: subscriber.session) == id else { return }
             onPresenterFrame?(subscriber.session, frame.body)
@@ -176,10 +191,42 @@ public final class PresentationHub {
         guard let subscriber = subscribers.removeValue(forKey: id) else { return }
         if subscriberCount(session: subscriber.session) == 0 { layouts[subscriber.session] = nil }
         subscriber.sink.close(reason)
-        release(id)
+        release(id, session: subscriber.session)
     }
 
-    private func release(_ id: SubscriberID) {
-        for session in grant.release(id) { onPresenterLost?(session) }
+    private func takePresenter(_ id: SubscriberID, session: UUID) {
+        let previous = grant.holder(of: session)
+        if let previous, previous != id {
+            onPresenterWillChange?(session)
+            // A stalled dismissal may already have handed the role to another viewer.
+            if grant.holder(of: session) != previous {
+                if grant.holder(of: session) != id, subscribers[id] != nil { takePresenter(id, session: session) }
+                return
+            }
+        }
+        guard subscribers[id] != nil else { return }
+        grant.transfer(session: session, to: id)
+        if let previous, previous != id { send(.presenterRefused, to: previous) }
+        if send(.presenterGranted, to: id), previous != id, grant.holder(of: session) == id {
+            onPresenterChanged?(session)
+        }
+    }
+
+    private func release(_ id: SubscriberID, session: UUID) {
+        guard grant.holder(of: session) == id else { return }
+        onPresenterWillChange?(session)
+        guard grant.holder(of: session) == id else { return }
+        _ = grant.release(id)
+        let next = subscribers.filter {
+            $0.value.session == session && $0.value.mode == .presenter && $0.value.held == nil
+        }.keys.min { $0.generation < $1.generation }
+        guard let next else {
+            onPresenterLost?(session)
+            return
+        }
+        _ = grant.acquire(session: session, by: next)
+        if send(.presenterGranted, to: next), grant.holder(of: session) == next {
+            onPresenterChanged?(session)
+        }
     }
 }

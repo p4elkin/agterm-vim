@@ -203,6 +203,7 @@ struct ControlDispatcherHudTests {
         #expect(actions.calls.isEmpty)
     }
 
+    #if canImport(Darwin)
     // a source that renders nothing passed the blank check and opened an empty panel `tree` reported as live.
     @Test(arguments: ["[x]: /y", "&#32;", "- "])
     func markdownThatRendersNothingIsNoMessage(message: String) async {
@@ -215,6 +216,7 @@ struct ControlDispatcherHudTests {
         #expect(response == ControlResponse(ok: false, error: "session.hud.open requires a message"))
         #expect(actions.calls.isEmpty)
     }
+    #endif
 
     @Test(arguments: ["<!-- note -->\n\n[ref]: http://a", "---"])
     func markdownThatPaintsOnlyLiteralHtmlOrARuleIsAMessage(message: String) async {

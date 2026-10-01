@@ -149,7 +149,12 @@ struct SocketClient {
             var offset = 0
             let base = raw.bindMemory(to: UInt8.self).baseAddress!
             while offset < data.count {
+                #if canImport(Darwin)
                 let n = write(fd, base + offset, data.count - offset)
+                #else
+                // Glibc has no SO_NOSIGPIPE; without this a server closing early kills the CLI silently
+                let n = Glibc.send(fd, base + offset, data.count - offset, Int32(MSG_NOSIGNAL))
+                #endif
                 if n <= 0 { throw SocketClientError("write failed: \(String(cString: strerror(errno)))") }
                 offset += n
             }

@@ -47,6 +47,18 @@ is the `.claude/rules` file that owns the design.
   a numbered mark at each turn start, on instruction from the hook; the bookmark stores the number and the
   prompt, and revisiting searches the pane for the mark. Detail below, `.claude/rules/control-api.md`.
 
+**Remote origin**
+
+- **A headless Linux origin (in progress)** — `agterm-headless serve` keeps sessions in zmx daemons on a
+  Linux host with no GUI and answers the real `agtermctl`: tree, status, notify, the session and split
+  lifecycle, HUDs, terminal asks and the presentation stream are served, and UI mutations and terminal-surface actions are
+  refused by name. `scripts/headless/install.sh` installs it as a systemd user service.
+  From a Mac, `agtermctl zmx new <host>` creates a session there and attaches it, a split made on the
+  origin grows on the Mac, and the presenter role follows the pane lead (`presenter.take`).
+  Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch; a supervisor
+  reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
+  Design in `docs/plans/20260929-headless-origin-spec.md`, rules in `.claude/rules/headless-origin.md`.
+
 **libghostty**
 
 Both of these need a patch under `patches/ghostty/`, applied by `scripts/setup.sh` at `GHOSTTY_REV`.

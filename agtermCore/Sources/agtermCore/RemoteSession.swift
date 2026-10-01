@@ -2,7 +2,7 @@ import Foundation
 
 /// How an attach reaches the far side. ssh is the default and the pre-existing behavior; mosh survives
 /// roaming and laptop sleep, at the cost of a different argv shape (see `RemoteSession.attachCommand`).
-public enum RemoteTransport: Equatable, Sendable {
+public enum RemoteTransport: Codable, Equatable, Sendable {
     case ssh
     case mosh(server: String?, client: String?)
 
@@ -75,6 +75,18 @@ public enum RemoteSession {
         // sshd runs the remote command through the ACCOUNT's shell, where a bare `VAR=value` assignment is
         // a syntax error in fish and tcsh; wrapped, every login shell sees one ordinary command, as
         // `attachCommand` already sends.
+        let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false) + [remote]
+    }
+
+    /// One ssh invocation creating an attachable session on `host` with the far side's host-less `zmx new`,
+    /// which answers with the new session's id. Each value travels as one `--flag=value` word, so a value
+    /// starting with `-` stays a value.
+    public static func newCommand(host: String, options: ControlZmxNewOptions, connectTimeout: Int = 5) throws -> [String] {
+        try validate(host: host)
+        let flags = [("name", options.name), ("command", options.command), ("cwd", options.cwd)]
+            .compactMap { flag, value in value.map { "--\(flag)=\($0)" } }
+        let chain = cliPathPrefix + " && agtermctl " + CommandRestore.shellQuotedLine(["zmx", "new", "--json"] + flags)
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
         return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false) + [remote]
     }

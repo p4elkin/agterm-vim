@@ -7,6 +7,13 @@ struct RemoteSessionTests {
     private let endpoint = ControlZmxEndpoint(executable: "/Applications/agterm.app/Contents/Resources/zmx/zmx",
                                               socketDirectory: "/tmp/agterm-zmx-abc123")
 
+    @Test(arguments: [RemoteTransport.ssh, .mosh(server: nil, client: nil),
+                      .mosh(server: "/opt/mosh-server", client: "/opt/mosh")])
+    func transportsRoundTripThroughCodable(transport: RemoteTransport) throws {
+        let data = try JSONEncoder().encode(transport)
+        #expect(try JSONDecoder().decode(RemoteTransport.self, from: data) == transport)
+    }
+
     // MARK: - ssh options
 
     @Test func treeIsNonInteractiveAndBounded() throws {
@@ -45,6 +52,43 @@ struct RemoteSessionTests {
     @Test func presentRefusesAHostileHost() {
         #expect(throws: RemoteSession.InvocationError.invalidHost) {
             try RemoteSession.presentCommand(host: "-oProxyCommand=touch /tmp/pwned", session: "s1")
+        }
+    }
+
+    @Test func newIsNonInteractiveAndReachesTheInstalledCli() throws {
+        let argv = try RemoteSession.newCommand(host: "buildbox", options: ControlZmxNewOptions(name: "t"))
+
+        #expect(argv.prefix(7) == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "buildbox"])
+        #expect(argv.count == 8)
+        #expect(argv[7].contains(RemoteSession.cliPathPrefix))
+    }
+
+    @Test func newPassesEachValueAsOneWordTheFarSideCannotReadAsAFlag() throws {
+        let fake = try FakeRemote()
+        defer { fake.cleanUp() }
+        try fake.installAgtermctl(exitCodes: [0])
+        let options = ControlZmxNewOptions(name: "-t x", command: "echo 'a' && $(id)", cwd: "/x y")
+
+        let run = try fake.runRemote(RemoteSession.newCommand(host: "buildbox", options: options))
+
+        #expect(run.status == 0)
+        #expect(try fake.calls() == [["zmx", "new", "--json", "--name=-t x", "--command=echo 'a' && $(id)",
+                                      "--cwd=/x y"]])
+    }
+
+    @Test func newOmitsWhatWasNotGiven() throws {
+        let fake = try FakeRemote()
+        defer { fake.cleanUp() }
+        try fake.installAgtermctl(exitCodes: [0])
+
+        _ = try fake.runRemote(RemoteSession.newCommand(host: "buildbox", options: ControlZmxNewOptions()))
+
+        #expect(try fake.calls() == [["zmx", "new", "--json"]])
+    }
+
+    @Test func newRefusesAHostileHost() {
+        #expect(throws: RemoteSession.InvocationError.invalidHost) {
+            try RemoteSession.newCommand(host: "-oProxyCommand=touch /tmp/pwned", options: ControlZmxNewOptions())
         }
     }
 
@@ -131,7 +175,8 @@ struct RemoteSessionTests {
         }
     }
 
-    @Test func theRemoteCommandIsOneOrdinaryCommandEvenUnderANonPosixLoginShell() throws {
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/bin/tcsh")))
+    func theRemoteCommandIsOneOrdinaryCommandEvenUnderANonPosixLoginShell() throws {
         let fake = try FakeRemote()
         defer { fake.cleanUp() }
         try fake.installAgtermctl(exitCodes: [0])

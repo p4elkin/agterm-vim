@@ -10,6 +10,11 @@ extension AppStore {
         session(withID: id)?.remotePresentation = RemotePresentationState(binding: binding)
     }
 
+    public func addRemotePane(local: UUID, daemon: String, forSession id: UUID) {
+        guard let session = session(withID: id), let binding = session.remotePresentation?.binding else { return }
+        session.remotePresentation?.binding = binding.adding(localPane: local, daemon: daemon)
+    }
+
     /// Keeps origin updates even while a local override hides them.
     public func applyRemoteContext(_ context: String?, forSession id: UUID) {
         guard let session = session(withID: id), session.remotePresentation != nil else { return }
@@ -157,6 +162,13 @@ extension AppStore {
     /// Records whether this Mac is the session's presenter or a mirror beside the origin.
     public func setRemoteMode(_ mode: PresentationMode, forSession id: UUID) {
         session(withID: id)?.remotePresentation?.mode = mode
+    }
+
+    public func setRemoteRowState(_ state: RemoteRowState, forSession id: UUID) {
+        guard let session = session(withID: id), let presentation = session.remotePresentation,
+              presentation.rowState != state else { return }
+        session.remotePresentation?.rowState = state
+        scheduleTreeChanged()
     }
 
     /// Marks the live HUD as the bridge's. Called once the app has the mirrored panel up.

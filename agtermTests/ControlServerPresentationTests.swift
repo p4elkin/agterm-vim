@@ -8,6 +8,7 @@ final class ControlServerPresentationTests: XCTestCase {
     private final class StreamClient: @unchecked Sendable {
         let fd: Int32
         private var buffer = Data()
+        var generation = 0
 
         init?(path: String) {
             let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -114,14 +115,14 @@ final class ControlServerPresentationTests: XCTestCase {
     private final class Box<T>: @unchecked Sendable { var value: T? }
     private struct UnexpectedFrame: Error {}
 
-    private func openStream(for session: Session) throws -> (StreamClient, PresentationSnapshot) {
+    private func openStream(for session: Session, mode: PresentationMode = .mirror) throws -> (StreamClient, PresentationSnapshot) {
         let client = try XCTUnwrap(StreamClient(path: socketPath))
         clients.append(client)
         let id = session.id.uuidString
         let opened = offMain { () -> (String?, PresentationFrame?, PresentationFrame?) in
             client.send(#"{"cmd":"zmx.present","target":"\#(id)"}"#)
             let reply = client.readLine()
-            client.send(#"{"kind":"hello","gen":0,"rev":0,"hello":{"version":1,"kinds":["status","hud"],"mode":"mirror"}}"#)
+            client.send(#"{"kind":"hello","gen":0,"rev":0,"hello":{"version":1,"kinds":["status","hud"],"mode":"\#(mode.rawValue)"}}"#)
             return (reply, client.frame(), client.frame())
         }
         let (reply, hello, snapshot) = try XCTUnwrap(opened)
@@ -130,6 +131,7 @@ final class ControlServerPresentationTests: XCTestCase {
             XCTFail("expected hello then a snapshot, got \(String(describing: hello)) and \(String(describing: snapshot))")
             throw UnexpectedFrame()
         }
+        client.generation = try XCTUnwrap(hello).gen
         XCTAssertEqual(answer.kinds, ["status", "hud"])
         return (client, state)
     }
@@ -147,6 +149,81 @@ final class ControlServerPresentationTests: XCTestCase {
         }
 
         XCTAssertEqual(probe??.contains(#""ok":true"#), true, "a second client is served while the stream is open")
+    }
+
+    func testAHandOffOnAMacOriginReoffersTheAskToTheNewViewer() throws {
+        let (server, store, session) = try makeServer()
+        let (first, _) = try openStream(for: session, mode: .presenter)
+        let firstGeneration = first.generation
+        let granted = offMain {
+            first.send(#"{"kind":"presenter.acquire","gen":\#(firstGeneration),"rev":0}"#)
+            return first.frame()
+        }
+        XCTAssertEqual(granted??.body, .presenterGranted)
+        let (next, _) = try openStream(for: session, mode: .presenter)
+        let nextGeneration = next.generation
+        let refused = offMain {
+            next.send(#"{"kind":"presenter.acquire","gen":\#(nextGeneration),"rev":0}"#)
+            return next.frame()
+        }
+        XCTAssertEqual(refused??.body, .presenterRefused)
+        let pending = PendingAsk(id: UUID().uuidString, title: "deploy?",
+                                 buttons: [ControlAskButton(id: "yes", label: "Yes")], style: .terminal)
+        let window = try XCTUnwrap(server.library.windows.first?.id)
+        let pane = session.paneIdentity
+        XCTAssertEqual(store.presentAsk(pending, in: session, paneIdentity: pane, window: window), true)
+        let offered = offMain { first.frame() }
+        XCTAssertEqual(offered??.body, .askRequest(PresentationAsk(pending, pane: .identity(pane),
+                                                                  owner: server.presentationHub.presenterGeneration(session: session.id))))
+
+        close(first.fd)
+        clients.removeAll { $0 === first }
+        let handoff = try XCTUnwrap(offMain { (next.frame(), next.frame()) })
+
+        let owner = server.presentationHub.presenterGeneration(session: session.id)
+        XCTAssertEqual(handoff.0?.body, .presenterGranted)
+        XCTAssertEqual(handoff.1?.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner)))
+        XCTAssertEqual(session.askPaneIdentity, pane)
+        XCTAssertTrue(session.askPresentedRemotely)
+        session.cancelAsk(id: pending.id)
+        let dismissed = offMain { next.frame() }
+        XCTAssertEqual(dismissed??.body, .askDismiss(PresentationAskRef(id: pending.id, owner: owner)))
+    }
+
+    func testATakeOnAMacOriginDismissesTheAskOnTheOldViewerAndReoffersIt() throws {
+        let (server, store, session) = try makeServer()
+        let (first, _) = try openStream(for: session, mode: .presenter)
+        let firstGeneration = first.generation
+        let granted = offMain {
+            first.send(#"{"kind":"presenter.acquire","gen":\#(firstGeneration),"rev":0}"#)
+            return first.frame()
+        }
+        XCTAssertEqual(granted??.body, .presenterGranted)
+        let (next, _) = try openStream(for: session, mode: .presenter)
+        let pending = PendingAsk(id: UUID().uuidString, title: "deploy?",
+                                 buttons: [ControlAskButton(id: "yes", label: "Yes")], style: .terminal)
+        let window = try XCTUnwrap(server.library.windows.first?.id)
+        let pane = session.paneIdentity
+        XCTAssertEqual(store.presentAsk(pending, in: session, paneIdentity: pane, window: window), true)
+        let oldOwner = server.presentationHub.presenterGeneration(session: session.id)
+        let offered = offMain { first.frame() }
+        XCTAssertEqual(offered??.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: oldOwner)))
+
+        let nextGeneration = next.generation
+        let taken = try XCTUnwrap(offMain {
+            next.send(#"{"kind":"presenter.take","gen":\#(nextGeneration),"rev":0}"#)
+            return (next.frame(), next.frame())
+        })
+        let left = try XCTUnwrap(offMain { (first.frame(), first.frame()) })
+
+        let owner = server.presentationHub.presenterGeneration(session: session.id)
+        XCTAssertEqual(left.0?.body, .askDismiss(PresentationAskRef(id: pending.id, owner: oldOwner)))
+        XCTAssertEqual(left.1?.body, .presenterRefused)
+        XCTAssertEqual(taken.0?.body, .presenterGranted)
+        XCTAssertEqual(taken.1?.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner)))
+        XCTAssertNotEqual(owner, oldOwner)
+        XCTAssertFalse(store.resolveRemoteAsk(PresentationAskAnswer(id: pending.id, owner: oldOwner, button: "yes"),
+                                              forSession: session.id), "the old viewer's late answer is refused")
     }
 
     func testAStatusChangeReachesTheViewerAfterTheSnapshot() throws {

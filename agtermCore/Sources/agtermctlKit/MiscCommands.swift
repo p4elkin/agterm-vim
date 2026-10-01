@@ -849,9 +849,9 @@ struct Version: RequestCommand {
         }
     }
 
-    /// The running executable's real path. `_NSGetExecutablePath` rather than `argv[0]`, which is whatever
-    /// the caller chose to exec with, and `realpath` because the installed CLI is a symlink into the bundle.
+    /// Resolve the running executable, not the caller-controlled `argv[0]` or an installed symlink.
     static func clientPath() -> String? {
+        #if canImport(Darwin)
         var size = UInt32(0)
         _ = _NSGetExecutablePath(nil, &size)
         var buffer = [CChar](repeating: 0, count: Int(size))
@@ -859,5 +859,12 @@ struct Version: RequestCommand {
         guard let resolved = realpath(buffer, nil) else { return String(cString: buffer) }
         defer { free(resolved) }
         return String(cString: resolved)
+        #else
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
+        let count = readlink("/proc/self/exe", &buffer, buffer.count)
+        guard count > 0, count < buffer.count else { return nil }
+        buffer[count] = 0
+        return String(cString: buffer)
+        #endif
     }
 }

@@ -48,6 +48,7 @@ enum HudMarkdown {
     /// lines parses `source` as standard markdown. Blocks are separated by one blank row, except blocks
     /// sharing a list, since the parser does not say whether a list was tight or loose.
     static func lines(_ source: String) -> [Line] {
+        #if canImport(Darwin)
         let text = source.precomposedStringWithCanonicalMapping
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full,
                                                               failurePolicy: .returnPartiallyParsedIfPossible)
@@ -63,6 +64,11 @@ enum HudMarkdown {
                        block: run.presentationIntent?.components ?? [])
         }
         return walker.finish()
+        #else
+        return source.split(separator: "\n", omittingEmptySubsequences: false).map {
+            Line(lead: "", hang: "", runs: [Run(text: sanitized(String($0)), style: [])])
+        }
+        #endif
     }
 
     /// rendersVisibleText reports whether `source` lays out to at least one non-space cell.
@@ -104,6 +110,7 @@ enum HudMarkdown {
         return out
     }
 
+    #if canImport(Darwin)
     fileprivate struct Segment {
         let text: String
         let inline: InlinePresentationIntent
@@ -325,6 +332,7 @@ enum HudMarkdown {
             return (lead, hang)
         }
     }
+    #endif
 }
 
 extension HudMarkdown {

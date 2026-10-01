@@ -164,6 +164,31 @@ extension ControlServer {
         }
     }
 
+    /// Create a session on `host`, then attach it here exactly as `zmx attach` would. A far refusal is
+    /// returned as it came and creates no row.
+    func createRemoteSession(host: String, options: ControlZmxNewOptions, window: String?) async -> ControlResponse {
+        let argv: [String]
+        do {
+            argv = try RemoteSession.newCommand(host: host, options: options)
+        } catch {
+            return ControlResponse(ok: false, error: "invalid host")
+        }
+        let result = await remoteRunner.run(argv, deadline: Self.remoteTreeDeadline)
+        guard result.status == 0 else {
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = RemoteTreeMerger.remoteError(stdout: result.stdout) ?? (stderr.isEmpty ? nil : stderr)
+            return ControlResponse(ok: false, error: detail ?? "the remote command failed on \(host)")
+        }
+        guard let response = try? JSONDecoder().decode(ControlResponse.self, from: Data(result.stdout.utf8)) else {
+            return ControlResponse(ok: false, error: "the remote answer could not be read")
+        }
+        guard response.ok else { return response }
+        guard let id = response.result?.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
+            return ControlResponse(ok: false, error: "\(host) created a session without an id")
+        }
+        return await attachRemoteSession(host: host, session: id, window: window)
+    }
+
     func attachRemoteSession(host: String, session: String) async -> ControlResponse {
         await attachRemoteSession(host: host, session: session, window: nil)
     }
@@ -194,23 +219,6 @@ extension ControlServer {
         guard byRole.count == remote.panes.count, let left = byRole[.left] else {
             return ControlResponse(ok: false, error: "\(host) reported panes agterm cannot address")
         }
-        let right = byRole[.right]
-        let primary: String
-        let split: String?
-        // attaching is the user asking for the session HERE, so every pane claims the lead at once
-        let leads = (left: ZmxLeadAttachment(claim: true), right: ZmxLeadAttachment(claim: true))
-        do {
-            primary = try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: left,
-                                                          session: remote.name, pane: .left, lead: leads.left,
-                                                          transport: transport)
-            split = try right.map {
-                try RemoteSession.attachPaneCommand(host: host, endpoint: tree.endpoint, daemon: $0,
-                                                    session: remote.name, pane: .right, lead: leads.right,
-                                                    transport: transport)
-            }
-        } catch {
-            return ControlResponse(ok: false, error: "\(host) reported a session agterm cannot address")
-        }
         let store: AppStore
         switch resolveOpenWindow(window) {
         case .failure(let response): return response
@@ -219,36 +227,68 @@ extension ControlServer {
         guard let workspace = store.currentWorkspaceID else {
             return ControlResponse(ok: false, error: "no window to attach into")
         }
+        let row = RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
+                            presentationVersion: tree.presentation, transport: transport, left: left,
+                            right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)))
+        // attaching is the user asking for the session HERE, so every pane claims the lead at once
+        switch insertRemoteRow(row, at: RemoteRowPlacement(store: store, workspace: workspace), claim: true) {
+        case .refused(let response): return response
+        case .inserted(let created):
+            // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck
+            // re-render can clear from under it through `onFocusChange`.
+            actions.focusSplitPane(created, wantSplit: created.splitFocused)
+            return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
+        }
+    }
+
+    /// Inserts a bound remote row and opens its presentation stream. Shared by a user attach, which has just
+    /// discovered the session, and a launch restore, which trusts its saved record. Nothing is inserted when
+    /// a pane command cannot be built.
+    func insertRemoteRow(_ row: RemoteRow, at placement: RemoteRowPlacement, claim: Bool) -> RemoteRowInsert {
+        let leads = (left: ZmxLeadAttachment(claim: claim), right: ZmxLeadAttachment(claim: claim))
+        let primary: String
+        let split: String?
+        do {
+            primary = try RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: row.left,
+                                                          session: row.sessionName, pane: .left, lead: leads.left,
+                                                          transport: row.transport)
+            split = try row.right.map {
+                try RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: $0,
+                                                    session: row.sessionName, pane: .right, lead: leads.right,
+                                                    transport: row.transport)
+            }
+        } catch {
+            return .refused(ControlResponse(ok: false, error: "\(row.host) reported a session agterm cannot address"))
+        }
+        let store = placement.store
         // the LOCAL working directory, not the remote one: libghostty chdirs the ssh process here, and a
         // path that exists on the far side may not exist on this Mac. The attached shell reports its real
         // cwd through the terminal stream anyway.
-        guard let created = store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(),
-                                             command: primary, name: remote.name, wait: true,
-                                             remoteHost: host) else {
-            return ControlResponse(ok: false, error: "could not create the session")
+        guard let created = store.addSession(toWorkspace: placement.workspace, cwd: NSHomeDirectory(),
+                                             command: primary, name: row.sessionName, wait: true,
+                                             at: placement.position, select: placement.select,
+                                             remoteHost: row.host) else {
+            return .refused(ControlResponse(ok: false, error: "could not create the session"))
         }
         if let split {
             created.splitInitialCommand = split
             created.splitCommandWait = true
-            store.setSplitVisibility(created.id, shown: true,
-                                     axis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)) ?? .leftRight)
+            store.setSplitVisibility(created.id, shown: true, axis: row.splitAxis ?? .leftRight)
         }
-        var daemons = [created.paneIdentity: left]
+        var daemons = [created.paneIdentity: row.left]
         ZmxLeadBook.shared.begin(leads.left, pane: created.paneIdentity)
-        if let right, let local = created.splitPaneIdentity {
+        if let right = row.right, let local = created.splitPaneIdentity {
             daemons[local] = right
             ZmxLeadBook.shared.begin(leads.right, pane: local)
         }
-        let origin = RemoteBinding.Origin(host: host, endpoint: tree.endpoint, sessionName: remote.name)
-        store.bindRemote(RemoteBinding(remoteSessionID: remote.id, daemonsByLocalPane: daemons,
-                                       presentationVersion: tree.presentation, origin: origin),
+        let origin = RemoteBinding.Origin(host: row.host, endpoint: row.endpoint, sessionName: row.sessionName,
+                                          transport: row.transport)
+        store.bindRemote(RemoteBinding(remoteSessionID: row.remoteSessionID, daemonsByLocalPane: daemons,
+                                       presentationVersion: row.presentationVersion, origin: origin),
                          forSession: created.id)
         // the row's created event fired inside `addSession`, before the binding existed
         startRemotePresentation(for: created)
-        // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck
-        // re-render can clear from under it through `onFocusChange`.
-        actions.focusSplitPane(created, wantSplit: created.splitFocused)
-        return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
+        return .inserted(created)
     }
 
     /// Kill the daemons the inventory shows as unclaimed and detached.
@@ -453,4 +493,30 @@ struct LiveAttributionProbe {
         guard proc_pidpath(pid, &bytes, UInt32(bytes.count)) > 0 else { return nil }
         return String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self) == String(cString: path) ? pid : nil
     }
+}
+
+/// Everything a remote row's panes attach with: what discovery found, or what the row book saved.
+struct RemoteRow {
+    let host: String
+    let endpoint: ControlZmxEndpoint
+    let sessionName: String
+    let remoteSessionID: String
+    let presentationVersion: Int?
+    let transport: RemoteTransport
+    let left: String
+    let right: String?
+    let splitAxis: SplitAxis?
+}
+
+/// Where a remote row goes. A user attach appends and selects; a restore puts it back where it was, unselected.
+struct RemoteRowPlacement {
+    let store: AppStore
+    let workspace: UUID
+    var position: Int?
+    var select = true
+}
+
+enum RemoteRowInsert {
+    case inserted(Session)
+    case refused(ControlResponse)
 }

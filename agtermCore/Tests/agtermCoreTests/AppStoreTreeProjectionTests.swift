@@ -6,6 +6,38 @@ import Testing
 // reports. Split out of `AppStoreTests.swift` for the file size limit.
 @MainActor
 struct AppStoreTreeProjectionTests {
+    @Test(arguments: [RemoteRowState.attached, .disconnected, .endedOnHost])
+    func remoteRowStateIsReadBackAndRoundTrips(state: RemoteRowState) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "p4linux"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "remote", daemonsByLocalPane: [:], presentationVersion: 1), forSession: session.id)
+        store.setRemoteRowState(state, forSession: session.id)
+        let node = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(node.remoteState == state.rawValue)
+        let data = try JSONEncoder().encode(node)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["remoteState"] as? String == state.rawValue)
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: data) == node)
+    }
+
+    @Test func remoteStateIsOmittedForLocalAndUnboundRows() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let local = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        _ = store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "old-host")
+        store.setRemoteRowState(.disconnected, forSession: local.id)
+        let nodes = store.controlTree().workspaces.flatMap(\.sessions)
+        for node in nodes {
+            #expect(node.remoteState == nil)
+            let data = try JSONEncoder().encode(node)
+            let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(object["remoteState"] == nil)
+            #expect(try JSONDecoder().decode(ControlSessionNode.self, from: data).remoteState == nil)
+        }
+        #expect(local.remotePresentation == nil)
+    }
+
     @Test(arguments: [SessionHost.Attribution.supervisor, .app, .orphaned, .unknown])
     func liveAttributionProjectsBothPanesIncludingHiddenSplits(_ attribution: SessionHost.Attribution) throws {
         let store = makeStore()

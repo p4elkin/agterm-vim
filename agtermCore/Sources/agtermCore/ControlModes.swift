@@ -201,6 +201,19 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     }
 }
 
+/// Creation on the origin; the destination window belongs to the local attach, not these options.
+public struct ControlZmxNewOptions: Equatable, Sendable {
+    public let name: String?
+    public let command: String?
+    public let cwd: String?
+
+    public init(name: String? = nil, command: String? = nil, cwd: String? = nil) {
+        self.name = name
+        self.command = command
+        self.cwd = cwd
+    }
+}
+
 /// Parsed `session.status` payload. Sound validation and playback stay host-side; the dispatcher
 /// hex-validates the per-call `#rrggbb` `color`, and both overrides thread onto the ephemeral
 /// `AgentIndicator`.

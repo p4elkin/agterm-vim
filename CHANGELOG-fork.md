@@ -52,6 +52,33 @@ publishes an empty body with only a warning on stderr.
   matching suffix in the repo, then Spotlight. Several candidates open a picker; none shows a HUD that
   hides itself. A path in a pane running on p4linux opens the p4linux file, with the viewer running
   there. Needs `agterm-open-path` from agterm-agents on `~/.local/bin` on both machines
+- `agterm-headless`, a server for a Linux host with no GUI, answers the real `agtermctl` over its own
+  control socket. It serves `tree`, `window list`, `events read`, `version`, `zmx tree`, `zmx list`,
+  `zmx present`, `zmx kill`, `notify`, `session new`, `session close`, `session rename`, `session split`,
+  `session split close`, `session swap`, `session text`, `session hud open|update|close`, `ask`,
+  `ask result`, `ask cancel`, `session status`, `context`, `seen` and `mark`,
+  and refuses every other command with a reason that names it (no windows or UI, no terminal surface, a
+  Mac feature, or a later phase). Each pane it creates, split panes included, runs in its own zmx daemon
+  under the user's login shell, with its own `AGTERM_*` environment. Closing a session kills its daemons,
+  and a pane whose daemon ends from outside closes within seconds. Every zmx call has a 5-second deadline,
+  so a hung zmx no longer hangs the server. `scripts/headless/install.sh` builds and installs it with its
+  own zmx and runs it as a systemd user service that restarts without ending any session;
+  `scripts/headless/check-version.sh` says whether each Mac can follow it. A HUD or a terminal ask opened
+  there appears on the Mac viewing that session; an ask opened with no Mac viewing waits and appears when
+  one connects. In progress; Linux only.
+- when the Mac presenting a remote session disconnects, another Mac viewing it now takes over as
+  presenter, and an ask shown on the first moves to it with its id and pane.
+- `agtermctl zmx new <host> [--name] [--command] [--cwd] [--window]` creates a session on another
+  machine's origin and attaches it here in one step. A split opened on the origin while you watch now
+  appears on the Mac instead of needing the row closed and attached again. The Mac whose pane takes the
+  lead also takes the presenter role, so asks, HUDs and overlays follow the Mac you are typing on.
+- opening a remote row on the Mac now clears its unseen count and an auto-reset status on the origin
+  too, so a reattach, a second Mac or a server restart no longer shows them again.
+- remote rows survive a relaunch: each comes back in its window, workspace and place, in every restore
+  mode. A row whose connection dropped says "Disconnected from <host>, retrying" and reattaches by itself
+  within 30 seconds of the host answering; one whose session ended there says "Ended on <host>. Close the
+  row to remove it". `tree` reads this back as `remoteState`.
+
 - a pane pinned with `--keep-shell-open` now starts ONE login shell instead of two. The command is typed
   into the login shell zmx spawns for the session rather than wrapped in another `zsh -lc` that has to
   `exec` a third. Nothing is resident either way, but the saved profile load is paid per pane at surface

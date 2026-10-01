@@ -517,4 +517,60 @@ struct ControlDispatcherZmxTests {
         #expect(actions.calls == [.zmxReset])
         #expect(response.result?.liveReset == ControlLiveResetStatus(sessions: 2, panes: 3, pending: true))
     }
+
+    @Test func hostlessZmxNewPassesCreationOptions() async throws {
+        let actions = MockControlActions()
+        let options = ControlZmxNewOptions(name: "two words", command: "echo hello", cwd: "/x")
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew,
+            args: ControlArgs(name: options.name, cwd: options.cwd, command: options.command)), actions))
+
+        #expect(response.ok)
+        #expect(actions.calls == [.zmxNew(options)])
+    }
+
+    @Test func hostedZmxNewCarriesTheLocalWindowSeparately() async throws {
+        let actions = MockControlActions()
+        let options = ControlZmxNewOptions(name: "t", command: "c", cwd: "/x")
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew,
+            args: ControlArgs(name: "t", cwd: "/x", host: " p4linux ", command: "c", window: " W ")), actions))
+
+        #expect(response.ok)
+        #expect(actions.calls == [.zmxNewRemote(host: "p4linux", options: options, window: "W")])
+    }
+
+    @Test(arguments: ["-option", "bad host", "bad\nhost"])
+    func zmxNewRefusesInvalidHostsBeforeAnyAction(_ host: String) async throws {
+        let actions = MockControlActions()
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew, args: ControlArgs(host: host)), actions))
+
+        #expect(response.error == "invalid host")
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test(arguments: ["bad\nname", "bad\u{1B}name", "bad\u{7F}name"])
+    func zmxNewRefusesControlCharactersInNamesBeforeAnyAction(_ name: String) async throws {
+        let actions = MockControlActions()
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew, args: ControlArgs(name: name)), actions))
+
+        #expect(!response.ok)
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test(arguments: [nil, "", "   "] as [String?])
+    func zmxNewWithoutAUsableHostIsLocal(_ host: String?) async throws {
+        let actions = MockControlActions()
+        #expect(try #require(await dispatch(ControlRequest(cmd: .zmxNew, args: ControlArgs(host: host)), actions)).ok)
+        #expect(actions.calls == [.zmxNew(ControlZmxNewOptions())])
+    }
+
+    @Test(arguments: [nil, "buildbox"] as [String?])
+    func zmxNewDefaultsRefuseWithoutCreatingAnything(_ host: String?) async throws {
+        let actions = DefaultsOnlyActions()
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew, args: ControlArgs(host: host)), actions))
+
+        #expect(!response.ok)
+        #expect(response.error == ControlActionsUnsupported.message("zmx.new"))
+        #expect(actions.calls.isEmpty)
+    }
+
 }

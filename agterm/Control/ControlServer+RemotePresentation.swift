@@ -22,10 +22,23 @@ extension ControlServer {
         }
         let client = RemotePresentationClient(argv: argv, presentationVersion: binding.presentationVersion,
                                               transport: remoteTransport, effects: remoteEffects(for: id),
+                                              leads: { [weak self] in self?.primaryPaneLeads(id) ?? false },
                                               now: hudClock)
         remoteClients[id] = client
         client.start()
         startRemoteTick()
+    }
+
+    /// The Mac whose primary pane leads takes the presenter role with it; the split pane's lead does not.
+    func paneLeadChanged(pane: UUID, inSession id: UUID) {
+        guard let session = library.store(forSession: id)?.session(withID: id), session.remotePresentation != nil,
+              pane == session.paneIdentity, primaryPaneLeads(id) else { return }
+        remoteClients[id]?.takePresenter()
+    }
+
+    func primaryPaneLeads(_ id: UUID) -> Bool {
+        guard let session = library.store(forSession: id)?.session(withID: id) else { return false }
+        return ZmxLeadBook.shared.role(pane: session.paneIdentity) == .leader
     }
 
     func stopRemotePresentation(_ id: UUID) {

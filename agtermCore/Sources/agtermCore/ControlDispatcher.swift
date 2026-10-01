@@ -213,6 +213,10 @@ public protocol ControlActions {
     /// Another machine's attachable sessions. Async because it runs ssh: a blocking wait here would hold
     /// the main actor for the whole network deadline.
     func remoteTree(host: String?) async -> ControlResponse
+    /// Create on this origin without attaching a local terminal surface.
+    func createAttachableSession(_ options: ControlZmxNewOptions) -> ControlResponse
+    /// Create on the remote origin, then attach into the local window.
+    func createRemoteSession(host: String, options: ControlZmxNewOptions, window: String?) async -> ControlResponse
     /// Create a local session attached to `session` on `host`. Resolves the remote itself before inserting
     /// anything, so a session that has gone since the tree was read creates nothing.
     func attachRemoteSession(host: String, session: String) async -> ControlResponse
@@ -281,7 +285,7 @@ public struct ControlDispatcher {
                 .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear,
                 .restoreCapture, .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
-        case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxTree, .zmxAttach, .zmxPresent:
+        case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree, .zmxAttach, .zmxPresent:
             return await dispatchZmxCommand(request)
         case .hooksReload, .hooksList:
             return dispatchHooksCommand(request)

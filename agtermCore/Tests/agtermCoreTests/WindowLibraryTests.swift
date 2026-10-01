@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 @testable import agtermCore
 
@@ -60,6 +61,27 @@ final class WindowLibraryTests {
         #expect(library.store(for: windowID)?.session(withID: session.id) === session)
         #expect(session.askPending == ask)
         #expect(AskRegistry.shared.owner(for: ask.id) == .session(session.id, window: windowID))
+    }
+
+    @Test func storeLoadedFiresOnlyForANewRuntimeLoad() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.activeWindowID)
+        var loaded: [UUID] = []
+        library.onStoreLoaded = { id, store in
+            #expect(library.store(for: id) === store)
+            #expect(!store.workspaces.isEmpty)
+            loaded.append(id)
+        }
+        defer { library.onStoreLoaded = nil }
+        library.closeWindow(window)
+        #expect(library.loadStore(for: window, launchRestore: true) != nil)
+        #expect(loaded.isEmpty)
+        library.closeWindow(window)
+        #expect(library.loadStore(for: window) != nil)
+        #expect(loaded == [window])
+        #expect(library.loadStore(for: window) != nil)
+        #expect(library.loadStore(for: UUID()) == nil)
+        #expect(loaded == [window])
     }
 
     private let directory: URL
