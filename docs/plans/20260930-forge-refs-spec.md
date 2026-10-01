@@ -482,8 +482,9 @@ Scope: only refs with no local origin to decide from.
 or live in agterm-agents and be included with one `config-file = ?<path>` line.
 Pasted, the copy the tests check and the copy ghostty reads can drift apart.
 **include the rules file from agterm-agents?** Decided 2026-09-30: yes. `link` is a repeatable key, so included rules
-add to the Jira and xchat rules; nothing replaces them. Check first that `config-file` expands `~` in agterm's
-loader; if not, the line takes an absolute path.
+add to the Jira and xchat rules; nothing replaces them. `config-file` expands `~/` in agterm's loader:
+`ghostty_config_load_file` ends in `expandPaths`, and `Path.expand` in ghostty's `src/config/path.zig` expands a `~/`
+prefix (checked at `683d8db`, 2026-10-01). So the line keeps the `~/` path.
 
 ## Open points
 

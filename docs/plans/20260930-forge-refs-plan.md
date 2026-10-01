@@ -169,55 +169,55 @@ unless it names more files, and ends with
 
 #### Task 6: `Item` replaces the tuples
 
-- [ ] failing tests first: `test_classify` and the other tuple-shaped cases rewritten against `Item`
+- [x] failing tests first: `test_classify` and the other tuple-shaped cases rewritten against `Item`
       (`kind`, `forge`, `host`, `project`, `number`, `sha`; `url` and `label` properties); the view key comes from
       `Item.forge` (`jira.view`, `gitlab.view`, `github.view`); a commit ignores every view key
-- [ ] `classify` returns `Item` for Jira, MR and other; `show` dispatches on `Item.kind` through a table of builders
-- [ ] no behaviour change for Jira and MR: every existing test passes
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `classify` returns `Item` for Jira, MR and other; `show` dispatches on `Item.kind` through a table of builders
+- [x] no behaviour change for Jira and MR: every existing test passes
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 7: `STUB` answers by argv
 
-- [ ] failing tests first:
+- [x] failing tests first:
   - run the stub script directly, twice, with the same `STUB_MAP` and different argv: each run gets its own
     fixture's answer;
   - with the keys `x/1` and `x/1/jobs` in one map, argv holding `x/1/jobs` gets the `x/1/jobs` answer and argv
     holding only `x/1` gets the `x/1` answer
-- [ ] `STUB` reads an optional JSON map from an env var (for example `STUB_MAP`): argv substring → `{out_file, err, exit}`.
+- [x] `STUB` reads an optional JSON map from an env var (for example `STUB_MAP`): argv substring → `{out_file, err, exit}`.
       Of the keys found in the joined argv, the LONGEST wins. The plan's own API paths nest: `pipelines/55` is inside
       `pipelines/55/jobs`, `jobs/77` inside `jobs/77/trace`, `commits/<sha>` inside `commits/<sha>/diff`, and
       `issues/12` inside `issues/12/comments`. With no map, or no key found, today's env-var behaviour holds,
       so existing tests stay as they are
-- [ ] `git` and `gh` join `STUBS`; the module docstring's stub list follows
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `git` and `gh` join `STUBS`; the module docstring's stub list follows
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 8: the rules file and its regex table
 
 **Files:**
 - Create: `share/agterm-open-link/links.conf`
 
-- [ ] failing tests first: every `link =` line parses as `open:agterm-ref:$0,<regex>`; the sample lines from the
+- [x] failing tests first: every `link =` line parses as `open:agterm-ref:$0,<regex>`; the sample lines from the
       spec's Recognition section give exactly the listed matches and non-matches
-- [ ] the three rules from the spec, in order, one comment line each
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the three rules from the spec, in order, one comment line each
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 9: `--cwd`, payload validation and the far-pane check
 
-- [ ] failing tests first: a payload that fails the three anchored patterns gives HUD `Could not open …` and runs no
+- [x] failing tests first: a payload that fails the three anchored patterns gives HUD `Could not open …` and runs no
       tool; a stubbed far pane (mosh `restoreCommand`) and a set `remoteHost` give HUD `Remote pane: !482 not resolved`;
       a relative or missing `--cwd` gives its HUD; a cross-project ref in a far pane is not refused
-- [ ] `--cwd` argument; `agterm-ref:` payloads go to `resolve_ref`, which raises `Unresolved(message)` for a HUD
-- [ ] copy only `pane_command`, `HOST_RES` and the host search with its check from `far_pane` in `agterm-open-path`,
+- [x] `--cwd` argument; `agterm-ref:` payloads go to `resolve_ref`, which raises `Unresolved(message)` for a HUD
+- [x] copy only `pane_command`, `HOST_RES` and the host search with its check from `far_pane` in `agterm-open-path`,
       with a one-line pointer to it. Not `KEY_RE`, not `ZMX_DIR_RE`
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 10: repository check, origin parsing and forge choice
 
-- [ ] failing tests first:
+- [x] failing tests first:
   - a short ref or bare hash with `--cwd` outside a repository gives HUD `Not in a git repository: …`; a cross-project ref there does not;
     `rev-parse --show-toplevel` gets `-c core.fsmonitor=`;
   - scp, `ssh://` and `https` origins; `.git` and a trailing `/`; a lookalike host; no origin; an unknown host;
@@ -225,32 +225,32 @@ unless it names more files, and ends with
     in file order (tested with two hosts), then HUD `No GitLab host for …`;
   - a three-segment project never goes to GitHub;
   - `github.view` with an unknown value reads as `tui`
-- [ ] `git -c core.fsmonitor= -C <cwd> rev-parse --show-toplevel`, then `remote get-url origin`;
+- [x] `git -c core.fsmonitor= -C <cwd> rev-parse --show-toplevel`, then `remote get-url origin`;
       the two anchored origin patterns from the spec
-- [ ] config keys `github.hosts`, `github.view`, `gitlab.default_host`; `github.view` joins the view check in
+- [x] config keys `github.hosts`, `github.view`, `gitlab.default_host`; `github.view` joins the view check in
       `read_config`; the default host comes from an ordered parse of `gitlab.hosts`, not from the `gitlab_hosts` set
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 11: resolved refs reuse the MR view; the catch-all
 
-- [ ] failing tests first:
+- [x] failing tests first:
   - `!482` in a GitLab checkout and `magnolia/ui!482` anywhere open the same overlay and the same `glab` calls as a
     click on the MR URL;
   - a crash before resolution gives HUD `Could not open !482`; a crash after it opens the MR URL in the browser;
   - in-process, with no dependency on Task 12: an `Item` built directly with `url = None` (the shape of a
     local-only commit: no origin, or an unknown forge), passed to the catch-all with a raised error, gives HUD
     `Could not open …` and never runs `open`
-- [ ] `fallback_url`, set once an `Item` with a URL exists
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `fallback_url`, set once an `Item` with a URL exists
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 12: local commit review
 
-- [ ] measure first, in a scratch repository under the session scratchpad with enough commits that two share a
+- [x] measure first, in a scratch repository under the session scratchpad with enough commits that two share a
       4-hex-character prefix: the exit status and stderr of `rev-parse --verify --quiet <4 hex>^{commit}`
       for that ambiguous prefix. The test below uses that shape
-- [ ] failing tests first:
+- [x] failing tests first:
   - a local hit runs `rev-parse --verify --quiet --end-of-options <h>^{commit}`, then `show` with
     `--no-color --no-ext-diff --no-textconv --diff-merges=first-parent --format= --patch <full sha>`;
     `show` gets the full sha from `rev-parse`, not the clicked prefix;
@@ -261,31 +261,42 @@ unless it names more files, and ends with
   - no `Fetching` HUD on the local path;
   - a local miss with no known forge gives HUD `No commit c865bc6c in agterm-vim`;
   - the ambiguous shape gives HUD `Ambiguous commit …`
-- [ ] `review_commit`, shaped like `review_mr` without the overlay close; a local-only commit has `url = None`
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] `review_commit`, shaped like `review_mr` without the overlay close; a local-only commit has `url = None`
+- ➕ measured 2026-10-01, git 2.50.1, two commits sharing prefix `0cf9`: with `--quiet` an ambiguous prefix exits 1
+      with empty stderr, the same as a missing one. Without it: exit 128, `error: short object ID 0cf9 is ambiguous`.
+      So the lookup drops `--quiet` and runs with `LC_ALL=C`; `is ambiguous` in stderr gives the HUD
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 13: GitLab commit fetch and commit URLs
 
-- [ ] measure first: `glab api --hostname gitlab.magnolia-platform.com projects/<p>/repository/commits/<short sha>`
+- [x] measure first: `glab api --hostname gitlab.magnolia-platform.com projects/<p>/repository/commits/<short sha>`
       (does a short sha resolve), the same for a missing sha, and `--paginate` output on the `/diff` endpoint
       (one array or several); trim one real answer into `tests/fixtures/gitlab-commit-diff.json`
-- [ ] failing tests first: a local miss with a GitLab origin fetches from the forge; `magnolia/ui@c865bc6c` and a
+- [x] failing tests first: a local miss with a GitLab origin fetches from the forge; `magnolia/ui@c865bc6c` and a
       `/-/commit/<SHA>` URL (upper-case hex lower-cased) go to the forge; rebuilt headers for new, deleted and
       renamed files; missing sha gives HUD `No commit c865bc6c in magnolia/ui`
-- [ ] the commit row of the URL table in the spec's Recognition section; the GitLab fetch from Commit review
-- [ ] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
-- [ ] commit in agterm-agents
+- [x] the commit row of the URL table in the spec's Recognition section; the GitLab fetch from Commit review
+- ➕ measured 2026-10-01 on `pd/shell`: a 7- or 8-character sha resolves on the commits endpoint; a missing sha exits 1,
+      stdout `{"message":"404 Commit Not Found"}`, stderr `glab: 404 Commit Not Found (HTTP 404)`; `--paginate` prints
+      the pages' arrays back to back as `[...][...]`. A binary file's `diff` is its `Binary files … differ` line
+- [x] check: `uv run --quiet --python 3.12 --with pytest python -m pytest tests/test_agterm_open_link.py -q`
+- [x] commit in agterm-agents
 
 #### Task 14: check, by reading only, that `config-file` expands `~`
 
-- [ ] fetch ghostty's `src/config/` path handling at `683d8db` raw into the session scratchpad; read how a
+- [x] fetch ghostty's `src/config/` path handling at `683d8db` raw into the session scratchpad; read how a
       `config-file` value is parsed and whether `~/` is expanded
-- [ ] read agterm's loader path into `ghostty_config_load_recursive_files` for anything that changes that
-- [ ] no expansion: Task 27 prints an absolute path, and the spec's Decisions entry for the rule file says so
-- [ ] check: the answer, with the file and function it comes from, is written into this task and into that
+- [x] read agterm's loader path into `ghostty_config_load_recursive_files` for anything that changes that
+- [x] (not applicable) no expansion: Task 27 prints an absolute path, and the spec's Decisions entry for the rule file says so
+- [x] check: the answer, with the file and function it comes from, is written into this task and into that
       Decisions entry
-- [ ] commit the spec edit in the fork
+      Found 2026-10-01: yes, `~/` expands. agterm loads `ghostty.conf` with `ghostty_config_load_file`
+      (`GhosttyApp.loadConfig`) → `Config.loadFile` → `loadReader` → `expandPaths(dirname)` → `Path.expand` in
+      `src/config/path.zig`, which expands a `~/` prefix through `internal_os.expandHome` and makes other relative
+      paths absolute against the including file's directory. `loadRecursiveFiles` then asserts every path is absolute.
+      Task 27 prints the `~/` form
+- [x] commit the spec edit in the fork
 
 ### Stage 3: GitLab issues, pipelines and jobs
 
