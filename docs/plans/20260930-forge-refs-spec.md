@@ -274,7 +274,7 @@ Every Markdown view ends with the canonical URL, as today.
 | GitHub pr | `gh pr view N -R H/O/R --json number,title,state,author,body,url,comments,reviews`, plus `gh api --hostname H repos/O/R/pulls/N/comments?per_page=100` | title, state, author, body; then conversation comments, review bodies, and line-comment threads (grouped by `in_reply_to_id`, headed `— on path:line`), oldest first | `r` prompt and Review button: `gh pr diff N -R H/O/R --color never` → plannotator |
 | GitLab issue | `glab issue view N -R https://H/P -F json`, plus `glab api --hostname H projects/<P>/issues/N/discussions?per_page=100` | title, state, author, assignees, labels, description, threads with system notes skipped | none; the page runs no script |
 | GitHub issue | the resolution call `gh api --hostname H repos/O/R/issues/N`, plus `…/issues/N/comments?per_page=100` | title, state, author, assignees, labels, body, comments | none |
-| GitLab pipeline | `glab api --hostname H projects/<P>/pipelines/N`, plus `…/pipelines/N/jobs?per_page=100` and `…/pipelines/N/bridges` | status, ref, short sha, source, duration, who started it; one section per stage with a table: job, status, duration, job URL | none |
+| GitLab pipeline | `glab api --hostname H projects/<P>/pipelines/N`, plus `--paginate` on `…/pipelines/N/jobs?per_page=100` and `…/pipelines/N/bridges?per_page=100` | status, ref, short sha, source, duration, who started it; one section per stage with a table: job, status, duration, job URL | none |
 | GitLab job | `glab api --hostname H projects/<P>/jobs/N`, plus `…/jobs/N/trace` | a header with name, stage, status, failure reason, pipeline; then the last 300 lines of the log | see below |
 | commit | see Commit review | none | always plannotator |
 
