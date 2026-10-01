@@ -275,6 +275,35 @@ struct LinkPolicyTests {
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
     }
 
+    // MARK: agterm-path (bare file names minted by the link rule)
+
+    @Test(arguments: [
+        ("links.conf", "links.conf", nil),
+        ("README.md:12", "README.md", 12),
+        ("a.swift:3-9", "a.swift", 3),
+        ("a.swift:3:9", "a.swift", 3),
+        ("README.MD", "README.MD", nil),
+        ("notes.md).", "notes.md", nil),
+        ("@types.ts", "@types.ts", nil),
+    ] as [(String, String, Int?)])
+    func bareNameOpens(_ payload: String, _ path: String, _ line: Int?) {
+        #expect(LinkPolicy.disposition(for: "agterm-path:" + payload, localHosts: Self.localHosts)
+            == .openPath(path: path, line: line))
+    }
+
+    @Test(arguments: [
+        "agterm-path:", "agterm-path:docs/x.md", "agterm-path:-x.md", "agterm-path:x.exe", "agterm-path:Makefile",
+        "agterm-path:.md", "agterm-path:x.md\n", "agterm-path:x.swift:0", "agterm-path:~x.md", "agterm-path:x y.md",
+        "agterm-path:" + String(repeating: "a", count: 253) + ".md", "AGTERM-PATH:x.md",
+    ])
+    func malformedBareNamesAreIgnored(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test func pathSchemeIsNotSystemOpenable() {
+        #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.pathScheme))
+    }
+
     // MARK: agterm-ref (forge references minted by the link rules)
 
     @Test(arguments: ["!12", "#34", "c865bc6c", "group/sub/proj#34", "owner/repo@c865bc6c"])
