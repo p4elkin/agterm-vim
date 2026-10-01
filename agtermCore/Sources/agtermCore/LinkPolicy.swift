@@ -6,7 +6,8 @@ import Foundation
 /// link when installed), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
 /// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
-/// `agterm-open-path` viewer script, or IGNORE anything else. `file://` is revealed, never
+/// `agterm-open-path` viewer script, hand a forge ref minted as `agterm-ref:<ref>` to `agterm-open-link`, or
+/// IGNORE anything else. `file://` is revealed, never
 /// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
 /// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder
@@ -28,12 +29,28 @@ public enum LinkPolicy {
     /// id rather than a path that gets resolved.
     static let xchatIDPattern = "^msg-[0-9]{6}-[0-9a-f]{4}$"
 
+    /// `agterm-ref:<ref>` carries a forge reference (`!12`, `#34`, a commit hash, `group/proj!12`) minted by the
+    /// `link` rules agterm-agents ships, for `agterm-open-link` to resolve against the pane's repository. Not in
+    /// `permittedSchemes`, and never parsed through `URL(string:)`: that would move the `34` of `group/proj#34`
+    /// into a fragment.
+    public static let refScheme = "agterm-ref"
+
+    /// Each accepted ref shape, anchored. A project segment cannot start with `.`, so `..` is never a segment.
+    static let refPatterns = [
+        #"^[!#][0-9]{1,9}$"#,
+        #"^[0-9a-f]{7,40}$"#,
+        crossProjectRefPattern,
+    ]
+    static let crossProjectRefPattern =
+        #"^[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+(?:[!#][0-9]{1,9}|@[0-9a-f]{7,40})$"#
+
     /// What a link click should do. Carries the target URL for `.open`/`.reveal`.
     public enum LinkDisposition: Equatable {
         case open(URL)
         case reveal(URL)
         case xchat(id: String)
         case openPath(path: String, line: Int?)
+        case ref(String)
         case ignore
     }
 
@@ -113,8 +130,9 @@ public enum LinkPolicy {
     /// is injected (default: this machine's names) so the decision stays host-free and unit-testable.
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
         if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
-            return openPathDisposition(raw)
+            return reclaimedRefDisposition(raw, path: openPathDisposition(raw))
         }
+        if raw.hasPrefix(refScheme + ":") { return refDisposition(String(raw.dropFirst(refScheme.count + 1))) }
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
         if permittedSchemes.contains(scheme) { return .open(url) }
         if scheme == xchatScheme { return xchatDisposition(url) }
@@ -150,6 +168,26 @@ public enum LinkPolicy {
         guard !id.contains(where: \.isNewline) else { return .ignore }
         guard id.range(of: xchatIDPattern, options: .regularExpression) != nil else { return .ignore }
         return .xchat(id: id)
+    }
+
+    /// The newline guard covers a regex `$` matching just before a trailing newline; `%0A` stays literal and
+    /// fails every pattern.
+    static func refDisposition(_ payload: String, patterns: [String] = refPatterns) -> LinkDisposition {
+        guard payload.count <= 300, !payload.contains(where: \.isNewline) else { return .ignore }
+        guard patterns.contains(where: { payload.range(of: $0, options: .regularExpression) != nil })
+        else { return .ignore }
+        return .ref(payload)
+    }
+
+    /// Ghostty's built-in path link is checked before user rules, so it claims a dotted cross-project ref such as
+    /// `group/my.proj!12`, with whatever prose punctuation its greedy match kept. Only the cross-project shape is
+    /// taken back: a bare `!12` or hash never reaches here through the path link. When a file of that name exists,
+    /// ghostty delivers its absolute path instead, and that is left alone: which segments named the project is lost.
+    static func reclaimedRefDisposition(_ raw: String, path: LinkDisposition) -> LinkDisposition {
+        guard path == .ignore else { return path }
+        var payload = Substring(raw)
+        while let last = payload.last, ".,;:)?!*=&".contains(last) { payload = payload.dropLast() }
+        return refDisposition(String(payload), patterns: [crossProjectRefPattern])
     }
 
     /// Extensions a clicked path may carry: markdown for plannotator, the rest for revdiff.

@@ -40,6 +40,14 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- forge references printed in any pane are clickable. Shift+Cmd+click `!482`, `#12`, a commit hash such as
+  `c865bc6c`, or `group/proj!12`, `group/proj#34` and `owner/repo@c865bc6c`: the MR, PR or issue opens over
+  that pane, resolved against the pane's checkout and its `origin` on GitLab or GitHub. A commit always opens
+  a plannotator review of its diff, from the local clone or fetched from the forge. GitLab issue, commit,
+  pipeline and job URLs and GitHub pull request, issue and commit URLs open too: a pipeline as a job table per
+  stage, a job as its log tail. A short ref in a remote pane is not resolved and says so in a HUD. Needs
+  `agterm-open-link` from agterm-agents, `glab` and `gh` (logged in), `agterm-plannotate`, and one line in
+  `ghostty.conf`: `config-file = ~/dev/agterm-agents/share/agterm-open-link/links.conf`
 - a Jira key or a GitLab merge request URL printed in any pane is clickable. Shift+Cmd+click `MGNLPN-823` or
   an MR link and the issue or MR opens over that pane: summary, status, description and comments, in a
   terminal view by default, or as a rendered page or in the browser, chosen per kind in

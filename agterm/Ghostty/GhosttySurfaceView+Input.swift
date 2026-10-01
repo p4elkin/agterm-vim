@@ -569,6 +569,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case let .xchat(id): openXchatMessage(id)
         case let .openPath(path, line): openFilePath(path, line: line)
+        case let .ref(payload): openRef(payload)
         case .ignore: return
         }
     }
@@ -601,6 +602,16 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         let arguments = OpenPathLaunch.arguments(path: path, line: line, session: session, pane: pane,
                                                  socket: env["AGTERM_SOCKET"])
         runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
+    }
+
+    /// A forge ref (`!12`, a commit hash) goes to `agterm-open-link` with this pane's directory to resolve it in.
+    /// No `NSWorkspace` fallback: an `agterm-ref:` link means nothing to the system opener.
+    private func openRef(_ payload: String) {
+        guard let session else { return }
+        let pane: CommandContext.Pane = isSplitPane ? .right : .left
+        let arguments = OpenLinkLaunch.arguments(ref: payload, session: session, pane: pane,
+                                                 socket: env["AGTERM_SOCKET"])
+        runAgentHelper(OpenLinkLaunch.helperName, arguments: arguments, sessionID: session.id)
     }
 
     /// A pane's web link goes through `agterm-open-link`, which shows a Jira or merge request view or opens the
