@@ -294,7 +294,8 @@ struct LinkPolicyTests {
     @Test(arguments: [
         "agterm-path:", "agterm-path:docs/x.md", "agterm-path:-x.md", "agterm-path:x.exe", "agterm-path:Makefile",
         "agterm-path:.md", "agterm-path:x.md\n", "agterm-path:x.swift:0", "agterm-path:~x.md", "agterm-path:x y.md",
-        "agterm-path:" + String(repeating: "a", count: 253) + ".md", "AGTERM-PATH:x.md",
+        "agterm-path:" + String(repeating: "a", count: 253) + ".md", "AGTERM-PATH:x.md", "agterm-path:x\u{200D}.md",
+        "agterm-path:é.md",
     ])
     func malformedBareNamesAreIgnored(_ raw: String) {
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)

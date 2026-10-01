@@ -130,8 +130,9 @@ public enum LinkPolicy {
     /// so Finder only ever sees a plain `/…` path and never leans on the original authority for host
     /// handling; a `file://` with a non-local host, an empty/relative path, a UNC-style `//`-path, an
     /// auto-mount path (`/net`, `/Network`, `/home`, checked AFTER `..` normalization so `/tmp/../net/x`
-    /// can't sneak through), or any other scheme / schemeless / unparseable input → `.ignore`. `localHosts`
-    /// is injected (default: this machine's names) so the decision stays host-free and unit-testable.
+    /// can't sneak through), or any other scheme or unparseable input → `.ignore`. The agterm schemes and
+    /// schemeless paths route as the type comment says. `localHosts` is injected (default: this machine's
+    /// names) so the decision stays host-free and unit-testable.
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
         if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
             return reclaimedRefDisposition(raw, path: openPathDisposition(raw))
@@ -231,7 +232,7 @@ public enum LinkPolicy {
         var name = Substring(payload)
         while let last = name.last, ".,;:)?!*".contains(last) { name = name.dropLast() }
         guard let (candidate, line) = splitLine(name),
-              candidate.range(of: #"^[\w@+][\w.@+~-]*$"#, options: .regularExpression) != nil,
+              candidate.range(of: #"^[A-Za-z0-9_@+][A-Za-z0-9_.@+~-]*$"#, options: .regularExpression) != nil,
               hasOpenableExtension(Substring(candidate))
         else { return .ignore }
         return .openPath(path: candidate, line: line)
