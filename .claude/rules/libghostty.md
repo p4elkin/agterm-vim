@@ -224,7 +224,8 @@ paths:
 - Six dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
   Finder and never opened — opening goes through LaunchServices, so a click on `file:///…/X.app` or
   `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.openPath` for a
-  schemeless file path. `.ref` for a forge reference. `.ignore` for everything else, which is most things: a terminal renders untrusted
+  schemeless file path. `.ref` for a forge reference.
+  `.ignore` for everything else, which is most things: a terminal renders untrusted
   program output, so any escape sequence can carry any scheme.
 - `.openPath` needs no `link` rule. Ghostty's built-in link already matches paths and is checked before any
   user rule, so a custom path rule could never fire; on click it delivers the pwd-resolved absolute path
