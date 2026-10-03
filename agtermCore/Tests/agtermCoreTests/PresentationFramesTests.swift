@@ -52,6 +52,8 @@ struct PresentationFramesTests {
         PresentationFrame(gen: 1, rev: 28, body: .context("PR #517")),
         PresentationFrame(gen: 1, rev: 29, body: .context(nil)),
         PresentationFrame(gen: 1, rev: 30, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: "PR #517"))),
+        PresentationFrame(gen: 1, rev: 31, body: .status(PresentationStatus(
+            status: .blocked, blink: false, color: nil, shape: nil, pane: pane, changedAt: nil, note: "perm: Bash"))),
     ]
 
     @Test(arguments: frames)
@@ -75,6 +77,15 @@ struct PresentationFramesTests {
 
         #expect(try PresentationCodec.decode(line) == PresentationFrame(
             gen: 1, rev: 1, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: nil))))
+    }
+
+    @Test func aStatusWithoutANoteEncodesNoKeyAnOlderViewerWouldMeet() throws {
+        let frame = PresentationFrame(gen: 1, rev: 1, body: .status(Self.status))
+
+        let line = try PresentationCodec.encode(frame)
+
+        #expect(!String(decoding: line, as: UTF8.self).contains("note"))
+        #expect(try PresentationCodec.decode(line.dropLast()) == frame)
     }
 
     @Test func anOversizeLineIsRefusedBeforeDecoding() {

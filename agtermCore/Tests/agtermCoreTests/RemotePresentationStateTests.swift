@@ -115,6 +115,37 @@ struct RemotePresentationStateTests {
                                                          shape: .star, statusPane: .right))
     }
 
+    @Test func aMirroredNoteLandsOnTheFarRow() throws {
+        let (store, session) = try attached()
+        var mirrored = status(.blocked, pane: .identity(Self.remoteRight))
+        mirrored.note = "perm: Bash"
+
+        store.applyRemoteStatus(mirrored, forSession: session.id)
+
+        #expect(session.agentIndicator.note == "perm: Bash")
+    }
+
+    @Test(arguments: ["two\nlines", String(repeating: "x", count: 257), "  "])
+    func anInvalidMirroredNoteIsDroppedAndTheStatusKept(_ note: String) throws {
+        let (store, session) = try attached()
+        var mirrored = status(.blocked, pane: nil)
+        mirrored.note = note
+
+        store.applyRemoteStatus(mirrored, forSession: session.id)
+
+        #expect(session.agentIndicator.status == .blocked)
+        #expect(session.agentIndicator.note == nil)
+    }
+
+    @Test func theOriginPublishesItsNote() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo"))
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Bash"), forSession: session.id)
+
+        #expect(store.presentationStatus(of: session)?.note == "tool: Bash")
+    }
+
     @Test func aMirroredClearFromAnotherPaneIsAppliedWhereTheControlPathWouldRefuseIt() throws {
         let (store, session) = try attached()
         store.applyRemoteStatus(status(.blocked, pane: .identity(Self.remoteLeft)), forSession: session.id)

@@ -34,13 +34,20 @@ extension AppStore {
         let owner = status.map { localStatusPane($0.pane, in: session) }
         let indicator = status.map {
             AgentIndicator(status: $0.status, blink: $0.blink, color: $0.color, shape: $0.shape,
-                           statusPane: owner?.pane)
+                           statusPane: owner?.pane, note: $0.note.flatMap(Self.validMirroredNote))
         } ?? AgentIndicator()
         setAgentIndicator(indicator, forSession: id)
         // the setter stamps this Mac's clock; the origin's is what orders rows after a reconnect
         if let stamp = status?.changedAt { session.statusChangedAt = Date(timeIntervalSince1970: stamp) }
         session.remotePresentation?.statusBridged = indicator.status != .idle
         session.remotePresentation?.statusOwnerResolved = owner?.resolved ?? true
+    }
+
+    /// A wire note held to the rules `session.status --note` enforces on the origin, so a peer cannot put
+    /// on this row what a local caller could not.
+    private static func validMirroredNote(_ raw: String) -> String? {
+        if case let .valid(value) = Session.validateStatusNote(raw) { return value }
+        return nil
     }
 
     /// Applies the status a snapshot carries, unless the row holds a non-idle one set on this Mac. A snapshot

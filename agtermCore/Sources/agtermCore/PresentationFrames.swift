@@ -57,15 +57,18 @@ public struct PresentationStatus: Codable, Equatable, Sendable {
     public var pane: PresentationPane?
     /// Epoch seconds on the origin's clock.
     public var changedAt: Double?
+    /// The `session.status --note` reason; absent from an origin predating it.
+    public var note: String?
 
     public init(status: AgentStatus, blink: Bool, color: String?, shape: StatusShape?, pane: PresentationPane?,
-                changedAt: Double?) {
+                changedAt: Double?, note: String? = nil) {
         self.status = status
         self.blink = blink
         self.color = color
         self.shape = shape
         self.pane = pane
         self.changedAt = changedAt
+        self.note = note
     }
 }
 
