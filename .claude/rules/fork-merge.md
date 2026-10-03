@@ -76,8 +76,10 @@ lands.
 ⚠️ `swift test`, `make lint` and `make release` do not compile `agtermTests`. A merge that breaks the
 hosted test target passes all three. Run `make test-app` as well, every time.
 
-After a merge that touches `agtermCore`, also run `swift build --product agterm-headless` on p4linux: the
-headless origin is Linux-only, and no Mac gate links its executable. See [[headless-origin]].
+After a merge that touches `agtermCore`, also run the Linux gate on p4linux, `swift test --no-parallel` plus
+`swift build --product agterm-headless`: the headless origin is Linux-only, no Mac gate links its executable,
+and an upstream file can compile on the Mac only (see [[headless-origin]] for the gate and its traps).
+Run it in a fresh clone under `/tmp`, never in the clone a p4linux session is working in.
 
 ⚠️ **The conflict count predicts nothing.** The 2026-08-10 run shipped two defects. One came out of a
 resolved conflict; the other came from a file with no conflict at all — upstream added `FullScreenChordTests`

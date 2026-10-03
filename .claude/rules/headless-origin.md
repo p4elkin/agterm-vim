@@ -220,6 +220,12 @@ warns on a different or missing commit: the presentation version is what a strea
 `swift test --no-parallel` from `agtermCore/`, with swiftly's `swift` (Swift 6.2.4).
 The Phase 0 baseline passed 4193 tests in 175 suites.
 
+- Over a non-interactive ssh, source `~/.local/share/swiftly/env.sh` and put a real node first on PATH
+  (`~/.local/share/mise/installs/node/26/bin`): the mise shim answers `node is not a valid shim` there,
+  and every `OpenCodeStatusHookTests` case fails on it (measured 2026-10-03).
+- An upstream file using `@Observable` with only `import Foundation` compiles on the Mac and fails here:
+  swift-corelibs does not re-export `Observation` (`RemoteReconnect.swift`, 2026-10-03).
+
 - Serial, not parallel: `SocketClientTests` captures the process-global `STDOUT_FILENO`, and a test in
   another suite writing to stdout meanwhile lands in its pipe (`runEchoesNewIdForCreateCommand` reads
   `ok\n` extra). `.serialized` orders only its own suite.
