@@ -35,6 +35,11 @@ extension Session {
             when it resolves; falls back to --pane otherwise.
             """)
         var paneID: String?
+        @Option(name: .long, help: """
+            A one-line reason shown with the status (max 256 UTF-8 bytes); read back as statusNote and \
+            cleared by the next status set without it.
+            """)
+        var note: String?
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
 
@@ -53,7 +58,7 @@ extension Session {
                            args: options.withWindow(ControlArgs(pane: pane, paneID: paneID, status: state,
                                                                  blink: blink ? true : nil,
                                                                  autoReset: autoReset ? true : nil, sound: sound,
-                                                                 color: color, shape: shape)))
+                                                                 note: note, color: color, shape: shape)))
         }
     }
 

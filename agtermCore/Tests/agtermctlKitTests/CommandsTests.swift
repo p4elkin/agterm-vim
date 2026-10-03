@@ -681,6 +681,13 @@ struct CommandsTests {
         #expect(try request(["session", "status", "active", "--shape", shape.rawValue]).args?.shape == shape.rawValue)
     }
 
+    @Test func sessionStatusWithNote() throws {
+        let req = try request(["session", "status", "blocked", "--note", "perm: Bash"])
+        #expect(req == ControlRequest(cmd: .sessionStatus, target: "active",
+                                      args: ControlArgs(status: "blocked", note: "perm: Bash")))
+        #expect(try request(["session", "status", "blocked"]).args?.note == nil)
+    }
+
     @Test func sessionStatusWithoutShape() throws {
         let req = try request(["session", "status", "active"])
         #expect(req.args?.shape == nil)
