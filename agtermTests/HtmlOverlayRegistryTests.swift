@@ -165,7 +165,8 @@ final class HtmlOverlayRegistryTests: XCTestCase {
     private let sharing = FakeSharing()
 
     override func setUp() async throws {
-        directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-html-reg-\(UUID().uuidString)")
+        // not $TMPDIR: WebContent reads the app's temp directory whatever the grant, so no grant test could fail there
+        directory = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("agterm-html-reg-\(UUID().uuidString)")
         pages = directory.appendingPathComponent("pages")
         try FileManager.default.createDirectory(at: pages, withIntermediateDirectories: true)
         store = AppStore(persistence: PersistenceStore(directory: directory.appendingPathComponent("state")))
