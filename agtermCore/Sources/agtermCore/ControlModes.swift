@@ -234,10 +234,12 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
     /// app-side. A resolved token OVERRIDES the stale role `pane` (a promoted-then-re-split pane, #199);
     /// nil/empty/unknown falls back to `pane`.
     public let paneID: String?
+    /// The trimmed note, already validated by the dispatcher; nil clears the previous one.
+    public let note: String?
 
     public init(status: AgentStatus, blink: Bool?, autoReset: Bool?, sound: String?,
                 color: String? = nil, shape: StatusShape? = nil,
-                pane: StatusPane? = nil, paneID: String? = nil) {
+                pane: StatusPane? = nil, paneID: String? = nil, note: String? = nil) {
         self.status = status
         self.blink = blink
         self.autoReset = autoReset
@@ -246,6 +248,7 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
         self.shape = shape
         self.pane = pane
         self.paneID = paneID
+        self.note = note
     }
 }
 

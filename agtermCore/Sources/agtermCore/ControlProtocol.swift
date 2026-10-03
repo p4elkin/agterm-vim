@@ -407,6 +407,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// = the system alert, anything else a named `NSSound(named:)` sound (e.g. `Glass`, also resolving
     /// custom `~/Library/Sounds`). nil/empty = none; the Settings "Blocked sound" may still play on `blocked`.
     public var sound: String?
+    /// One-line reason shown with the `session.status` state, checked by `Session.validateStatusNote`.
+    /// nil clears it: a status set without a note drops the previous one.
+    public var note: String?
     /// Per-slot theme names for `theme.set`: `light` is the light/single slot (an alias for the positional
     /// `name`, so passing both errors); `dark` sets the dark slot, whose presence makes the app track the
     /// macOS appearance (stored as ghostty's dual `light:,dark:` form); `none` clears it. Bundled names only.
@@ -467,6 +470,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 title: String? = nil, body: String? = nil,
                 width: Int? = nil, height: Int? = nil, sidebarWidth: Double? = nil, x: Int? = nil, y: Int? = nil, display: Int? = nil,
                 status: String? = nil, blink: Bool? = nil, autoReset: Bool? = nil, sound: String? = nil,
+                note: String? = nil,
                 ratio: Double? = nil, ratioDelta: Double? = nil,
                 path: String? = nil, color: String? = nil, textColor: String? = nil, shape: String? = nil,
                 opacity: Double? = nil, fit: String? = nil,
@@ -536,6 +540,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.blink = blink
         self.autoReset = autoReset
         self.sound = sound
+        self.note = note
         self.ratio = ratio
         self.ratioDelta = ratioDelta
         self.path = path

@@ -530,6 +530,14 @@ struct ControlProtocolTests {
         #expect(decoded.args?.sound == "Glass")
     }
 
+    @Test func sessionStatusRoundTripsWithNote() throws {
+        let request = ControlRequest(cmd: .sessionStatus, target: "9f3c",
+                                     args: ControlArgs(status: "active", note: "ci: waiting"))
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.args?.note == "ci: waiting")
+    }
+
     @Test func sessionStatusOmitsSoundWhenNil() throws {
         let request = ControlRequest(cmd: .sessionStatus, target: "9f3c", args: ControlArgs(status: "active"))
         let decoded = try roundTrip(request)

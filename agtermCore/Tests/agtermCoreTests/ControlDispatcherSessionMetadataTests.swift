@@ -213,6 +213,36 @@ struct ControlDispatcherSessionMetadataTests {
         ])
     }
 
+    @Test func sessionStatusPassesTheTrimmedNote() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus, target: "session", args: ControlArgs(status: "active", note: "  ci: waiting  ")
+        ))
+
+        #expect(response == ControlResponse(ok: true))
+        #expect(actions.calls == [
+            .sessionStatus(target: "session", window: nil,
+                           ControlSessionStatusUpdate(status: .active, blink: nil, autoReset: nil,
+                                                      sound: nil, note: "ci: waiting"))
+        ])
+    }
+
+    @Test(arguments: [String(repeating: "a", count: 300), "ci\nwaiting", "   "])
+    func sessionStatusRejectsAnInvalidNoteBeforeAnyMutation(note: String) async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+
+        let response = await dispatcher.dispatch(ControlRequest(
+            cmd: .sessionStatus, target: "session", args: ControlArgs(status: "active", note: note)
+        ))
+
+        #expect(response?.ok == false)
+        #expect(response?.error?.hasPrefix("note ") == true)
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func sessionStatusRejectsInvalidShapeWithoutMutating() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

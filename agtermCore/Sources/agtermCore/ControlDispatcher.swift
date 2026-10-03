@@ -483,11 +483,18 @@ public struct ControlDispatcher {
             case .pane(let parsed): pane = parsed
             case .rejected(let rejection): return rejection
             }
+            var note: String?
+            if let raw = request.args?.note {
+                switch Session.validateStatusNote(raw) {
+                case .valid(let trimmed): note = trimmed
+                case .invalid(let message): return ControlResponse(ok: false, error: message)
+                }
+            }
             let update = ControlSessionStatusUpdate(status: status, blink: request.args?.blink,
                                                     autoReset: request.args?.autoReset,
                                                     sound: request.args?.sound, color: request.args?.color,
                                                     shape: shape,
-                                                    pane: pane, paneID: request.args?.paneID)
+                                                    pane: pane, paneID: request.args?.paneID, note: note)
             return await actions.setSessionStatus(request.target, window: request.args?.window, update: update)
         case .sessionRestore:
             return dispatchSessionRestore(request)
