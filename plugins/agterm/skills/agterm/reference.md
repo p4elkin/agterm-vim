@@ -35,10 +35,11 @@ events for its current process run. Independent readers do not consume one anoth
 The event kinds and payloads are:
 
 - `status`: `name`, normalized `status` (`idle`|`active`|`blocked`|`completed`), `previous` (the
-  status before the write, equal to `status` when only blink, pane, color or shape changed), a `blink`
-  boolean, and optional `pane`, `color` and `shape` (the last two being the per-call `--color`/`--shape`
-  overrides). An event fires whenever the whole indicator changes, not just the state name — so a
-  change to `blink`, `pane`, `color` or `shape` alone is a real event you can watch, while re-asserting
+  status before the write, equal to `status` when only blink, pane, color, shape or note changed), a
+  `blink` boolean, and optional `pane`, `color`, `shape` and `note` (the per-call `--color`/`--shape`
+  overrides and the `--note` reason). An event fires whenever the whole indicator changes, not just the
+  state name — so a change to `blink`, `pane`, `color`, `shape` or `note` alone is a real event you can
+  watch, while re-asserting
   an identical indicator emits nothing. Clearing emits `idle`.
 - `notify`: `name`, effective `title`, and `body`. It is emitted after target and foreground-focus
   suppression checks, including when desktop banners are disabled.
@@ -209,10 +210,11 @@ glyph-tint override — the `--color` value; omitted when idle or using the conf
 `statusShape` (the glyph silhouette override — the `--shape` value, one of
 `circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape picked in Settings reads back as
-absent), `statusChangedAt` (when the status was last SET, in epoch seconds — the same clock an event's
+absent), `statusNote` (the one-line reason — the `--note` value; omitted when idle or set without one),
+`statusChangedAt` (when the status was last SET, in epoch seconds — the same clock an event's
 `ts` carries, so the two compare directly; omitted before any set. It is stamped on every ACCEPTED
-`session status` — a call refused by the pane-precedence rule below stamps nothing — not only on a
-change of state, so a hook re-pushing `active` refreshes it and
+`session status` — a call refused by the pane-precedence rule below stamps nothing, and neither does one
+that changes only the note — not only on a change of state, so a hook re-pushing `active` refreshes it and
 `now - statusChangedAt` reads as how long ago the status was last WRITTEN, including idle.
 Automatic and manual clears and pane promotion also count.
 Ephemeral like `unseen`: never persisted, so it is absent after a restart even for a restored session),
@@ -618,11 +620,16 @@ error keeps those names for compatibility.
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|diamond|capsule|star] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|diamond|capsule|star] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
   set the sidebar agent-status glyph. Every ACCEPTED call stamps the session node's
   `statusChangedAt`, including idle and one that re-pushes the same status, so a poller can read the last
   set time without keeping state of its own; a call refused by the pane-precedence rule
-  changes nothing, the stamp included. `--blink` requests an attention pulse; macOS Reduce Motion
+  changes nothing, the stamp included, and a call changing only `--note` keeps the stamp.
+  `--note` attaches a one-line reason (trimmed; at most 256 UTF-8 bytes; no control characters or line
+  breaks — a breaking value is rejected and changes nothing). It rides the status like `--color`, so the
+  next call without it clears it, and an idle status keeps none. It reads back as `statusNote` on `tree`
+  and as `note` on the `status` event, including on a far row. An agtermctl predating it fails with
+  `Unknown option '--note'`, so a caller can retry without it. `--blink` requests an attention pulse; macOS Reduce Motion
   suppresses the repeating sidebar and dashboard animation while keeping the status visible, and the
   pulse resumes when Reduce Motion is disabled. `--auto-reset` clears it back to idle once the session
   is visited (use for a one-shot completion flash). `--sound` plays a

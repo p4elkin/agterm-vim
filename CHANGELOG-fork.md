@@ -40,6 +40,10 @@ publishes an empty body with only a warning on stderr.
 
 ### New Features
 
+- `agtermctl session status <state> --note "<text>"` attaches a one-line reason to an agent status, so a
+  row can say why it is blocked. It reads back as `statusNote` in `tree --json` and as `note` on the
+  `status` event, on local rows and on rows mirrored from a headless origin. The next status set without
+  it clears it; a change of the note alone does not move `statusChangedAt`.
 - a bare file name printed in any pane is clickable: Shift+Cmd+click `links.conf` or `README.md:12` and it
   opens like a path with a directory. It is looked up in the pane's directory and repository first, then in
   the repositories open in other agterm rows, then in zoxide's most-used ones; several matches in one place

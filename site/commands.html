@@ -508,10 +508,11 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusShape</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusNote</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusChangedAt</span> (when the status was last set,
                 in epoch seconds on the same clock as an event's
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ts</span>; omitted before any set, refreshed by every set
-                including idle and repeated values, and never persisted),
+                including idle and repeated values but not by a note-only change, and never persisted),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">foreground</span> /
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitForeground</span> (each pane's live foreground
                 argv, omitted at the shell prompt or for a setuid program like top/sudo),
@@ -667,8 +668,9 @@
                 normalized status, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">previous</span> (the status before
                 the write), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blink</span>, and the optional
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pane</span>,
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">color</span>, and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">shape</span> fields.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">color</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">shape</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">note</span> fields.
               </p>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 <strong style="color: #e6e1d7">Cursors.</strong> The raw response returns the batch under
@@ -1412,7 +1414,7 @@
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session status &lt;idle|active|completed|blocked&gt; [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb]
-                [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN] [--target T] [--window W]
+                [--shape SHAPE] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.status</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -1444,6 +1446,8 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">capsule</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">star</span>) overrides the glyph silhouette the same
                 way, falling back to the Settings shape for that state; an unknown name errors and leaves the status unchanged.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--note TEXT</span> attaches a one-line reason (at most 256 UTF-8 bytes, no line breaks; a breaking
+                value errors and changes nothing) that the next status set without it clears.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span> (default
@@ -1466,10 +1470,12 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusBlink</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusColor</span>, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusShape</span> (the last two reporting the
-                per-call override only), and
+                per-call override only),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusNote</span>, and
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">statusChangedAt</span> — every accepted call stamps it,
                 including idle and one that re-pushes the same status, so a poller reads the last set time
-                without keeping state of its own. Automatic and manual clears also count.
+                without keeping state of its own; a call changing only the note keeps it. Automatic and manual
+                clears also count.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane-id</span> is the surface's stable spawn token
                 (the shell's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">$AGTERM_PANE_ID</span>), forwarded
                 automatically by the agent-status hook; when it resolves it overrides

@@ -3281,11 +3281,14 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as the session's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusColor</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusShape</span>, each reporting
-              the per-call override only. Every accepted status set, including idle, also stamps the session's
+              the per-call override only.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--note</span> attaches a one-line reason the same way, read back as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusNote</span>. Every accepted status set, including idle, also stamps the session's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusChangedAt</span> (epoch seconds,
               omitted before any set), including a call that re-pushes the same status — so a script polling
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> can tell how long ago the
-              status was last written without tracking that itself. Automatic and manual clears also count.
+              status was last written without tracking that itself. A set changing only the note keeps the stamp.
+              Automatic and manual clears also count.
               It is ephemeral and does not survive a restart.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">

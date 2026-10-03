@@ -848,14 +848,21 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - Validate color and shape before mutation. Shapes are circle, square, triangle, diamond, capsule, star;
   derive validation/help from `StatusShape.allCases`. Idle accepts but does not render shape.
   AppKit and SwiftUI resolve through shared color/symbol helpers.
-- `ControlEventPayload` and `EventFormatter.human` must include every override; human status prints color
-  and shape. Tree reports state, pane, true blink, per-call color, and per-call shape only while non-idle.
+- `ControlEventPayload` and `EventFormatter.human` must include every override; human status prints color,
+  shape and the note, quoted by `String(reflecting:)`. Tree reports state, pane, true blink, per-call color,
+  per-call shape and `statusNote` only while non-idle.
   It reports `statusChangedAt` whenever it exists, including idle.
 - `statusChangedAt` is `Session.statusChangedAt` as epoch seconds — a plain `Double`, since
   `ControlProtocol.swift` imports no Foundation. It shares the `ControlEvent.ts` clock so a poller can
   compare the two, and `setAgentIndicator` stamps it BEFORE the unchanged-indicator early return, which is
   what makes every set, including idle and repeated values, refresh the age. Automatic and manual clears
-  also count. Ephemeral: never persisted, absent before any set and after restore.
+  also count. The one exception is a write that differs from the previous indicator only in `note`: it
+  keeps the stamp, since a new reason is not a new state and auto-follow's FIFO orders blocked rows by it. Ephemeral: never persisted, absent before any set and after restore.
+- `--note` is a one-line reason riding the indicator like `--color`, so a write without it clears it.
+  The dispatcher holds it to the `session context` rules through `Session.validateStatusNote` and rejects
+  a breaking value before any mutation. Idle keeps no note: a far row receives idle as an absent
+  `PresentationStatus`, so an idle note could never travel. `PresentationStatus.note` is optional for
+  mixed versions, and `applyRemoteStatus` drops a wire note that fails the same check.
 - Pane is left/right/scratch, nil meaning left. It controls pane-scoped keystroke clearing and GUI
   blocked/completed reveal. Control attention navigation changes selection only.
 - Pane also decides PRECEDENCE while a session is blocked: a write from another pane that is neither
