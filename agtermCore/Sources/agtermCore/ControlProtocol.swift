@@ -452,6 +452,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var value: String?
     /// page is the page id `session.overlay.result` reads the outcome of, instead of a program's exit status.
     public var page: String?
+    /// attach is the origin session `zmx.attach --beside` asks the presenting Mac to attach right after `target` (fork only).
+    public var attach: String?
 
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
@@ -485,7 +487,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil) {
+                persistent: Bool? = nil, attach: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -575,6 +577,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.page = page
         self.chromeless = chromeless
         self.persistent = persistent
+        self.attach = attach
     }
 }
 

@@ -233,6 +233,39 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertFalse(response.error?.contains("rm -rf") ?? true)
     }
 
+    func testAForwardedAttachBesidePlacesTheSessionAfterTheRowFromItsOwnHostUnselected() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let spawner = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: "buildbox"))
+        let after = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory()))
+        let spawnerRemote = UUID().uuidString
+        let origin = RemoteBinding.Origin(host: "buildbox", endpoint: ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/z"),
+                                          sessionName: "spawner")
+        store.bindRemote(RemoteBinding(remoteSessionID: spawnerRemote, daemonsByLocalPane: [:], presentationVersion: 1, origin: origin),
+                         forSession: spawner.id)
+        let selected = store.selectedSessionID
+        let attached = UUID().uuidString
+        let projection = Self.projection.replacingOccurrences(of: #""id":"s1""#, with: #""id":"\#(attached)""#)
+        let runner = FakeRemoteRunner(result: RemoteCommandResult(status: 0, stdout: projection, stderr: ""))
+        let server = makeServer(list: "", remoteRunner: runner)
+        let request = ControlRequest(cmd: .zmxAttach, target: spawnerRemote, args: ControlArgs(host: "elsewhere", attach: attached))
+
+        let response = await server.runForwarded(request, forSession: spawner.id)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(response.result?.id, attached)
+        XCTAssertEqual(runner.invocations, [try RemoteSession.treeCommand(host: "buildbox")])
+        let sessions = try XCTUnwrap(store.workspaces.first { $0.id == workspace }).sessions
+        let index = try XCTUnwrap(sessions.firstIndex { $0.id == spawner.id })
+        XCTAssertEqual(sessions[index + 1].remotePresentation?.binding.remoteSessionID, attached)
+        XCTAssertEqual(sessions[index + 1].remoteHost, "buildbox")
+        XCTAssertEqual(sessions[index + 2].id, after.id)
+        XCTAssertEqual(store.selectedSessionID, selected)
+
+        let again = await server.runForwarded(request, forSession: spawner.id)
+        XCTAssertEqual(again.error, "session \(attached) already has a row here")
+    }
+
     func testNewOnAHostCreatesThereThenAttachesThatSession() async throws {
         let store = try XCTUnwrap(library.activeStore)
         let before = store.workspaces.flatMap(\.sessions).count

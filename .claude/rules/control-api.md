@@ -1638,6 +1638,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   that row and its window and maps the row id in the reply back to the origin's. Pick and page polls keep their
   ids. A reply over the frame limit becomes `reply larger than the frame limit`. The origin's side is in
   [[headless-origin]].
+- `zmx.attach` is forwarded only in its `--beside` form: target is the presenting row's origin session and
+  `args.attach` the session to attach. `attachBeside` takes the host and transport from the row's binding, never
+  from the request, places the new row after it unselected, and refuses a session that already has a row.
+  A Mac dispatcher refuses the form outright, since its target names a row rather than a remote session.
 - A row whose stream is not up says so on its sidebar indicator, naming the host. Retrying is automatic;
   closing and reattaching the session is the manual way to retry now.
 - The origin bounds each stream: 256 KiB a line checked before delivery, a bounded outbound queue whose

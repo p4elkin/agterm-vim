@@ -20,6 +20,13 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Added
+
+- an agent offloaded on p4linux gets its Mac row again, right after the row that started it. On the
+  headless origin `agtermctl zmx attach <host> <id> --beside <row>` asks the Mac presenting that row to
+  attach the session, over the presentation stream that Mac already holds, so nothing calls the Mac.
+  With no presenter the session waits in the picker, as before.
+
 ### Changed
 
 - every agent on p4linux now runs in a session of its headless server. The old rows, a mosh attach of a

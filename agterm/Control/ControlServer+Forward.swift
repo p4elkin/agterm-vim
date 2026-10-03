@@ -16,6 +16,12 @@ extension ControlServer {
               let windowID = library.windowID(for: store) else {
             return Self.forwardRefusal(request, "the row is no longer attached")
         }
+        if request.cmd == .zmxAttach {
+            guard let target = request.target, Self.sameSession(target, remoteID) else {
+                return Self.forwardRefusal(request, "the target is not the session this row presents")
+            }
+            return await attachBeside(rowID: id, session: request.args?.attach ?? "")
+        }
         var local = request
         // a pick or page poll names its own id, which this Mac issued
         let poll = request.cmd == .pickResult || request.cmd == .pickCancel

@@ -41,7 +41,7 @@ struct HeadlessCatalogTests {
 
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
-        "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.attach", "zmx.screen", "browser.clear",
+        "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.screen", "browser.clear",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")
@@ -58,8 +58,10 @@ struct HeadlessCatalogTests {
         #expect(HeadlessCatalog.support(for: try #require(Command(rawValue: name))) == .forwarded)
     }
 
-    @Test(arguments: ["session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result"])
-    func theOverlayFamilyIsRoutedPerRequest(_ name: String) throws {
+    @Test(arguments: [
+        "session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result", "zmx.attach",
+    ])
+    func theOverlayFamilyAndAttachAreRoutedPerRequest(_ name: String) throws {
         #expect(HeadlessCatalog.support(for: try #require(Command(rawValue: name))) == .routed)
     }
 

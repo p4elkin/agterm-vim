@@ -58,6 +58,8 @@ is the `.claude/rules` file that owns the design.
   `scripts/headless/install.sh` installs it as a systemd user service.
   From a Mac, `agtermctl zmx new <host>` creates a session there and attaches it, a split made on the
   origin grows on the Mac, and the presenter role follows the pane lead (`presenter.take`).
+  On the origin, `agtermctl zmx attach <host> <id> --beside <row>` asks the Mac presenting that row to
+  attach the session right after it, which is how a p4linux offload gets its Mac row.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's

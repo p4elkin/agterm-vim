@@ -237,6 +237,16 @@ struct ControlDispatcherZmxTests {
         #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil, transport: .ssh)])
     }
 
+    @Test func zmxAttachBesideIsRefusedBeforeTheHost() async throws {
+        let actions = MockControlActions()
+        let request = ControlRequest(cmd: .zmxAttach, target: "row", args: ControlArgs(host: "buildbox", attach: "s1"))
+
+        let response = try #require(await ControlDispatcher(actions: actions).dispatch(request))
+
+        #expect(response.error == "zmx.attach --beside is for a headless origin")
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func zmxAttachCarriesTheRequestedTransportAndWindow() async {
         let actions = MockControlActions()
         let request = ControlRequest(cmd: .zmxAttach, target: "s1",

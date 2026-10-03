@@ -19,6 +19,7 @@ struct ForwardPolicyTests {
     ]
     static let routed: Set<String> = [
         "session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result",
+        "zmx.attach",
     ]
 
     @Test func everyCommandHasTheExpectedKind() throws {
@@ -50,7 +51,7 @@ struct ForwardPolicyTests {
         ("session.park", "no windows or UI"), ("session.resize", "no windows or UI"), ("session.go", "no windows or UI"),
         ("window.new", "no windows or UI"), ("theme.set", "no windows or UI"), ("mode", "no windows or UI"),
         ("hooks.reload", "a Mac feature"), ("session.restore", "a Mac feature"), ("session.pairing", "a Mac feature"),
-        ("zmx.attach", "a Mac feature"), ("zmx.prune", "a Mac feature"), ("zmx.reset", "a Mac feature"),
+        ("zmx.prune", "a Mac feature"), ("zmx.reset", "a Mac feature"),
         ("browser.clear", "a Mac feature"), ("zmx.screen", "a Mac feature"), ("keymap.run", "no windows or UI"),
     ])
     func refusalsCarryTheirReason(_ name: String, _ reason: String) throws {
@@ -64,6 +65,15 @@ struct ForwardPolicyTests {
         #expect(ForwardPolicy.route(ControlRequest(cmd: .notify), holdsJob: false) == .served)
         #expect(ForwardPolicy.route(ControlRequest(cmd: .sessionFlag), holdsJob: true) == .forwarded)
         #expect(ForwardPolicy.route(ControlRequest(cmd: .pickResult), holdsJob: false) == .forwarded)
+    }
+
+    @Test func attachIsForwardedOnlyInItsBesideForm() {
+        var args = ControlArgs(host: "p4linux")
+        #expect(ForwardPolicy.route(ControlRequest(cmd: .zmxAttach, target: "s1", args: args), holdsJob: false)
+            == .refused("a Mac feature"))
+        args.attach = "s2"
+
+        #expect(ForwardPolicy.route(ControlRequest(cmd: .zmxAttach, target: "s1", args: args), holdsJob: false) == .forwarded)
     }
 
     @Test func typeIsServedButItsSelectIsRefused() {

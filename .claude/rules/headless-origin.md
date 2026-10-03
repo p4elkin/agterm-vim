@@ -54,6 +54,10 @@ for `control.forwarded`; the frames are in [[control-api]]'s Remote sessions.
   Once that presenter is gone a pick poll answers `cancelled` and a page poll `dismissed`. A pick id no Mac opened
   answers `unknown pick: <id>`. Closing the session forgets its ids.
 - `--html` is refused: the file is on the origin.
+- `zmx attach --beside ROW` is the one forwarded create: the Mac presenting ROW attaches the named origin session
+  right after that row, unselected, from the row's own host and transport, and answers with the origin's id.
+  A plain `zmx.attach` stays refused. This is how a session made on p4linux (an offload) gets a Mac row with no
+  call to the Mac; with no presenter it waits in the picker as before. `ControlServer.attachBeside` is the Mac half.
 
 ## Program overlays
 
