@@ -1207,7 +1207,12 @@ final class CustomCommandRunnerTests: XCTestCase {
     func testKeymapRunReportsACommandThatDidNotStart() throws {
         let fix = try fixture(keymap: "command \"Mark\" true\n")
         let session = try XCTUnwrap(fix.store.activeSession)
-        session.currentCwd = stateDir.appendingPathComponent("missing-directory").path
+        // a missing directory runs from home on this fork, so only one that exists and cannot be entered fails
+        let sealed = stateDir.appendingPathComponent("sealed-directory")
+        try FileManager.default.createDirectory(at: sealed, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: sealed.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sealed.path) }
+        session.currentCwd = sealed.path
 
         let response = controlServer(fix).runCustomCommand(name: "Mark", target: nil, window: nil)
 
