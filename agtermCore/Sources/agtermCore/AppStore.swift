@@ -392,7 +392,10 @@ public final class AppStore {
                                               presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                               remoteOverlays: remoteOverlayNodes(of: session),
                                               htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
-                if session.remoteHost != nil { node.remoteState = session.remotePresentation?.rowState.rawValue }
+                if session.remoteHost != nil {
+                    node.remoteState = session.remotePresentation?.rowState.rawValue
+                    node.remoteSession = session.remotePresentation?.binding.remoteSessionID
+                }
                 return node
             }
             return ControlWorkspaceNode(id: workspace.id.uuidString, name: workspace.name,

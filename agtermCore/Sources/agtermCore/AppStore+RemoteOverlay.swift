@@ -19,15 +19,16 @@ extension AppStore {
     /// Hands an overlay to the viewer presenting `sessionID`: registers the job, reserves the slot so no
     /// second overlay opens on it, and asks the presenter to show it. Nothing is mounted here, so the session
     /// stays uncovered on this Mac. The slot's previous result is cleared, as a local open clears it.
+    /// `requireFollower` false is for an origin with no surfaces of its own, which no lead is ever reported to.
     public func openRemoteOverlay(_ sessionID: UUID, options: ControlSessionOverlayOpenOptions,
-                                  context: OverlayLaunchContext) -> RemoteOverlayOpen {
+                                  context: OverlayLaunchContext, requireFollower: Bool = true) -> RemoteOverlayOpen {
         let pane = options.pane
         guard let hub = presentationHub, let jobs = overlayJobs, hub.hasPresenter(session: sessionID),
               let session = session(withID: sessionID) else { return .notPresented }
         guard session.remoteOverlays.slot(pane) == nil, !localOverlayHolds(pane, in: session) else { return .slotTaken }
         let identity = pane.map { $0 == .right ? session.splitPaneIdentity : session.paneIdentity }
         if case .some(nil) = identity { return .paneMissing }
-        guard session.followsRemotely(paneIdentity: identity.flatMap { $0 }) else { return .notPresented }
+        guard !requireFollower || session.followsRemotely(paneIdentity: identity.flatMap { $0 }) else { return .notPresented }
         guard let frame = try? OverlayJobFrame.context(context).line(),
               frame.count <= PresentationCodec.maxFrameBytes else { return .tooLarge }
         // a HUD yields the session-wide slot to a program, as it does to a local one

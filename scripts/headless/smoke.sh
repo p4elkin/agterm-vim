@@ -113,6 +113,47 @@ PY
 ctl session text --target "$id" --lines 1 > "$state/session-text" || fail "session text"
 [ "$(cat "$state/session-text")" = "$text_marker" ] || fail "session text did not return the last content line"
 
+# a program overlay: a presenter takes the request, the helper claims the job and runs it here
+python3 - "$sock" "$id" "$state/job" <<'PY' &
+import json, os, socket, sys, time
+
+sock_path, session_id, job_file = sys.argv[1:]
+conn = socket.socket(socket.AF_UNIX)
+conn.connect(sock_path)
+lines = conn.makefile("rb")
+conn.sendall((json.dumps({"cmd": "zmx.present", "target": session_id}) + "\n").encode())
+assert json.loads(lines.readline())["ok"], "zmx.present refused"
+conn.sendall((json.dumps({"kind": "hello", "gen": 0, "rev": 0,
+                          "hello": {"version": 1, "kinds": [], "mode": "presenter"}}) + "\n").encode())
+gen = json.loads(lines.readline())["gen"]
+conn.sendall((json.dumps({"kind": "presenter.acquire", "gen": gen, "rev": 0}) + "\n").encode())
+deadline = time.time() + 10
+while time.time() < deadline:
+    frame = json.loads(lines.readline())
+    if frame["kind"] == "overlay.request":
+        with open(job_file + ".tmp", "w") as out:
+            out.write(frame["overlay"]["job"])
+        break
+else:
+    sys.exit(1)
+os.rename(job_file + ".tmp", job_file)
+time.sleep(30)
+PY
+presenter=$!
+sleep 1
+ctl session overlay open "exit 3" --target "$id" >/dev/null || fail "overlay open with a presenter"
+tries=0
+until [ -s "$state/job" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le 50 ] || fail "the presenter never got an overlay request"
+    sleep 0.1
+done
+helper_status=0
+ctl session overlay run-job "$(cat "$state/job")" </dev/null >/dev/null 2>&1 || helper_status=$?
+[ "$helper_status" = 3 ] || fail "run-job exited $helper_status, not the program's 3"
+ctl session overlay result --target "$id" --json | grep -q '"exitCode":3' || fail "overlay result did not answer 3"
+kill "$presenter" 2>/dev/null || true
+
 split_command="printf '%s\n' \"\$AGTERM_PANE\" > '$state/split-pane'; printf '%s\n' \"\$AGTERM_SESSION_ID\" > '$state/split-session'"
 ctl session split on --target "$id" --command "$split_command" >/dev/null || fail "session split"
 tries=0
@@ -152,4 +193,4 @@ while ctl tree --json | grep -q "$second"; do
     sleep 0.1
 done
 
-echo "smoke: ok (tree, zmx tree, session new $id, notify, window new refused, session environment, cwd, status hook active, session text, split environment and close, session close killed the daemon, watcher closed a dead one)"
+echo "smoke: ok (tree, zmx tree, session new $id, notify, window new refused, session environment, cwd, status hook active, session text, program overlay claimed and exited 3, split environment and close, session close killed the daemon, watcher closed a dead one)"

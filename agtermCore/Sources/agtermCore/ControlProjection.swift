@@ -317,6 +317,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let remoteHost: String?
     /// Pane attachment state, separate from the presentation stream; omitted without a bound remote row.
     public internal(set) var remoteState: String?
+    /// The origin's id for a bound remote row's session, which commands run there must name.
+    public internal(set) var remoteSession: String?
 
     /// This Mac's presentation stream to the session's origin, on an attached session only. `state` is
     /// `connecting`, `connected`, `unsupported` for an origin that predates the stream, or `failed` with

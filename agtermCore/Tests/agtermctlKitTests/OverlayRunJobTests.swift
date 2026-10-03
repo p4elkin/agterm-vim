@@ -12,7 +12,12 @@ struct OverlayRunJobTests {
         private var received: [OverlayJobFrame] = []
         private let done = DispatchSemaphore(value: 0)
 
-        init() {
+        init(helper: Int32, origin: Int32) {
+            self.helper = helper
+            self.origin = origin
+        }
+
+        convenience init() {
             var pair: [Int32] = [-1, -1]
             #if canImport(Darwin)
             socketpair(AF_UNIX, SOCK_STREAM, 0, &pair)
@@ -21,8 +26,7 @@ struct OverlayRunJobTests {
             #else
             socketpair(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0, &pair)
             #endif
-            helper = pair[0]
-            origin = pair[1]
+            self.init(helper: pair[0], origin: pair[1])
         }
 
         func serve(reply: String, context: OverlayLaunchContext?) {
@@ -47,6 +51,8 @@ struct OverlayRunJobTests {
         }
 
         func frames() -> [OverlayJobFrame] {
+            // Linux wakes the runner's blocked read, and so ends the stream, only on shutdown
+            shutdown(helper, Int32(SHUT_RDWR))
             close(helper)
             _ = done.wait(timeout: .now() + 5)
             close(origin)
@@ -98,7 +104,6 @@ struct OverlayRunJobTests {
         return nil
     }
 
-    #if canImport(Darwin)
     @Test func aProgramExitingThreeReportsThreeAndTheHelperExitsThree() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("exit 3"))
@@ -110,28 +115,6 @@ struct OverlayRunJobTests {
         #expect(origin.frames() == [.started, .exited(3)])
     }
 
-    #endif
-
-    #if os(Linux)
-    @Test func programOverlaysReportUnsupportedOnLinux() throws {
-        let origin = FakeOrigin()
-        defer { close(origin.origin) }
-        origin.serve(reply: Self.okReply, context: context("exit 0"))
-        let runner = OverlayJobRunner(socket: origin.helper)
-
-        let status = runner.run(try runner.claim("job"), baseEnvironment: Self.base)
-
-        #expect(status == 127)
-        let frames = origin.frames()
-        #expect(frames.count == 1)
-        guard case .launchFailed(let message)? = frames.first else {
-            Issue.record("expected launch-failed")
-            return
-        }
-        #expect(message.contains("not supported on Linux"))
-    }
-    #endif
-
     @Test func aRefusedClaimLaunchesNothing() {
         let origin = FakeOrigin()
         origin.serve(reply: #"{"ok":false,"error":"job not claimable"}"#, context: nil)
@@ -141,7 +124,6 @@ struct OverlayRunJobTests {
         #expect(origin.frames().isEmpty)
     }
 
-    #if canImport(Darwin)
     @Test func aCancelFromTheAppEndsTheProgramCanceled() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("sleep 30"))
@@ -241,8 +223,6 @@ struct OverlayRunJobTests {
         #expect(origin.frames() == [.started, .canceled])
     }
 
-    #endif
-
     @Test func runJobParsesUnderSessionOverlay() throws {
         let command = try #require(try Agtermctl.parseAsRoot(["session", "overlay", "run-job", "job-id"])
             as? agtermctlKit.Session.Overlay.RunJob)
@@ -250,7 +230,6 @@ struct OverlayRunJobTests {
         #expect(command.job == "job-id")
     }
 
-    #if canImport(Darwin)
     @Test func aProgramThatCannotStartReportsLaunchFailed() throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply,
@@ -266,5 +245,104 @@ struct OverlayRunJobTests {
             return
         }
     }
+
+    #if os(Linux)
+    @Test func underARealTerminalTheProgramOwnsItReadsItsKeysAndSetsTheExitStatus() throws {
+        let helper = try #require(Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("agtermctl").path)
+        try #require(FileManager.default.isExecutableFile(atPath: helper))
+        let cwd = (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-run-job-cwd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: cwd, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: cwd) }
+        let path = "/tmp/agterm-rj-\(UUID().uuidString.prefix(8)).sock"
+        let listener = try Self.listen(at: path)
+        defer { close(listener); unlink(path) }
+        // the program is stopped by SIGTTIN on its read unless it leads the terminal's foreground group
+        let command = #"read -r key; test "$key" = hi || exit 9; test "$(pwd)" = "$EXPECTED_CWD" || exit 8; "#
+            + #"stat=$(cat /proc/$$/stat); set -- ${stat#*) }; test "$3" = "$6" || exit 7; exit 4"#
+        let accepted = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var origin: FakeOrigin?
+        Thread {
+            let fd = accept(listener, nil, nil)
+            if fd >= 0 {
+                origin = FakeOrigin(helper: -1, origin: fd)
+                origin?.serve(reply: Self.okReply, context: OverlayLaunchContext(
+                    command: command, cwd: cwd, sessionEnvironment: ["EXPECTED_CWD": cwd]))
+            }
+            accepted.signal()
+        }.start()
+        let terminal = try PseudoTerminal()
+        defer { terminal.close() }
+
+        let pid = try terminal.spawnSessionLeader(["/usr/bin/timeout", "-k", "2", "20", helper,
+                                                   "session", "overlay", "run-job", "job", "--socket", path])
+        #expect(accepted.wait(timeout: .now() + 10) == .success)
+        _ = StreamBridge.writeAll(terminal.primary, Data("hi\n".utf8))
+        let status = terminal.drain(until: pid)
+
+        #expect(status == 4)
+        #expect(try #require(origin).frames() == [.started, .exited(4)])
+    }
+
+    static func listen(at path: String) throws -> Int32 {
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            buffer.copyBytes(from: path.utf8.prefix(buffer.count - 1))
+        }
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard fd >= 0, bound == 0, Glibc.listen(fd, 1) == 0 else { throw SocketClientError("test listener failed") }
+        return fd
+    }
+
+    /// A pty whose secondary side becomes the controlling terminal of a spawned session leader.
+    final class PseudoTerminal {
+        let primary: Int32
+        private let secondary: Int32
+
+        init() throws {
+            // the pty calls are behind _XOPEN_SOURCE, which the Glibc module does not set
+            primary = open("/dev/ptmx", O_RDWR | O_NOCTTY)
+            guard primary >= 0, pty_unlock(primary) == 0, let name = pty_name(primary) else { throw SocketClientError("no pty") }
+            secondary = open(String(cString: name), O_RDWR | O_NOCTTY)
+            guard secondary >= 0 else { throw SocketClientError("no pty secondary") }
+        }
+
+        /// `setsid --ctty` makes the pty the controlling terminal of a new session, as sshd does.
+        func spawnSessionLeader(_ argv: [String]) throws -> pid_t {
+            let argv = ["/usr/bin/setsid", "--ctty", "--wait"] + argv
+            var actions = posix_spawn_file_actions_t()
+            posix_spawn_file_actions_init(&actions)
+            defer { posix_spawn_file_actions_destroy(&actions) }
+            for fd in Int32(0)...2 { posix_spawn_file_actions_adddup2(&actions, secondary, fd) }
+            var pid: pid_t = 0
+            var pointers: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
+            defer { pointers.forEach { free($0) } }
+            let result = posix_spawn(&pid, argv[0], &actions, nil, &pointers, environ)
+            _ = Glibc.close(secondary)
+            guard result == 0 else { throw SocketClientError("spawn failed: \(result)") }
+            return pid
+        }
+
+        /// Reads the terminal so the program never blocks on output, until `pid` exits; returns its status.
+        func drain(until pid: pid_t) -> Int32 {
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            var status: Int32 = 0
+            while waitpid(pid, &status, WNOHANG) == 0 {
+                var probe = pollfd(fd: primary, events: Int16(POLLIN), revents: 0)
+                if poll(&probe, 1, 50) > 0, probe.revents & Int16(POLLIN) != 0 { _ = read(primary, &buffer, buffer.count) }
+            }
+            return status & 0x7f == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
+        }
+
+        func close() { _ = Glibc.close(primary) }
+    }
     #endif
 }
+
+#if os(Linux)
+@_silgen_name("unlockpt") private func pty_unlock(_ fd: Int32) -> Int32
+@_silgen_name("ptsname") private func pty_name(_ fd: Int32) -> UnsafeMutablePointer<CChar>?
+#endif

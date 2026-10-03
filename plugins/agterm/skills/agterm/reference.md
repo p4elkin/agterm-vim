@@ -7,8 +7,20 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
 
 - **Socket resolution** (when `--socket` is omitted): `AGTERM_SOCKET` is the path the running app
   bound; agtermctl resolves the same rendezvous: `<AGTERM_STATE_DIR>/agterm.sock`, else
-  `<$HOME>/Library/Application Support/agterm/agterm.sock`. Passing `--socket "$AGTERM_SOCKET"` is the
+  `<$HOME>/Library/Application Support/agterm/agterm.sock` (on Linux, the headless server's
+  `<$HOME>/.local/state/agterm-headless/agterm.sock`). Passing `--socket "$AGTERM_SOCKET"` is the
   safe explicit form.
+- **In a pane on a headless Linux origin** `agtermctl` reaches that origin, which has no windows. It serves the
+  session and split lifecycle, `status`, `notify`, HUDs, asks, `session text` and `session type`. What needs a
+  window it forwards to the Mac presenting the session: flag, select, reveal, focus, background, copy, paste,
+  select-all, search, bookmarks, `pick`, and `session overlay open --url` with its page commands. Those need
+  `--target "$AGTERM_SESSION_ID"` (the full id; `active` is refused) and fail with `no Mac is presenting this
+  session` when no Mac is. A program overlay (`session overlay open <command> --target "$AGTERM_SESSION_ID"`)
+  runs on the origin and shows on that Mac; `result` and `--block` report its exit code. Refused, with the reason:
+  `window`, `workspace`, `sidebar`, `theme`, `font`, `keymap`, `config`, `quick`, `dashboard`, `mode` and
+  `session go|move|duplicate|park|resize` (no windows or UI); `surface zoom|cursor`, `session scratch` and
+  `session lead` (no terminal surface); `session pairing`, `overlay-redirect`, `hooks`, `restore` and
+  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages.
 - **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch
   close/move prints the affected session count, and `tree`/`window list` print a human listing. Use
   `--json` when you need to read ids or values back.
@@ -145,6 +157,8 @@ split; these describe attribution, not permission grants),
 local session, and never present after a relaunch because a remote session is never written to disk),
 `remoteState` (fork only, on a bound remote row: `attached`, `disconnected`, or `endedOnHost`; describes
 pane attachment state separately from the presentation stream; omitted for local and unbound rows),
+`remoteSession` (fork only, on a bound remote row: the origin's id for the session, which a command run on the
+origin must name as `--target`),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
 origin too old to stream, or `failed` with the reason in `error`, and `mode` is `presenter` when this
 row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not; it says whether the stream is up,
@@ -503,6 +517,8 @@ error keeps those names for compatibility.
 
 - `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--target] [--window W]` — inject text
   as real keystrokes (printable runs plus Return for each newline; no bracketed-paste markers).
+  On a headless Linux origin it writes into the pane's zmx daemon and works with no Mac attached;
+  `--select` and `--pane scratch` are refused there.
   A trailing newline's Return is sent a moment after the text, so a long line submits in an agent TUI;
   Returns inside a multi-line payload are not spaced, so send an agent one line per call.
   A shell's `$(...)` strips trailing newlines; pass the newline with `--stdin` or `$'...\n'`.
@@ -1238,8 +1254,10 @@ Invalid invocations error (rejected at the CLI and re-checked server-side): `--f
 
 ## pick
 
-`agtermctl pick [--prompt TEXT] [--query TEXT] [--select ID] [--allow-custom] [--follow] [--window W] [--no-block]`
-reads choices from stdin and opens a native fuzzy picker in the target window. `pick` defaults to the open
+`agtermctl pick [--prompt TEXT] [--query TEXT] [--select ID] [--allow-custom] [--follow] [--window W] [--target S] [--no-block]`
+reads choices from stdin and opens a native fuzzy picker in the target window. `--target` (default
+`$AGTERM_SESSION_ID`) names the session the picker is for: a headless origin forwards the pick to the Mac
+presenting it, and a Mac ignores it. `pick` defaults to the open
 subcommand, so `agtermctl pick open` is not required. Stdin is read unconditionally, so a call that supplies
 no items needs `< /dev/null` or it blocks.
 

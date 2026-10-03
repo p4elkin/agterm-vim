@@ -6,6 +6,7 @@ final class FakeZmxRunner: ZmxRunning, @unchecked Sendable {
         var arguments: [String]
         var environment: [String: String]
         var workingDirectory: String?
+        var input: Data?
     }
 
     private let lock = NSLock()
@@ -24,9 +25,11 @@ final class FakeZmxRunner: ZmxRunning, @unchecked Sendable {
         lock.withLock { recorded }
     }
 
-    func run(_ arguments: [String], environment: [String: String], workingDirectory: String?,
+    func run(_ arguments: [String], environment: [String: String], workingDirectory: String?, input: Data?,
              timeout: TimeInterval) -> ZmxResult {
-        lock.withLock { recorded.append(Call(arguments: arguments, environment: environment, workingDirectory: workingDirectory)) }
+        lock.withLock {
+            recorded.append(Call(arguments: arguments, environment: environment, workingDirectory: workingDirectory, input: input))
+        }
         if let result = lock.withLock({ results.isEmpty ? nil : results.removeFirst() }) { return result }
         return respond(arguments)
     }

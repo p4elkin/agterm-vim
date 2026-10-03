@@ -94,7 +94,7 @@ public final class OverlayJobs {
     public func started(_ id: String) {
         guard var job = jobs[id], case .claimed(let deadline) = job.state else { return }
         guard now() < deadline else {
-            finish(id, .unknown)
+            abandon(id)
             return
         }
         job.state = .running
@@ -113,6 +113,13 @@ public final class OverlayJobs {
         finishedOrder.append(id)
         if finishedOrder.count > Self.finishedRetention { jobs[finishedOrder.removeFirst()] = nil }
         return true
+    }
+
+    /// A claimed job that missed its start window ends `unknown`, and its helper is told to stop: the slot is
+    /// free again, so a program it starts late would run beside the next overlay.
+    private func abandon(_ id: String) {
+        cancelHooks[id]?()
+        finish(id, .unknown)
     }
 
     /// The helper's connection ended. Without a terminal report first, nobody can say how the job ended.
@@ -143,7 +150,7 @@ public final class OverlayJobs {
         for (id, job) in jobs {
             switch job.state {
             case .unclaimed(let deadline) where current >= deadline: finish(id, .launchFailed)
-            case .claimed(let deadline) where current >= deadline: finish(id, .unknown)
+            case .claimed(let deadline) where current >= deadline: abandon(id)
             default: break
             }
         }

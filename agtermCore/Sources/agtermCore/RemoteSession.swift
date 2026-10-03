@@ -112,7 +112,9 @@ public enum RemoteSession {
         guard isPlain(job) else { throw InvocationError.invalidSession }
         let chain = cliPathPrefix + " && exec agtermctl session overlay run-job " + CommandRestore.shellQuotedLine([job])
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
-        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true) + [remote]
+        // one channel per job: a shared multiplexed connection was measured refusing channels (`Session open refused by peer`)
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true,
+                            options: ["-o", "ControlMaster=no", "-o", "ControlPath=none"]) + [remote]
     }
 
     /// sshd runs a remote command with `/usr/bin:/bin:/usr/sbin:/sbin` and a non-interactive shell reads no
@@ -270,11 +272,11 @@ public enum RemoteSession {
         return sshArguments(host: host, connectTimeout: 5, interactive: false) + ["true"]
     }
 
-    private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool) -> [String] {
+    private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool, options: [String] = []) -> [String] {
         ["ssh", interactive ? "-tt" : "-T",
          "-o", "BatchMode=yes",
-         "-o", "ConnectTimeout=\(connectTimeout)",
-         host]
+         "-o", "ConnectTimeout=\(connectTimeout)"]
+            + options + [host]
     }
 
     /// Refused rather than escaped, and a leading `-` with it: ssh would read that as an option.

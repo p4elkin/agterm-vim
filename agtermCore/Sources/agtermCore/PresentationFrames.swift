@@ -193,6 +193,28 @@ public struct PresentationOverlayChange: Codable, Equatable, Sendable {
     }
 }
 
+/// PresentationForward hands a control request the origin cannot serve to its presenter; `id` pairs the reply.
+public struct PresentationForward: Codable, Equatable, Sendable {
+    public var id: String
+    public var request: ControlRequest
+
+    public init(id: String, request: ControlRequest) {
+        self.id = id
+        self.request = request
+    }
+}
+
+/// PresentationForwarded is the presenter's answer to the `PresentationForward` with the same `id`.
+public struct PresentationForwarded: Codable, Equatable, Sendable {
+    public var id: String
+    public var response: ControlResponse
+
+    public init(id: String, response: ControlResponse) {
+        self.id = id
+        self.response = response
+    }
+}
+
 /// PresentationSnapshot is the replaceable state a subscriber starts from.
 public struct PresentationSnapshot: Codable, Equatable, Sendable {
     public var status: PresentationStatus?
@@ -243,6 +265,8 @@ public struct PresentationFrame: Equatable, Sendable {
         case overlayResize(PresentationOverlayChange)
         /// The viewer closed its surface, which frees a slot held only for a `--wait` surface.
         case overlayClosed(PresentationOverlayChange)
+        case controlForward(PresentationForward)
+        case controlForwarded(PresentationForwarded)
         /// A kind this build does not speak. Kept, with its ordering, so a newer peer does not break the stream.
         case unknown(String)
 
@@ -271,6 +295,8 @@ public struct PresentationFrame: Equatable, Sendable {
             case .overlayClose: return "overlay.close"
             case .overlayResize: return "overlay.resize"
             case .overlayClosed: return "overlay.closed"
+            case .controlForward: return "control.forward"
+            case .controlForwarded: return "control.forwarded"
             case .unknown(let kind): return kind
             }
         }
@@ -289,7 +315,7 @@ public struct PresentationFrame: Equatable, Sendable {
 
 extension PresentationFrame: Codable {
     private enum CodingKeys: String, CodingKey {
-        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, ask, overlay
+        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, ask, overlay, forward
     }
 
     public init(from decoder: Decoder) throws {
@@ -322,6 +348,8 @@ extension PresentationFrame: Codable {
         case "overlay.close": body = .overlayClose(try container.decode(PresentationOverlayChange.self, forKey: .overlay))
         case "overlay.resize": body = .overlayResize(try container.decode(PresentationOverlayChange.self, forKey: .overlay))
         case "overlay.closed": body = .overlayClosed(try container.decode(PresentationOverlayChange.self, forKey: .overlay))
+        case "control.forward": body = .controlForward(try container.decode(PresentationForward.self, forKey: .forward))
+        case "control.forwarded": body = .controlForwarded(try container.decode(PresentationForwarded.self, forKey: .forward))
         default: body = .unknown(kind)
         }
     }
@@ -346,6 +374,8 @@ extension PresentationFrame: Codable {
         case .overlayRejected(let change), .overlayClose(let change), .overlayResize(let change),
              .overlayClosed(let change):
             try container.encode(change, forKey: .overlay)
+        case .controlForward(let forward): try container.encode(forward, forKey: .forward)
+        case .controlForwarded(let forwarded): try container.encode(forwarded, forKey: .forward)
         case .ping, .ack, .seen, .presenterAcquire, .presenterTake, .presenterGranted, .presenterRefused, .unknown: break
         }
     }

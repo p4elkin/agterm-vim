@@ -21,6 +21,31 @@ struct AppStoreTreeProjectionTests {
         #expect(try JSONDecoder().decode(ControlSessionNode.self, from: data) == node)
     }
 
+    @Test func aBoundRemoteRowReadsBackItsOriginSession() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "p4linux"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "origin-1", daemonsByLocalPane: [:], presentationVersion: 1), forSession: session.id)
+        let node = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(node.remoteSession == "origin-1")
+        let data = try JSONEncoder().encode(node)
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: data) == node)
+    }
+
+    @Test func remoteSessionIsOmittedForLocalAndUnboundRows() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: workspace.id, cwd: "/tmp")
+        _ = store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "old-host")
+        for node in store.controlTree().workspaces.flatMap(\.sessions) {
+            #expect(node.remoteSession == nil)
+            let object = try #require(JSONSerialization.jsonObject(with: try JSONEncoder().encode(node)) as? [String: Any])
+            #expect(object["remoteSession"] == nil)
+        }
+        let old = Data(#"{"id":"x","name":"n","cwd":"/","active":false,"split":false,"overlay":false,"scratch":false,"flagged":false}"#.utf8)
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: old).remoteSession == nil)
+    }
+
     @Test func remoteStateIsOmittedForLocalAndUnboundRows() throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")

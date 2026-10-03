@@ -95,9 +95,17 @@ struct RemoteSessionTests {
     @Test func runJobForcesAPtyAndReachesTheInstalledCli() throws {
         let argv = try RemoteSession.runJobCommand(host: "buildbox", job: "job-1")
 
-        #expect(argv.prefix(7) == ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "buildbox"])
-        #expect(argv.count == 8)
-        #expect(argv[7].contains(RemoteSession.cliPathPrefix))
+        #expect(argv.prefix(6) == ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5"])
+        try #require(argv.count == 12)
+        #expect(argv[10] == "buildbox")
+        #expect(argv[11].contains(RemoteSession.cliPathPrefix))
+    }
+
+    @Test func runJobOptsOutOfSshMultiplexingBeforeTheHost() throws {
+        let argv = try RemoteSession.runJobCommand(host: "buildbox", job: "job-1")
+        let host = try #require(argv.firstIndex(of: "buildbox"))
+
+        #expect(Array(argv[..<host].suffix(4)) == ["-o", "ControlMaster=no", "-o", "ControlPath=none"])
     }
 
     @Test func runJobRunsTheHelperForExactlyThatJob() throws {

@@ -33,8 +33,30 @@ struct HeadlessCoverageTests {
         let response = await fixture.actions.respond(to: prepared)
 
         switch HeadlessCatalog.support(for: request.cmd) {
+        case .served where request.cmd == .sessionOverlayJobRun: #expect(response.error == "job not claimable")
         case .served: #expect(response.ok)
-        case .refused(let text): #expect(response == ControlResponse(ok: false, error: text))
+        case .forwarded where request.cmd == .pickResult || request.cmd == .pickCancel:
+            #expect(response.error == "unknown pick: \(prepared.target ?? "")")
+        case .refused, .forwarded, .routed:
+            switch ForwardPolicy.route(prepared, holdsJob: false) {
+            case .forwarded: #expect(response == Self.unpresented(request.cmd))
+            case .refused(let reason):
+                #expect(response.error == "\(request.cmd.rawValue) is not available on a headless origin: \(reason)")
+            case .job: #expect(response.error == "session.overlay.open cannot run a program: no Mac is presenting this session")
+            case .served: #expect(response.error == OverlayResultError.noResult)
+            }
+        }
+    }
+
+    @Test(arguments: HeadlessRequests.all)
+    func everyRequestHasARouteThatAgreesWithTheCatalog(_ request: ControlRequest) {
+        let route = ForwardPolicy.route(request, holdsJob: false)
+
+        switch HeadlessCatalog.support(for: request.cmd) {
+        case .served: #expect(route == .served)
+        case .forwarded: #expect(route == .forwarded)
+        case .refused: #expect(route == ForwardPolicy.route(ControlRequest(cmd: request.cmd), holdsJob: false))
+        case .routed: #expect(route != .refused("not routed"))
         }
     }
 
@@ -48,35 +70,24 @@ struct HeadlessCoverageTests {
         #expect((response == nil) == (request.cmd == .debugAppearance))
     }
 
-    @Test func aSearchForABookmarkTokenIsStillASearch() async throws {
-        let request = HeadlessRequests.request(.sessionSearch, target: HeadlessRequests.target) { $0.text = TurnMark.needle(for: 1) }
-
+    @Test func searchAndBookmarkGoAreForwardedAsThemselves() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }
-        #expect(await fixture.actions.respond(to: request) == refusal(.sessionSearch))
+        let search = HeadlessRequests.request(.sessionSearch, target: HeadlessRequests.target) { $0.text = TurnMark.needle(for: 1) }
+        let go = HeadlessRequests.request(.sessionBookmarkGo, target: HeadlessRequests.target) { $0.turn = 0 }
+
+        #expect(await fixture.actions.respond(to: bound(search, to: fixture)) == Self.unpresented(.sessionSearch))
+        #expect(await fixture.actions.respond(to: bound(go, to: fixture)) == Self.unpresented(.sessionBookmarkGo))
     }
 
-    @Test func anInvalidBookmarkTurnKeepsTheDispatcherError() async throws {
-        let request = HeadlessRequests.request(.sessionBookmarkGo, target: HeadlessRequests.target) { $0.turn = 0 }
-        let fixture = try HeadlessActionFixture()
-        defer { fixture.cleanUp() }
-        if request.cmd == .sessionSwap { _ = try fixture.split() }
-        let response = await fixture.actions.respond(to: bound(request, to: fixture))
-
-        #expect(response.ok == false)
-        #expect(response != refusal(.sessionBookmarkGo))
-        #expect(response != refusal(.sessionSearch))
+    private static func unpresented(_ command: Command) -> ControlResponse {
+        ControlResponse(ok: false, error: "\(command.rawValue) cannot be forwarded: no Mac is presenting this session")
     }
 
     private func bound(_ request: ControlRequest, to fixture: HeadlessActionFixture) -> ControlRequest {
         ControlRequest(cmd: request.cmd,
                        target: request.target == HeadlessRequests.target ? fixture.session.id.uuidString : request.target,
                        args: request.args)
-    }
-
-    private func refusal(_ command: Command) -> ControlResponse? {
-        guard case .refused(let text) = HeadlessCatalog.support(for: command) else { return nil }
-        return ControlResponse(ok: false, error: text)
     }
 
     /// `Command` is not `CaseIterable`, so its cases are read from the declaration: one `case` per line.
