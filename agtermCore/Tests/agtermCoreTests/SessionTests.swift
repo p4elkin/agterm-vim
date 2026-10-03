@@ -1254,9 +1254,40 @@ struct SessionTests {
         #expect(Session.validateContext(value) == .valid(value))
     }
 
+    @Test(arguments: [("ci: waiting", "ci: waiting"), ("  ci: waiting  ", "ci: waiting")])
+    func statusNoteTrimsOuterSpaces(input: String, expected: String) {
+        #expect(Session.validateStatusNote(input) == .valid(expected))
+    }
+
+    @Test func statusNoteAcceptsMultibyteUpToTheByteLimit() {
+        let value = String(repeating: "é", count: 128)
+        #expect(value.utf8.count == Session.contextByteLimit)
+        #expect(Session.validateStatusNote(value) == .valid(value))
+    }
+
+    @Test func statusNoteRejectsOneByteOverTheLimit() {
+        #expect(statusNoteMessage(String(repeating: "é", count: 128) + "a")
+            == "note must be at most \(Session.contextByteLimit) UTF-8 bytes")
+    }
+
+    @Test(arguments: ["a\nb", "a\tb", "a\u{7}b", "a\u{2028}b", "a\u{2029}b", "ci\n", "\tci", "ci\u{2028}", "\u{2029}ci"])
+    func statusNoteRejectsControlCharactersAndLineBreaks(input: String) {
+        #expect(statusNoteMessage(input) == "note must not contain control characters or line breaks")
+    }
+
+    @Test(arguments: ["", "   ", "\t\n"])
+    func statusNoteRejectsBlank(input: String) {
+        #expect(statusNoteMessage(input) == "note must not be empty (omit --note to clear it)")
+    }
+
     private func isInvalidContext(_ raw: String) -> Bool {
         if case .invalid = Session.validateContext(raw) { return true }
         return false
+    }
+
+    private func statusNoteMessage(_ raw: String) -> String? {
+        if case .invalid(let message) = Session.validateStatusNote(raw) { return message }
+        return nil
     }
 }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The outcome of checking a `session.context` value, carrying the message the control response reports
+/// The outcome of checking a `session.context` or status note value, carrying the message the control response reports
 /// on rejection so the caller learns which rule it broke.
 enum SessionContextValidation: Sendable, Equatable {
     case valid(String)
@@ -24,13 +24,23 @@ extension Session {
     ///
     /// `nonisolated` so `SessionSnapshot`'s decoder can drop an invalid stored value; it only reads a String.
     nonisolated static func validateContext(_ raw: String) -> SessionContextValidation {
+        validateLine(raw, field: "context", blankHint: "use --clear to remove it")
+    }
+
+    /// Checks a `session.status --note` value by `validateContext`'s rules. Omitting `--note` is the one
+    /// clearing form, so a blank note is rejected rather than read as a clear.
+    nonisolated static func validateStatusNote(_ raw: String) -> SessionContextValidation {
+        validateLine(raw, field: "note", blankHint: "omit --note to clear it")
+    }
+
+    private nonisolated static func validateLine(_ raw: String, field: String, blankHint: String) -> SessionContextValidation {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return .invalid("context must not be empty (use --clear to remove it)") }
+        if trimmed.isEmpty { return .invalid("\(field) must not be empty (\(blankHint))") }
         if trimmed.utf8.count > contextByteLimit {
-            return .invalid("context must be at most \(contextByteLimit) UTF-8 bytes")
+            return .invalid("\(field) must be at most \(contextByteLimit) UTF-8 bytes")
         }
         if raw.unicodeScalars.contains(where: breaksContextLine) {
-            return .invalid("context must not contain control characters or line breaks")
+            return .invalid("\(field) must not contain control characters or line breaks")
         }
         return .valid(trimmed)
     }
