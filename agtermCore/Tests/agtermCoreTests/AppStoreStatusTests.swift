@@ -5,6 +5,7 @@ import Testing
 @MainActor
 private final class DraftCollector {
     var kinds: [ControlEventKind] = []
+    var payloads: [ControlEventPayload] = []
 }
 
 /// The `tree` projection of the agent-status change time, and the pane-precedence rule over a blocked
@@ -60,6 +61,115 @@ struct AppStoreStatusTests {
 
         let fresh = try #require(store.controlTree().workspaces[0].sessions.first?.statusChangedAt)
         #expect(fresh > stale)
+    }
+
+    // MARK: - the status note
+
+    private func noteStore() -> (AppStore, Session, DraftCollector) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        let drafts = DraftCollector()
+        let store = AppStore(persistence: PersistenceStore(directory: dir), controlEventSink: {
+            drafts.kinds.append($0.kind)
+            drafts.payloads.append($0.payload)
+        })
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/repo")!
+        return (store, session, drafts)
+    }
+
+    @Test func aStatusWithoutANoteClearsTheStandingOne() {
+        let (store, session, _) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Bash"), forSession: session.id)
+        #expect(session.agentIndicator.note == "tool: Bash")
+
+        store.setAgentIndicator(AgentIndicator(status: .active), forSession: session.id)
+
+        #expect(session.agentIndicator.note == nil)
+    }
+
+    @Test func aNoteOnlyChangeKeepsTheStampAndEmitsAStatusEvent() {
+        let (store, session, drafts) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .blocked, note: "perm: Bash"), forSession: session.id)
+        let stamp = Date(timeIntervalSince1970: 1_000)
+        session.statusChangedAt = stamp
+        drafts.payloads.removeAll()
+
+        store.setAgentIndicator(AgentIndicator(status: .blocked, note: "ask: which branch"), forSession: session.id)
+
+        #expect(session.statusChangedAt == stamp)
+        #expect(drafts.payloads.count == 1)
+        #expect(drafts.payloads.first?.note == "ask: which branch")
+        #expect(drafts.payloads.first?.status == "blocked")
+        #expect(drafts.payloads.first?.previous == "blocked")
+    }
+
+    @Test func anIdenticalRepeatWithItsNoteRestampsAndEmitsNothing() {
+        let (store, session, drafts) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Bash"), forSession: session.id)
+        session.statusChangedAt = Date(timeIntervalSince1970: 1_000)
+        drafts.payloads.removeAll()
+
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Bash"), forSession: session.id)
+
+        #expect(session.statusChangedAt != Date(timeIntervalSince1970: 1_000))
+        #expect(drafts.payloads.isEmpty)
+    }
+
+    @Test func aStateChangeKeepingTheNoteRestamps() {
+        let (store, session, _) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "turn: tests"), forSession: session.id)
+        session.statusChangedAt = Date(timeIntervalSince1970: 1_000)
+
+        store.setAgentIndicator(AgentIndicator(status: .completed, note: "turn: tests"), forSession: session.id)
+
+        #expect(session.statusChangedAt != Date(timeIntervalSince1970: 1_000))
+    }
+
+    @Test func clearingTheNoteAloneKeepsTheStamp() {
+        let (store, session, drafts) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Bash"), forSession: session.id)
+        session.statusChangedAt = Date(timeIntervalSince1970: 1_000)
+        drafts.payloads.removeAll()
+
+        store.setAgentIndicator(AgentIndicator(status: .active), forSession: session.id)
+
+        #expect(session.statusChangedAt == Date(timeIntervalSince1970: 1_000))
+        #expect(drafts.payloads.count == 1)
+        #expect(drafts.payloads.first?.note == nil)
+    }
+
+    @Test func anIdleWriteStoresNoNote() {
+        let (store, session, drafts) = noteStore()
+        store.setAgentIndicator(AgentIndicator(status: .idle, note: "stray"), forSession: session.id)
+
+        #expect(session.agentIndicator.note == nil)
+        #expect(drafts.payloads.allSatisfy { $0.note == nil })
+    }
+
+    @Test func aRefusedWriteOverBlockedKeepsTheOwnersNote() {
+        let (store, session) = blockedLeftSplitSession()
+        store.applyControlStatus(AgentIndicator(status: .blocked, statusPane: .left, note: "perm: Edit"),
+                                 forSession: session.id)
+
+        let result = store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right, note: "tool: Read"),
+                                              forSession: session.id)
+
+        #expect(result == .refused(owner: .left))
+        #expect(session.agentIndicator.note == "perm: Edit")
+    }
+
+    @Test func visitingAnAutoResetRowClearsItsNote() throws {
+        let (store, session, _) = noteStore()
+        let ws = try #require(store.workspace(forSession: session.id))
+        let other = try #require(store.addSession(toWorkspace: ws.id, cwd: "/other"))
+        store.selectSession(other.id)
+        store.setAgentIndicator(AgentIndicator(status: .completed, autoReset: true, note: "turn: done"),
+                                forSession: session.id)
+
+        store.selectSession(session.id)
+
+        #expect(session.agentIndicator.status == .idle)
+        #expect(session.agentIndicator.note == nil)
     }
 
     // MARK: - pane precedence over a blocked status

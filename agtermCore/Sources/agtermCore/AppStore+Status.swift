@@ -38,8 +38,9 @@ extension AppStore {
     }
 
     /// Sets a session's agent status indicator, the single mutation point for `session.status`. Stamps
-    /// `statusChangedAt` on every set, idle and repeated values included. A transition into blocked re-arms
-    /// idle auto-follow. No-op for an unknown id; never persisted.
+    /// `statusChangedAt` on every set, idle and repeated values included, except one that changes only the
+    /// note: a reason update is not a new state, and auto-follow's FIFO orders blocked rows by the stamp.
+    /// A transition into blocked re-arms idle auto-follow. No-op for an unknown id; never persisted.
     public func setAgentIndicator(_ indicator: AgentIndicator, forSession id: UUID) {
         guard let session = session(withID: id) else { return }
         // any write through here is a local one until `applyRemoteStatus` says otherwise right after it
@@ -54,8 +55,12 @@ extension AppStore {
         // `splitSurface != nil` implies `hasSplit` (only `closeSplit`/`closePrimaryPane` clear it, tearing the
         // surface down with it), so `!hasSplit` still covers every genuinely splitless session.
         indicator.statusPane = indicator.normalizedPane(hasSplit: session.hasSplit)
+        // idle travels to a viewer as an absent status, so a note on it could never reach a far row
+        if indicator.status == .idle { indicator.note = nil }
         session.agentIndicator = indicator
-        session.statusChangedAt = Date()
+        var sameButNote = indicator
+        sameButNote.note = previous.note
+        if indicator == previous || sameButNote != previous { session.statusChangedAt = Date() }
         // a re-asserted blocked-over-blocked is not a new episode and stays muted (Session.autoFollowConsumed).
         if !wasBlocked, indicator.status == .blocked { session.autoFollowConsumed = false }
         // ahead of the unchanged guard: a repeated write restamps `statusChangedAt`, which a viewer orders by
@@ -72,7 +77,8 @@ extension AppStore {
                 blink: indicator.blink,
                 color: indicator.color,
                 shape: indicator.shape?.rawValue,
-                previous: previous.status.rawValue
+                previous: previous.status.rawValue,
+                note: indicator.note
             )
         )
     }

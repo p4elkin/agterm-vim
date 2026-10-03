@@ -118,7 +118,7 @@ public enum StatusShape: String, Codable, Sendable, CaseIterable {
 }
 
 /// AgentIndicator is the per-session agent status value: state, blink, autoReset, per-call color and shape
-/// overrides, and the pane that set it. Ephemeral (never persisted) and set only via the control API.
+/// overrides, the pane that set it, and a one-line note. Ephemeral (never persisted) and set only via the control API.
 public struct AgentIndicator: Equatable, Sendable {
     public var status: AgentStatus = .idle
     /// blink makes the visible glyph pulse for attention.
@@ -135,15 +135,20 @@ public struct AgentIndicator: Equatable, Sendable {
     /// statusPane records which pane set this status; nil is unspecified and treated as `.left` (main) by the
     /// clear logic.
     public var statusPane: StatusPane?
+    /// note is the caller's one-line reason (`session.status --note`), already validated; discarded like
+    /// `color` by the next write without one, and never kept on idle.
+    public var note: String?
 
     public init(status: AgentStatus = .idle, blink: Bool = false, autoReset: Bool = false,
-                color: String? = nil, shape: StatusShape? = nil, statusPane: StatusPane? = nil) {
+                color: String? = nil, shape: StatusShape? = nil, statusPane: StatusPane? = nil,
+                note: String? = nil) {
         self.status = status
         self.blink = blink
         self.autoReset = autoReset
         self.color = color
         self.shape = shape
         self.statusPane = statusPane
+        self.note = note
     }
 
     /// clearedBy: a keystroke from `pane` clears this indicator only when that pane owns the current status and

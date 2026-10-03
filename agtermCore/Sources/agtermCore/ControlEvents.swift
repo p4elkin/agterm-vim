@@ -31,8 +31,10 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
     /// true-only field this carries false as well.
     public var parked: Bool?
     /// The `status` event's status before the accepted write, so a consumer sees the transition without
-    /// keeping state. Equal to `status` when only shape, color, pane or blink changed.
+    /// keeping state. Equal to `status` when only shape, color, pane, blink or note changed.
     public var previous: String?
+    /// The `status` event's one-line reason (`session.status --note`), nil when the write carried none.
+    public var note: String?
     public var title: String?
     public var body: String?
     /// The `remote.opened` / `remote.closed` ssh destination the row is attached to, as `zmx attach` was
@@ -41,7 +43,7 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
 
     public init(name: String? = nil, status: String? = nil, pane: String? = nil,
                 blink: Bool? = nil, color: String? = nil, shape: String? = nil,
-                parked: Bool? = nil, previous: String? = nil,
+                parked: Bool? = nil, previous: String? = nil, note: String? = nil,
                 title: String? = nil, body: String? = nil,
                 host: String? = nil) {
         self.name = name
@@ -52,6 +54,7 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
         self.shape = shape
         self.parked = parked
         self.previous = previous
+        self.note = note
         self.title = title
         self.body = body
         self.host = host
