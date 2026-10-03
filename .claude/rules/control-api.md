@@ -166,9 +166,9 @@ renumbering. Do not reintroduce a count anywhere.
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.go`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
-- `keymap.reload`, `keymap.list`, `hooks.reload`, `hooks.list`, `browser.clear`, `config.reload`,
+- `keymap.reload`, `keymap.list`, `keymap.run`, `hooks.reload`, `hooks.list`, `browser.clear`, `config.reload`,
   `theme.set`, `theme.list`, `restore.capture`, `restore.clear`, `restore.mode`, `version`
-- `zmx.list`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
+- `zmx.list`, `zmx.screen`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
 - `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
   like the other fork-only commands)
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
@@ -334,6 +334,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   not submit.
   The gap is blocking, never scheduled: a deferred Return can be overtaken by another injection or a keystroke.
   It is one fixed gap per call, so do not scale it by length or add one per line.
+  A receiver classifying one long line or a multi-line payload as a paste is the caller's to work around
+  by sending shorter pieces; pacing inside agterm would block the main thread per piece on both routes.
   Limits: Returns inside a multi-line payload stay back to back and still read as paste in such a program;
   a writer on another Mac can land between the two daemon calls;
   a failed second daemon call answers an error with the text already typed and is never retried,
@@ -549,7 +551,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Each admitted request calls its reply closure exactly once; a page its command closed never sees it.
 - `HtmlBridge` speaks the wire protocol only (`{cmd, target, args}`, dotted names, typed fields) and
   fills only what a page left out: its session for session-targeted commands (the `session.` names bar
-  `new`, `go` and `overlay.job.run`, plus `notify`, the `font.*` trio and a non-GUI `ask.open`), its pane
+  `new`, `go` and `overlay.job.run`, plus `notify`, the `font.*` trio, `keymap.run` and a non-GUI
+  `ask.open`), its pane
   for its own overlay commands, its window as `target` for the window-object commands and as `args.window`
   otherwise. An explicit target, `active`, window or batch resolves as over the socket; `zmx.attach` and
   `dashboard` keep their ids and still land in the page's window, and `hooks.*`, which refuse any window,
@@ -917,6 +920,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 ## Keymap, config, theme, and sidebar
 
+- `keymap.run` starts a custom command by exact name against the addressed session, through the
+  palette's `CustomCommandRunner.run` with that session in place of the active one. The parser keeps one
+  command per name, so a name is the address; `CustomCommand.id` is minted per parse and never one.
+  Ok means the process started: the command is detached, so its exit status is not the reply's, and a
+  launch failure is an error carrying the reason.
 - `keymap.reload` shares GUI reload and returns diagnostic count. `keymap.list` reports:
   resolved built-in actions and override state; live AppKit menu equivalents/menu/title/selector; path;
   custom commands with `repeats` and `errorHud` (booleans), `errorPosition` (canonical, default center), and optional
@@ -1210,6 +1218,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   checked closed-window snapshots, the directory-versus-index comparison and the observed daemons into one
   answer; a standalone reader sees neither pending-close nor live-model state. There is no app-down path
   and no hybrid fallback, which would report a weaker truth under the same command name.
+- `zmx.screen` reads a daemon by the NAME `zmx list` prints, never by session: the session resolver sees
+  only open stores, and closed-window and unindexed daemons are the point of the command. It is not a
+  `session.text` fallback, whose default is the pane's own scrolled viewport; a daemon has no scroll
+  position and answers at its last leader's grid. It attaches nothing and moves no lead.
 - `zmx list` is the primitive; `prune` and `kill` act on rows it has already explained. Rows are the UNION
   of observed daemons and expected claims, so a leaked daemon and a pane whose daemon vanished are both
   visible. `state` is claimed/orphan/unknown/conflicted/pendingClose/foreign and `observation` is
@@ -1456,7 +1468,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   resets the reporting modes the remote left on, shows a reconnecting bar naming the host, reports `RemoteLinkNotice` (`OSC 2;agterm-remote;<lead nonce>:lost`, intercepted beside
   `zmx-role;`) and waits on `cat`, which ends with the app's pty. The pane then never reaches `onExitHeld`;
   `PaneLead.linkLost` believes only the current attachment's nonce and runs the same `remotePaneStopped`
-  cleanup. `RemoteReconnectBook` probes (`RemoteSession.probeCommand`) on the remote tick with
+  cleanup. A failed probe's stderr is kept as the entry's `reason`, last non-empty line, sanitized and
+  capped, replaced by every failure and nil when ssh said nothing; it is never classified, since an
+  offline host and a refused login both exit 255 and the retry must not give up on either. The pane's
+  child is `cat` with echo off, so nothing can be printed into it: `RemoteReconnectNote` inside
+  `PaneLeadCover` draws the line and the surface node's `reconnect` reads it, both from the entry, so
+  both go with the wait. `RemoteReconnectBook` probes (`RemoteSession.probeCommand`) on the remote tick with
   `RemoteRetryBackoff`, and a host that answers gets `reattachPane(claim: false)`, covered only when the
   origin had reported a role or the attach it replaced dropped before its first report, and
   `remotePaneResumed`. Re-running the attach in the shell was rejected: it
@@ -1465,12 +1482,18 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   The held exit reaches the app at once through `onExitHeld`, which forgets the pane's lead and records the
   hold for remote layout, but it carries no ssh status: `/usr/bin/login` discards it. Each pane holding and
   closing on its own is also right when one half of a split dies.
+- `session.selected` is emitted from `selectedSessionID`'s observer, so every writer gets it: direct
+  assignments in close, undo and reopen paths included, not only `selectSession`. `restore(from:)`
+  suppresses it, since a reload is not a selection. `addSession` emits `session.created` first.
+  The selection is per window, so a window coming forward emits nothing, and `tree.changed` still does
+  not fire on selection.
 - `remote.opened` / `remote.closed` are emitted by `emitSessionCreated` / `emitSessionClosed` themselves,
   gated on `remoteHost`, never from `zmx.attach`: the attach inserts the row before ssh starts, and a
   soft close emits `session.closed` while the pane is still alive for undo, whose `session.created` never
   passes through the attach path. So the pair means row visibility only, every producer of those edges
   gets it, and no kind claims the ssh connection's state: the held exit says the command ended, never why.
-  A host-side pair (`client.attached` / `client.detached`) is the backlog item, not these kinds.
+  The host Mac gets no event for an attach; a host-side pair would be `client.attached` / `client.detached`,
+  never these kinds.
 - `Session.remoteHost` is immutable and set at construction, because `addSession` saves: a marker written
   afterwards would let one snapshot reach disk carrying the ssh command. `isPersistable` gates every
   producer — the launch snapshot, the Recent Closed session record, and a closed workspace's record, whose

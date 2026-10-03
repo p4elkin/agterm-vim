@@ -4,9 +4,10 @@ import Foundation
 /// `ControlResolve`'s shape (an enum of static resolvers) so the app and any host-free caller agree
 /// on where the keymap lives.
 public enum ConfigPaths {
-    /// Resolve the config directory holding `keymap.conf`. Precedence:
+    /// configDirectory resolves the directory holding `keymap.conf`. Precedence:
     /// - explicit `setting` (the `AppSettings.configDirectory` value, when non-nil/non-empty) wins.
-    /// - else `<stateDir>/config` when `stateDir` (the `AGTERM_STATE_DIR` value) is set — test isolation.
+    /// - else `<stateDir>/config` when `stateDir` is set — test isolation. Callers pass
+    ///   `DebugStateDirectory.configStateDirectory`, which is nil for the `agterm-debug` sibling.
     /// - else `<home>/.config/agterm`.
     public static func configDirectory(setting: String?, stateDir: String?, home: URL) -> URL {
         if let setting, !setting.isEmpty { return URL(fileURLWithPath: setting) }

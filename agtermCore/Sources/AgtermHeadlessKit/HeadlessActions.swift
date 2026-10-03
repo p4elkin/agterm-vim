@@ -710,6 +710,7 @@ public final class HeadlessActions: ControlActions {
 
     public func reloadKeymap() -> ControlResponse { refuse(.keymapReload) }
     public func listKeymap() -> ControlResponse { refuse(.keymapList) }
+    public func runCustomCommand(name: String, target: String?, window: String?) -> ControlResponse { refuse(.keymapRun) }
     public func reloadHooks() -> ControlResponse { refuse(.hooksReload) }
     public func listHooks() -> ControlResponse { refuse(.hooksList) }
     public func clearBrowser() async -> ControlResponse { refuse(.browserClear) }
@@ -755,6 +756,7 @@ public final class HeadlessActions: ControlActions {
     public func readRestoreMode() -> ControlResponse { refuse(.restoreMode) }
     public func setRestoreMode(_ mode: RestoreMode) -> ControlResponse { refuse(.restoreMode) }
     public func pruneZmxDaemons() -> ControlResponse { refuse(.zmxPrune) }
+    public func readZmxScreen(name: String, fullBuffer: Bool, lines: Int?) -> ControlResponse { refuse(.zmxScreen) }
     public func killZmxDaemon(target: String, window: String?, pane: ZmxPaneRole) -> ControlResponse {
         withSession(target, window: window) { store, session in headless.killPane(pane, of: session, in: store) }
     }

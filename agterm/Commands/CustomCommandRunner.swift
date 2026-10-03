@@ -569,14 +569,18 @@ final class CustomCommandRunner {
             logger.notice("custom command \"\(command.name, privacy: .public)\" fired with no active session; ignored")
             return
         }
-        // selection + pane come from the active session's focused pane; with no fired-from surface the focus
-        // flag is the source, gated on the split surface EXISTING. right after `session split on`,
-        // `splitFocused` is already true while `splitSurface` is still nil, so a bare flag would report
-        // `.right` off a nil surface while `session.type --pane right` still errors "no split pane". a
-        // promoted survivor sits in the `surface` slot with both nil/false, so `.left`.
+        run(command, session: session, in: store)
+    }
+
+    /// run starts `command` for `session`, the palette's context taken from that session instead of the
+    /// active one. Returns why the process did not start, nil once it has.
+    @discardableResult
+    func run(_ command: CustomCommand, session: Session, in store: AppStore) -> String? {
+        // the focus flag picks primary or split, gated on the split surface existing: right after
+        // `session split on` the flag is already true while `splitSurface` is still nil.
         let onSplit = session.splitFocused && session.splitSurface != nil
         let selectionSurface = (onSplit ? session.splitSurface : session.surface) as? GhosttySurfaceView
-        spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
+        return spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
     }
 
     /// Run a command fired by KEYBIND: context from the surface that had focus at key-down, so a chord from a
@@ -663,8 +667,9 @@ final class CustomCommandRunner {
     /// directory, not just a remote one. `Process.run()` validates `currentDirectoryURL` inside the spawn and
     /// throws before `/bin/sh` is exec'd, so a local row whose directory was deleted or replaced by a file
     /// loses the command exactly as a remote row did (measured 2026-09-09).
+    @discardableResult
     private func spawn(_ command: CustomCommand, for session: Session, in store: AppStore,
-                       selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) {
+                       selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) -> String? {
         let context = self.context(for: session, in: store, selectionSurface: selectionSurface, pane: pane)
         let home = NSHomeDirectory()
         var cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
@@ -677,7 +682,7 @@ final class CustomCommandRunner {
                 """)
             cwd = home
         }
-        spawn(command, context: context, cwd: cwd)
+        return spawn(command, context: context, cwd: cwd)
     }
 
     /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names
@@ -719,7 +724,8 @@ final class CustomCommandRunner {
     /// running in `cwd` (nil for a sessionless launch, which inherits the app's). `PATH` is widened first
     /// (`CommandPath`): the app's own is launchd's, and `sh -c` runs no profile, so a bare `agtermctl` would
     /// exit 127. Only commands opting into failure panels capture stderr; a clean exit reports nothing.
-    private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) {
+    @discardableResult
+    private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) -> String? {
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -757,12 +763,14 @@ final class CustomCommandRunner {
         do {
             try process.run()
             usage.record(command)
+            return nil
         } catch {
             _ = capture?.consume()
             logger.error("custom command \"\(name, privacy: .public)\" failed to spawn: \(error.localizedDescription, privacy: .public)")
             // a command that never started has no exit status and no output of its own, so the launch error
             // is the whole diagnosis.
             report(command: command, reason: error.localizedDescription, detail: nil, sessionID: sessionID)
+            return error.localizedDescription
         }
     }
 

@@ -67,6 +67,13 @@ struct agtermApp: App {
     }
 
     init() {
+        #if DEBUG
+        // in the environment, ahead of every reader of the variable and of every child that inherits it
+        if let adopted = DebugStateDirectory.adopted(environment: ProcessInfo.processInfo.environment,
+                                                     liveDirectory: PersistenceStore.defaultDirectory) {
+            setenv(DebugStateDirectory.environmentKey, adopted, 1)
+        }
+        #endif
         let stateDirectory = ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? PersistenceStore.defaultDirectory
         liveResetMarkerStore = LiveResetMarkerStore(directory: stateDirectory)
@@ -717,10 +724,6 @@ struct agtermApp: App {
         return view
     }
 
-    /// The fixed wrapper running the overlay command and recording its exit status to a temp file. stdout/stderr
-    /// are NOT redirected (so a TUI renders normally); only the status is captured.
-    private static let overlayExitWrapper = "sh -c '\(OverlayCapture.shellLine)'"
-
     /// Overlay-terminal surface factory: an ephemeral surface running the session's `overlayCommand` in
     /// `overlayCwd` (default the session's current dir). NOT wired to the session (no `view.session`), so its
     /// PWD reports don't clobber the session cwd; on exit `onExit` → `closeOverlay` tears it down and hides it.
@@ -754,7 +757,7 @@ struct agtermApp: App {
             sessionEnvironment: env)
         let fontSize = isHud ? session.hudFontSize ?? session.fontSize : session.fontSize
         let view = GhosttySurfaceView(workingDirectory: context.cwd,
-                                      fontSize: fontSize.map(Float.init), command: overlayExitWrapper,
+                                      fontSize: fontSize.map(Float.init), command: OverlayCapture.surfaceCommand,
                                       waitAfterCommand: spec.wait, autoFocus: !isHud,
                                       env: context.localEnvironment(codeFile: codeFile, hudFile: hudFile))
         view.overlayCodeFile = codeFile

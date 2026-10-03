@@ -24,7 +24,7 @@ struct HeadlessCatalogTests {
         "workspace.move", "workspace.focus", "workspace.filter", "workspace.collapse", "workspace.expand",
         "sidebar", "sidebar.mode", "sidebar.flagged-layout", "sidebar.expand", "sidebar.collapse",
         "sidebar.parked", "sidebar.width", "mode", "theme.set", "theme.list", "font.inc", "font.dec",
-        "font.reset", "keymap.reload", "keymap.list", "config.reload", "quick", "quick.type", "quick.text",
+        "font.reset", "keymap.reload", "keymap.list", "keymap.run", "config.reload", "quick", "quick.type", "quick.text",
         "dashboard", "debug.appearance", "session.go", "session.move",
         "session.duplicate", "session.park", "session.resize",
     ])
@@ -41,7 +41,7 @@ struct HeadlessCatalogTests {
 
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
-        "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.attach", "browser.clear",
+        "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.attach", "zmx.screen", "browser.clear",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")

@@ -60,6 +60,11 @@ The event kinds and payloads are:
 - `session.parked`: session `name` and the resulting `parked` boolean. Both edges fire, so unlike the
   tree node's true-only field the payload carries `false` too. It is its own kind rather than a
   `tree.changed` payload, which is coalesced per window and re-emitted empty.
+- `session.selected`: a window's selection moved. `session` and `name` are the newly selected session,
+  both absent when the selection was cleared, and `previous` is the id of the session that lost it,
+  absent when there was none. It fires for every cause: a click, navigation, `session select`, a
+  selected `session new` (after its `session.created`), and the reselection after the active session
+  closes. Re-selecting the selected session and raising another window emit nothing.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
   are coalesced for 100 ms per window, as is a `session context` set or clear that changes the value.
   Read `tree --json` for the current snapshot.
@@ -256,11 +261,16 @@ the read side of `font --pane`; each omitted when that pane isn't realized. `fon
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
 `font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes and a
 promoted survivor are live-only — read them back here rather than from the snapshot), and `surfaces` (array
-of `{id, kind, active, visible, backedByZmx?, lead?}` where `kind` is
+of `{id, kind, active, visible, backedByZmx?, lead?, reconnect?}` where `kind` is
 `left`|`right`|`scratch`|`overlay`|`overlay-left`|`overlay-right`).
 Primary/split surfaces report `backedByZmx`; scratch and overlays omit it. `lead` is `leader`, `follower`
 or `unowned`: whether this Mac's window size is the one the pane's program sees. A pane that does not
 lead is covered. Absent until the pane's terminal reports one (see Remote sessions).
+`reconnect` is present on a remote pane whose ssh lost its connection while agterm waits to attach it
+again: `failures` is the retry streak, the probes of its host that failed in a row plus one for a link
+that dropped again soon after attaching, and `reason` is what ssh said on the last failed probe, omitted
+when it said nothing. Its message can help distinguish an offline host from a refused login. It goes
+when the pane is attached again or closed.
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
@@ -283,7 +293,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries nineteen top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -325,9 +335,10 @@ window, omitted when none is pending), `askPending` (the pending GUI question's 
 and `app` (which agterm is serving this socket: `version`, plus
 `commit` when the build recorded one — the same value `agtermctl version` returns, so an agent already
 reading the tree gets its version floor without a second round-trip; it is not duplicated onto
-`window.list`, where a caller uses `version` instead), and `liveReset` (the Live sessions reset state, app-global
+`window.list`, where a caller uses `version` instead), `liveReset` (the Live sessions reset state, app-global
 like `app`: `pending` until the quit that follows a confirmed `zmx reset`, `last` for the launch that consumed
-it; omitted when neither applies). `idleMs` is live
+it; omitted when neither applies), and `indexUnsaved` (true while the last write of the window index failed,
+omitted otherwise; app-wide, and it clears on the next index write that lands). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four
@@ -521,6 +532,9 @@ error keeps those names for compatibility.
   `--select` and `--pane scratch` are refused there.
   A trailing newline's Return is sent a moment after the text, so a long line submits in an agent TUI;
   Returns inside a multi-line payload are not spaced, so send an agent one line per call.
+  One very long line can still be taken as a paste by the receiver: Claude Code ran a 2000-character
+  `/rename ...` as a prompt, not as a slash command. agterm does not pace within a line; how a receiver
+  classifies a burst is its own rule, so a caller that hits this sends shorter pieces and checks the result.
   A shell's `$(...)` strips trailing newlines; pass the newline with `--stdin` or `$'...\n'`.
   `--stdin` reads the text from stdin instead of the argument. Any session is typable without `--select`,
   including a background one and one created moments ago: the main pane bounded-polls (12 × 30ms) for the
@@ -1222,6 +1236,11 @@ A cell placed by a `:right` ref FOLLOWS its pane through promotion: when a split
 exits, agterm promotes the survivor into the primary slot, and the grid rewrites that cell to `<id>:left`
 rather than dropping it, so a dashboard built to watch an agent in the split pane keeps watching it.
 
+A cell shows the pane's terminal, not an overlay over it. A pane covered by a full session overlay or its
+own pane overlay shows a label instead: `HTML overlay` with the page's file or origin and its title when
+it has one, or `Program overlay` with its command when available. The page or program is not rendered in
+the grid. HUDs and floating overlays do not produce covers.
+
 The most-recently-used grid also has a GUI opener: **⌘⇧G** (the `dashboard` built-in action, rebindable
 in `keymap.conf`), **Navigate ▸ Dashboard**, and the command palette's **Dashboard** entry all TOGGLE the
 frontmost window's dashboard: open it over the window's most-recently-used sessions auto-sized (identical to
@@ -1517,6 +1536,14 @@ instead of the terminal: one page zoom shared by every HTML overlay, kept across
 
 `agtermctl keymap reload` — re-read and apply `keymap.conf`; returns `result.count` = the number of
 parse diagnostics (0 = clean). App-global (no `--window`).
+
+`agtermctl keymap run NAME [--target T] [--window W]` — start a custom command from `keymap.conf` by its
+exact name, as `keymap list` prints it. It runs as it does from the command palette, with the target
+session's focused pane, primary or split and never its scratch or an overlay, supplying the working
+directory, the selection and the `AGT_*` context; the default target is the active session, and from an
+HTML page the page's own session. `result.id` is that session. Ok means the process started: the
+command is detached, so its exit status and output are not reported, though a command with `--error-hud`
+still shows its panel. An unknown name answers `no custom command named NAME`.
 
 `agtermctl keymap list` — the read side of `keymap.reload`. App-global, no target and no args. Returns
 `result.keymap`:
@@ -1856,6 +1883,14 @@ hash of the state directory; a plain shell or a mosh session must carry that pat
 at all. A row whose daemon was created before the recorded first launch with this zmx build carries
 `outdated: true` (omitted otherwise).
 
+`agtermctl zmx screen NAME [--all|--lines N]` — print one daemon's screen as plain text. NAME is the
+daemon name `zmx list` prints, not a session id, so it reaches a pane whose window is closed;
+`session text` resolves only open-window sessions. The default is the daemon's current screen at the size its
+last leader gave it; it has no scroll position of its own, so this is not the pane's viewport.
+`--all` adds the scrollback the daemon retains and `--lines N`, N positive, keeps the last N lines of
+that; pass one or the other. The read
+attaches nothing, opens no window and changes no pane's size. A name with no readable daemon is an error.
+
 `agtermctl zmx prune` — kill the daemons no pane claims and nothing is attached to. It refuses outright on
 an incomplete or conflicted inventory. The gate is checked and revalidated rather than atomic: zmx has no
 kill-if-detached, so prune re-lists immediately before killing and drops anything that gained a client,
@@ -1931,7 +1966,8 @@ flag only when mosh is somewhere else.
 new local session's `id`; read `remoteHost` on its tree node. The remote is resolved AGAIN before anything
 is created, so a session that has gone since the listing fails and creates nothing. Everything reported
 here is a failure found before that point — a connection that starts and later drops is an ordinary pane
-exit: ssh's own 255 shows a reconnecting bar naming the host and reconnects by itself; any other exit prints
+exit: ssh's own 255 shows a reconnecting bar naming the host and reconnects by itself, with ssh's last
+failed-probe message along the pane's bottom edge and on the pane's `reconnect` in `tree`; any other exit prints
 one line naming the host, the session, the pane and the exit status and holds on Ghostty's press-any-key prompt.
 agterm adds ssh keepalive (`ServerAliveInterval 5`, `ServerAliveCountMax 2`) to the pane's ssh unless the
 user's config sets a nonzero interval, so a dead link is noticed within about fifteen seconds. When the

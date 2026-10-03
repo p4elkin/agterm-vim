@@ -24,13 +24,16 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     /// does not lead is covered and its reads come from the daemon. Nil until the pane's zmx reports a
     /// role, which a zmx or an origin without explicit leadership never does.
     public let lead: ZmxLeadRole?
+    /// reconnect is present while this pane's ssh lost its connection and the app waits to attach it
+    /// again, omitted otherwise.
+    public let reconnect: ControlReconnect?
 
     public init(id: String, kind: String, active: Bool, visible: Bool) {
         self.init(id: id, kind: kind, active: active, visible: visible, cwd: nil, backedByZmx: nil)
     }
 
     public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil,
-                backedByZmx: Bool?, lead: ZmxLeadRole? = nil) {
+                backedByZmx: Bool?, lead: ZmxLeadRole? = nil, reconnect: ControlReconnect? = nil) {
         self.id = id
         self.kind = kind
         self.active = active
@@ -38,6 +41,20 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
         self.cwd = cwd
         self.backedByZmx = backedByZmx
         self.lead = lead
+        self.reconnect = reconnect
+    }
+}
+
+/// ControlReconnect is a remote pane's wait to be attached again. `failures` is the backoff streak: probes
+/// of its host that failed in a row, plus one for a link that dropped again soon after attaching.
+/// `reason` is what ssh said on the last failed probe, omitted when it said nothing.
+public struct ControlReconnect: Codable, Sendable, Equatable {
+    public let failures: Int
+    public let reason: String?
+
+    public init(failures: Int, reason: String?) {
+        self.failures = failures
+        self.reason = reason
     }
 }
 
@@ -669,6 +686,9 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// The Live sessions reset state: app-global like `app`, omitted when nothing is pending and no launch
     /// has consumed a marker. The read side of `zmx.reset`.
     public let liveReset: ControlLiveResetReadback?
+    /// indexUnsaved is true while the last `windows.json` write failed, omitted otherwise. App-global like
+    /// `app`.
+    public let indexUnsaved: Bool?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
@@ -679,9 +699,11 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
                 dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
                 pickPending: String? = nil, askPending: String? = nil,
-                app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil) {
+                app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil,
+                indexUnsaved: Bool? = nil) {
         self.workspaces = workspaces
         self.liveReset = liveReset
+        self.indexUnsaved = indexUnsaved
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
         self.recencyDwellMs = recencyDwellMs

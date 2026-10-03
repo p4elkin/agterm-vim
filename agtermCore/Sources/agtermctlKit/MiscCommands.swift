@@ -7,8 +7,30 @@ import agtermCore
 struct Keymap: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Keymap commands.",
-        subcommands: [Reload.self, List.self]
+        subcommands: [Reload.self, List.self, Run.self]
     )
+
+    struct Run: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Run one of your custom commands by name against a session.",
+            discussion: """
+            NAME is a custom command's name exactly as `keymap list` prints it. The command runs as it \
+            does from the palette, with the target session's focused pane, primary or split and never \
+            its scratch or an overlay, supplying the working directory, the selection and the context \
+            tokens. A name no command carries is refused.
+
+            The reply says the command started. It runs detached, so its exit status and output are not \
+            reported here; a command set to show a failure panel still shows it.
+            """
+        )
+        @Argument(help: "Custom command name, from `keymap list`.") var name: String
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .keymapRun, target: target.target, args: options.withWindow(ControlArgs(name: name)))
+        }
+    }
 
     struct Reload: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Re-read and apply keymap.conf (prints the diagnostic count).")

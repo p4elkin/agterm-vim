@@ -1162,6 +1162,59 @@ final class CustomCommandRunnerTests: XCTestCase {
         return nil
     }
 
+    private func controlServer(_ fix: Fixture) -> ControlServer {
+        fix.actions.customCommandRunner = fix.runner
+        let server = ControlServer(library: library, actions: fix.actions, settingsModel: fix.settings,
+                                   identity: AppIdentity(version: "9.9.9"),
+                                   socketPath: "/tmp/agterm-run-\(UUID().uuidString.prefix(8)).sock")
+        failureServers.append(server)
+        return server
+    }
+
+    func testKeymapRunStartsTheNamedCommandForTheAddressedSessionNotTheActiveOne() throws {
+        let probe = stateDir.appendingPathComponent("probe-\(UUID().uuidString).txt")
+        let fix = try fixture(keymap: "command \"Mark\" printf '%s' \"$AGT_SESSION_ID\" > \(probe.path)\n")
+        let owner = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let background = try XCTUnwrap(fix.store.addSession(toWorkspace: owner, cwd: NSTemporaryDirectory(),
+                                                            select: false))
+        XCTAssertNotEqual(fix.store.selectedSessionID, background.id)
+
+        let response = controlServer(fix).runCustomCommand(name: "Mark", target: background.id.uuidString, window: nil)
+
+        XCTAssertEqual(response, ControlResponse(ok: true, result: ControlResult(id: background.id.uuidString)))
+        var written: String?
+        let deadline = Date().addingTimeInterval(5)
+        while written == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            if let text = try? String(contentsOf: probe, encoding: .utf8), !text.isEmpty { written = text }
+        }
+        XCTAssertEqual(written, background.id.uuidString)
+    }
+
+    func testKeymapRunRefusesAnUnknownNameAnUnknownSessionAndAMissingRunner() throws {
+        let fix = try fixture(keymap: "command \"Mark\" true\n")
+        let server = controlServer(fix)
+
+        XCTAssertEqual(server.runCustomCommand(name: "mark", target: nil, window: nil),
+                       ControlResponse(ok: false, error: "no custom command named mark"))
+        XCTAssertFalse(server.runCustomCommand(name: "Mark", target: UUID().uuidString, window: nil).ok)
+
+        fix.actions.customCommandRunner = nil
+        XCTAssertEqual(server.runCustomCommand(name: "Mark", target: nil, window: nil),
+                       ControlResponse(ok: false, error: "custom commands are not available"))
+    }
+
+    func testKeymapRunReportsACommandThatDidNotStart() throws {
+        let fix = try fixture(keymap: "command \"Mark\" true\n")
+        let session = try XCTUnwrap(fix.store.activeSession)
+        session.currentCwd = stateDir.appendingPathComponent("missing-directory").path
+
+        let response = controlServer(fix).runCustomCommand(name: "Mark", target: nil, window: nil)
+
+        XCTAssertFalse(response.ok)
+        XCTAssertTrue(response.error?.hasPrefix("Mark did not start: ") == true, response.error ?? "no error")
+    }
+
     func testScratchChordKeepsItsOwnerAfterSelectionChanges() throws {
         for anotherWindow in [false, true] {
             try assertSessionlessChordContext(surfaceKind: .scratch, selectedInAnotherWindow: anotherWindow)

@@ -589,7 +589,8 @@ final class ControlServer {
                 .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
                 .sessionMark,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
-                .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .hooksReload, .hooksList, .browserClear,
+                .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
+                .browserClear,
                 .configReload, .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarParked, .sidebarExpand, .sidebarCollapse,
                 .sidebarWidth, .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
@@ -602,7 +603,7 @@ final class ControlServer {
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxPresent, .sessionOverlayJobRun, .dashboard, .version:
+                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
@@ -880,7 +881,7 @@ final class ControlServer {
                 }
             },
             app: identity,
-            liveReset: liveResetReadback(),
+            liveReset: liveResetReadback(), indexUnsaved: library.indexUnsaved,
             // the mirror the sidebars render from, so the read-back names what is on screen.
             flaggedLayout: GhosttyApp.shared.flaggedViewLayout,
             htmlZoom: HtmlOverlayRegistry.shared.zoom

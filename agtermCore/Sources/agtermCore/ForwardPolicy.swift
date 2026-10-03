@@ -39,7 +39,7 @@ public enum ForwardPolicy {
              .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
              .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarExpand, .sidebarCollapse,
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
-             .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload,
+             .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
              .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize:
             return .refused("no windows or UI")
@@ -47,7 +47,7 @@ public enum ForwardPolicy {
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach, .browserClear:
+             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach, .zmxScreen, .browserClear:
             return .refused("a Mac feature")
         }
     }

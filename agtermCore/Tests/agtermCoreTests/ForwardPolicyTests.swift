@@ -51,7 +51,7 @@ struct ForwardPolicyTests {
         ("window.new", "no windows or UI"), ("theme.set", "no windows or UI"), ("mode", "no windows or UI"),
         ("hooks.reload", "a Mac feature"), ("session.restore", "a Mac feature"), ("session.pairing", "a Mac feature"),
         ("zmx.attach", "a Mac feature"), ("zmx.prune", "a Mac feature"), ("zmx.reset", "a Mac feature"),
-        ("browser.clear", "a Mac feature"),
+        ("browser.clear", "a Mac feature"), ("zmx.screen", "a Mac feature"), ("keymap.run", "no windows or UI"),
     ])
     func refusalsCarryTheirReason(_ name: String, _ reason: String) throws {
         let command = try #require(Command(rawValue: name))

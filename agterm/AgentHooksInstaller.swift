@@ -398,11 +398,13 @@ enum AgentHooksInstaller {
 
     // OpenCode's plugin-install outcome. plugins load on the next OpenCode start.
     private static func opencodeText(_ opencode: OpenCodeResult) -> String {
+        let onlyV1 = "The plugin serves OpenCode 1.x; OpenCode 2 does not load it."
         switch opencode {
         case .installed:
-            return "OpenCode lifecycle plugin installed to ~/.config/opencode/plugins/agterm-status.js. Restart OpenCode."
+            return "OpenCode lifecycle plugin installed to ~/.config/opencode/plugins/agterm-status.js. Restart OpenCode. "
+                + onlyV1
         case .alreadyConfigured:
-            return "OpenCode lifecycle plugin is already current at ~/.config/opencode/plugins/agterm-status.js."
+            return "OpenCode lifecycle plugin is already current at ~/.config/opencode/plugins/agterm-status.js. " + onlyV1
         case .userOwned:
             return "~/.config/opencode/plugins/agterm-status.js is user-owned, so agterm left it untouched."
         case .unreadable:
@@ -412,7 +414,7 @@ enum AgentHooksInstaller {
         case .noOpenCode:
             return "No ~/.config/opencode found, so OpenCode's lifecycle plugin was skipped. "
                 + "Coarse shell detection for opencode is off by default — status comes from the lifecycle plugin "
-                + "once ~/.config/opencode exists. Start OpenCode once, then run this again."
+                + "once ~/.config/opencode exists. Start OpenCode once, then run this again. " + onlyV1
         }
     }
 

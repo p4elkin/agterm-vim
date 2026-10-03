@@ -97,6 +97,16 @@ struct HtmlBridgeTests {
         #expect(built.args?.window == nil)
     }
 
+    // a name-only keymap.run from a background page ran against the window's selected session
+    @Test func anUntargetedKeymapRunActsOnThePagesSession() throws {
+        let built = try request(#"{"cmd":"keymap.run","args":{"name":"Deploy"}}"#)
+        #expect(built.target == session.uuidString)
+        #expect(built.args?.window == nil)
+
+        let explicit = try request(#"{"cmd":"keymap.run","target":"other","args":{"name":"Deploy"}}"#)
+        #expect(explicit.target == "other")
+    }
+
     @Test func aTerminalAskGoesToThePagesSessionAndAGuiAskToItsWindow() throws {
         let terminal = try request(#"{"cmd":"ask.open","args":{"title":"t"}}"#)
         #expect(terminal.target == session.uuidString)

@@ -8,13 +8,17 @@ final class ControlServerRemoteReconnectTests: XCTestCase {
         private let lock = NSLock()
         private var seen: [[String]] = []
         let status: Int32
+        let stderr: String
         var argvs: [[String]] { lock.withLock { seen } }
 
-        init(status: Int32) { self.status = status }
+        init(status: Int32, stderr: String = "") {
+            self.status = status
+            self.stderr = stderr
+        }
 
         func run(_ argv: [String], deadline: TimeInterval) async -> RemoteCommandResult {
             lock.withLock { seen.append(argv) }
-            return RemoteCommandResult(status: status, stdout: "", stderr: "")
+            return RemoteCommandResult(status: status, stdout: "", stderr: stderr)
         }
     }
 
@@ -153,6 +157,27 @@ final class ControlServerRemoteReconnectTests: XCTestCase {
         for _ in 0..<100 where RemoteReconnectBook.shared.entries[pane]?.probing == true {
             try await Task.sleep(for: .milliseconds(10))
         }
+    }
+
+    func testAFailedProbesReasonIsOnThePanesTreeNodeUntilTheWaitEnds() async throws {
+        let (session, view) = try replica()
+        let server = server(runner: Probe(status: 255, stderr: "Host key verification failed.\r\n"))
+        PaneLead.reconnect = { _, _ in true }
+        func leftNode() -> ControlSurfaceNode? {
+            store.controlTree(paneForeground: { _ in nil }).workspaces.flatMap(\.sessions)
+                .first { $0.id == session.id.uuidString }?.surfaces?.first { $0.kind == "left" }
+        }
+        XCTAssertNil(leftNode()?.reconnect)
+
+        server.waitToReconnect(view, cover: false)
+        server.tickReconnects()
+        try await settleProbe(session.paneIdentity)
+
+        XCTAssertEqual(leftNode()?.reconnect, ControlReconnect(failures: 1, reason: "Host key verification failed."))
+
+        RemoteReconnectBook.shared.cancel(pane: session.paneIdentity)
+        XCTAssertNotNil(leftNode())
+        XCTAssertNil(leftNode()?.reconnect)
     }
 
     func testAHostThatDoesNotAnswerKeepsThePaneWaiting() async throws {
