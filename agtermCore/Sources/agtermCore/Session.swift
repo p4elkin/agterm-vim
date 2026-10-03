@@ -124,7 +124,8 @@ public final class Session: Identifiable {
     /// status glyph reacts. Ephemeral.
     public var agentIndicator = AgentIndicator()
 
-    /// Last time the status was set, idle and repeated values included; nil before any set, never persisted.
+    /// Last time the status was set, idle and repeated values included but not a write changing only the note;
+    /// nil before any set, never persisted.
     /// Must stay a wall-clock `Date`: `controlTree` ships it as epoch seconds compared against `ControlEvent.ts`,
     /// so a monotonic instant would make a client's computed age meaningless.
     @ObservationIgnored public var statusChangedAt: Date?
