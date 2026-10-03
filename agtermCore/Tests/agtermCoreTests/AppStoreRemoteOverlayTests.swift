@@ -91,6 +91,18 @@ struct AppStoreRemoteOverlayTests {
         }
     }
 
+    @Test func anOriginWithoutSurfacesOpensWithNoLeadReported() throws {
+        let (session, _) = try origin()
+        setLead(nil, pane: session.paneIdentity)
+
+        let result = store.openRemoteOverlay(session.id, options: ControlSessionOverlayOpenOptions(
+            command: "revdiff", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, follow: false, pane: nil),
+                                             context: Self.context, requireFollower: false)
+
+        _ = try job(of: result)
+        #expect(open(session) == .slotTaken)
+    }
+
     @Test(arguments: [nil, .unowned, .leader, .follower] as [ZmxLeadRole?], OverlayPane.allCases)
     func aPaneOverlayUsesOnlyItsOwnLead(role: ZmxLeadRole?, pane: OverlayPane) throws {
         let (session, _) = try origin(split: true)

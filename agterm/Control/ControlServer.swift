@@ -570,7 +570,7 @@ final class ControlServer {
 
     /// Execute a request against the store/actions seam. Never throws across the socket: any failure is a
     /// `{"ok":false,"error":…}` response.
-    private func dispatch(_ request: ControlRequest) async -> ControlResponse {
+    func dispatch(_ request: ControlRequest) async -> ControlResponse {
         // refresh the read cache in this same main-actor execution, so the background fast path sees the new
         // state without a separate, stallable hop.
         defer { refreshWindowCache() }

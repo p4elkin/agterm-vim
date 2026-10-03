@@ -122,4 +122,27 @@ struct ZmxRunnerTests {
     @Test func theBackgroundEntryRunsTheSameCore() async {
         #expect(await runner("/bin/sh").runInBackground(["-c", "echo async"], timeout: 5) == .ok("async\n"))
     }
+
+    @Test func inputReachesTheChildFollowedByEndOfInput() {
+        let input = "typed\rcafé\u{1b}[A\n"
+
+        #expect(runner("/bin/cat").run([], input: Data(input.utf8), timeout: 5) == .ok(input))
+    }
+
+    @Test func noInputIsAnEmptyStdin() {
+        #expect(runner("/bin/cat").run([], timeout: 5) == .ok(""))
+    }
+
+    @Test func aChildThatNeverReadsItsInputNeitherHangsNorKillsTheCaller() {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = runner("/bin/sh").run(["-c", "exit 0"], input: Data(count: 1 << 20), timeout: 5)
+
+        #expect(result == .ok(""))
+        #expect(clock.now - start < .seconds(2))
+    }
+
+    @Test func theBackgroundEntryPassesInput() async {
+        #expect(await runner("/bin/cat").runInBackground([], input: Data("bg".utf8), timeout: 5) == .ok("bg"))
+    }
 }

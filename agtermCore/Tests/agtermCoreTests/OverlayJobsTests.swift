@@ -68,6 +68,23 @@ struct OverlayJobsTests {
         #expect(jobs.job(id)?.state == .finished(.launchFailed))
     }
 
+    @Test func aClaimThatMissesItsStartWindowIsCancelledThroughItsHelper() {
+        let (jobs, _) = makeJobs()
+        let expired = register(jobs)
+        let late = register(jobs)
+        var cancels: [String] = []
+        _ = jobs.claim(expired) { cancels.append(expired) }
+        _ = jobs.claim(late) { cancels.append(late) }
+
+        clock.advance(OverlayJobs.startWindow)
+        jobs.started(late)
+        jobs.expire()
+
+        #expect(cancels.sorted() == [expired, late].sorted())
+        #expect(jobs.job(expired)?.state == .finished(.unknown))
+        #expect(jobs.job(late)?.state == .finished(.unknown))
+    }
+
     @Test func aClaimThatNeverReportsStartingEndsUnknown() {
         let (jobs, _) = makeJobs()
         let id = register(jobs)

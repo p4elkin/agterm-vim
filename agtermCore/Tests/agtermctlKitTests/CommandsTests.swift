@@ -1484,6 +1484,30 @@ struct CommandsTests {
         #expect(command.noBlock)
     }
 
+    @Test(arguments: [
+        (["--target", "explicit"], ["AGTERM_SESSION_ID": "pane"], "explicit"),
+        ([], ["AGTERM_SESSION_ID": "pane"], "pane"),
+        ([], ["AGTERM_SESSION_ID": ""], nil),
+        ([], [:], nil),
+    ] as [([String], [String: String], String?)])
+    func pickOpenTargetsTheFlagElseItsOwnSession(_ arguments: [String], _ environment: [String: String], _ target: String?) throws {
+        let command = try Pick.Open.parse(arguments)
+
+        #expect(try command.makeRequest(input: Data("One\n".utf8), environment: environment).target == target)
+    }
+
+    @Test func pickOpenExecuteSendsTheSessionFromTheEnvironment() throws {
+        var sent: [ControlRequest] = []
+        let command = try Pick.Open.parse(["--no-block"])
+
+        try command.execute(input: Data("One\n".utf8), environment: ["AGTERM_SESSION_ID": "pane"], send: { request in
+            sent.append(request)
+            return SocketReply(ControlResponse(ok: true, result: ControlResult(id: "pick-1")))
+        }, sleep: { _ in }, output: { _ in }, errorOutput: { _ in })
+
+        #expect(sent.map(\.target) == ["pane"])
+    }
+
     @Test func pickOpenDefaultsToBlockingWithoutOptionalArgs() throws {
         let command = try Pick.Open.parse([])
         let items = [ControlPickItem(id: "One", label: "One")]
@@ -1959,11 +1983,19 @@ struct CommandsTests {
         #expect(command.options.socketPath(env: env) == "/tmp/state/agterm.sock")
     }
 
+    #if os(Linux)
+    @Test func socketPathFallsBackToTheHeadlessServer() throws {
+        let command = try Tree.parse([])
+        let env = ["HOME": "/home/x"]
+        #expect(command.options.socketPath(env: env) == "/home/x/.local/state/agterm-headless/agterm.sock")
+    }
+    #else
     @Test func socketPathFallsBackToHome() throws {
         let command = try Tree.parse([])
         let env = ["HOME": "/Users/x"]
         #expect(command.options.socketPath(env: env) == "/Users/x/Library/Application Support/agterm/agterm.sock")
     }
+    #endif
 
     @Test func socketPathFallsBackToTmpWithoutHome() throws {
         let command = try Tree.parse([])

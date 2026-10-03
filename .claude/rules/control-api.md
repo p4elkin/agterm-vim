@@ -1045,6 +1045,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   absent from every snapshot; the row itself comes back from the remote row book (see Remote sessions).
 - `remoteState` (fork only) is a bound remote row's last classification: `attached`, `disconnected` or
   `endedOnHost`, omitted for a local or unbound row. The sidebar notice names the last two.
+- `remoteSession` (fork only) is a bound remote row's session id on its origin, omitted for a local or
+  unbound row. A tool that runs a command on the origin for that row names it as `--target`.
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.
@@ -1569,6 +1571,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   helper does when the ssh terminal goes. On the viewer a held surface closes at once and a running one
   keeps its program and closes when its ssh ends, held or not. A session leaving either store, soft close
   included, ends all of this before it goes, so undo brings back neither a reservation nor a replica.
+- A headless origin forwards what needs a window to the presenter: `control.forward {id, request}`, answered by
+  `control.forwarded {id, response}`. A viewer lists `forward` in its hello `kinds` only when it has the effect;
+  `control.forwarded` from a mirror is dropped. `ControlServer+Forward.swift` re-checks `ForwardPolicy`, refuses
+  a request carrying `command`, and requires the target to be the row's `remoteSession`. It runs the request on
+  that row and its window and maps the row id in the reply back to the origin's. Pick and page polls keep their
+  ids. A reply over the frame limit becomes `reply larger than the frame limit`. The origin's side is in
+  [[headless-origin]].
 - A row whose stream is not up says so on its sidebar indicator, naming the host. Retrying is automatic;
   closing and reattaching the session is the manual way to retry now.
 - The origin bounds each stream: 256 KiB a line checked before delivery, a bounded outbound queue whose

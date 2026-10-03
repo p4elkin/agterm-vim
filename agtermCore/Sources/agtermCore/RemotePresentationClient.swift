@@ -34,6 +34,8 @@ public struct RemotePresentationEffects {
     public var overlayRequest: @MainActor (PresentationOverlay) -> Bool
     public var overlayClose: @MainActor (PresentationOverlayChange) -> Void
     public var overlayResize: @MainActor (PresentationOverlayChange) -> Void
+    /// Runs a request the origin forwarded and calls back with its answer. Nil leaves `forward` out of the hello.
+    public var controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)?
     public var warn: @MainActor (String) -> Void
 
     public init(status: @escaping @MainActor (PresentationStatus?) -> Void,
@@ -48,6 +50,7 @@ public struct RemotePresentationEffects {
                 overlayRequest: @escaping @MainActor (PresentationOverlay) -> Bool = { _ in false },
                 overlayClose: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
                 overlayResize: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
+                controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)? = nil,
                 layout: @escaping @MainActor (PresentationLayout) -> Void = { _ in },
                 warn: @escaping @MainActor (String) -> Void) {
         self.status = status
@@ -63,6 +66,7 @@ public struct RemotePresentationEffects {
         self.overlayRequest = overlayRequest
         self.overlayClose = overlayClose
         self.overlayResize = overlayResize
+        self.controlForward = controlForward
         self.warn = warn
     }
 }
@@ -215,8 +219,28 @@ public final class RemotePresentationClient {
             if !effects.overlayRequest(overlay) { send(.overlayRejected(PresentationOverlayChange(job: overlay.job)), on: link) }
         case .overlayClose(let change): effects.overlayClose(change)
         case .overlayResize(let change): effects.overlayResize(change)
-        case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed, .unknown: break
+        case .controlForward(let forward):
+            guard let run = effects.controlForward else {
+                send(.controlForwarded(PresentationForwarded(id: forward.id, response: ControlResponse(ok: false, error: "not supported"))),
+                     on: link)
+                return
+            }
+            let launch = launchCount
+            run(forward.request) { [weak self] response in self?.replyForwarded(forward.id, response, launch: launch) }
+        case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed,
+             .controlForwarded, .unknown: break
         }
+    }
+
+    /// Dropped once the link it came on is gone: the origin fails the forward when that stream ends.
+    private func replyForwarded(_ id: String, _ response: ControlResponse, launch: Int) {
+        guard running, let link, launch == launchCount else { return }
+        var body = PresentationFrame.Body.controlForwarded(PresentationForwarded(id: id, response: response))
+        if (try? PresentationCodec.encode(PresentationFrame(gen: generation ?? 0, rev: 0, body: body))) == nil {
+            body = .controlForwarded(PresentationForwarded(
+                id: id, response: ControlResponse(ok: false, error: "reply larger than the frame limit")))
+        }
+        send(body, on: link)
     }
 
     private func applyLayout(_ layout: PresentationLayout) {
@@ -240,8 +264,8 @@ public final class RemotePresentationClient {
             onLine: { [weak self] line in self?.receive(line, launch: launch) },
             onClose: { [weak self] reason in self?.linkClosed(reason: reason, launch: launch) })
         link = opened
-        let hello = PresentationHello(version: PresentationCodec.version, kinds: PresentationHub.supportedKinds,
-                                      mode: .presenter)
+        let kinds = PresentationHub.supportedKinds + (effects.controlForward == nil ? [] : ["forward"])
+        let hello = PresentationHello(version: PresentationCodec.version, kinds: kinds, mode: .presenter)
         send(.hello(hello), on: opened)
     }
 

@@ -277,6 +277,9 @@ Solves the routing half of "agent calls go to the Mac". The shim edits are in `~
 
 ### Task 17: the shim routes by pane environment
 
+Superseded, not done: Phase 8 deleted the shim (`bin/agterm-ctl-remote`, Task 47), and `agtermctl` on p4linux is
+the server's own CLI (Task 46). The boxes below stay open on purpose.
+
 Read first: the spike branch at the top of `bin/agterm-ctl-remote` and `tests/test_agterm_ctl_remote.py`.
 
 - [ ] Write tests first in `tests/test_agterm_ctl_remote.py`, with a fake Linux `agtermctl` through a new seam `AGTERM_CTL_REMOTE_HEADLESS_CTL` and a fake state directory through `AGTERM_CTL_REMOTE_HEADLESS_STATE`. Cases that reach the fake: `AGTERM_SOCKET=<state>/agterm.sock` with `session status active --target X --socket <state>/agterm.sock` (and `AGTERM_STATE_DIR=<state>` is in the fake's environment); with the fake installed and no `AGTERM_SOCKET`, `zmx tree --json`, `zmx present <id>` and `zmx new --json --name t`, each also when the socket file is missing (the fake's failure exit code comes back unchanged). Cases that take the Mac path: `zmx tree p4studio`; `zmx tree` when the Linux `agtermctl` is not installed; `AGTERM_SOCKET` pointing elsewhere.
@@ -638,19 +641,30 @@ an exited surface. Closing one session on p4linux turned its row `endedOnHost`; 
 ## Phase 8: move p4linux sessions and remove the shim
 
 Solves "p4linux sessions still run as Mac rows". Starts only when Phases 0 to 7 are in daily use.
+
+Order changed 2026-10-01, after Task 41's inventory (`~/dev/agterm-agents/docs/headless-migration.md`):
+the headless server does not yet forward `session.overlay.*` or `pick.*`, so the code for Tasks 42 to 46
+is written on agterm-agents branch `headless-phase8` and merges only once overlay forwarding exists
+(`docs/plans/20261001-headless-overlay-forwarding-plan.md`). Task 46's `install.sh` half also waits for it:
+it points every `agtermctl` on p4linux at the server, plain `ssh p4linux` rows included. It also comes after
+live steps 1 to 4, or the rows not yet moved send their hooks, rooms and typing to a server that does not
+know them.
+`install.sh`'s `mac_host()` reads the Mac's name out of `bin/agterm-ctl-remote`, so Task 46 moves that
+name before Task 47 deletes the shim. Task 47's removal list also takes `agterm-zmx-far-sync`,
+`agterm-park-watch` and the `bind_argv` branch of `agterm-attach-picker`.
 Most edits are in `~/dev/agterm-agents`. Steps marked **Sasha-run** touch live rows, daemons or the
 live Mac socket; the loop never runs them.
 
 ### Task 41: inventory of the Mac path
 
-- [ ] Write `~/dev/agterm-agents/docs/headless-migration.md`: every entry point that creates or binds a p4linux row (`agterm-zmx new|bind|pick --host`, `offload.sh --host`, the shim's `session new` rewrite, `agterm-attach-picker`, `agterm-reattach-far`), the Mac's forced ssh command `bin/agtermctl-shim-wrapper` and its `authorized_keys` entry, every reader of `AGTERM_CTL_REMOTE_HOST`, `AGTERM_REMOTE_HOST` and `AGTERM_REMOTE_SELF_HOST` (from `grep -rl` over `bin`, `hooks`, `skills`), and for each one: switch, keep (with the reason, as for `XCHAT_REMOTE_HOST` in `hooks/xchat_remote.py`), or remove.
-- [ ] Acceptance: `cd ~/dev/agterm-agents && test -s docs/headless-migration.md && grep -q agterm-ctl-remote docs/headless-migration.md`
+- [x] Write `~/dev/agterm-agents/docs/headless-migration.md`: every entry point that creates or binds a p4linux row (`agterm-zmx new|bind|pick --host`, `offload.sh --host`, the shim's `session new` rewrite, `agterm-attach-picker`, `agterm-reattach-far`), the Mac's forced ssh command `bin/agtermctl-shim-wrapper` and its `authorized_keys` entry, every reader of `AGTERM_CTL_REMOTE_HOST`, `AGTERM_REMOTE_HOST` and `AGTERM_REMOTE_SELF_HOST` (from `grep -rl` over `bin`, `hooks`, `skills`), and for each one: switch, keep (with the reason, as for `XCHAT_REMOTE_HOST` in `hooks/xchat_remote.py`), or remove.
+- [x] Acceptance: `cd ~/dev/agterm-agents && test -s docs/headless-migration.md && grep -q agterm-ctl-remote docs/headless-migration.md`
 
 ### Task 42: new p4linux sessions are headless
 
-- [ ] Tests first in `tests/test_agterm_zmx_headless_new.py`, with a fake `agtermctl`: `agterm-zmx new --host p4linux --name t --cwd /x --cmd c` on the Mac runs `agtermctl zmx new p4linux --name t --cwd /x --command c` and writes no host variables; `offload.sh --host p4linux` run on p4linux calls the Linux `agtermctl zmx new --json` and makes no call to the Mac: the session waits in `zmx tree p4linux`.
-- [ ] Implement in `bin/agterm-zmx` and `skills/offload-session/offload.sh`. Keep the old builder behind `--legacy` until Task 47 removes it.
-- [ ] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_zmx_headless_new.py tests/test_offload_session_identity.py -q`
+- [x] Tests first in `tests/test_agterm_zmx_headless_new.py`, with a fake `agtermctl`: `agterm-zmx new --host p4linux --name t --cwd /x --cmd c` on the Mac runs `agtermctl zmx new p4linux --name t --cwd /x --command c` and writes no host variables; `offload.sh --host p4linux` run on p4linux calls the Linux `agtermctl zmx new --json` and makes no call to the Mac: the session waits in `zmx tree p4linux`.
+- [x] Implement in `bin/agterm-zmx` and `skills/offload-session/offload.sh`. Keep the old builder behind `--legacy` until Task 47 removes it.
+- [x] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_zmx_headless_new.py tests/test_offload_session_identity.py -q`
 
 ### Task 43: removed
 
@@ -662,34 +676,38 @@ from the Mac. `offload-session` and its skill say so (Task 48).
 Read first: the snapshot, conversation-id routes and replay loop in `bin/agterm-zmx-park`, and Task 22's
 `--zmx` and `--zmx-dir` options.
 
-- [ ] Tests first in `tests/test_agterm_zmx_park_migrate.py`, with a fake `zmx` and a fake Linux `agtermctl`: `migrate` without `--apply` prints the plan and changes nothing; with `--apply`, per row, it kills the old daemon before creating the new session (never two Claudes on one conversation), runs `agtermctl zmx new --json --name <name> --cwd <cwd> --command <frozen launcher with --resume <id>>`, and appends `<old key> <conversation id> <route> <new id> <scrollback file>` to a mapping file; a weak-route row is skipped and listed unless `--include-weak`; a row with no Claude becomes a plain shell in its cwd and is listed as such; `--only <old key>` moves one row.
-- [ ] Implement the `migrate` mode in `bin/agterm-zmx-park`.
-- [ ] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_zmx_park_migrate.py -q`
+- [x] Tests first in `tests/test_agterm_zmx_park_migrate.py`, with a fake `zmx` and a fake Linux `agtermctl`: `migrate` without `--apply` prints the plan and changes nothing; with `--apply`, per row, it kills the old daemon before creating the new session (never two Claudes on one conversation), runs `agtermctl zmx new --json --name <name> --cwd <cwd> --command <frozen launcher with --resume <id>>`, and appends `<old key> <conversation id> <route> <new id> <scrollback file>` to a mapping file; a weak-route row is skipped and listed unless `--include-weak`; a row with no Claude becomes a plain shell in its cwd and is listed as such; `--only <old key>` moves one row.
+- [x] Implement the `migrate` mode in `bin/agterm-zmx-park`.
+- [x] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_zmx_park_migrate.py -q`
 
 ### Task 45: the Mac switches its rows
 
-- [ ] Tests first in `tests/test_agterm_headless_switch_rows.py`, with a fake Mac `agtermctl` and a fixture mapping: per mapping line, the script finds the old row by its pinned key, runs `agtermctl zmx attach p4linux <new id>`, moves the new row after the old one, and closes the old row only after the attach answered ok; `--dry-run` only prints; a failed attach leaves the old row.
-- [ ] Add `bin/agterm-headless-switch-rows`, reading the mapping from p4linux over ssh.
-- [ ] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_headless_switch_rows.py -q`
+- [x] Tests first in `tests/test_agterm_headless_switch_rows.py`, with a fake Mac `agtermctl` and a fixture mapping: per mapping line, the script finds the old row by its pinned key, runs `agtermctl zmx attach p4linux <new id>`, moves the new row after the old one, and closes the old row only after the attach answered ok; `--dry-run` only prints; a failed attach leaves the old row.
+- [x] Add `bin/agterm-headless-switch-rows`, reading the mapping from p4linux over ssh.
+- [x] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests/test_agterm_headless_switch_rows.py -q`
 
 ### Task 46: the real agtermctl on p4linux
 
-- [ ] Test first in `agtermctlKitTests/CommandsTests.swift`, inside `#if os(Linux)`: with no `--socket` and no `AGTERM_STATE_DIR`, `socketPath` is `$HOME/.local/state/agterm-headless/agterm.sock`. The macOS default is unchanged.
-- [ ] Add the Linux branch to `BasicOptions.socketPath` in `agtermctlKit/Commands.swift`.
-- [ ] In agterm-agents `install.sh`, on the remote host: link `~/.local/bin/agtermctl` to `~/.local/opt/agterm-headless/agtermctl` instead of the shim, and write no `AGTERMCTL` export. Keep `XCHAT_REMOTE_HOST`. Update `tests/test_install_sh.py`.
-- [ ] Acceptance: `swift test --filter CommandsTests && cd ~/dev/agterm-agents && python -m pytest tests/test_install_sh.py -q`
+- [x] Test first in `agtermctlKitTests/CommandsTests.swift`, inside `#if os(Linux)`: with no `--socket` and no `AGTERM_STATE_DIR`, `socketPath` is `$HOME/.local/state/agterm-headless/agterm.sock`. The macOS default is unchanged.
+- [x] Add the Linux branch to `BasicOptions.socketPath` in `agtermctlKit/Commands.swift`.
+- [x] In agterm-agents `install.sh`, on the remote host: link `~/.local/bin/agtermctl` to `~/.local/opt/agterm-headless/agtermctl` instead of the shim, and write no `AGTERMCTL` export. Keep `XCHAT_REMOTE_HOST`. Update `tests/test_install_sh.py`.
+- [x] Acceptance: `swift test --filter CommandsTests && cd ~/dev/agterm-agents && python -m pytest tests/test_install_sh.py -q`
+
+Done differently, 2026-10-03: the `AGTERMCTL` export stays, because it names `~/.local/bin/agtermctl`, now the
+server's CLI, and `xchat-hud-notify.sh` has no other way to find it; the Mac's name moved to agterm-agents
+`config/mac-host`. `swift test --filter CommandsTests` was not run: no Swift changed in this task.
 
 ### Task 47: check, then remove the shim
 
-- [ ] Write `bin/agterm-mac-path-check` with a test in `tests/test_agterm_mac_path_check.py`: it exits 1 and lists the offender when any process has `AGTERM_CTL_REMOTE_HOST` in its environment (read with the named-key discipline of `_env_of`), when `zmx list` in the default directory shows an `agterm` row key, or when a given Mac `tree --json` fixture has a row whose command attaches the default directory.
-- [ ] Remove `bin/agterm-ctl-remote` and `tests/test_agterm_ctl_remote.py`, the shim linking and export code in `install.sh`, the host-variable `printf` and the `--legacy` builder in `bin/agterm-zmx`, and each reader Task 41 marked "remove".
-- [ ] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests -q && ! grep -rn 'agterm-ctl-remote' bin hooks skills install.sh`
+- [x] Write `bin/agterm-mac-path-check` with a test in `tests/test_agterm_mac_path_check.py`: it exits 1 and lists the offender when any process has `AGTERM_CTL_REMOTE_HOST` in its environment (read with the named-key discipline of `_env_of`), when `zmx list` in the default directory shows an `agterm` row key, or when a given Mac `tree --json` fixture has a row whose command attaches the default directory.
+- [x] Remove `bin/agterm-ctl-remote` and `tests/test_agterm_ctl_remote.py`, the shim linking and export code in `install.sh`, the host-variable `printf` and the `--legacy` builder in `bin/agterm-zmx`, and each reader Task 41 marked "remove".
+- [x] Acceptance: `cd ~/dev/agterm-agents && python -m pytest tests -q && ! grep -rn 'agterm-ctl-remote' bin hooks skills install.sh`
 
 ### Task 48: phase 8 docs
 
-- [ ] agterm-vim: `FORK-NOTES.md`, `CHANGELOG-fork.md`, and `.claude/rules/headless-origin.md` say p4linux sessions are headless and the shim is gone.
-- [ ] agterm-agents: `README.md`, `docs/headless-migration.md` (what was done), `skills/agent-sessions/SKILL.md` (its shim section and the host-variable table), and `skills/offload-session/SKILL.md` (`--host`).
-- [ ] Acceptance: `cd ~/dev/agterm-agents && ! grep -n 'agterm-ctl-remote' README.md skills/agent-sessions/SKILL.md skills/offload-session/SKILL.md`
+- [x] agterm-vim: `FORK-NOTES.md`, `CHANGELOG-fork.md`, and `.claude/rules/headless-origin.md` say p4linux sessions are headless and the shim is gone.
+- [x] agterm-agents: `README.md`, `docs/headless-migration.md` (what was done), `skills/agent-sessions/SKILL.md` (its shim section and the host-variable table), and `skills/offload-session/SKILL.md` (`--host`).
+- [x] Acceptance: `cd ~/dev/agterm-agents && ! grep -n 'agterm-ctl-remote' README.md skills/agent-sessions/SKILL.md skills/offload-session/SKILL.md`
 
 Phase 8 gate: the Linux gate, the full agterm-agents pytest suite, and the Mac gate on p4studio
 (`Commands.swift` changed).
@@ -704,8 +722,8 @@ Live steps, **Sasha-run**, in this order, not by the loop:
    holding it. Confirm the new row shows the resumed conversation's last message and a status. Then
    move the rest.
 4. Run `agterm-mac-path-check` on p4linux with each Mac's `tree --json`. It must exit 0.
-5. Install Task 47 and Task 46's `install.sh` change. `agtermctl version` on p4linux answers from the
-   Linux binary.
+5. Install Task 46's `install.sh` change. `agtermctl version` on p4linux answers from the Linux binary.
+6. Install Task 47 once overlay forwarding covers every caller the shim still serves.
 
 ## Later phase: overlays and the picker
 
