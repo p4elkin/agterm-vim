@@ -90,7 +90,7 @@ public final class WindowLibrary {
     private(set) var openSetVersion = 0
 
     /// The state directory (AGTERM_STATE_DIR-aware): the index here, per-window files in `windows/`.
-    @ObservationIgnored private let directory: URL
+    @ObservationIgnored let directory: URL
     @ObservationIgnored let recentClosedStore: RecentClosedStore
     /// App-global conversation bookmarks (fork only), rooted at the same state directory. Owned here because
     /// the library is the one place every store's session-close events converge, which is where a closed
@@ -126,12 +126,14 @@ public final class WindowLibrary {
     /// Set at quit so per-window `willClose` close-reporting no-ops — the open-set must survive for the
     /// next launch's reopen-all instead of being zeroed as each window tears down.
     @ObservationIgnored public var isTerminating = false
+    /// indexUnsaved is true from a failed `windows.json` write until the next one that lands.
+    @ObservationIgnored public internal(set) var indexUnsaved = false
 
-    private static let indexFileName = "windows.json"
+    static let indexFileName = "windows.json"
     private static let windowsSubdirectory = "windows"
     private static let legacyFileName = "workspaces.json"
 
-    private var indexURL: URL { directory.appendingPathComponent(Self.indexFileName) }
+    var indexURL: URL { directory.appendingPathComponent(Self.indexFileName) }
     private var windowsDirectory: URL { directory.appendingPathComponent(Self.windowsSubdirectory, isDirectory: true) }
 
     /// Preserves the pre-zmx initializer symbol for source and incremental-build compatibility.
@@ -592,8 +594,7 @@ public final class WindowLibrary {
 
     // MARK: - Persistence
 
-    /// Flushes every open window's store — the quit-time flush persisting cwd changes made since the last
-    /// structural mutation.
+    /// saveAllOpen is `saveAllOpenChecked()` with the result dropped. The exit flush uses `saveAllChecked()`.
     public func saveAllOpen() {
         saveAllOpenChecked()
     }
@@ -613,21 +614,6 @@ public final class WindowLibrary {
         for store in stores.values { store.finalizeAllPendingCloses() }
     }
 
-    /// Writes `windows.json`: ordered window list with open flags, plus the frontmost id. A write failure
-    /// is logged and swallowed.
-    public func saveIndex() {
-        let entries = windows.map { WindowEntry(id: $0.id, name: $0.name, isOpen: stores[$0.id] != nil) }
-        let index = WindowsIndex(frontmost: frontmostWindowID, windows: entries)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(index).write(to: indexURL, options: .atomic)
-        } catch {
-            log("saveIndex failed: \(error)")
-        }
-    }
-
     // MARK: - Bootstrap (migration + recovery)
 
     /// Resolves the window set on init: a valid `windows.json`; else recover orphaned `windows/<id>.json`
@@ -644,15 +630,6 @@ public final class WindowLibrary {
         if recoverOrphanedWindows() { return }
         if migrateLegacy() { return }
         newWindow()
-    }
-
-    /// Reads `windows.json`; a missing/corrupt/version-mismatched file reads as nil, so the caller falls
-    /// through to recovery/migration/seeding.
-    private func loadIndex() -> WindowsIndex? {
-        guard let data = try? Data(contentsOf: indexURL) else { return nil }
-        guard let index = try? JSONDecoder().decode(WindowsIndex.self, from: data) else { return nil }
-        guard index.version == WindowsIndex.currentVersion, !index.windows.isEmpty else { return nil }
-        return index
     }
 
     /// Reopens the persisted open-set, falling back to the frontmost (else the first) so the app is never
@@ -740,6 +717,7 @@ public final class WindowLibrary {
             persistence: persistence,
             recentClosedStore: recentClosedStore,
             recentClosedDidChange: { [weak self] in self?.refreshRecentClosedItems() },
+            snapshotDidSave: { [weak self] in self?.retryUnsavedIndex() },
             controlEventSink: { [weak self] draft in
                 guard let self else { return }
                 guard !self.isBootstrapping else { return }
@@ -1021,7 +999,7 @@ public final class WindowLibrary {
         recentClosedItems = recentClosedStore.load()
     }
 
-    private func log(_ message: @autoclosure () -> String) {
+    func log(_ message: @autoclosure () -> String) {
         NSLog("agterm: %@", message())
     }
 }

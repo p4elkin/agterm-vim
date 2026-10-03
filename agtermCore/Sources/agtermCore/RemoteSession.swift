@@ -112,7 +112,9 @@ public enum RemoteSession {
         guard isPlain(job) else { throw InvocationError.invalidSession }
         let chain = cliPathPrefix + " && exec agtermctl session overlay run-job " + CommandRestore.shellQuotedLine([job])
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
-        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true) + [remote]
+        // one channel per job: a shared multiplexed connection was measured refusing channels (`Session open refused by peer`)
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true,
+                            options: ["-o", "ControlMaster=no", "-o", "ControlPath=none"]) + [remote]
     }
 
     /// sshd runs a remote command with `/usr/bin:/bin:/usr/sbin:/sbin` and a non-interactive shell reads no
@@ -201,21 +203,35 @@ public enum RemoteSession {
                                          moshCandidates: [String] = RemoteSession.moshClientCandidates,
                                          fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) })
         throws -> String {
-        let attach = CommandRestore.shellQuotedLine(
-            try attachCommand(host: host, endpoint: endpoint, daemon: daemon, lead: lead,
-                              connectTimeout: connectTimeout, transport: transport,
-                              moshCandidates: moshCandidates, fileExists: fileExists))
+        let argv = try attachCommand(host: host, endpoint: endpoint, daemon: daemon, lead: lead,
+                                     connectTimeout: connectTimeout, transport: transport,
+                                     moshCandidates: moshCandidates, fileExists: fileExists)
+        let keepAlive: String
+        let attach: String
+        switch transport {
+        case .ssh:
+            // $ka is unquoted on purpose: four words or none. When and why the check: control-api.md, Remote sessions
+            keepAlive = "ka=; " + CommandRestore.shellQuotedLine(["ssh", "-G"] + argv.dropFirst())
+                + " 2>/dev/null | grep -qx 'serveraliveinterval 0'"
+                + " && ka='-o ServerAliveInterval=5 -o ServerAliveCountMax=2'; "
+            attach = CommandRestore.shellQuotedLine(Array(argv.dropLast(2))) + " $ka "
+                + CommandRestore.shellQuotedLine(Array(argv.suffix(2)))
+        case .mosh:
+            // the keepalive is ssh's: `ssh -G` cannot read a mosh argv, and mosh keeps its own link alive
+            keepAlive = ""
+            attach = CommandRestore.shellQuotedLine(argv)
+        }
         let label = CommandRestore.shellQuotedLine(
             ["agterm: \(session) (\(pane.rawValue)) on \(host) disconnected, exit"])
         // the pane must exit with SSH's status, not printf's zero, or a failed connection reads as a
         // clean one to anything that looks at the exit code
         let report = "printf '%s %s\\n' \(label) \"$status\""
-        var script = "\(attach); status=$?; \(report); exit \"$status\""
+        var script = "\(keepAlive)\(attach); status=$?; \(report); exit \"$status\""
         if let lead {
             let bar = CommandRestore.shellQuotedLine(["Connection to \(host) lost · reconnecting… · any key retries now"])
             let title = CommandRestore.shellQuotedLine([RemoteLinkNotice.title(nonce: lead.nonce)])
             let reset = "\\033[0m\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1006l\\033[?1004l\\033[?2004l\\033[?2031l\\033[?2048l"
-            script = "\(attach); status=$?; if [ \"$status\" -eq 255 ]; then "
+            script = "\(keepAlive)\(attach); status=$?; if [ \"$status\" -eq 255 ]; then "
                 + "printf '\(reset)\\r\\n\\033[30;43m %s \\033[K\\033[0m\\n' \(bar); printf '\\033]2;%s\\007' \(title); "
                 + "printf '\\033[?25l'; stty -echo 2>/dev/null; cat >/dev/null; else \(report); fi; exit \"$status\""
         }
@@ -256,11 +272,11 @@ public enum RemoteSession {
         return sshArguments(host: host, connectTimeout: 5, interactive: false) + ["true"]
     }
 
-    private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool) -> [String] {
+    private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool, options: [String] = []) -> [String] {
         ["ssh", interactive ? "-tt" : "-T",
          "-o", "BatchMode=yes",
-         "-o", "ConnectTimeout=\(connectTimeout)",
-         host]
+         "-o", "ConnectTimeout=\(connectTimeout)"]
+            + options + [host]
     }
 
     /// Refused rather than escaped, and a leading `-` with it: ssh would read that as an option.

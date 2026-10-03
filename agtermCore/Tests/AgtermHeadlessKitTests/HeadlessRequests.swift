@@ -63,6 +63,7 @@ enum HeadlessRequests {
         request(.fontReset),
         request(.keymapReload),
         request(.keymapList),
+        request(.keymapRun) { $0.name = "c" },
         request(.configReload),
         request(.quick),
         request(.quickType) { $0.text = "x" },
@@ -106,8 +107,10 @@ enum HeadlessRequests {
         request(.restoreCapture),
         request(.restoreMode),
         request(.zmxPrune),
+        request(.zmxScreen) { $0.name = "d" },
         request(.zmxReset) { $0.force = true },
         request(.zmxAttach, target: target) { $0.host = "h" },
+        request(.browserClear),
 
         request(.sessionClose, target: target),
         request(.sessionRename, target: target) { $0.name = "s" },
@@ -138,7 +141,7 @@ enum HeadlessRequests {
         request(.sessionOverlayCopy, target: target),
         request(.sessionOverlayText, target: target),
         request(.sessionOverlayJobRun, target: target),
-        request(.pickOpen) { $0.items = [ControlPickItem(id: "a", label: "A")] },
+        request(.pickOpen, target: target) { $0.items = [ControlPickItem(id: "a", label: "A")] },
         request(.pickResult, target: target),
         request(.pickCancel, target: target),
     ]

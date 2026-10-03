@@ -14,6 +14,7 @@ public final class HeadlessActions: ControlActions {
         let task: Task<Void, Never>
     }
     private var hudAutoHide: [UUID: HudAutoHide] = [:]
+    private var typeLanes: [String: Task<ControlResponse, Never>] = [:]
 
     public init(headless: Headless, installDirectory: URL, hudClock: @escaping () -> Date = Date.init) {
         self.headless = headless
@@ -26,21 +27,35 @@ public final class HeadlessActions: ControlActions {
     /// The socket server's answer; nil once a `zmx.present` stream has taken the connection over.
     public func serve(_ request: ControlRequest, connection: Int32) async -> ControlResponse? {
         let response = await respond(to: request)
-        guard request.cmd == .zmxPresent, response.ok, let id = response.result?.id else { return response }
-        return adoptPresentation(session: id, connection: connection)
+        guard response.ok, let id = response.result?.id else { return response }
+        switch request.cmd {
+        case .zmxPresent: return adoptPresentation(session: id, connection: connection)
+        // the claim's helper keeps its connection for the job's frames
+        case .sessionOverlayJobRun:
+            headless.adoptJob(id, fd: connection, reply: response)
+            return nil
+        default: return response
+        }
     }
 
     /// The dispatcher's answer, or the catalog's for a command the dispatcher leaves to the host.
     public func respond(to request: ControlRequest) async -> ControlResponse {
-        guard let response = await ControlDispatcher(actions: self).dispatch(request) else { return refuse(request.cmd) }
-        // the dispatcher routes `session.bookmark.go` through `searchSession`; only the request knows which it was
-        if request.cmd == .sessionBookmarkGo, response == refuse(.sessionSearch) { return refuse(.sessionBookmarkGo) }
-        return response
+        let session = headless.resolve(request.target)?.1
+        let pane = request.args?.pane.flatMap(OverlayPane.init(controlName:))
+        switch ForwardPolicy.route(request, holdsJob: session?.remoteOverlays.slot(pane) != nil) {
+        case .forwarded: return await headless.forwarder.forward(request, session: session?.id)
+        case .refused(let reason):
+            return ControlResponse(ok: false, error: HeadlessCatalog.refusal(request.cmd, reason))
+        case .served, .job: return await ControlDispatcher(actions: self).dispatch(request) ?? refuse(request.cmd)
+        }
     }
 
     private func refuse(_ command: Command) -> ControlResponse {
-        guard case .refused(let text) = HeadlessCatalog.support(for: command) else { return notImplemented(command) }
-        return ControlResponse(ok: false, error: text)
+        switch HeadlessCatalog.support(for: command) {
+        case .refused(let text): return ControlResponse(ok: false, error: text)
+        // `respond(to:)` routes these before the dispatcher, so only a direct call lands here
+        case .forwarded, .routed, .served: return notImplemented(command)
+        }
     }
 
     private func notImplemented(_ command: Command) -> ControlResponse {
@@ -51,7 +66,11 @@ public final class HeadlessActions: ControlActions {
 
     public func controlTree(window: String?) -> ControlResponse {
         guard let store = store(window: window) else { return missingWindow(window) }
-        return ControlResponse(ok: true, result: ControlResult(tree: store.controlTree(paneForeground: { _ in nil }, app: identity)))
+        let headless = headless
+        let tree = store.controlTree(paneForeground: { headless.paneForeground($0.paneIdentity) },
+                                     splitPaneForeground: { $0.hasSplit ? headless.paneForeground($0.splitPaneIdentity) : nil },
+                                     app: identity)
+        return ControlResponse(ok: true, result: ControlResult(tree: tree))
     }
 
     public func readEvents(_ options: ControlEventReadOptions) -> ControlResponse { headless.library.readEvents(options) }
@@ -339,8 +358,74 @@ public final class HeadlessActions: ControlActions {
         }
     }
 
+    /// `zmx type` into the pane's daemon, paced as the Mac's `coveredType`. A lane per daemon keeps one call's text
+    /// and Return together. A failed write is never retried: the daemon may have queued it before failing.
     public func typeSession(_ target: String?, window: String?, options: ControlSessionTypeOptions) async -> ControlResponse {
-        refuse(.sessionType)
+        guard !options.select else {
+            return ControlResponse(ok: false, error: "session.type --select is not available on a headless origin: it has no selection")
+        }
+        var lane: (session: UUID, pane: StatusPane, daemon: String)?
+        let resolved = withSession(target, window: window) { _, session in
+            let pane = options.pane ?? .left
+            let identity: UUID?
+            switch pane {
+            case .left: identity = session.paneIdentity
+            case .right: identity = session.hasSplit ? session.splitPaneIdentity : nil
+            case .scratch: return ControlResponse(ok: false, error: "a headless session has no scratch terminal")
+            }
+            guard let identity else {
+                return ControlResponse(ok: false, error: "no right pane daemon for session \(session.id.uuidString)")
+            }
+            lane = (session.id, pane, ZmxSupport.daemonName(for: identity))
+            return ControlResponse(ok: true)
+        }
+        guard let lane else { return resolved }
+        let previous = typeLanes[lane.daemon]
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await self.type(options.text, into: lane.daemon)
+        }
+        typeLanes[lane.daemon] = task
+        let response = await task.value
+        if typeLanes[lane.daemon] == task { typeLanes[lane.daemon] = nil }
+        guard response.ok else { return response }
+        if !options.text.isEmpty, let store = headless.library.store(forSession: lane.session),
+           store.session(withID: lane.session)?.agentIndicator.clearedBy(
+               pane: lane.pane, keystroke: InterruptKeystroke.classify(text: options.text),
+               reset: AppSettings().effectiveStatusReset) == true {
+            store.setAgentIndicator(AgentIndicator(), forSession: lane.session)
+        }
+        return ControlResponse(ok: true, result: ControlResult(id: lane.session.uuidString))
+    }
+
+    private func type(_ text: String, into daemon: String) async -> ControlResponse {
+        let paced = KeystrokeSegments.paced(text)
+        let bytes = KeystrokeSegments.ptyBytes(paced.head)
+        if !bytes.isEmpty, let failure = typeFailure(await typeBytes(bytes, into: daemon)) {
+            return ControlResponse(ok: false, error: "the pane's zmx daemon did not accept the input: \(failure)")
+        }
+        if paced.pacedReturn {
+            try? await Task.sleep(nanoseconds: UInt64(KeystrokeSegments.submitGap * 1_000_000_000))
+            // a failed call does not prove the Return was dropped: the daemon queues before it answers
+            guard typeFailure(await typeBytes([0x0D], into: daemon)) == nil else {
+                return ControlResponse(ok: false, error: "text typed, but its final Return could not be confirmed; "
+                    + "do not retype the text")
+            }
+        }
+        return ControlResponse(ok: true)
+    }
+
+    private func typeBytes(_ bytes: [UInt8], into daemon: String) async -> ZmxResult {
+        await headless.runner.runInBackground(["type", daemon], input: Data(bytes), timeout: Headless.commandTimeout)
+    }
+
+    private func typeFailure(_ result: ZmxResult) -> String? {
+        switch result {
+        case .ok: return nil
+        case .timedOut: return "zmx type timed out"
+        case .failed(let status, let error): return "zmx type failed (\(status)): \(error)"
+        case .launchFailed(let error): return "could not start zmx type: \(error)"
+        }
     }
 
     public func copySessionSelection(_ target: String?, window: String?) -> ControlResponse { refuse(.sessionCopy) }
@@ -383,17 +468,49 @@ public final class HeadlessActions: ControlActions {
 
     // MARK: Overlays, HUD, pickers, asks
 
+    /// A program overlay runs here under a helper the presenting Mac starts over ssh; nothing is shown here.
     public func openSessionOverlay(_ target: String?, window: String?,
                                    options: ControlSessionOverlayOpenOptions) -> ControlResponse {
-        refuse(.sessionOverlayOpen)
+        guard options.page == nil else { return notImplemented(.sessionOverlayOpen) }
+        return withSession(target, window: window) { store, session in
+            if let cwd = options.cwd, !cwd.hasPrefix("/") {
+                return ControlResponse(ok: false, error: "overlay --cwd must be an absolute path on this origin")
+            }
+            let stored = session.effectiveCwd
+            let context = OverlayLaunchContext(command: options.command,
+                                               cwd: options.cwd ?? (stored.isEmpty ? NSHomeDirectory() : stored),
+                                               sessionEnvironment: headless.overlayEnvironment(for: session, in: store))
+            switch store.openRemoteOverlay(session.id, options: options, context: context, requireFollower: false) {
+            case .notPresented:
+                return ControlResponse(ok: false, error: "session.overlay.open cannot run a program: no Mac is presenting this session")
+            case .slotTaken:
+                return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
+            case .paneMissing:
+                return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+            case .tooLarge:
+                return ControlResponse(ok: false, error: OverlayResultError.tooLarge)
+            case .opened:
+                headless.scheduleOverlayJobExpiry(after: OverlayJobs.launchWindow)
+                return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
+            }
+        }
     }
 
     public func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
-        refuse(.sessionOverlayClose)
+        withSession(target, window: window) { store, session in
+            guard store.closeRemoteOverlay(session.id, pane: pane) else { return ControlResponse(ok: false, error: "no overlay") }
+            return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
+        }
     }
 
     public func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {
-        refuse(.sessionOverlayResize)
+        withSession(target, window: window) { store, session in
+            switch store.resizeRemoteOverlay(session.id, sizePercent: sizePercent) {
+            case nil: return ControlResponse(ok: false, error: "no overlay")
+            case false?: return ControlResponse(ok: false, error: OverlayResultError.viewerGone)
+            case true?: return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
+            }
+        }
     }
 
     public func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse {
@@ -405,8 +522,21 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionOverlayNavigate)
     }
 
+    /// The remote branch of the Mac's result: no overlay runs on a surface here.
     public func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
-        refuse(.sessionOverlayResult)
+        withSession(target, window: window) { _, session in
+            if let slot = session.remoteOverlays.slot(pane), !slot.ended {
+                return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
+            }
+            let exitCode = pane.map { session.paneOverlayExitCode($0) } ?? session.overlayExitCode
+            if exitCode == nil, let failure = session.remoteOverlays.failure(pane) {
+                return ControlResponse(ok: false, error: OverlayResultError.ended(failure))
+            }
+            // a HUD opened after a program clears its result, so one recorded here is a job's that ended under a HUD
+            if exitCode == nil, pane == nil, session.hudActive { return ControlResponse(ok: false, error: OverlayHudError.noResult) }
+            guard let code = exitCode else { return ControlResponse(ok: false, error: OverlayResultError.noResult) }
+            return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString, exitCode: code))
+        }
     }
     public func submitSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, value: String) -> ControlResponse {
         refuse(.sessionOverlaySubmit)
@@ -421,7 +551,7 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionOverlayText)
     }
 
-    public func claimOverlayJob(_ job: String) -> ControlResponse { refuse(.sessionOverlayJobRun) }
+    public func claimOverlayJob(_ job: String) -> ControlResponse { headless.claimOverlayJob(job) }
     public func openHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse {
         openHud(target, window: window, spec: spec, placement: ControlHudPlacement())
     }
@@ -580,8 +710,10 @@ public final class HeadlessActions: ControlActions {
 
     public func reloadKeymap() -> ControlResponse { refuse(.keymapReload) }
     public func listKeymap() -> ControlResponse { refuse(.keymapList) }
+    public func runCustomCommand(name: String, target: String?, window: String?) -> ControlResponse { refuse(.keymapRun) }
     public func reloadHooks() -> ControlResponse { refuse(.hooksReload) }
     public func listHooks() -> ControlResponse { refuse(.hooksList) }
+    public func clearBrowser() async -> ControlResponse { refuse(.browserClear) }
     public func reloadGhosttyConfig() -> ControlResponse { refuse(.configReload) }
     public func setTheme(args: ControlArgs?) -> ControlResponse { refuse(.themeSet) }
     public func listThemes() -> ControlResponse { refuse(.themeList) }
@@ -624,6 +756,7 @@ public final class HeadlessActions: ControlActions {
     public func readRestoreMode() -> ControlResponse { refuse(.restoreMode) }
     public func setRestoreMode(_ mode: RestoreMode) -> ControlResponse { refuse(.restoreMode) }
     public func pruneZmxDaemons() -> ControlResponse { refuse(.zmxPrune) }
+    public func readZmxScreen(name: String, fullBuffer: Bool, lines: Int?) -> ControlResponse { refuse(.zmxScreen) }
     public func killZmxDaemon(target: String, window: String?, pane: ZmxPaneRole) -> ControlResponse {
         withSession(target, window: window) { store, session in headless.killPane(pane, of: session, in: store) }
     }

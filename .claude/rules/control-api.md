@@ -166,8 +166,11 @@ renumbering. Do not reintroduce a count anywhere.
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.go`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
-- `keymap.reload`, `keymap.list`, `hooks.reload`, `hooks.list`, `config.reload`, `theme.set`,
-  `theme.list`, `restore.capture`, `restore.clear`, `version`
+- `keymap.reload`, `keymap.list`, `keymap.run`, `hooks.reload`, `hooks.list`, `browser.clear`, `config.reload`,
+  `theme.set`, `theme.list`, `restore.capture`, `restore.clear`, `restore.mode`, `version`
+- `zmx.list`, `zmx.screen`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
+- `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
+  like the other fork-only commands)
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
@@ -176,10 +179,6 @@ renumbering. Do not reintroduce a count anywhere.
 only on this fork and are listed here alone — see "Left out on purpose" in [[overlay-redirect]] for why
 the bundled skill, `site/commands.html` and `README.md` leave them out. The synchronization contract
 below applies to upstream commands.
-  `restore.clear`, `restore.mode`, `version`
-- `zmx.list`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
-- `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
-  like the other fork-only commands)
 
 `terminfo install` is a CLI-only command with no protocol counterpart, the one exemption from the
 protocol/dispatcher contract: it runs `infocmp` and `ssh` locally and never opens the socket, so there is
@@ -335,6 +334,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   not submit.
   The gap is blocking, never scheduled: a deferred Return can be overtaken by another injection or a keystroke.
   It is one fixed gap per call, so do not scale it by length or add one per line.
+  A receiver classifying one long line or a multi-line payload as a paste is the caller's to work around
+  by sending shorter pieces; pacing inside agterm would block the main thread per piece on both routes.
   Limits: Returns inside a multi-line payload stay back to back and still read as paste in such a program;
   a writer on another Mac can land between the two daemon calls;
   a failed second daemon call answers an error with the text already typed and is never retried,
@@ -469,10 +470,33 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   frame reports `navigation blocked: URL` and the `WebKitErrorDomain` 102 that follows is ignored. An
   unreported 102, WebKit dropping a response it cannot show, restores `loaded` over a document the web
   content process still shows, and fails a load that never committed. A failed page shows its error in the panel.
-- Every page gets its own `WKWebsiteDataStore.nonPersistent()`, set before the web view exists, so browser
+- A page gets its own `WKWebsiteDataStore.nonPersistent()`, set before the web view exists, so browser
   storage lives exactly as long as the overlay and is shared with no other. `NSAllowsLocalNetworking` in
   Info.plist lets plain http reach local addresses (not only loopback, and for file pages too); public
   http stays subject to ATS.
+- A URL page opened with `--persistent` (`HtmlOverlay.persistent`, read back as `persistent`) uses ONE saved
+  store shared by every such page, `WKWebsiteDataStore(forIdentifier:)`. File pages and a program refuse the
+  flag. `BrowserProfile` keeps the store's UUID in `<stateDir>/browser-profile`, created on first use:
+  WebKit files the data under `~/Library/WebKit/<bundle id>/WebsiteDataStore/<UUID>`, outside the state
+  directory, so the id file is what keeps two state directories apart, and a fixed id would hand every
+  instance one jar. Only a MISSING file creates an id. An unreadable or malformed one is an error and is left
+  alone, because a new id would orphan the store holding every login; the open is then refused and never
+  falls back to an in-memory store.
+- `HtmlOverlayRegistry` owns the saved store. The open adapter asks `persistentStoreFailure()` before it
+  accepts a persistent page and builds the page before replying, so the page counts as open from the moment
+  the open answers ok; every other page is still built when a view first asks for it.
+- `browser.clear` removes all website data from the saved store and keeps its id. App-global: a target or
+  `--window` is refused. It answers ok without creating anything when no profile exists, and replies only
+  after WebKit reports the removal done. It is refused with `N persistent page(s) still open` while any
+  page built on the store is registered, soft-closed ones included, since an open page holds its login in
+  memory and writes it back. While a removal runs, a persistent open that reaches the app is refused with
+  `browser storage is being cleared`, as is a second clear: a page's bridge request, a view building its
+  page, or a socket request when the clear came from a page. A socket request sent during a SOCKET-issued
+  clear is not refused. The accept loop serves one connection at a time, so it waits and runs once the
+  clear is done, on the emptied store. Deliberately no tree read-back, no event and no menu item: the store
+  has no per-window state, and the reply is the result. Not solved here: an external login (OAuth, SSO, a
+  popup) leaves the pinned origin, cookies ignore ports so `localhost` apps share them, a cookie with no
+  expiry is not promised to outlive the app, and clearing does not sign anyone out on the server.
 - `--cwd DIR` is WebKit's read grant. Without it the page is loaded from its TEXT with no base URL:
   WebKit reads a single-file `allowingReadAccessTo` as the file's whole folder, measured in
   `HtmlOverlayRegistryTests`, so the file-alone default needs no file URL at all, and a `--cwd` naming the
@@ -527,11 +551,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Each admitted request calls its reply closure exactly once; a page its command closed never sees it.
 - `HtmlBridge` speaks the wire protocol only (`{cmd, target, args}`, dotted names, typed fields) and
   fills only what a page left out: its session for session-targeted commands (the `session.` names bar
-  `new`, `go` and `overlay.job.run`, plus `notify`, the `font.*` trio and a non-GUI `ask.open`), its pane
+  `new`, `go` and `overlay.job.run`, plus `notify`, the `font.*` trio, `keymap.run` and a non-GUI
+  `ask.open`), its pane
   for its own overlay commands, its window as `target` for the window-object commands and as `args.window`
   otherwise. An explicit target, `active`, window or batch resolves as over the socket; `zmx.attach` and
   `dashboard` keep their ids and still land in the page's window, and `hooks.*`, which refuse any window,
-  get none. `sidebar` and `sidebar.mode` read no window, so a page drives the frontmost one.
+  and `browser.clear` get none. `sidebar` and `sidebar.mode` read no window, so a page drives the frontmost one.
   `zmx.present`, `session.overlay.job.run` and `zmx.reset` are refused: a stream hand-off and post-reply work do not fit one request and reply.
 - The theme, adapter and helper scripts install as ONE set: removing user scripts removes them all, so a
   separate install would lose the adapter at the next theme change. Release unregisters the handlers;
@@ -902,11 +927,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 ## Keymap, config, theme, and sidebar
 
+- `keymap.run` starts a custom command by exact name against the addressed session, through the
+  palette's `CustomCommandRunner.run` with that session in place of the active one. The parser keeps one
+  command per name, so a name is the address; `CustomCommand.id` is minted per parse and never one.
+  Ok means the process started: the command is detached, so its exit status is not the reply's, and a
+  launch failure is an error carrying the reason.
 - `keymap.reload` shares GUI reload and returns diagnostic count. `keymap.list` reports:
   resolved built-in actions and override state; live AppKit menu equivalents/menu/title/selector; path;
-  custom commands with `errorHud` (boolean), `errorPosition` (canonical, default center), and optional
-  `errorPane` (left/right, omitted for session-wide); diagnostics. Human command rows show opted-in error
-  options. An action's `chord` is the menu key equivalent alone, so it keeps comparing
+  custom commands with `repeats` and `errorHud` (booleans), `errorPosition` (canonical, default center), and optional
+  `errorPane` (left/right, omitted for session-wide); diagnostics. Human rows show `--repeat` and opted-in error
+  options. `repeats` is true, on an action or a command, only while its `--repeat` line kept a leader sequence.
+  An action's `chord` is the menu key equivalent alone, so it keeps comparing
   against `menu`, while `alternates` holds its monitor-bound binds in kitty syntax and is omitted when
   empty; the human actions column joins the whole set with `|`. Both halves are canonical kitty syntax, not
   the file's own spelling — only a custom command's `shortcut` is preserved verbatim. `overridden` compares
@@ -1052,6 +1083,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   absent from every snapshot; the row itself comes back from the remote row book (see Remote sessions).
 - `remoteState` (fork only) is a bound remote row's last classification: `attached`, `disconnected` or
   `endedOnHost`, omitted for a local or unbound row. The sidebar notice names the last two.
+- `remoteSession` (fork only) is a bound remote row's session id on its origin, omitted for a local or
+  unbound row. A tool that runs a command on the origin for that row names it as `--target`.
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.
@@ -1192,6 +1225,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   checked closed-window snapshots, the directory-versus-index comparison and the observed daemons into one
   answer; a standalone reader sees neither pending-close nor live-model state. There is no app-down path
   and no hybrid fallback, which would report a weaker truth under the same command name.
+- `zmx.screen` reads a daemon by the NAME `zmx list` prints, never by session: the session resolver sees
+  only open stores, and closed-window and unindexed daemons are the point of the command. It is not a
+  `session.text` fallback, whose default is the pane's own scrolled viewport; a daemon has no scroll
+  position and answers at its last leader's grid. It attaches nothing and moves no lead.
 - `zmx list` is the primitive; `prune` and `kill` act on rows it has already explained. Rows are the UNION
   of observed daemons and expected claims, so a leaked daemon and a pane whose daemon vanished are both
   visible. `state` is claimed/orphan/unknown/conflicted/pendingClose/foreign and `observation` is
@@ -1351,6 +1388,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   argv-quoted. The pane attach alone adds `LogLevel=ERROR`: ssh's disconnect chatter would land wherever the
   remote program left the cursor, while a takeover or an unowned reattach runs with no probe first, so a
   refused key or a changed host key must still print its reason.
+  The ssh pane wrapper, never the mosh one below, also adds `ServerAliveInterval=5`/`ServerAliveCountMax=2`
+  before the host when `ssh -G` reports `serveraliveinterval 0`, so a dead link ends within about 15 s, on
+  the third missed check, unless the user's config sets a nonzero one. The check runs with the attach's own arguments, so a `Match command`
+  or `Match sessiontype` block answers it the way it answers the attach, and a `Match exec` command runs
+  twice per attach. An explicit `ServerAliveInterval 0` reads the same as unset and gets the default; a
+  large value is the opt-out. When the pane's ssh joins an existing `ControlMaster` connection the options
+  do nothing; that master's own settings decide.
 - `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
   command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
   VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments
@@ -1431,7 +1475,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   resets the reporting modes the remote left on, shows a reconnecting bar naming the host, reports `RemoteLinkNotice` (`OSC 2;agterm-remote;<lead nonce>:lost`, intercepted beside
   `zmx-role;`) and waits on `cat`, which ends with the app's pty. The pane then never reaches `onExitHeld`;
   `PaneLead.linkLost` believes only the current attachment's nonce and runs the same `remotePaneStopped`
-  cleanup. `RemoteReconnectBook` probes (`RemoteSession.probeCommand`) on the remote tick with
+  cleanup. A failed probe's stderr is kept as the entry's `reason`, last non-empty line, sanitized and
+  capped, replaced by every failure and nil when ssh said nothing; it is never classified, since an
+  offline host and a refused login both exit 255 and the retry must not give up on either. The pane's
+  child is `cat` with echo off, so nothing can be printed into it: `RemoteReconnectNote` inside
+  `PaneLeadCover` draws the line and the surface node's `reconnect` reads it, both from the entry, so
+  both go with the wait. `RemoteReconnectBook` probes (`RemoteSession.probeCommand`) on the remote tick with
   `RemoteRetryBackoff`, and a host that answers gets `reattachPane(claim: false)`, covered only when the
   origin had reported a role or the attach it replaced dropped before its first report, and
   `remotePaneResumed`. Re-running the attach in the shell was rejected: it
@@ -1440,12 +1489,18 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   The held exit reaches the app at once through `onExitHeld`, which forgets the pane's lead and records the
   hold for remote layout, but it carries no ssh status: `/usr/bin/login` discards it. Each pane holding and
   closing on its own is also right when one half of a split dies.
+- `session.selected` is emitted from `selectedSessionID`'s observer, so every writer gets it: direct
+  assignments in close, undo and reopen paths included, not only `selectSession`. `restore(from:)`
+  suppresses it, since a reload is not a selection. `addSession` emits `session.created` first.
+  The selection is per window, so a window coming forward emits nothing, and `tree.changed` still does
+  not fire on selection.
 - `remote.opened` / `remote.closed` are emitted by `emitSessionCreated` / `emitSessionClosed` themselves,
   gated on `remoteHost`, never from `zmx.attach`: the attach inserts the row before ssh starts, and a
   soft close emits `session.closed` while the pane is still alive for undo, whose `session.created` never
   passes through the attach path. So the pair means row visibility only, every producer of those edges
   gets it, and no kind claims the ssh connection's state: the held exit says the command ended, never why.
-  A host-side pair (`client.attached` / `client.detached`) is the backlog item, not these kinds.
+  The host Mac gets no event for an attach; a host-side pair would be `client.attached` / `client.detached`,
+  never these kinds.
 - `Session.remoteHost` is immutable and set at construction, because `addSession` saves: a marker written
   afterwards would let one snapshot reach disk carrying the ssh command. `isPersistable` gates every
   producer — the launch snapshot, the Recent Closed session record, and a closed workspace's record, whose
@@ -1576,6 +1631,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   helper does when the ssh terminal goes. On the viewer a held surface closes at once and a running one
   keeps its program and closes when its ssh ends, held or not. A session leaving either store, soft close
   included, ends all of this before it goes, so undo brings back neither a reservation nor a replica.
+- A headless origin forwards what needs a window to the presenter: `control.forward {id, request}`, answered by
+  `control.forwarded {id, response}`. A viewer lists `forward` in its hello `kinds` only when it has the effect;
+  `control.forwarded` from a mirror is dropped. `ControlServer+Forward.swift` re-checks `ForwardPolicy`, refuses
+  a request carrying `command`, and requires the target to be the row's `remoteSession`. It runs the request on
+  that row and its window and maps the row id in the reply back to the origin's. Pick and page polls keep their
+  ids. A reply over the frame limit becomes `reply larger than the frame limit`. The origin's side is in
+  [[headless-origin]].
 - A row whose stream is not up says so on its sidebar indicator, naming the host. Retrying is automatic;
   closing and reattaching the session is the manual way to retry now.
 - The origin bounds each stream: 256 KiB a line checked before delivery, a bounded outbound queue whose

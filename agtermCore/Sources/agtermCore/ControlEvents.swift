@@ -9,6 +9,7 @@ public enum ControlEventKind: String, Codable, CaseIterable, Sendable, Equatable
     /// A `Session.parked` edge. It is its own kind rather than a payload on `tree.changed`, whose drafts
     /// `WindowLibrary` coalesces per window and re-emits empty, which would drop the mark it carried.
     case sessionParked = "session.parked"
+    case sessionSelected = "session.selected"
     case treeChanged = "tree.changed"
     case paneSplit = "pane.split"
     case paneScratch = "pane.scratch"
@@ -30,8 +31,9 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
     /// The `session.parked` event's resulting mark. Both edges are events, so unlike the tree node's
     /// true-only field this carries false as well.
     public var parked: Bool?
-    /// The `status` event's status before the accepted write, so a consumer sees the transition without
-    /// keeping state. Equal to `status` when only shape, color, pane, blink or note changed.
+    /// previous is what the event replaced. On `status` it is the status before the accepted write, equal
+    /// to `status` when only shape, color, pane, blink or note changed. On `session.selected` it is the id of
+    /// the session that lost the selection, nil when there was none.
     public var previous: String?
     /// The `status` event's one-line reason (`session.status --note`), nil when the write carried none.
     public var note: String?

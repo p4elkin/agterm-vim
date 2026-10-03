@@ -82,11 +82,19 @@ extension ControlServer: ControlActions {
         if store.session(withID: id)?.remoteOverlays.slot(options.pane) != nil {
             return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
         }
+        if options.persistent, let failure = HtmlOverlayRegistry.shared.persistentStoreFailure() {
+            return ControlResponse(ok: false, error: "session.overlay.open: \(failure)")
+        }
         let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
-                                  chromeless: options.chromeless)
+                                  chromeless: options.chromeless, persistent: options.persistent)
         if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: overlay,
                                                sizePercent: options.sizePercent, backgroundColor: options.backgroundColor) {
             return ControlResponse(ok: false, error: failure.message(pane: options.pane))
+        }
+        // a page exists only once a view asks for it; built here, an accepted persistent page already
+        // counts as open to browser.clear, which would otherwise leave it failed for good
+        if options.persistent {
+            _ = HtmlOverlayRegistry.shared.page(for: overlay, store: store, backgroundColor: options.backgroundColor)
         }
         if options.follow { store.selectSession(id) }
         return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, pageID: overlay.id.uuidString))

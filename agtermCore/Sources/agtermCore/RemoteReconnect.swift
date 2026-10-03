@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// The retry schedule every remote link shares. A laptop asleep for the night should not be retried every
 /// thirty seconds, and should never be given up on either.
@@ -34,6 +35,7 @@ public struct RemoteLinkNotice: Equatable, Sendable {
 /// Panes whose ssh lost the connection and wait to be attached again, keyed by pane identity like
 /// `ZmxLeadBook`. No clock of its own: the owner asks what is `due` on its tick and reports every probe,
 /// which keeps the schedule deterministic to test.
+@Observable
 @MainActor
 public final class RemoteReconnectBook {
     public static let shared = RemoteReconnectBook()
@@ -47,12 +49,16 @@ public final class RemoteReconnectBook {
         /// The origin reported lead roles, so the fresh attach will too and may be covered until it does.
         public let cover: Bool
         fileprivate(set) var failures = 0
+        /// reason is what the last failed probe's ssh said, nil when it said nothing. It describes that
+        /// probe only, never the attach that follows a probe that answered.
+        fileprivate(set) var reason: String?
         fileprivate(set) var retryAt: Date
         fileprivate(set) var probing = false
     }
 
     public private(set) var entries: [UUID: Entry] = [:]
-    private var resumed: [UUID: (at: Date, failures: Int)] = [:]
+    @ObservationIgnored private var resumed: [UUID: (at: Date, failures: Int)] = [:]
+    static let reasonLimit = 200
 
     init() {}
 
@@ -81,11 +87,12 @@ public final class RemoteReconnectBook {
 
     /// A failed probe schedules the next one. One that answered ends the wait and returns the entry to
     /// attach again; a result for a pane cancelled meanwhile returns nil.
-    public func finished(pane: UUID, ok: Bool, now: Date) -> Entry? {
+    public func finished(pane: UUID, ok: Bool, stderr: String = "", now: Date) -> Entry? {
         guard var entry = entries[pane], entry.probing else { return nil }
         guard ok else {
             entry.probing = false
             entry.failures += 1
+            entry.reason = Self.reason(fromStderr: stderr)
             entry.retryAt = now.addingTimeInterval(RemoteRetryBackoff.delay(afterFailures: entry.failures))
             entries[pane] = entry
             return nil
@@ -93,6 +100,19 @@ public final class RemoteReconnectBook {
         entries[pane] = nil
         resumed[pane] = (now, entry.failures)
         return entry
+    }
+
+    /// reason takes ssh's last non-empty line, with control characters removed and its length capped.
+    static func reason(fromStderr stderr: String) -> String? {
+        let lines = stderr.split(whereSeparator: \.isNewline).map { TerminalText.sanitized(String($0)) }
+        guard let last = lines.last(where: { !$0.allSatisfy(\.isWhitespace) }) else { return nil }
+        return String(last.trimmingCharacters(in: .whitespaces).prefix(reasonLimit))
+    }
+
+    /// readback is the tree's view of a waiting pane, nil for one that is not waiting.
+    public func readback(pane: UUID?) -> ControlReconnect? {
+        guard let entry = pane.flatMap({ entries[$0] }) else { return nil }
+        return ControlReconnect(failures: entry.failures, reason: entry.reason)
     }
 
     public func retryNow(pane: UUID, now: Date) {

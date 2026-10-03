@@ -39,7 +39,8 @@ extension ControlDispatcher {
                                                 page: page,
                                                 navigation: request.args?.navigation ?? false,
                                                 javascript: request.args?.javascript ?? false,
-                                                chromeless: request.args?.chromeless ?? false
+                                                chromeless: request.args?.chromeless ?? false,
+                                                persistent: request.args?.persistent ?? false
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
@@ -131,6 +132,7 @@ extension ControlDispatcher {
             if args?.navigation == true { return reject(OverlayHtmlError.navigationWithoutPage) }
             if args?.javascript == true { return reject(OverlayHtmlError.javascriptWithoutPage) }
             if args?.chromeless == true { return reject(OverlayHtmlError.chromelessRequiresFile) }
+            if args?.persistent == true { return reject(OverlayHtmlError.persistentRequiresURL) }
             return command.isEmpty ? reject("session.overlay.open requires a command") : .program
         case (.some, .some):
             return reject(OverlayHtmlError.htmlAndURL)
@@ -138,6 +140,7 @@ extension ControlDispatcher {
             if !command.isEmpty { return reject(OverlayHtmlError.commandAndHtml) }
             if args?.wait == true { return reject(OverlayHtmlError.waitWithHtml) }
             if args?.chromeless == true, args?.navigation == true { return reject(OverlayHtmlError.chromelessWithNavigation) }
+            if args?.persistent == true { return reject(OverlayHtmlError.persistentRequiresURL) }
             if let error = HtmlOverlay.grantError(file: html, grantRoot: args?.cwd) {
                 return reject("session.overlay.open: \(error)")
             }

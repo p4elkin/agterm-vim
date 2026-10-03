@@ -24,13 +24,16 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     /// does not lead is covered and its reads come from the daemon. Nil until the pane's zmx reports a
     /// role, which a zmx or an origin without explicit leadership never does.
     public let lead: ZmxLeadRole?
+    /// reconnect is present while this pane's ssh lost its connection and the app waits to attach it
+    /// again, omitted otherwise.
+    public let reconnect: ControlReconnect?
 
     public init(id: String, kind: String, active: Bool, visible: Bool) {
         self.init(id: id, kind: kind, active: active, visible: visible, cwd: nil, backedByZmx: nil)
     }
 
     public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil,
-                backedByZmx: Bool?, lead: ZmxLeadRole? = nil) {
+                backedByZmx: Bool?, lead: ZmxLeadRole? = nil, reconnect: ControlReconnect? = nil) {
         self.id = id
         self.kind = kind
         self.active = active
@@ -38,6 +41,20 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
         self.cwd = cwd
         self.backedByZmx = backedByZmx
         self.lead = lead
+        self.reconnect = reconnect
+    }
+}
+
+/// ControlReconnect is a remote pane's wait to be attached again. `failures` is the backoff streak: probes
+/// of its host that failed in a row, plus one for a link that dropped again soon after attaching.
+/// `reason` is what ssh said on the last failed probe, omitted when it said nothing.
+public struct ControlReconnect: Codable, Sendable, Equatable {
+    public let failures: Int
+    public let reason: String?
+
+    public init(failures: Int, reason: String?) {
+        self.failures = failures
+        self.reason = reason
     }
 }
 
@@ -319,6 +336,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let remoteHost: String?
     /// Pane attachment state, separate from the presentation stream; omitted without a bound remote row.
     public internal(set) var remoteState: String?
+    /// The origin's id for a bound remote row's session, which commands run there must name.
+    public internal(set) var remoteSession: String?
 
     /// This Mac's presentation stream to the session's origin, on an attached session only. `state` is
     /// `connecting`, `connected`, `unsupported` for an origin that predates the stream, or `failed` with
@@ -440,6 +459,9 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     /// chromeless says whether the page shows without its identity strip. Always present; an absent key
     /// decodes as false, since an older running server omits it.
     public let chromeless: Bool
+    /// persistent says whether the page uses the saved browser store. Always present; an absent key decodes
+    /// as false, since an older running server omits it.
+    public let persistent: Bool
     /// zoom is the page zoom factor, 1 at actual size. One app-wide value, so every page reports the same.
     public let zoom: Double?
     /// id is the page's identity, the one `session.overlay.result --page` reads; an older server omits it.
@@ -448,7 +470,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     public init(pane: String?, file: String? = nil, cwd: String? = nil, url: String? = nil, state: String,
                 error: String?, page: String? = nil, title: String? = nil, canGoBack: Bool? = nil,
                 canGoForward: Bool? = nil, navigation: Bool? = nil, javascript: Bool = false, chromeless: Bool = false,
-                zoom: Double? = nil, id: String? = nil) {
+                zoom: Double? = nil, id: String? = nil, persistent: Bool = false) {
         self.id = id
         self.pane = pane
         self.file = file
@@ -463,12 +485,13 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         self.navigation = navigation
         self.javascript = javascript
         self.chromeless = chromeless
+        self.persistent = persistent
         self.zoom = zoom
     }
 
     enum CodingKeys: String, CodingKey {
         case pane, file, cwd, url, state, error, page, title, canGoBack, canGoForward, navigation, javascript
-        case chromeless, zoom, id
+        case chromeless, persistent, zoom, id
     }
 
     public init(from decoder: Decoder) throws {
@@ -486,6 +509,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         navigation = try c.decodeIfPresent(Bool.self, forKey: .navigation)
         javascript = try c.decode(Bool.self, forKey: .javascript)
         chromeless = try c.decodeIfPresent(Bool.self, forKey: .chromeless) ?? false
+        persistent = try c.decodeIfPresent(Bool.self, forKey: .persistent) ?? false
         zoom = try c.decodeIfPresent(Double.self, forKey: .zoom)
         id = try c.decodeIfPresent(String.self, forKey: .id)
     }
@@ -665,6 +689,9 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// The Live sessions reset state: app-global like `app`, omitted when nothing is pending and no launch
     /// has consumed a marker. The read side of `zmx.reset`.
     public let liveReset: ControlLiveResetReadback?
+    /// indexUnsaved is true while the last `windows.json` write failed, omitted otherwise. App-global like
+    /// `app`.
+    public let indexUnsaved: Bool?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
@@ -675,9 +702,11 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 dashboardHighlighted: String? = nil, dashboardFontSize: Double? = nil,
                 dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
                 pickPending: String? = nil, askPending: String? = nil,
-                app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil) {
+                app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil,
+                indexUnsaved: Bool? = nil) {
         self.workspaces = workspaces
         self.liveReset = liveReset
+        self.indexUnsaved = indexUnsaved
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
         self.recencyDwellMs = recencyDwellMs

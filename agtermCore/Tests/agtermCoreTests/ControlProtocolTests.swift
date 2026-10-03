@@ -1256,6 +1256,7 @@ struct ControlProtocolTests {
         let node = try JSONDecoder().decode(ControlHtmlOverlayNode.self, from: Data(raw.utf8))
 
         #expect(node.chromeless == false)
+        #expect(node.persistent == false)
         #expect(node.file == "/tmp/r.html")
     }
 

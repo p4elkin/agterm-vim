@@ -40,6 +40,8 @@ public final class DaemonWatcher {
         guard case .ok(let output) = await headless.runner.runInBackground(["list"], timeout: Headless.commandTimeout),
               let records = try? ZmxListParser.parse(output) else { return }
         let names = Set(records.map(\.name))
+        headless.daemonLeaders = Dictionary(records.compactMap { record in record.leaderPID.map { (record.name, $0) } },
+                                            uniquingKeysWith: { first, _ in first })
         defer { prune() }
         for (store, session) in Self.sessions(in: headless) {
             // the split first, so a session losing both panes in one listing closes rather than promotes a dead split

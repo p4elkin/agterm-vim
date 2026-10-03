@@ -52,9 +52,20 @@ struct PresentationFramesTests {
         PresentationFrame(gen: 1, rev: 28, body: .context("PR #517")),
         PresentationFrame(gen: 1, rev: 29, body: .context(nil)),
         PresentationFrame(gen: 1, rev: 30, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: "PR #517"))),
-        PresentationFrame(gen: 1, rev: 31, body: .status(PresentationStatus(
+        PresentationFrame(gen: 1, rev: 31, body: .controlForward(PresentationForward(id: "f1", request: forwardRequest))),
+        PresentationFrame(gen: 1, rev: 32, body: .controlForwarded(PresentationForwarded(
+            id: "f1", response: ControlResponse(ok: true, result: ControlResult(id: "s1"))))),
+        PresentationFrame(gen: 1, rev: 33, body: .controlForwarded(PresentationForwarded(
+            id: "f2", response: ControlResponse(ok: false, error: "no such session")))),
+        PresentationFrame(gen: 1, rev: 34, body: .status(PresentationStatus(
             status: .blocked, blink: false, color: nil, shape: nil, pane: pane, changedAt: nil, note: "perm: Bash"))),
     ]
+
+    static var forwardRequest: ControlRequest {
+        var args = ControlArgs()
+        args.mode = "on"
+        return ControlRequest(cmd: .sessionFlag, target: "11111111-2222-3333-4444-555555555555", args: args)
+    }
 
     @Test(arguments: frames)
     func everyFrameSurvivesARoundTrip(_ frame: PresentationFrame) throws {
@@ -160,6 +171,20 @@ struct PresentationFramesTests {
         let object = try #require(JSONSerialization.jsonObject(with: line) as? [String: Any])
         #expect(object["kind"] as? String == "seen")
         #expect(Set(object.keys) == ["kind", "gen", "rev"])
+    }
+
+    @Test(arguments: [("control.forward", 31), ("control.forwarded", 32)])
+    func aForwardFrameCarriesOnlyItsOwnKeySoAnOlderReaderSeesUnknown(_ kind: String, _ rev: Int) throws {
+        let frame = try #require(Self.frames.first { $0.rev == rev })
+        let line = try PresentationCodec.encode(frame)
+        let object = try #require(JSONSerialization.jsonObject(with: line) as? [String: Any])
+
+        #expect(object["kind"] as? String == kind)
+        #expect(Set(object.keys) == ["kind", "gen", "rev", "forward"])
+        var older = object
+        older["kind"] = "\(kind).unknown-to-this-build"
+        let olderLine = try JSONSerialization.data(withJSONObject: older)
+        #expect(try PresentationCodec.decode(olderLine).body == .unknown("\(kind).unknown-to-this-build"))
     }
 
 }

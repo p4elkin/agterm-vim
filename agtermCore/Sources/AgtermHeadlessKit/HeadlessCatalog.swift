@@ -2,41 +2,25 @@ import agtermCore
 
 public enum HeadlessSupport: Equatable, Sendable {
     case served
+    /// Answered by the presenting Mac.
+    case forwarded
+    /// Served, booked as a job or forwarded, per request.
+    case routed
     case refused(String)
 }
 
+/// `ForwardPolicy` with the refusal text the origin answers.
 public enum HeadlessCatalog {
     public static func support(for command: Command) -> HeadlessSupport {
-        let reason: String
-        switch command {
-        case .tree, .eventsRead, .version, .windowList, .zmxTree, .zmxPresent, .zmxList,
-             .notify, .sessionStatus, .sessionContext, .sessionSeen, .sessionNew, .sessionMark,
-             .sessionClose, .sessionRename, .zmxKill, .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionText,
-             .sessionHudOpen, .sessionHudUpdate, .sessionHudClose, .askOpen, .askResult, .askCancel, .zmxNew:
-            return .served
-        case .windowNew, .windowSelect, .windowGo, .windowClose, .windowRename, .windowDelete,
-             .windowResize, .windowMove, .windowZoom, .windowFullscreen, .windowMinimize,
-             .workspaceNew, .workspaceRename, .workspaceDelete, .workspaceSelect, .workspaceGo,
-             .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
-             .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarExpand, .sidebarCollapse,
-             .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
-             .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .configReload,
-             .quick, .quickType, .quickText, .dashboard, .debugAppearance,
-             .sessionSelect, .sessionGo, .sessionReveal, .sessionMove, .sessionDuplicate,
-             .sessionFlag, .sessionPark, .sessionFocus, .sessionResize, .sessionBackground:
-            reason = "no windows or UI"
-        case .sessionType, .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
-             .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
-            reason = "no terminal surface"
-        case .sessionPairing, .overlayRedirectToggle, .sessionBookmarkAdd, .sessionBookmarkList,
-             .sessionBookmarkGo, .sessionBookmarkRemove, .hooksReload, .hooksList, .sessionRestore,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach:
-            reason = "a Mac feature"
-        case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayReload,
-             .sessionOverlayNavigate, .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
-             .sessionOverlayJobRun, .pickOpen, .pickResult, .pickCancel:
-            reason = "later phase"
+        switch ForwardPolicy.kind(of: command) {
+        case .served: return .served
+        case .forwarded: return .forwarded
+        case .routed: return .routed
+        case .refused(let reason): return .refused(refusal(command, reason))
         }
-        return .refused("\(command.rawValue) is not available on a headless origin: \(reason)")
+    }
+
+    public static func refusal(_ command: Command, _ reason: String) -> String {
+        "\(command.rawValue) is not available on a headless origin: \(reason)"
     }
 }

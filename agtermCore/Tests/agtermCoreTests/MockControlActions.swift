@@ -54,8 +54,10 @@ class MockControlActionsBase {
         case font(target: String?, window: String?, pane: StatusPane?, String)
         case keymapReload
         case keymapList
+        case keymapRun(name: String, target: String?, window: String?)
         case hooksReload
         case hooksList
+        case browserClear
         case version
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
@@ -64,6 +66,7 @@ class MockControlActionsBase {
         case restoreModeRead
         case restoreModeSet(RestoreMode)
         case zmxList
+        case zmxScreen(name: String, fullBuffer: Bool, lines: Int?)
         case zmxPrune
         case zmxKill(target: String, window: String?, pane: ZmxPaneRole)
         case zmxReset
@@ -158,6 +161,7 @@ class MockControlActionsBase {
     var nextNotifyResponse = ControlResponse(ok: true)
     var nextKeymapListResponse = ControlResponse(ok: true)
     var nextHooksReloadResponse = ControlResponse(ok: true)
+    var nextBrowserClearResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
@@ -469,6 +473,11 @@ class MockControlActionsBase {
         return nextKeymapListResponse
     }
 
+    func runCustomCommand(name: String, target: String?, window: String?) -> ControlResponse {
+        calls.append(.keymapRun(name: name, target: target, window: window))
+        return ControlResponse(ok: true, result: ControlResult(id: "sess"))
+    }
+
     func reloadHooks() -> ControlResponse {
         calls.append(.hooksReload)
         return nextHooksReloadResponse
@@ -477,6 +486,11 @@ class MockControlActionsBase {
     func listHooks() -> ControlResponse {
         calls.append(.hooksList)
         return nextHooksListResponse
+    }
+
+    func clearBrowser() async -> ControlResponse {
+        calls.append(.browserClear)
+        return nextBrowserClearResponse
     }
 
     func appIdentity() -> ControlResponse {
@@ -518,6 +532,11 @@ class MockControlActionsBase {
     func listZmxDaemons() -> ControlResponse {
         calls.append(.zmxList)
         return nextZmxListResponse
+    }
+
+    func readZmxScreen(name: String, fullBuffer: Bool, lines: Int?) -> ControlResponse {
+        calls.append(.zmxScreen(name: name, fullBuffer: fullBuffer, lines: lines))
+        return ControlResponse(ok: true, result: ControlResult(text: "screen"))
     }
 
     func pruneZmxDaemons() -> ControlResponse {

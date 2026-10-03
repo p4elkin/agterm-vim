@@ -15,12 +15,23 @@ public final class Headless {
     static let programVersion = "headless"
     static let commandTimeout: TimeInterval = 5
     let hub = PresentationHub(staleTimeout: 30)
-    private let shellLookup: () -> String?
-    private let streams: any HeadlessStreams
+    lazy var forwarder = HeadlessForwarder(hub: hub)
+    let overlayJobs: OverlayJobs
+    let shellLookup: () -> String?
+    let streams: any HeadlessStreams
+    var jobLinks: [String: OverlayJobLink] = [:]
+    /// Cancels that reached a claimed job before its connection was adopted.
+    var pendingJobCancels: Set<String> = []
+    /// Each daemon's login shell, by daemon name, from `DaemonWatcher`'s last listing.
+    var daemonLeaders: [String: Int32] = [:]
+    let procRoot: String
 
     public init(config: HeadlessConfig, runner: (any ZmxRunning)? = nil, shellLookup: (() -> String?)? = nil,
+                overlayClock: @escaping () -> Date = Date.init, procRoot: String = "/proc",
                 streams makeStreams: (WindowLibrary, PresentationHub) -> any HeadlessStreams) {
         self.config = config
+        self.procRoot = procRoot
+        overlayJobs = OverlayJobs(now: overlayClock)
         self.shellLookup = shellLookup ?? { Self.passwordDatabaseShell() }
         self.runner = runner ?? ProcessZmxRunner(executable: config.zmxExecutable, zmxDirectory: config.zmxDirectory)
         try? FileManager.default.createDirectory(atPath: config.zmxDirectory, withIntermediateDirectories: true)
@@ -29,7 +40,12 @@ public final class Headless {
         for entry in library.windows {
             guard let store = library.store(for: entry.id) else { continue }
             store.presentationHub = hub
+            store.overlayJobs = overlayJobs
             store.workspaces.flatMap(\.sessions).forEach(attachSurfaces)
+        }
+        overlayJobs.onFinished = { [weak self] job in
+            self?.pendingJobCancels.remove(job.id)
+            self?.library.store(forSession: job.session)?.finishRemoteOverlay(job)
         }
         attachAskPresentation()
         attachSeenPresentation()
@@ -51,22 +67,34 @@ public final class Headless {
             }
         }
         hub.onPresenterChanged = { [weak self] id in
-            self?.library.store(forSession: id)?.reofferRemoteAsk(forSession: id, includeWaiting: true)
+            guard let store = self?.library.store(forSession: id) else { return }
+            store.reofferRemoteAsk(forSession: id, includeWaiting: true)
+            store.remoteOverlayPresenterLost(forSession: id)
         }
         hub.onPresenterWillChange = { [weak self] id in
-            guard let self, let session = self.library.store(forSession: id)?.session(withID: id),
-                  let ask = session.askPending, let owner = session.askRemoteOwner else { return }
-            self.hub.sendToPresenter(.askDismiss(PresentationAskRef(id: ask.id, owner: owner)), session: id)
+            self?.forwarder.presenterGone(session: id)
+            guard let self, let session = self.library.store(forSession: id)?.session(withID: id) else { return }
+            for slot in session.remoteOverlays.slots {
+                hub.sendToPresenter(.overlayClose(PresentationOverlayChange(job: slot.job)), session: id)
+            }
+            guard let ask = session.askPending, let owner = session.askRemoteOwner else { return }
+            hub.sendToPresenter(.askDismiss(PresentationAskRef(id: ask.id, owner: owner)), session: id)
         }
         hub.onPresenterLost = { [weak self] id in
-            self?.library.store(forSession: id)?.session(withID: id)?.takeAskBack()
+            self?.forwarder.presenterGone(session: id)
+            guard let store = self?.library.store(forSession: id) else { return }
+            store.session(withID: id)?.takeAskBack()
+            store.remoteOverlayPresenterLost(forSession: id)
         }
         hub.onPresenterFrame = { [weak self] id, body in
+            if case .controlForwarded(let reply) = body { return self?.forwarder.receive(reply) ?? () }
             guard let store = self?.library.store(forSession: id) else { return }
             switch body {
             case .askResolve(let answer): store.resolveRemoteAsk(answer, forSession: id)
             case .askRejected(let ref) where store.isPresentingRemotely(ref, forSession: id):
                 store.failHandback(forSession: id)
+            case .overlayRejected(let change): store.rejectRemoteOverlay(change.job, forSession: id)
+            case .overlayClosed(let change): store.remoteOverlaySurfaceClosed(change.job, forSession: id)
             default: break
             }
         }
@@ -128,7 +156,10 @@ public final class Headless {
         let windows = library.windows.compactMap { entry in
             library.store(for: entry.id).map {
                 RemoteWindowProjection(id: entry.id.uuidString, name: entry.name,
-                                       tree: $0.controlTree(paneForeground: { _ in nil }))
+                                       tree: $0.controlTree(paneForeground: { self.paneForeground($0.paneIdentity) },
+                                                            splitPaneForeground: {
+                                                                $0.hasSplit ? self.paneForeground($0.splitPaneIdentity) : nil
+                                                            }))
             }
         }
         do {
@@ -167,15 +198,29 @@ public final class Headless {
         }
         attachSurfaces(session)
         store.presentationHub = hub
+        store.overlayJobs = overlayJobs
         store.save()
         library.saveIndex()
         return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
     }
 
-    private func paneEnvironment(for session: Session, in store: AppStore, pane: StatusPane, identity: UUID) -> [String: String] {
+    /// A program overlay's environment: the session's, with no pane, since it covers none of the daemons.
+    func overlayEnvironment(for session: Session, in store: AppStore) -> [String: String] {
+        config.locale.merging(paneEnvironment(for: session, in: store, pane: nil, identity: nil)) { $1 }
+    }
+
+    /// Runs the job table's expiry once `seconds` have passed, which ends whatever deadline fell in between.
+    func scheduleOverlayJobExpiry(after seconds: TimeInterval) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((seconds + 0.1) * 1_000_000_000))
+            self?.overlayJobs.expire()
+        }
+    }
+
+    private func paneEnvironment(for session: Session, in store: AppStore, pane: StatusPane?, identity: UUID?) -> [String: String] {
         var environment = SurfaceEnvironment.session(sessionID: session.id, windowID: library.windowID(for: store),
                                                      workspaceID: store.workspace(forSession: session.id)?.id, socketPath: config.socketPath,
-                                                     programVersion: Self.programVersion, pane: pane, paneToken: identity.uuidString)
+                                                     programVersion: Self.programVersion, pane: pane, paneToken: identity?.uuidString)
         environment["AGTERM_STATE_DIR"] = config.stateDirectory
         let shell = shellLookup()
         environment["SHELL"] = shell?.isEmpty == false ? shell : "/bin/sh"
@@ -231,6 +276,7 @@ public final class Headless {
         store.closeSession(session.id)
         persist(store)
         streams.closeStreams(session: session.id)
+        forwarder.forget(session: session.id)
     }
 
     /// Kills one pane's daemon and closes that pane as its exit would; a failed kill changes nothing.
@@ -259,6 +305,7 @@ public final class Headless {
         case .left:
             store.closeSession(session.id)
             streams.closeStreams(session: session.id)
+            forwarder.forget(session: session.id)
         }
         persist(store)
     }

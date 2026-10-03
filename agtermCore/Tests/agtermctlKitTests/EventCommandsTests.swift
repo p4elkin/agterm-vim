@@ -165,7 +165,9 @@ struct EventCommandsTests {
                          payload: ControlEventPayload(name: "api", parked: true)),
             ControlEvent(seq: 14, ts: 0, kind: .sessionParked,
                          payload: ControlEventPayload(name: "api", parked: false)),
-            ControlEvent(seq: 15, ts: 0, kind: .status,
+            ControlEvent(seq: 15, ts: 0, kind: .sessionSelected, payload: ControlEventPayload(name: "api", previous: "before")),
+            ControlEvent(seq: 16, ts: 0, kind: .sessionSelected, window: "win"),
+            ControlEvent(seq: 17, ts: 0, kind: .status,
                          payload: ControlEventPayload(name: "api", status: "blocked", shape: "star",
                                                       note: #"ask: "main" or "dev""#)),
         ]
@@ -184,7 +186,9 @@ struct EventCommandsTests {
         #expect(human[11] == "00:00:00 remote.closed far host=buildbox")
         #expect(human[12] == "00:00:00 session.parked api parked=on")
         #expect(human[13] == "00:00:00 session.parked api parked=off")
-        #expect(human[14] == #"00:00:00 status api blocked shape=star note="ask: \"main\" or \"dev\"""#)
+        #expect(human[14] == "00:00:00 session.selected api previous=before")
+        #expect(human[15] == "00:00:00 session.selected win previous=-")
+        #expect(human[16] == #"00:00:00 status api blocked shape=star note="ask: \"main\" or \"dev\"""#)
 
         for event in events {
             let line = try EventFormatter.json(event)

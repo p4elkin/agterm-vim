@@ -11,6 +11,8 @@ flagged:
   - "agtermCore/Sources/agtermCore/NormalModeState.swift"
   - "agtermCore/Sources/agtermCore/KeybindMatcher.swift"
   - "agtermCore/Sources/agtermCore/LinkPolicy.swift"
+  # its presenter-only receive arm keeps a mirror from answering a forwarded request
+  - "agtermCore/Sources/agtermCore/PresentationHub.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
@@ -44,6 +46,8 @@ declined:
   - "agtermCore/Sources/agtermCore/ControlDispatcher.swift"
   - "agtermCore/Sources/agtermCore/Session.swift"
   - "agtermCore/Sources/agtermctlKit/MiscCommands.swift"
+  # declined 2026-10-01: fork-only, so no merge can conflict in it
+  - "agterm/Control/ControlServer+Forward.swift"
 ---
 
 ## Keeping the fork current with upstream
@@ -72,8 +76,10 @@ lands.
 ⚠️ `swift test`, `make lint` and `make release` do not compile `agtermTests`. A merge that breaks the
 hosted test target passes all three. Run `make test-app` as well, every time.
 
-After a merge that touches `agtermCore`, also run `swift build --product agterm-headless` on p4linux: the
-headless origin is Linux-only, and no Mac gate links its executable. See [[headless-origin]].
+After a merge that touches `agtermCore`, also run the Linux gate on p4linux, `swift test --no-parallel` plus
+`swift build --product agterm-headless`: the headless origin is Linux-only, no Mac gate links its executable,
+and an upstream file can compile on the Mac only (see [[headless-origin]] for the gate and its traps).
+Run it in a fresh clone under `/tmp`, never in the clone a p4linux session is working in.
 
 ⚠️ **The conflict count predicts nothing.** The 2026-08-10 run shipped two defects. One came out of a
 resolved conflict; the other came from a file with no conflict at all — upstream added `FullScreenChordTests`
@@ -99,7 +105,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   grammar (`nmap`, leader sequences, `KeybindTarget`), so an upstream keymap fix usually needs re-applying
   onto a wider type rather than taking one side.
 - `agtermCore/Sources/AgtermHeadlessKit/HeadlessCatalog.swift` — never conflicts, but a new upstream `Command`
-  fails the Mac `swift test` build there, and a new `ControlActions` requirement without a default fails
+  fails the Mac `swift test` build there and in `ForwardPolicy.kind(of:)`, and a new `ControlActions` requirement without a default fails
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.

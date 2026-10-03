@@ -30,4 +30,10 @@ struct HeadlessConfigTests {
         #expect(config.stateDirectory == home + "/.local/state/agterm-headless")
         #expect(config.zmxExecutable == home + "/.local/opt/agterm-headless/zmx")
     }
+
+    @Test func theLocaleIsTheServersLangAndLcVariablesOnly() {
+        let config = HeadlessConfig.fromEnvironment(["LANG": "en_US.UTF-8", "LC_CTYPE": "C.UTF-8", "LANGUAGE": "en", "PATH": "/bin"])
+
+        #expect(config.locale == ["LANG": "en_US.UTF-8", "LC_CTYPE": "C.UTF-8"])
+    }
 }

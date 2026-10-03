@@ -56,6 +56,9 @@ struct RemotePresentationClientTests {
     let recorder = Recorder()
     let clock = Clock()
 
+    /// What a client with no `controlForward` effect lists in its hello.
+    static let kindsWithoutForward = PresentationHub.supportedKinds.filter { $0 != "forward" }
+
     static let blocked = PresentationStatus(status: .blocked, blink: false, color: nil, shape: nil, pane: nil,
                                             changedAt: nil)
 
@@ -108,7 +111,7 @@ struct RemotePresentationClientTests {
         #expect(transport.launches == [["ssh", "buildbox", "present"]])
         let hello = try #require(transport.links[0].sent.first)
         #expect(hello.body == .hello(PresentationHello(version: PresentationCodec.version,
-                                                       kinds: PresentationHub.supportedKinds, mode: .presenter)))
+                                                       kinds: Self.kindsWithoutForward, mode: .presenter)))
         #expect(recorder.connections == [.connecting])
     }
 
@@ -589,7 +592,7 @@ struct RemotePresentationClientTests {
         client.start()
         connect(client, mode: .presenter)
         #expect(transport.links[0].sent.map(\.body) == [
-            .hello(PresentationHello(version: 1, kinds: PresentationHub.supportedKinds, mode: .presenter)),
+            .hello(PresentationHello(version: 1, kinds: Self.kindsWithoutForward, mode: .presenter)),
             initiallyLeads ? .presenterTake : .presenterAcquire,
         ])
         transport.close("gone")
@@ -639,4 +642,98 @@ struct RemotePresentationClientTests {
         #expect(transport.links[1].sent.count == stoppedCount)
     }
 
+}
+
+extension RemotePresentationClientTests {
+    final class Forwards {
+        var requests: [ControlRequest] = []
+        var completions: [@MainActor (ControlResponse) -> Void] = []
+    }
+
+    func makeForwardingClient(_ forwards: Forwards) -> RemotePresentationClient {
+        let effects = RemotePresentationEffects(
+            status: { _ in }, snapshotStatus: { _ in }, hud: { _ in }, notify: { _ in }, connection: { _ in },
+            controlForward: { request, completion in
+                forwards.requests.append(request)
+                forwards.completions.append(completion)
+            },
+            warn: { _ in })
+        return RemotePresentationClient(argv: [], presentationVersion: 1, transport: transport, effects: effects,
+                                        now: { [clock] in clock.now })
+    }
+
+    static let flag = ControlRequest(cmd: .sessionFlag, target: UUID().uuidString)
+
+    @Test func aForwardRunsTheEffectAndRepliesWithTheSameID() throws {
+        let forwards = Forwards()
+        let client = makeForwardingClient(forwards)
+        client.start()
+        connect(client)
+
+        transport.deliver(line(.controlForward(PresentationForward(id: "f1", request: Self.flag)), rev: 2))
+        #expect(forwards.requests == [Self.flag])
+        let response = ControlResponse(ok: true, result: ControlResult(id: "s1"))
+        let complete = try #require(forwards.completions.first)
+        complete(response)
+
+        #expect(transport.links[0].sent.last?.body == .controlForwarded(PresentationForwarded(id: "f1", response: response)))
+    }
+
+    @Test func aReplyOverTheFrameLimitBecomesAnError() throws {
+        let forwards = Forwards()
+        let client = makeForwardingClient(forwards)
+        client.start()
+        connect(client)
+        transport.deliver(line(.controlForward(PresentationForward(id: "f1", request: Self.flag)), rev: 2))
+
+        let huge = String(repeating: "x", count: PresentationCodec.maxFrameBytes)
+        let complete = try #require(forwards.completions.first)
+        complete(ControlResponse(ok: true, result: ControlResult(text: huge)))
+
+        #expect(transport.links[0].sent.last?.body == .controlForwarded(PresentationForwarded(
+            id: "f1", response: ControlResponse(ok: false, error: "reply larger than the frame limit"))))
+    }
+
+    @Test func aReplyAfterTheLinkWasReplacedIsDropped() throws {
+        let forwards = Forwards()
+        let client = makeForwardingClient(forwards)
+        client.start()
+        connect(client)
+        transport.deliver(line(.controlForward(PresentationForward(id: "f1", request: Self.flag)), rev: 2))
+        transport.close("gone")
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, gen: 8)
+        let sentBefore = transport.links[1].sent.count
+
+        let complete = try #require(forwards.completions.first)
+        complete(ControlResponse(ok: true))
+
+        #expect(transport.links[1].sent.count == sentBefore)
+        #expect(!transport.links[0].sent.contains { if case .controlForwarded = $0.body { true } else { false } })
+    }
+
+    @Test func withoutTheEffectAForwardIsAnsweredNotSupported() {
+        let client = makeClient()
+        client.start()
+        connect(client)
+
+        transport.deliver(line(.controlForward(PresentationForward(id: "f1", request: Self.flag)), rev: 2))
+
+        #expect(transport.links[0].sent.last?.body == .controlForwarded(PresentationForwarded(
+            id: "f1", response: ControlResponse(ok: false, error: "not supported"))))
+    }
+
+    @Test func theHelloListsForwardOnlyWithTheEffect() throws {
+        makeClient().start()
+        makeForwardingClient(Forwards()).start()
+
+        guard case .hello(let plain) = try #require(transport.links[0].sent.first).body,
+              case .hello(let forwarding) = try #require(transport.links[1].sent.first).body else {
+            Issue.record("expected two hellos")
+            return
+        }
+        #expect(!plain.kinds.contains("forward"))
+        #expect(forwarding.kinds == Self.kindsWithoutForward + ["forward"])
+    }
 }

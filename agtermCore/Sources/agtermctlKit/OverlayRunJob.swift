@@ -40,16 +40,20 @@ final class OverlayJobRunner: @unchecked Sendable {
     /// signal that ended it, or 127 when it could not be launched. The program starts from `baseEnvironment`, the helper's own, with the context
     /// over it, so it keeps HOME, PATH and TERM. A report the app never receives changes nothing here.
     func run(_ context: OverlayLaunchContext, baseEnvironment: [String: String]) -> Int32 {
-        #if canImport(Darwin)
         let environment = baseEnvironment.merging(context.environment) { _, fromContext in fromContext }
         let tty = isatty(terminal) == 1 ? terminal : nil
         let pid: pid_t
         do {
+            #if canImport(Darwin)
             pid = try Self.spawn(environment: environment, cwd: context.cwd, suspended: tty != nil)
+            #else
+            pid = try Self.spawn(environment: environment, cwd: context.cwd, foreground: tty)
+            #endif
         } catch {
             report(.launchFailed(String(describing: error)))
             return 127
         }
+        #if canImport(Darwin)
         // the program owns the terminal before it runs a single instruction, or a first read would stop it
         if let tty {
             guard tcsetpgrp(tty, pid) == 0 else {
@@ -60,6 +64,7 @@ final class OverlayJobRunner: @unchecked Sendable {
             }
             kill(pid, SIGCONT)
         }
+        #endif
         let canceledEarly: Bool = lock.withLock {
             group = pid
             return killAt != nil
@@ -77,10 +82,6 @@ final class OverlayJobRunner: @unchecked Sendable {
             report(.exited(Int(status)))
         }
         return status
-        #else
-        report(.launchFailed("program overlay jobs are not supported on Linux yet"))
-        return 127
-        #endif
     }
 
     /// Stops the program's whole process group: SIGTERM now, SIGKILL once the grace has passed. Safe from
@@ -185,6 +186,38 @@ final class OverlayJobRunner: @unchecked Sendable {
         guard result == 0 else { throw SocketClientError("could not start the program: \(String(cString: strerror(result)))") }
         return pid
     }
+    #else
+    /// The Darwin spawn's contract. glibc has no suspended start: the child hands itself the terminal
+    /// before exec, with every signal still blocked, so the handoff raises no SIGTTOU (glibc 2.35 or newer).
+    private static func spawn(environment: [String: String], cwd: String, foreground tty: Int32?) throws -> pid_t {
+        var actions = posix_spawn_file_actions_t()
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addchdir_np(&actions, cwd)
+        if let tty { posix_spawn_file_actions_addtcsetpgrp_np(&actions, tty) }
+        var attributes = posix_spawnattr_t()
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        var defaults = sigset_t()
+        sigemptyset(&defaults)
+        for signal in [SIGINT, SIGQUIT, SIGTSTP, SIGTTOU, SIGTERM, SIGHUP, SIGPIPE] { sigaddset(&defaults, signal) }
+        posix_spawnattr_setsigdefault(&attributes, &defaults)
+        var empty = sigset_t()
+        sigemptyset(&empty)
+        posix_spawnattr_setsigmask(&attributes, &empty)
+        posix_spawnattr_setpgroup(&attributes, 0)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETPGROUP))
+        let argv = ["/bin/sh", "-c", #"eval "$AGTERM_OVL_CMD""#]
+        let env = environment.map { "\($0.key)=\($0.value)" }
+        var pid: pid_t = 0
+        let result = withCStrings(argv) { argvPointers in
+            withCStrings(env) { envPointers in
+                posix_spawn(&pid, "/bin/sh", &actions, &attributes, argvPointers, envPointers)
+            }
+        }
+        guard result == 0 else { throw SocketClientError("could not start the program: \(String(cString: strerror(result)))") }
+        return pid
+    }
     #endif
 
     /// The program's status once it ended: its exit code, or 128 plus the signal that ended it. Nil when a
@@ -213,10 +246,10 @@ extension Session.Overlay {
     struct RunJob: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "run-job",
-            abstract: "Run a remote overlay job this app handed to another Mac.",
+            abstract: "Run a remote overlay job this origin handed to the Mac presenting it.",
             discussion: """
-            Run on this Mac by the agterm on another Mac, over ssh, when it shows one of this app's \
-            overlays: it claims the job, runs its program under that ssh terminal, and reports how it \
+            Run on the origin, an agterm app or a headless server, by the Mac showing one of its overlays, \
+            over ssh: it claims the job, runs its program under that ssh terminal, and reports how it \
             ended. It is not meant to be run by hand. A job that cannot be claimed exits 1 having \
             launched nothing, one whose program cannot be launched exits 127, and otherwise it exits \
             with the program's status.

@@ -79,10 +79,17 @@ final class CustomCommandRunner {
 
     private let normalMode = NormalModeController.shared
     private var menuActionObserver: NSObjectProtocol?
+    private var resignActiveObserver: NSObjectProtocol?
+    private var menuTrackingObserver: NSObjectProtocol?
     private var consumedKeyCodes: Set<UInt16> = []
+    /// The fired `--repeat` tail still held down. Its window does not time out until release: macOS sends the
+    /// first autorepeat only after "Delay until repeat" (0.5 s by default, often longer).
+    private var heldRepeatKeyCode: UInt16?
 
     /// How long a half-typed leader sequence waits for its next chord before abandoning (kitty-style).
     private static let leaderTimeout: TimeInterval = 1.5
+    /// How long a `--repeat` sequence's prefix stays live after its tail is released; tmux's `repeat-time`.
+    private static let repeatTimeout: TimeInterval = 0.5
 
     /// How long a failure panel stays up: long enough to read a line, short enough that a message about a
     /// command that has already finished is not still sitting over the session minutes later.
@@ -121,7 +128,9 @@ final class CustomCommandRunner {
             forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.normalMode.isActive else { return }
+                guard let self else { return }
+                self.windowDidResignKey(appIsActive: NSApp.isActive)
+                guard self.normalMode.isActive else { return }
                 // both matchers, not just the timer: a yielded key arms the GLOBAL one while the mode is on,
                 // and cancelling the timer alone would leave that prefix armed with nothing to time it out.
                 self.abandonLeader()
@@ -133,6 +142,30 @@ final class CustomCommandRunner {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.recordMenuKeyPress(NSApp.currentEvent) }
         }
+        // a keyUp outside the app never arrives, so a held tail must not keep its window open past deactivation.
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeRepeatWindow() }
+        }
+        // a local monitor never sees a keyUp consumed by menu tracking.
+        menuTrackingObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closeRepeatWindow() }
+        }
+    }
+
+    /// Close an open repeat window and forget the held tail; a half-typed leader keeps its own timeout.
+    func closeRepeatWindow() {
+        heldRepeatKeyCode = nil
+        if commandEngine.isRepeating { resetMatcher() }
+    }
+
+    /// The quick terminal is key while agterm is inactive, so its focus loss posts no deactivation. A resign
+    /// inside the active app must not close the window, or `--repeat next_window` stops after one step.
+    func windowDidResignKey(appIsActive: Bool) {
+        if !appIsActive { closeRepeatWindow() }
     }
 
     /// Remove the key monitor, observers, and pending leader timer.
@@ -145,7 +178,11 @@ final class CustomCommandRunner {
         resignKeyObserver = nil
         if let menuActionObserver { NotificationCenter.default.removeObserver(menuActionObserver) }
         menuActionObserver = nil
-        cancelLeaderTimer()
+        if let resignActiveObserver { NotificationCenter.default.removeObserver(resignActiveObserver) }
+        resignActiveObserver = nil
+        if let menuTrackingObserver { NotificationCenter.default.removeObserver(menuTrackingObserver) }
+        menuTrackingObserver = nil
+        resetMatcher()
         consumedKeyCodes.removeAll()
     }
 
@@ -171,9 +208,10 @@ final class CustomCommandRunner {
         if let chord = keymap.equivalent(for: .newSessionInWorkspace) {
             sequences[.newSessionInWorkspace, default: []].insert([chord], at: 0)
         }
-        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences)
+        commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences,
+                                            builtinRepeating: keymap.builtinRepeating)
         normalMode.rebuild(binds: keymap.normalModeBinds)
-        cancelLeaderTimer()
+        resetMatcher()
     }
 
     /// The Esc virtual keycode the matcher treats specially (the leader abort); Return is bindable and goes
@@ -200,22 +238,28 @@ final class CustomCommandRunner {
     /// mode takes the key first and consumes all but the chords it declines. Otherwise Esc while armed
     /// resets, `.fired` runs a command, `.firedBuiltin` runs a built-in action, `.armed` arms the leader
     /// timer unless normal mode still owns the bare keys, and `toggle_fullscreen`'s chord toggles full
-    /// screen without reaching the matcher at all — all consumed but that un-armed case; `.unmatched`
-    /// passes through.
+    /// screen when nothing else claims it — all consumed but that un-armed case; `.unmatched` passes
+    /// through.
     ///
     /// Acts when the key window's first responder is a terminal surface (context from that surface), or when
     /// the key window is an agterm terminal window whose focus is NOT on a text field — including one emptied
     /// to zero sessions. Passes through for a focused text field (Settings editor, inline rename, palette
     /// search) so a bound chord never eats those keystrokes, and for an auxiliary window focused off a text
-    /// field. Repeats and releases of consumed presses stay consumed without firing again, except that
-    /// normal mode takes its repeats: holding `k` to skim back through sessions is what a bare-key bind is for.
+    /// field. Repeats and releases of consumed presses stay consumed without firing again, except autorepeat
+    /// of a live `--repeat` tail, which fires like a fresh press, and normal mode, which takes its repeats:
+    /// holding `k` to skim back through sessions is what a bare-key bind is for.
     func handleKeyEvent(_ event: NSEvent, in keyWindow: NSWindow?) -> Bool {
         // ownership lasts through release, even if the action changes focus or a leader times out.
-        if event.type == .keyUp { return consumedKeyCodes.remove(event.keyCode) != nil }
+        if event.type == .keyUp {
+            releaseRepeatTail(event.keyCode)
+            return consumedKeyCodes.remove(event.keyCode) != nil
+        }
         guard event.type == .keyDown else { return false }
         if event.isARepeat {
-            if normalMode.isActive, let keyWindow, handleKeyDown(event, in: keyWindow) { return true }
-            return consumedKeyCodes.contains(event.keyCode)
+            let consumed = consumedKeyCodes.contains(event.keyCode)
+            if let keyWindow, normalMode.isActive || (consumed && isLiveRepeatTail(event)),
+               handleKeyDown(event, in: keyWindow) { return true }
+            return consumed
         }
         // a release may have occurred outside the app; a fresh press starts new ownership for this key.
         consumedKeyCodes.remove(event.keyCode)
@@ -229,9 +273,9 @@ final class CustomCommandRunner {
     func handleKeyDown(_ event: NSEvent, in keyWindow: NSWindow) -> Bool {
         let responder = keyWindow.firstResponder
         // a focused text field is the window's NSText field editor and must keep its keystrokes: drop the
-        // half-typed leader, LEAVE normal mode, pass through. the mode binds bare keys, so one left on over a
-        // field would eat the typing — and a field is focused only because the user asked to type into it,
-        // including through a mode bind that opened a palette.
+        // half-typed leader or open repeat window, LEAVE normal mode, pass through. the mode binds bare keys,
+        // so one left on over a field would eat the typing — and a field is focused only because the user
+        // asked to type into it, including through a mode bind that opened a palette.
         if responder is NSText {
             abandonLeader()
             if normalMode.isActive { normalMode.exit() }
@@ -284,41 +328,28 @@ final class CustomCommandRunner {
             modeOwnsBareKeys = !yielded
         }
         // a key repeat drives neither a custom command nor a global leader, so a held-down shortcut spawns
-        // one process rather than one per OS repeat. Normal mode above deliberately TAKES repeats: holding
-        // `k` to skim back through sessions is what a bare-key bind is for.
-        guard !event.isARepeat else { return false }
+        // one process rather than one per OS repeat; a live `--repeat` tail is the exception. Normal mode
+        // above deliberately TAKES repeats: holding `k` to skim back through sessions is what a bare-key bind
+        // is for.
+        guard !event.isARepeat || isLiveRepeatTail(event) else { return false }
         // esc abandons a half-typed leader (the call the timeout makes) and is not bindable, so it comes
         // before the chord.
         if event.keyCode == Self.escapeKeyCode {
-            guard commandEngine.isArmed else { return false }
-            commandEngine.reset()
-            cancelLeaderTimer()
-            return true
+            // an open repeat window closes, but Esc still reaches the terminal: only a half-typed leader eats it.
+            let wasArmed = commandEngine.isArmed
+            resetMatcher()
+            return wasArmed
         }
         guard let chord = chord(from: event) else {
             // a key with no usable base (e.g. a bare modifier) can't advance; while armed, keep waiting.
             return false
         }
-        // `toggle_fullscreen` is the one built-in with no menu item to carry its equivalent: AppKit appends
-        // the only full screen item there is, at menu-display time, and an item of agterm's own beside it is
-        // the duplicate this avoids. So the rebindable chord is matched here instead. A half-typed leader
-        // sequence still wins, exactly as it does over a custom command sharing its first chord.
-        // Its MENU chord alone comes through here, ungated; an alternative of the same `map` line goes the
-        // ordinary `.firedBuiltin` route and so takes that route's modal rule.
-        if !commandEngine.isArmed, chord == settings.keymap.equivalent(for: .toggleFullscreen) {
-            keyWindow.toggleFullScreen(nil)
-            return true
-        }
-        // a focused page receives key equivalents before the menu, and one cancelling the keydown makes WebKit
-        // report it handled, so close_session's menu chord never reaches Close Session. Taken here while a
-        // page holds focus; the chord's other owners keep the menu path.
-        if !commandEngine.isArmed, Self.pageHoldsFocus(responder), chord == settings.keymap.equivalent(for: .closeSession) {
-            actions.perform(.closeSession, in: keyWindow)
-            return true
-        }
+        // a repeat tail equal to the full screen or close session chord must repeat, so the chord goes to the
+        // matcher first.
+        let wasArmed = commandEngine.isArmed
         switch commandEngine.advance(chord) {
         case .fired(let command):
-            cancelLeaderTimer()
+            holdRepeatWindowOrCancel(for: event.keyCode)
             if let focusedSurface {
                 // context from the surface that had focus at key-down, not the frontmost active session.
                 runFromKeybind(command, focusedSurface: focusedSurface)
@@ -328,7 +359,7 @@ final class CustomCommandRunner {
             }
             return true
         case .firedBuiltin(let action):
-            cancelLeaderTimer()
+            holdRepeatWindowOrCancel(for: event.keyCode)
             // no focusedSurface/runNoSurface split: a built-in acts on the active session and key window,
             // like the palette row behind it. Consumed even when `perform` finds the action gated out: the
             // gate lives inside each action, so this cannot see the outcome, and passing a leader's LAST chord
@@ -347,6 +378,24 @@ final class CustomCommandRunner {
             return true
         case .unmatched:
             cancelLeaderTimer()
+            // `toggle_fullscreen` is the one built-in with no menu item to carry its equivalent: AppKit appends
+            // the only full screen item there is, at menu-display time, and an item of agterm's own beside it
+            // is the duplicate this avoids. So the rebindable chord is matched here instead, and a half-typed
+            // leader sequence still wins, exactly as it does over a custom command sharing its first chord.
+            // Its MENU chord alone comes through here, ungated; an alternative of the same `map` line goes the
+            // ordinary `.firedBuiltin` route and so takes that route's modal rule.
+            guard !wasArmed else { return false }
+            if chord == settings.keymap.equivalent(for: .toggleFullscreen) {
+                keyWindow.toggleFullScreen(nil)
+                return true
+            }
+            // a focused page receives key equivalents before the menu, and one cancelling the keydown makes WebKit
+            // report it handled, so close_session's menu chord never reaches Close Session. Taken here while a
+            // page holds focus; the chord's other owners keep the menu path.
+            if Self.pageHoldsFocus(responder), chord == settings.keymap.equivalent(for: .closeSession) {
+                actions.perform(.closeSession, in: keyWindow)
+                return true
+            }
             return false
         }
     }
@@ -437,6 +486,10 @@ final class CustomCommandRunner {
         return false
     }
 
+    private func isLiveRepeatTail(_ event: NSEvent) -> Bool {
+        commandEngine.isRepeating && chord(from: event).map(commandEngine.isRepeatTail) == true
+    }
+
     /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base
     /// key is the named special key, else what `chordKey` resolves — the unmodified character on a layout that
     /// can type ASCII, the physical position on one that cannot.
@@ -462,9 +515,9 @@ final class CustomCommandRunner {
         return Chord(mods: mods, key: key)
     }
 
-    private func startLeaderTimer() {
+    private func startLeaderTimer(_ interval: TimeInterval = CustomCommandRunner.leaderTimeout) {
         cancelLeaderTimer()
-        leaderTimer = Timer.scheduledTimer(withTimeInterval: Self.leaderTimeout, repeats: false) { [weak self] _ in
+        leaderTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 // one timer for both armed leaders — only one can be armed, and resetting the other is a no-op.
@@ -480,15 +533,33 @@ final class CustomCommandRunner {
         leaderTimer = nil
     }
 
-    /// Drop both matchers and the shared timer. Every caller that also leaves normal mode calls this FIRST:
-    /// the guard reads the mode's leader, which `normalMode.exit()` has already cleared.
+    /// Drop both matchers, any open repeat window and the shared timer. Every caller that also leaves normal
+    /// mode calls this FIRST: the guard reads the mode's leader, which `normalMode.exit()` has already cleared.
     private func abandonLeader() {
-        guard commandEngine.isArmed || normalMode.isArmed else { return }
-        commandEngine.reset()
+        guard commandEngine.isArmed || commandEngine.isRepeating || normalMode.isArmed else { return }
         normalMode.reset()
-        cancelLeaderTimer()
+        resetMatcher()
     }
 
+    private func resetMatcher() {
+        commandEngine.reset()
+        cancelLeaderTimer()
+        heldRepeatKeyCode = nil
+    }
+
+    /// After a fire, an open repeat window waits for the tail's release instead of timing out.
+    private func holdRepeatWindowOrCancel(for keyCode: UInt16) {
+        cancelLeaderTimer()
+        heldRepeatKeyCode = commandEngine.isRepeating ? keyCode : nil
+    }
+
+    /// Releasing the held tail starts the repeat timeout, unless a key pressed meanwhile already closed the
+    /// window (a new leader keeps its own, longer timeout).
+    private func releaseRepeatTail(_ keyCode: UInt16) {
+        guard keyCode == heldRepeatKeyCode else { return }
+        heldRepeatKeyCode = nil
+        if commandEngine.isRepeating { startLeaderTimer(Self.repeatTimeout) }
+    }
     /// Run a command fired from the PALETTE: context from the active session (the palette has no first
     /// responder to key off). No-op with no window/session — a session-scoped command with silently-empty
     /// tokens is unsafe (an empty `{AGT_SESSION_PWD}` turns `rm -rf …/*` into a root glob), so only the
@@ -498,14 +569,18 @@ final class CustomCommandRunner {
             logger.notice("custom command \"\(command.name, privacy: .public)\" fired with no active session; ignored")
             return
         }
-        // selection + pane come from the active session's focused pane; with no fired-from surface the focus
-        // flag is the source, gated on the split surface EXISTING. right after `session split on`,
-        // `splitFocused` is already true while `splitSurface` is still nil, so a bare flag would report
-        // `.right` off a nil surface while `session.type --pane right` still errors "no split pane". a
-        // promoted survivor sits in the `surface` slot with both nil/false, so `.left`.
+        run(command, session: session, in: store)
+    }
+
+    /// run starts `command` for `session`, the palette's context taken from that session instead of the
+    /// active one. Returns why the process did not start, nil once it has.
+    @discardableResult
+    func run(_ command: CustomCommand, session: Session, in store: AppStore) -> String? {
+        // the focus flag picks primary or split, gated on the split surface existing: right after
+        // `session split on` the flag is already true while `splitSurface` is still nil.
         let onSplit = session.splitFocused && session.splitSurface != nil
         let selectionSurface = (onSplit ? session.splitSurface : session.surface) as? GhosttySurfaceView
-        spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
+        return spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
     }
 
     /// Run a command fired by KEYBIND: context from the surface that had focus at key-down, so a chord from a
@@ -592,8 +667,9 @@ final class CustomCommandRunner {
     /// directory, not just a remote one. `Process.run()` validates `currentDirectoryURL` inside the spawn and
     /// throws before `/bin/sh` is exec'd, so a local row whose directory was deleted or replaced by a file
     /// loses the command exactly as a remote row did (measured 2026-09-09).
+    @discardableResult
     private func spawn(_ command: CustomCommand, for session: Session, in store: AppStore,
-                       selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) {
+                       selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) -> String? {
         let context = self.context(for: session, in: store, selectionSurface: selectionSurface, pane: pane)
         let home = NSHomeDirectory()
         var cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
@@ -606,7 +682,7 @@ final class CustomCommandRunner {
                 """)
             cwd = home
         }
-        spawn(command, context: context, cwd: cwd)
+        return spawn(command, context: context, cwd: cwd)
     }
 
     /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names
@@ -648,7 +724,8 @@ final class CustomCommandRunner {
     /// running in `cwd` (nil for a sessionless launch, which inherits the app's). `PATH` is widened first
     /// (`CommandPath`): the app's own is launchd's, and `sh -c` runs no profile, so a bare `agtermctl` would
     /// exit 127. Only commands opting into failure panels capture stderr; a clean exit reports nothing.
-    private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) {
+    @discardableResult
+    private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) -> String? {
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -686,12 +763,14 @@ final class CustomCommandRunner {
         do {
             try process.run()
             usage.record(command)
+            return nil
         } catch {
             _ = capture?.consume()
             logger.error("custom command \"\(name, privacy: .public)\" failed to spawn: \(error.localizedDescription, privacy: .public)")
             // a command that never started has no exit status and no output of its own, so the launch error
             // is the whole diagnosis.
             report(command: command, reason: error.localizedDescription, detail: nil, sessionID: sessionID)
+            return error.localizedDescription
         }
     }
 

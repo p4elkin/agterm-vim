@@ -48,6 +48,14 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("hooks.list"))
     }
 
+    func clearBrowser() async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("browser.clear"))
+    }
+
+    func runCustomCommand(name _: String, target _: String?, window _: String?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("keymap.run"))
+    }
+
     func readRestoreMode() -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("restore.mode"))
     }
@@ -62,6 +70,10 @@ public extension ControlActions {
 
     func pruneZmxDaemons() -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.prune"))
+    }
+
+    func readZmxScreen(name _: String, fullBuffer _: Bool, lines _: Int?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.screen"))
     }
 
     func killZmxDaemon(target _: String, window _: String?, pane _: ZmxPaneRole) -> ControlResponse {

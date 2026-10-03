@@ -13,23 +13,24 @@ public enum ZmxResult: Sendable, Equatable {
 }
 
 public protocol ZmxRunning: Sendable {
-    func run(_ arguments: [String], environment: [String: String], workingDirectory: String?,
+    func run(_ arguments: [String], environment: [String: String], workingDirectory: String?, input: Data?,
              timeout: TimeInterval) -> ZmxResult
 }
 
 extension ZmxRunning {
     public func run(_ arguments: [String], environment: [String: String] = [:], workingDirectory: String? = nil,
-                    timeout: TimeInterval) -> ZmxResult {
-        run(arguments, environment: environment, workingDirectory: workingDirectory, timeout: timeout)
+                    input: Data? = nil, timeout: TimeInterval) -> ZmxResult {
+        run(arguments, environment: environment, workingDirectory: workingDirectory, input: input, timeout: timeout)
     }
 
     /// Off the caller's executor, so a slow `zmx list` does not hold the main actor.
     public func runInBackground(_ arguments: [String], environment: [String: String] = [:],
-                                workingDirectory: String? = nil, timeout: TimeInterval) async -> ZmxResult {
+                                workingDirectory: String? = nil, input: Data? = nil,
+                                timeout: TimeInterval) async -> ZmxResult {
         await withCheckedContinuation { continuation in
             Thread {
-                continuation.resume(returning: run(arguments, environment: environment,
-                                                   workingDirectory: workingDirectory, timeout: timeout))
+                continuation.resume(returning: run(arguments, environment: environment, workingDirectory: workingDirectory,
+                                                   input: input, timeout: timeout))
             }.start()
         }
     }
@@ -52,7 +53,7 @@ public struct ProcessZmxRunner: ZmxRunning {
         self.baseEnvironment = baseEnvironment
     }
 
-    public func run(_ arguments: [String], environment: [String: String], workingDirectory: String?,
+    public func run(_ arguments: [String], environment: [String: String], workingDirectory: String?, input: Data?,
                     timeout: TimeInterval) -> ZmxResult {
         // A headless child owns its routing; the server may itself be running inside a remote pane.
         let inherited = baseEnvironment.filter { !$0.key.hasPrefix("AGTERM_") && $0.key != "AGTERMCTL" }
@@ -67,15 +68,25 @@ public struct ProcessZmxRunner: ZmxRunning {
         } catch {
             return .launchFailed(error.localizedDescription)
         }
+        let stdin: InputFeed?
+        do {
+            stdin = try input.map(InputFeed.init)
+        } catch {
+            capture.cancel()
+            return .launchFailed(error.localizedDescription)
+        }
         let pid: pid_t
         switch ChildProcess.spawn(executable, arguments: arguments, environment: merged.map { "\($0.key)=\($0.value)" },
-                                  workingDirectory: workingDirectory, output: (capture.stdoutWrite, capture.stderrWrite)) {
+                                  workingDirectory: workingDirectory,
+                                  stdio: (stdin?.readEnd, capture.stdoutWrite, capture.stderrWrite)) {
         case .running(let spawned):
             pid = spawned
         case .failed(let reason):
+            stdin?.cancel()
             capture.cancel()
             return .launchFailed(reason)
         }
+        stdin?.didLaunch()
         capture.didLaunch()
         let exit = ChildExit(pid: pid)
         guard let status = exit.wait(until: .now() + timeout) else {
@@ -100,9 +111,9 @@ private enum ChildProcess {
         case failed(String)
     }
 
-    /// The child gets /dev/null for stdin, the two pipe write ends, no other descriptor of ours, and default signals.
+    /// The child gets `stdio.input` or /dev/null for stdin, the two pipe write ends, no other descriptor of ours, and default signals.
     static func spawn(_ executable: String, arguments: [String], environment: [String], workingDirectory: String?,
-                      output: (stdout: Int32, stderr: Int32)) -> Spawned {
+                      stdio: (input: Int32?, stdout: Int32, stderr: Int32)) -> Spawned {
         #if canImport(Darwin)
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
@@ -114,9 +125,13 @@ private enum ChildProcess {
         defer { posix_spawn_file_actions_destroy(&actions) }
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-        posix_spawn_file_actions_adddup2(&actions, output.stdout, 1)
-        posix_spawn_file_actions_adddup2(&actions, output.stderr, 2)
+        if let input = stdio.input {
+            posix_spawn_file_actions_adddup2(&actions, input, 0)
+        } else {
+            posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        }
+        posix_spawn_file_actions_adddup2(&actions, stdio.stdout, 1)
+        posix_spawn_file_actions_adddup2(&actions, stdio.stderr, 2)
         if let workingDirectory { posix_spawn_file_actions_addchdir_np(&actions, workingDirectory) }
         // the caller may be a dispatch worker, which blocks most signals; a daemon inheriting that mask
         // outlives `zmx kill` and ignores SIGTERM
@@ -166,6 +181,60 @@ private final class ChildExit: @unchecked Sendable {
         guard finished.wait(timeout: deadline) == .success else { return nil }
         finished.signal()
         return status
+    }
+}
+
+/// The child's stdin: a pipe written on a thread of its own after the spawn, then closed for end of input.
+/// A child that exits unread ends the write with `EPIPE`, never SIGPIPE, which the caller may not ignore: the thread
+/// blocks it on Glibc and `F_SETNOSIGPIPE` suppresses it on Darwin.
+private final class InputFeed: @unchecked Sendable {
+    let readEnd: Int32
+    private let writeEnd: Int32
+    private let bytes: Data
+
+    init(_ bytes: Data) throws {
+        var pair: [Int32] = [-1, -1]
+        guard pipe(&pair) == 0 else { throw OutputCapture.SetupError(errorDescription: "pipe: \(String(cString: strerror(errno)))") }
+        for fd in pair where fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 {
+            let message = String(cString: strerror(errno))
+            pair.forEach { close($0) }
+            throw OutputCapture.SetupError(errorDescription: "FD_CLOEXEC: \(message)")
+        }
+        #if canImport(Darwin)
+        _ = fcntl(pair[1], F_SETNOSIGPIPE, 1)
+        #endif
+        (readEnd, writeEnd, self.bytes) = (pair[0], pair[1], bytes)
+    }
+
+    func didLaunch() {
+        close(readEnd)
+        Thread { [self] in feed() }.start()
+    }
+
+    func cancel() {
+        close(readEnd)
+        close(writeEnd)
+    }
+
+    private func feed() {
+        var pipeSignal = sigset_t()
+        sigemptyset(&pipeSignal)
+        sigaddset(&pipeSignal, SIGPIPE)
+        pthread_sigmask(SIG_BLOCK, &pipeSignal, nil)
+        bytes.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let count = write(writeEnd, buffer.baseAddress! + offset, buffer.count - offset)
+                if count > 0 {
+                    offset += count
+                } else if count < 0 && errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+        }
+        close(writeEnd)
     }
 }
 

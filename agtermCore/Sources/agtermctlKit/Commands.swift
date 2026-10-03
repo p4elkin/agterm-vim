@@ -29,12 +29,17 @@ struct BasicOptions: ParsableArguments, ConnectionOptions {
     var json = false
 
     /// Resolve the socket path, in precedence order: `--socket` → `<AGTERM_STATE_DIR>/agterm.sock` →
-    /// `<$HOME>/Library/Application Support/agterm/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
+    /// `<$HOME>/Library/Application Support/agterm/agterm.sock`, on Linux the headless server's
+    /// `<$HOME>/.local/state/agterm-headless/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
     /// injectable so the precedence is unit-testable; production passes the process environment.
     func socketPath(env: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let socket { return socket }
-        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent("Library/Application Support/agterm") })
-            ?? "/tmp/agterm"
+        #if os(Linux)
+        let home = ".local/state/agterm-headless"
+        #else
+        let home = "Library/Application Support/agterm"
+        #endif
+        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent(home) }) ?? "/tmp/agterm"
         return ControlResolve.socketPath(stateDir: env["AGTERM_STATE_DIR"], appSupport: appSupport)
     }
 }
@@ -90,8 +95,8 @@ public struct Agtermctl: ParsableCommand {
         commandName: "agtermctl",
         abstract: "Drive agterm over its control socket, and install its terminfo entry on other hosts.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
-                      Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Hooks.self, Config.self,
-                      Theme.self, Pick.self, Ask.self, Restore.self, Zmx.self, Terminfo.self,
+                      Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Hooks.self, Browser.self,
+                      Config.self, Theme.self, Pick.self, Ask.self, Restore.self, Zmx.self, Terminfo.self,
                       OverlayRedirect.self, Version.self]
     )
 

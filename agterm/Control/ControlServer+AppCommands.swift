@@ -183,6 +183,32 @@ extension ControlServer {
         return ControlResponse(ok: true, result: ControlResult(keymap: payload))
     }
 
+    func runCustomCommand(name: String, target: String?, window: String?) -> ControlResponse {
+        // the keymap parser keeps one command per name, so a name addresses at most one
+        guard let command = settingsModel.keymap.commands.first(where: { $0.name == name }) else {
+            return ControlResponse(ok: false, error: "no custom command named \(name)")
+        }
+        guard let runner = actions.customCommandRunner else {
+            return ControlResponse(ok: false, error: "custom commands are not available")
+        }
+        return resolver.resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session")
+            }
+            if let failure = runner.run(command, session: session, in: store) {
+                return ControlResponse(ok: false, error: "\(name) did not start: \(failure)")
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    func clearBrowser() async -> ControlResponse {
+        if let failure = await HtmlOverlayRegistry.shared.clearPersistentStore() {
+            return ControlResponse(ok: false, error: "browser.clear: \(failure)")
+        }
+        return ControlResponse(ok: true)
+    }
+
     func reloadHooks() -> ControlResponse {
         settingsModel.reloadHooks()
         return ControlResponse(ok: true, result: ControlResult(count: settingsModel.hooksDiagnostics.count))
