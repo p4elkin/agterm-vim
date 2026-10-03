@@ -110,6 +110,7 @@ public enum Command: String, Codable, Sendable {
     case keymapList = "keymap.list"
     case hooksReload = "hooks.reload"
     case hooksList = "hooks.list"
+    case browserClear = "browser.clear"
     case configReload = "config.reload"
     case themeSet = "theme.set"
     case themeList = "theme.list"
@@ -440,6 +441,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var javascript: Bool?
     /// chromeless opens an `--html` page with no identity strip (`--chromeless`).
     public var chromeless: Bool?
+    /// persistent opens a `--url` page on the saved browser store (`--persistent`) instead of an in-memory one.
+    public var persistent: Bool?
     /// value is the answer `session.overlay.submit` hands back from a page; empty is a real answer.
     public var value: String?
     /// page is the page id `session.overlay.result` reads the outcome of, instead of a program's exit status.
@@ -475,7 +478,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 light: String? = nil, dark: String? = nil,
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
-                javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil) {
+                javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
+                persistent: Bool? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -563,6 +567,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.value = value
         self.page = page
         self.chromeless = chromeless
+        self.persistent = persistent
     }
 }
 
@@ -751,6 +756,15 @@ public enum OverlayHudError {
     public static let writeFailed = "could not write the hud message"
 }
 
+/// BrowserClearError holds the reasons the saved browser store cannot be cleared or opened right now.
+public enum BrowserClearError {
+    public static let clearing = "browser storage is being cleared"
+
+    public static func pagesOpen(_ count: Int) -> String {
+        "\(count) persistent \(count == 1 ? "page" : "pages") still open"
+    }
+}
+
 /// OverlayHtmlError holds the error strings for `session.overlay.*` against an HTML page.
 public enum OverlayHtmlError {
     public static let commandAndHtml = "session.overlay.open takes a command or --html, not both"
@@ -766,6 +780,8 @@ public enum OverlayHtmlError {
     /// chromelessRequiresFile: the strip is what names a URL page's origin, so only a file page may drop it.
     public static let chromelessRequiresFile = "session.overlay.open: --chromeless requires --html"
     public static let chromelessWithNavigation = "session.overlay.open: --chromeless cannot be combined with --navigation"
+    public static let persistentRequiresURL = "session.overlay.open: --persistent requires --url"
+    public static let persistentUnavailable = "persistent browser storage is not available"
     /// presenter: a page is shown on this Mac, so it is refused while another Mac presents the session.
     public static let presenter = "a viewer presents this session: an html overlay would open where nobody sees it"
     public static let noOverlay = "no overlay"

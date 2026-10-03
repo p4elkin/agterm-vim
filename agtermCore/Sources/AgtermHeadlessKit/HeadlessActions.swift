@@ -582,6 +582,7 @@ public final class HeadlessActions: ControlActions {
     public func listKeymap() -> ControlResponse { refuse(.keymapList) }
     public func reloadHooks() -> ControlResponse { refuse(.hooksReload) }
     public func listHooks() -> ControlResponse { refuse(.hooksList) }
+    public func clearBrowser() async -> ControlResponse { refuse(.browserClear) }
     public func reloadGhosttyConfig() -> ControlResponse { refuse(.configReload) }
     public func setTheme(args: ControlArgs?) -> ControlResponse { refuse(.themeSet) }
     public func listThemes() -> ControlResponse { refuse(.themeList) }

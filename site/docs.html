@@ -1073,7 +1073,9 @@
                   back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL;
                   ⌘W closes it like any overlay. A file page opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span>
                   has no strip, so a dashboard fills its session or split pane like a native view. ⌘+, ⌘− and ⌘0 zoom the page, and every later page opens at that zoom. A page runs no JavaScript of its
-                  own unless opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span>. A link the page opens in your browser
+                  own unless opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span>. A web page keeps cookies and logins only while it is open, unless opened with
+                  <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--persistent</span>, which uses one saved store shared by these pages;
+                  <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl browser clear</span> empties it. A login that goes through another site still fails. A link the page opens in your browser
                   asks you first. Pages can match the terminal
                   through the theme's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-*</span> CSS variables, and
                   drive agterm themselves through the <a href="#page-bridge" style="color: #6d82f3">page bridge</a>. See the
@@ -1668,6 +1670,19 @@
               another action to claim. A typo in one alternative rejects the whole line, so a mistake can't hide behind a line that
               half worked; an alternative that merely breaks a rule or collides with an existing binding drops on its own and its
               siblings keep firing. If a line ends up binding nothing at all, the action simply keeps the shortcut it shipped with.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A leader sequence fires once and forgets its prefix. Add
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--repeat</span> after the chord, on either
+              verb, to keep the prefix live until half a second after you release the key, like tmux's
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bind -r</span>:
+              with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">map cmd+opt+up|ctrl+a&gt;ctrl+h --repeat previous_session</span>
+              and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">map cmd+opt+down|ctrl+a&gt;ctrl+l --repeat next_session</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">⌃A ⌃L ⌃L ⌃H</span> walks two sessions down and one back,
+              the shipped ⌘⌥↑/⌘⌥↓ still working, and holding the tail repeats it. Any other key ends the window and reaches the terminal
+              as usual; only a leader sequence repeats. A tail without a modifier, like
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ctrl+a&gt;n</span>, takes that letter when you type it
+              within half a second of releasing the previous one.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               Chords are written in Latin and keep working on a non-Latin keyboard layout. A layout that cannot type ASCII —
@@ -2908,7 +2923,10 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               schedule the stream uses; any key retries at once and ⌘W still closes the session. The last screen is replaced when the host answers, before the new connection is up, so if the link drops again right away the pane waits on an empty terminal with only the bar. The pane comes back without taking the lead, so
               if the other Mac leads it by then, it arrives covered, and also while the other Mac still counts this Mac's dropped connection
               as the leader, which clears by itself once that connection times out. Any other exit prints one line naming the host, the
-              session, the pane and the exit status, and holds on Ghostty's press-any-key prompt.
+              session, the pane and the exit status, and holds on Ghostty's press-any-key prompt. When your ssh config sets no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ServerAliveInterval</span> for the connection, or sets it to 0, agterm adds ssh keepalive options (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ServerAliveInterval</span> 5,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ServerAliveCountMax</span> 2), so a dead connection is noticed within about fifteen seconds; a large value is the way to opt out.
+              When the pane's ssh joins an existing <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ControlMaster</span> connection the options do nothing, and that master's own settings decide.
             </p>
 
             <div
@@ -3437,7 +3455,7 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               On Stop, a final assistant message that ends a sentence with
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">?</span> reports blocked.
               The check is a heuristic: it ignores single-backtick spans and triple-backtick blocks, and a mark
-              that stands alone or sits inside a word, as in a URL query string, does not count.
+              that stands alone, opens quoted text, or sits inside a word, as in a URL query string, does not count.
               Every other final message reports completed and auto-resets.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">

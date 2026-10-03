@@ -56,6 +56,7 @@ class MockControlActionsBase {
         case keymapList
         case hooksReload
         case hooksList
+        case browserClear
         case version
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
@@ -158,6 +159,7 @@ class MockControlActionsBase {
     var nextNotifyResponse = ControlResponse(ok: true)
     var nextKeymapListResponse = ControlResponse(ok: true)
     var nextHooksReloadResponse = ControlResponse(ok: true)
+    var nextBrowserClearResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
@@ -477,6 +479,11 @@ class MockControlActionsBase {
     func listHooks() -> ControlResponse {
         calls.append(.hooksList)
         return nextHooksListResponse
+    }
+
+    func clearBrowser() async -> ControlResponse {
+        calls.append(.browserClear)
+        return nextBrowserClearResponse
     }
 
     func appIdentity() -> ControlResponse {

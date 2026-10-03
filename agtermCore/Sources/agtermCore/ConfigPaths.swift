@@ -86,14 +86,16 @@ public enum ConfigPaths {
         #
         # Three verbs:
         #
-        #   map <chord> <action>
+        #   map <chord> [--repeat] <action>
         #       Rebind a built-in action. Chords use kitty syntax: mods joined by `+`, e.g.
         #       `cmd+shift+l`, `ctrl+\\``. Mods: ctrl, cmd, opt, shift. A Shift-typed symbol is
         #       shift+<base key> (shift+/ for ?, shift+= for +, shift+5 for %). Several
         #       alternatives may be joined by `|` with no spaces around it; the first single-chord
         #       alternative becomes the menu shortcut and the rest fire through a key monitor, so
         #       their first chord needs a modifier or a function key (f1 through f20). A line offering
-        #       no single chord leaves the action with no menu shortcut at all. Examples:
+        #       no single chord leaves the action with no menu shortcut at all. `--repeat` keeps a
+        #       leader's prefix live until half a second after its key is released, so its last key
+        #       repeats on its own (tmux `bind -r`): `ctrl+a>ctrl+l` then `ctrl+l` fires twice. Examples:
         #
         #           map cmd+shift+l     toggle_split
         #           map cmd+t|ctrl+a>t  toggle_scratch
@@ -114,7 +116,7 @@ public enum ConfigPaths {
         #           nmap s  toggle_split
         #           nmap t  toggle_scratch  insert
         #
-        #   command "<name>" [chord] <shell...>
+        #   command "<name>" [chord] [--repeat] <shell...>
         #       Define a custom command, shown in the action palette marked `custom`. The quoted
         #       name may contain spaces. An optional chord (single chord OR a leader like `ctrl+a>g`,
         #       or several of either joined by `|`) binds it to a key; every alternative must start with

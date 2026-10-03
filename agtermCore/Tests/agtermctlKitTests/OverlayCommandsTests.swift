@@ -50,6 +50,17 @@ struct OverlayCommandsTests {
         #expect(req.args?.cwd == nil)
         #expect(req.args?.navigation == true)
         #expect(req.args?.javascript == true)
+        #expect(req.args?.persistent == nil)
+    }
+
+    @Test func browserClearTakesNoWindow() throws {
+        #expect(try request(["browser", "clear"]) == ControlRequest(cmd: .browserClear))
+        #expect(rejects(["browser", "clear", "--window", "w1"]))
+    }
+
+    @Test func urlOpenSendsPersistent() throws {
+        let req = try request(["session", "overlay", "open", "--url", "http://localhost:5173/", "--persistent"])
+        #expect(req.args?.persistent == true)
     }
 
     @Test func aProgramOpenLeavesItsCwdAsTyped() throws {
@@ -69,6 +80,8 @@ struct OverlayCommandsTests {
         ["session", "overlay", "open", "revdiff", "--chromeless"],
         ["session", "overlay", "open", "--url", "http://localhost:5173/", "--chromeless"],
         ["session", "overlay", "open", "--html", "/tmp/r.html", "--chromeless", "--navigation"],
+        ["session", "overlay", "open", "revdiff", "--persistent"],
+        ["session", "overlay", "open", "--html", "/tmp/r.html", "--persistent"],
         ["session", "overlay", "open", "revdiff", "--url", "http://localhost:5173/"],
         ["session", "overlay", "open", "--html", "/tmp/r.html", "--url", "http://localhost:5173/"],
         ["session", "overlay", "open", "--url", "http://localhost:5173/", "--wait"],

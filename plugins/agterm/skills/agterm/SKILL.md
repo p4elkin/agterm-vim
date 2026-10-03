@@ -2,9 +2,9 @@
 name: agterm
 description: >
   Drive agterm, a native macOS terminal, through its agtermctl CLI. Use when
-  running inside an agterm session and asked to control the terminal: create, rename, close, select or
+  running inside an agterm session and asked to control it: create, rename, close, select or
   reorder sessions and workspaces; split panes; toggle the scratch terminal; run a program in an overlay
-  and read its exit status; create and show HTML pages, interactive ones too, URLs or dev servers in an overlay;
+  and read its exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
   post a HUD or a desktop notification; show a picker or question dialog; display an image inline; type
   into a session, copy its selection or search its scrollback; manage windows; change font size; set the
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; subscribe to status,
@@ -17,8 +17,9 @@ when_to_use: >
   split the pane, close the overlay, show a message over the session, show a question dialog, agtermctl ask,
   show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
-  URL or the running dev server, search the scrollback, park a session, hide parked rows, turn on normal
-  mode, attach a session from another Mac, what recipes are there, the keymap editor will not open.
+  URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
+  park a session, hide parked rows, turn on normal mode, attach a session from another Mac, what recipes
+  are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
 ---
 
@@ -657,6 +658,8 @@ with `--error-position POS` and `--error-pane left|right`; see
 
 **hooks** — `hooks reload` — re-read `hooks.conf` (prints the parse-diagnostic count); `hooks list` — every `on <kind> <shell...>` line with its running pid and elapsed seconds, pending and dropped counts, last failure, and a retired marker for a removed line whose script still runs. A hook gets the event JSON on stdin plus `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`; one process per line at a time with a 256-deep queue behind it. Both commands are app-global and refuse a target or `--window`.
 
+**browser** - `browser clear` - remove every cookie and all site data that `--persistent` URL overlays saved; refused while one is open. App-global, no target or `--window`.
+
 **config** - `config reload` - re-read the agterm-scoped `ghostty.conf` (prints the diagnostic count).
 
 **theme** — `theme list` (bundled themes, current marked `*`) · `theme set [name]` — set + persist the
@@ -801,6 +804,11 @@ agtermctl session overlay open --url http://localhost:5173/ --js --target "$AGTE
   URL you opened, a reload) fails it with `navigation blocked`, so open the final address.
 - `--cwd` does not apply. Each overlay has its own in-memory browser storage, so cookies and logins last
   only while it is open.
+- Pass `--persistent` to keep them: the page then uses one saved store shared by every `--persistent`
+  page, so a login survives closing the overlay and restarting agterm, subject to the cookie's own lifetime. `tree` reports `persistent` for each
+  page. `agtermctl browser clear` empties the store, and is refused while a `--persistent` page is open.
+  A login that sends the page to another site (OAuth, SSO, a popup) still fails: the page stays on its
+  origin. Apps on `localhost` with different ports share cookies in the store.
 
 Every page gets the terminal theme as CSS variables: `--agterm-background`, `--agterm-foreground` and
 `--agterm-color-0` to `--agterm-color-15`, the theme's ANSI palette by slot (1 red, 2 green, 3 yellow, 4 blue,
@@ -878,7 +886,7 @@ Full detail, templates, and the exact `gh` commands are in **troubleshooting.md*
 
 - **reference.md** — full per-command detail: every flag, the JSON return shapes
   (`result.id`/`text`/`exitCode`/`count`/`affected`/`tree`/`windows`/`app`/`restore`/`zmx`/`remote`), error strings, the scratch/overlay/split
-  lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `|` alternatives,
+  lifecycle, and the keymap.conf format (`map` / `command`, chords, leaders, `--repeat`, `|` alternatives,
   `{AGT_X}` tokens).
 - **examples.md** — copy-paste agtermctl examples for common tasks (build a layout, run a program in a
   blocking overlay and read its status, type into a fresh session, notify, inspect the tree).

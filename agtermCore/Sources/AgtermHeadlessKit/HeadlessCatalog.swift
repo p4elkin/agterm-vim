@@ -30,7 +30,7 @@ public enum HeadlessCatalog {
             reason = "no terminal surface"
         case .sessionPairing, .overlayRedirectToggle, .sessionBookmarkAdd, .sessionBookmarkList,
              .sessionBookmarkGo, .sessionBookmarkRemove, .hooksReload, .hooksList, .sessionRestore,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach:
+             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach, .browserClear:
             reason = "a Mac feature"
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayReload,
              .sessionOverlayNavigate, .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,

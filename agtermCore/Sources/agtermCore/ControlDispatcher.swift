@@ -92,6 +92,8 @@ public protocol ControlActions {
     /// `hooks.reload` / `hooks.list`, app-global like the keymap pair.
     func reloadHooks() -> ControlResponse
     func listHooks() -> ControlResponse
+    /// `browser.clear` empties the saved browser store; the reply waits for the removal to finish.
+    func clearBrowser() async -> ControlResponse
     func appIdentity() -> ControlResponse
     func reloadGhosttyConfig() -> ControlResponse
     func sendNotification(_ target: String?, window: String?, title: String?, body: String) -> ControlResponse
@@ -289,6 +291,8 @@ public struct ControlDispatcher {
             return await dispatchZmxCommand(request)
         case .hooksReload, .hooksList:
             return dispatchHooksCommand(request)
+        case .browserClear:
+            return await dispatchBrowserCommand(request)
         case .quickType, .quickText:
             return await dispatchQuickCommand(request)
         case .windowNew, .windowList, .windowSelect, .windowGo, .windowClose, .windowRename,
