@@ -371,6 +371,7 @@ public final class AppStore {
                                               statusColor: idle ? nil : session.agentIndicator.color,
                                               statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
                                               statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
+                                              statusNote: idle ? nil : session.agentIndicator.note,
                                               background: session.backgroundWatermark,
                                               paneBackgrounds: session.paneBackgrounds.isEmpty ? nil : session.paneBackgrounds,
                                               unseen: session.unseenCount > 0 ? session.unseenCount : nil,

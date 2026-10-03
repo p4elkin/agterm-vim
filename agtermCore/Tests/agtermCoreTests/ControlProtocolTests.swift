@@ -1047,6 +1047,21 @@ struct ControlProtocolTests {
         #expect(decoded.statusShape == nil)
     }
 
+    @Test func treeSessionNodeRoundTripsWithStatusNote() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, status: "blocked", statusNote: "perm: Bash")
+        let json = String(decoding: try JSONEncoder().encode(session), as: UTF8.self)
+        #expect(json.contains(#""statusNote":"perm: Bash""#))
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8)) == session)
+    }
+
+    @Test func treeSessionNodeOmitsStatusNoteWhenNil() throws {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false, status: "blocked")
+        let json = String(decoding: try JSONEncoder().encode(session), as: UTF8.self)
+        #expect(!json.contains("statusNote"), "a nil statusNote must be omitted; got \(json)")
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: Data(json.utf8)).statusNote == nil)
+    }
+
     @Test func treeSessionNodeRoundTripsWithStatusChangedAt() throws {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
                                          status: "active", statusChangedAt: 1_700_000_000.5)

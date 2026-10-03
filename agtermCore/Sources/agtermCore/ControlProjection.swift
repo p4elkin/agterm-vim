@@ -266,9 +266,11 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// the Settings shape / the default plain circle. The read side of `session.status --shape` — the
     /// PER-CALL override only, exactly like `statusColor`.
     public let statusShape: String?
-    /// When the status was last set, idle and repeated values included, as epoch seconds on the
-    /// `ControlEvent.ts` clock. Omitted before any set; never persisted.
+    /// When the status was last set, idle and repeated values included but not a write changing only the
+    /// note, as epoch seconds on the `ControlEvent.ts` clock. Omitted before any set; never persisted.
     public let statusChangedAt: Double?
+    /// The one-line reason; nil/omitted when idle or set without one. The read side of `session.status --note`.
+    public let statusNote: String?
     /// The session's background watermark spec; nil/omitted when none is set. The read side of
     /// `session.background`.
     public let background: BackgroundWatermark?
@@ -346,7 +348,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 mirrorsSession: OverlayMirrorSource? = nil, viewer: OverlayViewer? = nil,
                 status: String? = nil,
                 statusPane: String? = nil, statusBlink: Bool? = nil, statusColor: String? = nil,
-                statusShape: String? = nil, statusChangedAt: Double? = nil,
+                statusShape: String? = nil, statusChangedAt: Double? = nil, statusNote: String? = nil,
                 background: BackgroundWatermark? = nil, paneBackgrounds: PaneBackgrounds? = nil, unseen: Int? = nil,
                 turn: Int? = nil, bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
@@ -391,6 +393,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.statusColor = statusColor
         self.statusShape = statusShape
         self.statusChangedAt = statusChangedAt
+        self.statusNote = statusNote
         self.background = background
         self.paneBackgrounds = paneBackgrounds
         self.unseen = unseen

@@ -441,6 +441,21 @@ struct AppStoreTreeProjectionTests {
         #expect(sessions[1].statusShape == nil) // no per-call shape: the Settings shape / default is not reported
     }
 
+    @Test func controlTreeReportsStatusNoteUntilAWriteWithoutOne() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo"))
+        store.setAgentIndicator(AgentIndicator(status: .blocked, note: "perm: Bash"), forSession: session.id)
+        #expect(store.controlTree().workspaces[0].sessions[0].statusNote == "perm: Bash")
+
+        store.setAgentIndicator(AgentIndicator(status: .blocked), forSession: session.id)
+        #expect(store.controlTree().workspaces[0].sessions[0].statusNote == nil)
+
+        store.setAgentIndicator(AgentIndicator(status: .active, note: "tool: Read"), forSession: session.id)
+        store.setAgentIndicator(AgentIndicator(status: .idle, note: "tool: Read"), forSession: session.id)
+        #expect(store.controlTree().workspaces[0].sessions[0].statusNote == nil)
+    }
+
     @Test func controlTreeDropsStatusShapeOnTheNextSetWithoutOne() throws {
         let store = makeStore()
         let ws = store.addWorkspace(name: "work")
