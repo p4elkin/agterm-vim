@@ -412,14 +412,16 @@ struct Pick: ParsableCommand {
         var select: String?
         @Flag(name: .long, help: "Raise the target window when the picker opens.") var follow = false
         @Flag(name: .long, help: "Print the picker id and return without waiting for a result.") var noBlock = false
+        @Option(name: .long, help: "The session the picker is for; defaults to $AGTERM_SESSION_ID.") var target: String?
         @OptionGroup var options: ClientOptions
 
         func makeRequest() throws -> ControlRequest {
-            try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile())
+            try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile(), environment: ProcessInfo.processInfo.environment)
         }
 
-        /// Build the open request from injected stdin bytes, so tests never block on the process's real stdin.
-        func makeRequest(input: Data) throws -> ControlRequest {
+        /// Build the open request from injected stdin bytes and environment, so tests never block on the process's
+        /// real stdin or inherit its pane. The target lets a headless origin forward the picker to its presenting Mac.
+        func makeRequest(input: Data, environment: [String: String] = [:]) throws -> ControlRequest {
             let args = ControlArgs(
                 follow: follow ? true : nil,
                 items: try Self.parseItems(input),
@@ -428,7 +430,8 @@ struct Pick: ParsableCommand {
                 allowCustom: allowCustom ? true : nil,
                 selection: select
             )
-            return ControlRequest(cmd: .pickOpen, args: options.withWindow(args))
+            let session = target ?? environment["AGTERM_SESSION_ID"].flatMap { $0.isEmpty ? nil : $0 }
+            return ControlRequest(cmd: .pickOpen, target: session, args: options.withWindow(args))
         }
 
         /// Sniff stdin's first non-whitespace byte. JSON arrays preserve caller-supplied ids/subtitles;
@@ -451,6 +454,7 @@ struct Pick: ParsableCommand {
             let client = SocketClient(path: options.socketPath())
             try execute(
                 input: FileHandle.standardInput.readDataToEndOfFile(),
+                environment: ProcessInfo.processInfo.environment,
                 send: client.send,
                 sleep: Thread.sleep(forTimeInterval:),
                 output: { print($0) },
@@ -462,6 +466,7 @@ struct Pick: ParsableCommand {
         /// real delays or process fds.
         func execute(
             input: Data,
+            environment: [String: String] = [:],
             send: @escaping (ControlRequest) throws -> SocketReply,
             sleep: @escaping (TimeInterval) -> Void,
             output: @escaping (String) -> Void,
@@ -469,7 +474,7 @@ struct Pick: ParsableCommand {
         ) throws {
             let runner = ModalCommandRunner(family: .pick, json: options.json, send: send, sleep: sleep,
                                             output: output, errorOutput: errorOutput)
-            try runner.open(makeRequest(input: input), noBlock: noBlock)
+            try runner.open(makeRequest(input: input, environment: environment), noBlock: noBlock)
         }
     }
 

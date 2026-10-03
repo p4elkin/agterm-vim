@@ -62,7 +62,7 @@ extension ControlServer {
         }
     }
 
-    private func remoteEffects(for id: UUID) -> RemotePresentationEffects {
+    func remoteEffects(for id: UUID) -> RemotePresentationEffects {
         RemotePresentationEffects(
             status: { [weak self] status in
                 self?.library.store(forSession: id)?.applyRemoteStatus(status, forSession: id)
@@ -92,6 +92,10 @@ extension ControlServer {
             },
             overlayResize: { [weak self] change in
                 self?.library.store(forSession: id)?.resizeReplicaOverlay(change, forSession: id)
+            },
+            controlForward: { [weak self] request, reply in
+                guard let self else { return reply(ControlResponse(ok: false, error: "the Mac is shutting down")) }
+                Task { @MainActor in reply(await self.runForwarded(request, forSession: id)) }
             },
             layout: { [weak self] layout in
                 guard let self, let store = library.store(forSession: id) else { return }

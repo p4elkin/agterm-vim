@@ -29,12 +29,17 @@ struct BasicOptions: ParsableArguments, ConnectionOptions {
     var json = false
 
     /// Resolve the socket path, in precedence order: `--socket` → `<AGTERM_STATE_DIR>/agterm.sock` →
-    /// `<$HOME>/Library/Application Support/agterm/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
+    /// `<$HOME>/Library/Application Support/agterm/agterm.sock`, on Linux the headless server's
+    /// `<$HOME>/.local/state/agterm-headless/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
     /// injectable so the precedence is unit-testable; production passes the process environment.
     func socketPath(env: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let socket { return socket }
-        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent("Library/Application Support/agterm") })
-            ?? "/tmp/agterm"
+        #if os(Linux)
+        let home = ".local/state/agterm-headless"
+        #else
+        let home = "Library/Application Support/agterm"
+        #endif
+        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent(home) }) ?? "/tmp/agterm"
         return ControlResolve.socketPath(stateDir: env["AGTERM_STATE_DIR"], appSupport: appSupport)
     }
 }

@@ -14,7 +14,8 @@ final class HeadlessActionFixture {
     let session: Session
 
     init(build: String? = nil, runner: FakeZmxRunner = FakeZmxRunner(), shellLookup: @escaping () -> String? = { "/bin/sh" },
-         hudClock: @escaping () -> Date = Date.init) throws {
+         hudClock: @escaping () -> Date = Date.init, overlayClock: @escaping () -> Date = Date.init,
+         procRoot: String = "/proc") throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-actions-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let build { try build.write(to: directory.appendingPathComponent("BUILD"), atomically: true, encoding: .utf8) }
@@ -22,9 +23,11 @@ final class HeadlessActionFixture {
         let config = HeadlessConfig.fromEnvironment([
             "AGTERM_HEADLESS_STATE": directory.appendingPathComponent("state").path,
             "AGTERM_HEADLESS_ZMX": directory.appendingPathComponent("unused-zmx").path,
+            "LANG": "en_US.UTF-8",
         ])
         let streams = streams
-        headless = Headless(config: config, runner: runner, shellLookup: shellLookup) { _, _ in streams }
+        headless = Headless(config: config, runner: runner, shellLookup: shellLookup, overlayClock: overlayClock,
+                            procRoot: procRoot) { _, _ in streams }
         let window = try #require(headless.library.windows.first)
         store = try #require(headless.library.store(for: window.id))
         session = try #require(store.workspaces.first?.sessions.first)
@@ -74,4 +77,40 @@ final class ActionTestStreams: HeadlessStreams {
     }
     var closed: [UUID] = []
     func closeStreams(session: UUID) { closed.append(session) }
+
+    final class Job: HeadlessJobTransport {
+        let reply: ControlResponse
+        let onLine: @MainActor (Data) -> Void
+        let onClose: @MainActor () -> Void
+        var lines: [Data] = []
+        var isShut = false
+
+        init(reply: ControlResponse, onLine: @escaping @MainActor (Data) -> Void, onClose: @escaping @MainActor () -> Void) {
+            self.reply = reply
+            self.onLine = onLine
+            self.onClose = onClose
+        }
+
+        func send(_ line: Data) -> Bool {
+            lines.append(line)
+            return true
+        }
+
+        func shutdown() { isShut = true }
+
+        var frames: [OverlayJobFrame] { lines.compactMap { try? JSONDecoder().decode(OverlayJobFrame.self, from: $0) } }
+
+        func report(_ frame: OverlayJobFrame) throws { onLine(try frame.line()) }
+    }
+
+    /// False makes the next job adoption fail as a reply that could not be written.
+    var acceptsJobs = true
+    var jobs: [Job] = []
+    func adoptJob(fd: Int32, reply: ControlResponse, onLine: @escaping @MainActor (Data) -> Void,
+                  onClose: @escaping @MainActor () -> Void) -> (any HeadlessJobTransport)? {
+        guard acceptsJobs else { return nil }
+        let job = Job(reply: reply, onLine: onLine, onClose: onClose)
+        jobs.append(job)
+        return job
+    }
 }

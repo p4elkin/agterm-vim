@@ -11,6 +11,8 @@ flagged:
   - "agtermCore/Sources/agtermCore/NormalModeState.swift"
   - "agtermCore/Sources/agtermCore/KeybindMatcher.swift"
   - "agtermCore/Sources/agtermCore/LinkPolicy.swift"
+  # its presenter-only receive arm keeps a mirror from answering a forwarded request
+  - "agtermCore/Sources/agtermCore/PresentationHub.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
@@ -44,6 +46,8 @@ declined:
   - "agtermCore/Sources/agtermCore/ControlDispatcher.swift"
   - "agtermCore/Sources/agtermCore/Session.swift"
   - "agtermCore/Sources/agtermctlKit/MiscCommands.swift"
+  # declined 2026-10-01: fork-only, so no merge can conflict in it
+  - "agterm/Control/ControlServer+Forward.swift"
 ---
 
 ## Keeping the fork current with upstream
@@ -99,7 +103,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   grammar (`nmap`, leader sequences, `KeybindTarget`), so an upstream keymap fix usually needs re-applying
   onto a wider type rather than taking one side.
 - `agtermCore/Sources/AgtermHeadlessKit/HeadlessCatalog.swift` — never conflicts, but a new upstream `Command`
-  fails the Mac `swift test` build there, and a new `ControlActions` requirement without a default fails
+  fails the Mac `swift test` build there and in `ForwardPolicy.kind(of:)`, and a new `ControlActions` requirement without a default fails
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.

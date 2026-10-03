@@ -6,6 +6,9 @@ import Foundation
 public struct HeadlessConfig: Sendable {
     public let stateDirectory: String
     public let zmxExecutable: String
+    /// `LANG` and `LC_*`. Panes inherit them from the server; an overlay program gets the job helper's ssh
+    /// login instead, which on Linux has none, so the launch context carries them.
+    public let locale: [String: String]
 
     public var zmxDirectory: String { stateDirectory + "/zmx" }
     public var socketPath: String { ControlResolve.socketPath(stateDir: stateDirectory, appSupport: "") }
@@ -15,6 +18,7 @@ public struct HeadlessConfig: Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return HeadlessConfig(
             stateDirectory: env["AGTERM_HEADLESS_STATE"] ?? home + "/.local/state/agterm-headless",
-            zmxExecutable: env["AGTERM_HEADLESS_ZMX"] ?? home + "/.local/opt/agterm-headless/zmx")
+            zmxExecutable: env["AGTERM_HEADLESS_ZMX"] ?? home + "/.local/opt/agterm-headless/zmx",
+            locale: env.filter { $0.key == "LANG" || $0.key.hasPrefix("LC_") })
     }
 }

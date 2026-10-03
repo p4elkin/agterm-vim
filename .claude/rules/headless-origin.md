@@ -16,6 +16,7 @@ The Linux server that acts as a remote origin: `docs/plans/20260929-headless-ori
 `HeadlessCatalog` and the zmx runner.
 Its target and tests compile on both platforms; configuration takes an injected environment and uses
 `ControlResolve.socketPath` for the control socket.
+The Linux `agtermctl` defaults to that socket, `$HOME/.local/state/agterm-headless/agterm.sock`, so it needs no `--socket`.
 The Linux executable owns `Socket.swift`, `Presentation.swift`, and `main.swift`.
 `Headless` creates its stream adapter through a factory given its library and presentation hub.
 `HeadlessStreams.adopt(session:fd:)` returns nil after taking ownership of the connection, including the
@@ -25,16 +26,58 @@ ok reply; a response leaves ownership with the control server.
 
 ## What the server serves
 
-`HeadlessCatalog.support(for:)` is the one list: every `Command` is served or refused with a named reason, and
-its switch has no `default`, so a new upstream command fails the build until it is classified.
+`ForwardPolicy.kind(of:)` in `agtermCore` is the one allowlist: every `Command` is served, forwarded to the
+presenting Mac, routed per request (the overlay family, by `route(_:holdsJob:)`) or refused with a named reason.
+Its switch has no `default`, so a new upstream command fails the build until it is classified.
+`HeadlessCatalog.support(for:)` maps it, and `HeadlessCatalog.refusal` spells the one refusal text,
+`<cmd> is not available on a headless origin: <reason>`.
 `HeadlessActions` is the `ControlActions` conformer. Refused methods answer with the catalog's text, and
-`respond(to:)` fills the dispatcher's nil answers (`debug.appearance`) from the same catalog.
+`respond(to:)` routes by the policy before the dispatcher and fills the dispatcher's nil answers
+(`debug.appearance`) from the catalog.
 `session.search` and `session.bookmark.go` share `searchSession`; only `respond(to:)` sees which one it was.
 The socket server calls `HeadlessActions.serve` for every request. `serve` is the executable's only mode;
 clients are the real `agtermctl`. `scripts/headless/smoke.sh` drives a throwaway server with it.
 For an ok `zmx.present`, `serve` hands the connection to `adoptPresentation`, which revalidates the session;
 nil means the stream adapter owns the connection and wrote the ok reply itself.
 `version` and `tree` report `headless` plus the commit in a `BUILD` file next to the installed binary.
+
+## Forwarding to the presenting Mac
+
+`HeadlessForwarder` sends a forwarded request to the session's presenter as `control.forward` and waits 10 seconds
+for `control.forwarded`; the frames are in [[control-api]]'s Remote sessions.
+- It is refused, as `<cmd> cannot be forwarded: <reason>`, without a `--target` naming one of this origin's sessions by
+  full id (`active` or a prefix does not count), with no presenter, with a presenter whose hello lacked `forward`, or
+  over the frame limit. The deadline or the presenter leaving answers `the presenting Mac left`.
+- It drops `window` and sends the full id; the Mac runs it on the one row bound to that session, so a flag or a
+  focus lands on the presenting Mac's row only.
+- A forwarded `pick.open` or `--url` open records its pick or page id with that presenter, and the polls go there.
+  Once that presenter is gone a pick poll answers `cancelled` and a page poll `dismissed`. A pick id no Mac opened
+  answers `unknown pick: <id>`. Closing the session forgets its ids.
+- `--html` is refused: the file is on the origin.
+
+## Program overlays
+
+A program overlay takes the Mac origin's job path ([[control-api]], Remote sessions) with this server as the origin.
+- The open books a job through `openRemoteOverlay(requireFollower: false)`: no pane here ever reports a lead, so
+  the follower check would refuse every open. With no presenter it is refused at once.
+- The launch context is the session's environment with no pane, since the program covers no daemon, plus
+  `AGTERM_STATE_DIR`, `SHELL` and the server's `LANG`/`LC_*`: the helper's ssh login has no locale, and without
+  one revdiff draws its UTF-8 as raw bytes.
+  The cwd is an absolute `--cwd`, else the session's `effectiveCwd`, else `$HOME`; a relative `--cwd` is refused,
+  having nothing on this origin to resolve against.
+- The presenter runs `ssh -tt <origin> agtermctl session overlay run-job <job>`. `RemoteSession.runJobCommand`
+  passes `-o ControlMaster=no -o ControlPath=none`, one connection per job: a shared multiplexed connection was
+  measured refusing new channels with `Session open refused by peer`.
+- On p4linux that `agtermctl` is the server's own CLI (agterm-agents links it there), and with no socket named
+  it talks to the local server.
+- `serve` hands an ok claim's connection to `HeadlessStreams.adoptJob`, which writes the reply; `OverlayJobLink`
+  sends the launch context first, then a cancel that arrived before the adoption (`pendingJobCancels`).
+  The helper gives the program the ssh terminal with `posix_spawn_file_actions_addtcsetpgrp_np` (glibc 2.35+).
+- 30 seconds from open to claim and 10 from claim to `started`; a miss ends the job and frees the slot (a claimed
+  job's helper is also sent a cancel), as do a rejection and a helper leaving without an outcome.
+  A lost or changed presenter cancels an unclaimed job only: a claimed or running one keeps its slot until its
+  helper reports, as [[control-api]]'s Remote sessions specifies. `result`, `close` and `resize`
+  are answered here, `result` by the Mac's remote-branch rules.
 
 ## The zmx runner
 
@@ -51,7 +94,12 @@ The child gets an empty signal mask and default dispositions: the caller may be 
 blocks most signals, and a daemon inheriting that mask survives `zmx kill`.
 ⚠️ A served command whose `ControlActions` method is synchronous runs zmx on the main actor: a hung zmx
 delays every other request through its timeout and, for a failed create, the cleanup kill.
-Only `zmx.tree` (async) and `DaemonWatcher`'s listing run zmx off it.
+Only `zmx.tree` (async), `session.type` and `DaemonWatcher`'s listing run zmx off it.
+
+`session.type` writes into the pane's daemon with `zmx type` on stdin, paced like the Mac's `coveredType`, one
+lane per daemon, and is never retried: the daemon may have queued input before failing. It is served, not
+forwarded to a Mac, because a session viewed only on a closed laptop, or made on p4linux and not attached yet,
+has no presenter while room delivery and the compact tools still type into it.
 
 ## The pane environment
 
@@ -100,6 +148,14 @@ A command requires mode `on` and an absent split, including when an existing spl
 and `--all` read the same history. zmx has already dropped escapes and trailing blank rows.
 `--lines N` keeps the last N content lines, the Mac surface reader's rule.
 
+## Pane foreground
+
+`tree` and `zmx.tree` report each pane's `foreground`/`foregroundShell`, as the Mac does, from procfs: the
+daemon's login shell (its pid from `DaemonWatcher`'s last listing, `Headless.daemonLeaders`), the terminal's
+foreground group in its `stat`, that group leader's `cmdline`, or once the leader is gone a member that
+`CommandRestore.groupDescentCandidates` picks from a procfs scan.
+A tree read never runs zmx itself, so a pane reports nothing until the watcher's first listing after it starts.
+
 ## HUDs and asks
 
 A HUD is store state published as `hud` frames: `openHud` gets an empty helper command and file, so nothing
@@ -125,8 +181,7 @@ ask would wait for a presenter change that never comes. The spec records the dec
 - CLI: `Zmx.New`;
 - server: `HeadlessActions.createAttachableSession`, which is `session.new`'s path, and the catalog;
 - Mac: `ControlServer.createRemoteSession`, `RemoteSession.newCommand`, the app's fallback switch and
-  `waitsOnNetwork`;
-- the shim's route for a host-less `zmx new`.
+  `waitsOnNetwork`.
 
 `presenter.take` has 11: the frame case, its kind name, decode and encode; `PresenterGrant.transfer`; the
 hub's take arm; the client's `takePresenter` and ignore arm; the client's hello arm reading its lead query;

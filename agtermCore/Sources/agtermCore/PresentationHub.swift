@@ -30,16 +30,19 @@ public final class PresentationHub {
         let generation: Int
         let sink: PresentationSink
         let mode: PresentationMode
+        /// What the viewer's hello listed, unfiltered: some kinds name what the viewer does, not frames sent to it.
+        let kinds: Set<String>
         var revision = 0
         var lastAck: Date
         /// Deltas published while the snapshot is being taken, held so they land after it.
         var held: [PresentationFrame.Body]? = []
 
-        init(session: UUID, generation: Int, sink: PresentationSink, mode: PresentationMode, now: Date) {
+        init(session: UUID, generation: Int, sink: PresentationSink, hello: PresentationHello, now: Date) {
             self.session = session
             self.generation = generation
             self.sink = sink
-            self.mode = mode
+            mode = hello.mode
+            kinds = Set(hello.kinds)
             lastAck = now
         }
     }
@@ -85,7 +88,7 @@ public final class PresentationHub {
         }
         lastGeneration += 1
         let id = SubscriberID(generation: lastGeneration)
-        let subscriber = Subscriber(session: session, generation: lastGeneration, sink: sink, mode: hello.mode, now: now())
+        let subscriber = Subscriber(session: session, generation: lastGeneration, sink: sink, hello: hello, now: now())
         subscribers[id] = subscriber
 
         let state = snapshot()
@@ -145,7 +148,7 @@ public final class PresentationHub {
                 onPresenterChanged?(subscriber.session)
             }
         case .presenterTake: takePresenter(id, session: subscriber.session)
-        case .askResolve, .askRejected, .overlayRejected, .overlayClosed:
+        case .askResolve, .askRejected, .overlayRejected, .overlayClosed, .controlForwarded:
             guard grant.holder(of: subscriber.session) == id else { return }
             onPresenterFrame?(subscriber.session, frame.body)
         default: break
@@ -171,6 +174,11 @@ public final class PresentationHub {
 
     /// Whether a viewer holds `session`'s presenter role.
     public func hasPresenter(session: UUID) -> Bool { grant.holder(of: session) != nil }
+
+    /// Whether `session`'s presenter listed `kind` in its hello.
+    public func presenterSupports(_ kind: String, session: UUID) -> Bool {
+        grant.holder(of: session).flatMap { subscribers[$0] }?.kinds.contains(kind) == true
+    }
 
     /// Counts changes of `session`'s presenter, a grant and a loss alike.
     public func presenterGeneration(session: UUID) -> Int { grant.generation(of: session) }

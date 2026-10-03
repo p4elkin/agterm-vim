@@ -81,4 +81,7 @@ private final class FakeHeadlessStreams: HeadlessStreams {
     }
 
     func closeStreams(session: UUID) { closedSessions.append(session) }
+
+    func adoptJob(fd: Int32, reply: ControlResponse, onLine: @escaping @MainActor (Data) -> Void,
+                  onClose: @escaping @MainActor () -> Void) -> (any HeadlessJobTransport)? { nil }
 }

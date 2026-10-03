@@ -22,6 +22,10 @@ publishes an empty body with only a warning on stderr.
 
 ### Changed
 
+- every agent on p4linux now runs in a session of its headless server. The old rows, a mosh attach of a
+  zmx daemon on p4linux, were moved in with their conversations (agterm-agents `agterm-zmx-park migrate`
+  and `agterm-headless-switch-rows`), and agterm-agents' `agtermctl` shim is removed: on the Linux host
+  `agtermctl` is the server's own CLI. A new agent there is made with `agtermctl zmx new <host>`.
 - the fork's own zmx pane wrapping is gone; upstream's is used instead. Upstream shipped native zmx
   wrapping of its own between `82d6f17` and `c8860a9`, and carrying both was not possible — the two
   implementations own the same seam in the surface factory and collide on three file names. Upstream's
@@ -66,6 +70,17 @@ publishes an empty body with only a warning on stderr.
   `scripts/headless/check-version.sh` says whether each Mac can follow it. A HUD or a terminal ask opened
   there appears on the Mac viewing that session; an ask opened with no Mac viewing waits and appears when
   one connects. In progress; Linux only.
+- `agtermctl session type` works in a session on the Linux origin, written into its zmx daemon with `zmx type`, so room
+  delivery and the compact tools reach it even when no Mac is attached.
+- in a session on the Linux origin, `agtermctl pick`, `session flag`, `session focus`, `session search`,
+  bookmarks, `session overlay open --url` and the other commands that need a window now run on the Mac
+  presenting that session instead of being refused. They name the session with
+  `--target "$AGTERM_SESSION_ID"`, which `pick` does by itself, and fail with `no Mac is presenting this
+  session` when no Mac is.
+- a program overlay opened in a session on the Linux origin (`session overlay open <command>`, so revdiff and
+  `agterm-open-at` too) shows on the Mac presenting that session while the program runs on Linux, in the
+  session's directory and environment; `result` and `--block` report its exit code. The Linux host's
+  `agtermctl` must reach the server: its own CLI, which agterm-agents links in.
 - when the Mac presenting a remote session disconnects, another Mac viewing it now takes over as
   presenter, and an ask shown on the first moves to it with its id and pane.
 - `agtermctl zmx new <host> [--name] [--command] [--cwd] [--window]` creates a session on another

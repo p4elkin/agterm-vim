@@ -125,6 +125,22 @@ final class PresentationStreams: HeadlessStreams {
         for stream in streams where stream.session == session { stream.shutdown() }
     }
 
+    func adoptJob(fd: Int32, reply: ControlResponse, onLine: @escaping @MainActor (Data) -> Void,
+                  onClose: @escaping @MainActor () -> Void) -> (any HeadlessJobTransport)? {
+        guard var line = try? JSONEncoder().encode(reply) else {
+            Glibc.close(fd)
+            return nil
+        }
+        line.append(UInt8(ascii: "\n"))
+        guard UnixSocket.writeAll(fd, line) else {
+            Glibc.close(fd)
+            return nil
+        }
+        let stream = JobStream(fd: fd)
+        stream.start(onLine: onLine, onClose: onClose)
+        return stream
+    }
+
     private func startHeartbeat() {
         guard heartbeat == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: .main)
