@@ -87,6 +87,12 @@ Test-first: each task writes its failing tests, then the code. Test files named 
 
 ### Task 1: validation
 
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/SessionContext.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/SessionTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter SessionTests`
+
 - [ ] Tests in `SessionTests` beside the `validateContext` tests: trims outer spaces; a
   256-byte multi-byte note passes, 257 bytes fails; `\n`, `\t`, U+0007, U+2028, U+2029 fail even when
   outer; blank fails; each failure message starts with `note`.
@@ -94,6 +100,14 @@ Test-first: each task writes its failing tests, then the code. Test files named 
   tests stay green unchanged.
 
 ### Task 2: the indicator and the store
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/AgentStatus.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore+Status.swift`
+- Modify: `agtermCore/Sources/agtermCore/ControlEvents.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/AppStoreStatusTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter 'AppStoreStatusTests|AppStoreAutoFollowTests|AppStoreEventTests'`
 
 - [ ] Tests in `AppStoreStatusTests`:
   - a write with a note stores it; the next write without one clears it;
@@ -112,6 +126,16 @@ Test-first: each task writes its failing tests, then the code. Test files named 
 
 ### Task 3: tree read-back
 
+depends: 2
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/ControlProjection.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTreeProjectionTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/ControlProtocolTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter 'AppStoreTreeProjectionTests|ControlProtocolTests'`
+
 - [ ] Tests in `AppStoreTreeProjectionTests`: `statusNote` present on a non-idle row with a note; absent
   without one and on idle. A `ControlProtocolTests` case: the node encodes `statusNote` and a node JSON
   without it decodes.
@@ -119,6 +143,17 @@ Test-first: each task writes its failing tests, then the code. Test files named 
   `statusChangedAt`. `AppStore.controlTree` fills it (`idle ? nil : note`).
 
 ### Task 4: far rows
+
+depends: 1, 2
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/PresentationFrames.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore+Presentation.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore+RemotePresentation.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/PresentationFramesTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/RemotePresentationStateTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter 'PresentationFramesTests|RemotePresentationStateTests|PresentationHubTests'`
 
 - [ ] Tests in `PresentationFramesTests`: `PresentationStatus` round-trips `note`; a status JSON with no
   `note` key decodes to nil. In `RemotePresentationStateTests`: `applyRemoteStatus` sets the far row's
@@ -130,13 +165,35 @@ Test-first: each task writes its failing tests, then the code. Test files named 
 
 ### Task 5: protocol and dispatcher
 
+depends: 1
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/ControlProtocol.swift`
+- Modify: `agtermCore/Sources/agtermCore/ControlModes.swift`
+- Modify: `agtermCore/Sources/agtermCore/ControlDispatcher.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/ControlDispatcherSessionMetadataTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/ControlProtocolTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter 'ControlDispatcherSessionMetadataTests|ControlProtocolTests'`
+
 - [ ] Tests in `ControlDispatcherSessionMetadataTests`: a valid note reaches `MockControlActions` trimmed;
   a 300-byte note, a newline note and a blank note each return `ok: false` with a `note` message and never
   call `setSessionStatus`. `ControlProtocolTests`: `ControlArgs.note` round-trips.
 - [ ] `ControlProtocol.swift`: `ControlArgs.note` (property, init parameter, assignment).
 - [ ] `ControlModes.swift`: `ControlSessionStatusUpdate.note`.
 - [ ] `ControlDispatcher.swift` `session.status` arm: validate, pass the trimmed value.
+
 ### Task 6: both `setSessionStatus` implementations
+
+depends: 2, 4, 5
+
+**Files:**
+- Modify: `agtermCore/Sources/AgtermHeadlessKit/HeadlessActions.swift`
+- Modify: `agterm/Control/ControlServer+SessionActions.swift`
+- Modify: `agtermCore/Tests/AgtermHeadlessKitTests/HeadlessActionsTests.swift`
+- Modify: `agtermTests/ControlServerPresentationTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter HeadlessActionsTests && cd .. && scripts/test-app.sh -only-testing:agtermTests/ControlServerPresentationTests`
 
 - [ ] Tests in `HeadlessActionsTests`: `setSessionStatus` with a note shows in the headless tree; a
   refused write over `blocked` keeps the old note.
@@ -147,6 +204,16 @@ Test-first: each task writes its failing tests, then the code. Test files named 
 
 ### Task 7: CLI
 
+depends: 2, 5
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermctlKit/SessionMetadataCommands.swift`
+- Modify: `agtermCore/Sources/agtermctlKit/EventCommands.swift`
+- Modify: `agtermCore/Tests/agtermctlKitTests/CommandsTests.swift`
+- Modify: `agtermCore/Tests/agtermctlKitTests/EventCommandsTests.swift`
+
+Acceptance: `cd agtermCore && swift test --filter 'CommandsTests|EventCommandsTests'`
+
 - [ ] Tests in `agtermctlKitTests/CommandsTests`: `session status active --note "ci: waiting"` builds
   `args.note`; without `--note` it is nil. `EventCommandsTests`: the human line ends in
   `note="ci: waiting"`.
@@ -155,6 +222,21 @@ Test-first: each task writes its failing tests, then the code. Test files named 
 - [ ] `EventCommands.swift` `EventFormatter.human`.
 
 ### Task 8: docs
+
+depends: 3, 6, 7
+
+**Files:**
+- Modify: `.claude/rules/control-api.md`
+- Modify: `plugins/agterm/skills/agterm/SKILL.md`
+- Modify: `plugins/agterm/skills/agterm/reference.md`
+- Modify: `site/commands.html`
+- Modify: `site/docs.html`
+- Modify: `FORK-NOTES.md`
+- Modify: `CHANGELOG-fork.md`
+- Modify: `agtermCore/Sources/agtermCore/ControlProjection.swift`
+- Modify: `agtermCore/Sources/agtermCore/ControlEvents.swift`
+
+Acceptance: `test $(grep -l statusNote .claude/rules/control-api.md plugins/agterm/skills/agterm/SKILL.md plugins/agterm/skills/agterm/reference.md site/commands.html site/docs.html | wc -l) -eq 5 && grep -q -- '--note' FORK-NOTES.md && grep -q -- '--note' CHANGELOG-fork.md`
 
 Three facts change in the docs: the new argument, the new read-back fields, and the stamp rule's
 note-only exception. Every place that states "every set restamps" or lists the `status` event fields or
