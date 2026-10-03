@@ -240,6 +240,26 @@ final class ControlServerPresentationTests: XCTestCase {
         XCTAssertEqual(status?.pane, .identity(session.paneIdentity))
     }
 
+    func testAStatusNoteSetThroughTheServerReachesTheViewer() throws {
+        let (server, _, session) = try makeServer()
+        let (client, _) = try openStream(for: session)
+        let update = ControlSessionStatusUpdate(status: .blocked, blink: nil, autoReset: nil, sound: nil,
+                                                note: "perm: Bash")
+        let answered = expectation(description: "status set")
+        let response = Box<ControlResponse>()
+        Task {
+            response.value = await server.setSessionStatus(session.id.uuidString, window: nil, update: update)
+            answered.fulfill()
+        }
+        wait(for: [answered], timeout: 5)
+
+        XCTAssertEqual(response.value?.ok, true)
+        XCTAssertEqual(session.agentIndicator.note, "perm: Bash")
+        let frame = try XCTUnwrap(offMain { client.frame() } ?? nil)
+        guard case .status(let status) = frame.body else { return XCTFail("expected status, got \(frame)") }
+        XCTAssertEqual(status?.note, "perm: Bash")
+    }
+
     func testAClientThatGoesAwayIsUnsubscribed() throws {
         let (server, _, session) = try makeServer()
         let (client, _) = try openStream(for: session)

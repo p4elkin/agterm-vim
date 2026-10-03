@@ -69,6 +69,21 @@ struct HeadlessActionsTests {
         #expect(try await fixture.node().context == nil)
     }
 
+    @Test func aStatusNoteReadsBackAndAnotherPanesRefusedWriteKeepsIt() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "blocked"; $0.note = "perm: Bash" }.ok)
+        #expect(try await fixture.node().statusNote == "perm: Bash")
+        fixture.session.hasSplit = true
+        let refused = try await fixture.dispatch(.sessionStatus) {
+            $0.status = "active"; $0.pane = "right"; $0.note = "tool: Read"
+        }
+
+        #expect(!refused.ok)
+        #expect(try await fixture.node().statusNote == "perm: Bash")
+    }
+
     @Test func marksAdvanceAndReadBack() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }

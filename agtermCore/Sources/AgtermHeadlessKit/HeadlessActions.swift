@@ -93,7 +93,7 @@ public final class HeadlessActions: ControlActions {
             let pane = update.paneID.flatMap { session.paneRole(forToken: $0) } ?? update.pane
             let indicator = AgentIndicator(status: update.status, blink: update.blink ?? false,
                                            autoReset: update.autoReset ?? false, color: update.color,
-                                           shape: update.shape, statusPane: pane)
+                                           shape: update.shape, statusPane: pane, note: update.note)
             if case .refused(let owner) = store.applyControlStatus(indicator, forSession: session.id) {
                 return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue)")
             }
