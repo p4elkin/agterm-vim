@@ -76,12 +76,16 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
   upstream declares but cannot parse. ⚠️ Shift is required and not optional, for plain URLs too — the
   terminal links section of `.claude/rules/libghostty.md` says why.
 - **Clickable file paths** — the same chord on a path opens it over the pane, markdown in plannotator and
-  code in revdiff, through `agterm-open-path`; a p4linux pane's path opens on p4linux. Same terminal links
-  section.
+  code in revdiff, through `agterm-open-path`; a p4linux pane's path opens on p4linux. A bare name such as
+  `links.conf` too, through an `agterm-path:` rule, found in the pane's repo, other rows' repos or zoxide's.
+  Same terminal links section.
 - **Clickable Jira keys and MR links** — the same chord on a Jira key or a GitLab merge request URL shows
   the item over the pane (a terminal view, a rendered page, or the browser, per kind), through
   `agterm-open-link`; every other web link still opens the browser. Jira keys need a `link` rule in
   `ghostty.conf`. Same terminal links section.
+- **Clickable forge references** — `!482`, `#12`, a commit hash, `group/proj!12` and GitLab issue, commit,
+  pipeline and job or GitHub PR, issue and commit URLs open the same way, resolved against the pane's
+  checkout; a commit opens a plannotator review. Same terminal links section.
 
 **Control API and tooling**
 

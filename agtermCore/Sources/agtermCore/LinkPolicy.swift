@@ -5,10 +5,11 @@ import Foundation
 /// maps a raw link to OPEN a web/mail URL (`NSWorkspace.open`, or `agterm-open-link` for a pane's web
 /// link when installed), REVEAL a LOCAL `file://` link in Finder
 /// (`NSWorkspace.activateFileViewerSelecting`), show a parked cross-agent message for agterm's OWN
-/// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) to the
-/// `agterm-open-path` viewer script, or IGNORE anything else. `file://` is revealed, never
-/// opened: opening goes through LaunchServices (the Finder double-click path), so a click on
-/// `file:///…/X.app` or `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
+/// `agterm-xchat://msg/<id>` scheme, hand a schemeless file path (ghostty's built-in path link) or a bare file
+/// name minted as `agterm-path:<name>` to the `agterm-open-path` viewer script, hand a forge ref minted as
+/// `agterm-ref:<ref>` to `agterm-open-link`, or IGNORE anything else. `file://` is revealed, never opened:
+/// opening goes through LaunchServices (the Finder double-click path), so a click on `file:///…/X.app` or
+/// `.command` would LAUNCH it, while reveal only selects it. A `file://` whose host is
 /// NOT this machine is ignored, since `activateFileViewerSelecting` on a remote host can trigger a Finder
 /// network/SMB mount. Host-free (Foundation-only) so it is unit-tested — the local host names are injected;
 /// the app-side glue only calls the two `NSWorkspace` methods (same split as `ShellEscape`).
@@ -28,12 +29,32 @@ public enum LinkPolicy {
     /// id rather than a path that gets resolved.
     static let xchatIDPattern = "^msg-[0-9]{6}-[0-9a-f]{4}$"
 
+    /// `agterm-ref:<ref>` carries a forge reference (`!12`, `#34`, a commit hash, `group/proj!12`) minted by the
+    /// `link` rules agterm-agents ships, for `agterm-open-link` to resolve against the pane's repository. Not in
+    /// `permittedSchemes`, and never parsed through `URL(string:)`: that would move the `34` of `group/proj#34`
+    /// into a fragment.
+    public static let refScheme = "agterm-ref"
+
+    /// A bare file name (`links.conf`), which ghostty's path link never matches without a `/`. Minted by the
+    /// agterm-agents `link` rule beside the ref rules, and read like `refScheme`: on the raw string.
+    public static let pathScheme = "agterm-path"
+
+    /// Each accepted ref shape, anchored. A project segment cannot start with `.`, so `..` is never a segment.
+    static let refPatterns = [
+        #"^[!#][0-9]{1,9}$"#,
+        #"^[0-9a-f]{7,40}$"#,
+        crossProjectRefPattern,
+    ]
+    static let crossProjectRefPattern =
+        #"^[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+(?:[!#][0-9]{1,9}|@[0-9a-f]{7,40})$"#
+
     /// What a link click should do. Carries the target URL for `.open`/`.reveal`.
     public enum LinkDisposition: Equatable {
         case open(URL)
         case reveal(URL)
         case xchat(id: String)
         case openPath(path: String, line: Int?)
+        case ref(String)
         case ignore
     }
 
@@ -109,12 +130,15 @@ public enum LinkPolicy {
     /// so Finder only ever sees a plain `/…` path and never leans on the original authority for host
     /// handling; a `file://` with a non-local host, an empty/relative path, a UNC-style `//`-path, an
     /// auto-mount path (`/net`, `/Network`, `/home`, checked AFTER `..` normalization so `/tmp/../net/x`
-    /// can't sneak through), or any other scheme / schemeless / unparseable input → `.ignore`. `localHosts`
-    /// is injected (default: this machine's names) so the decision stays host-free and unit-testable.
+    /// can't sneak through), or any other scheme or unparseable input → `.ignore`. The agterm schemes and
+    /// schemeless paths route as the type comment says. `localHosts` is injected (default: this machine's
+    /// names) so the decision stays host-free and unit-testable.
     public static func disposition(for raw: String, localHosts: Set<String> = localHostNames) -> LinkDisposition {
         if raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil {
-            return openPathDisposition(raw)
+            return reclaimedRefDisposition(raw, path: openPathDisposition(raw))
         }
+        if raw.hasPrefix(refScheme + ":") { return refDisposition(String(raw.dropFirst(refScheme.count + 1))) }
+        if raw.hasPrefix(pathScheme + ":") { return bareNameDisposition(String(raw.dropFirst(pathScheme.count + 1))) }
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return .ignore }
         if permittedSchemes.contains(scheme) { return .open(url) }
         if scheme == xchatScheme { return xchatDisposition(url) }
@@ -152,6 +176,26 @@ public enum LinkPolicy {
         return .xchat(id: id)
     }
 
+    /// The newline guard covers a regex `$` matching just before a trailing newline; `%0A` stays literal and
+    /// fails every pattern.
+    static func refDisposition(_ payload: String, patterns: [String] = refPatterns) -> LinkDisposition {
+        guard payload.count <= 300, !payload.contains(where: \.isNewline) else { return .ignore }
+        guard patterns.contains(where: { payload.range(of: $0, options: .regularExpression) != nil })
+        else { return .ignore }
+        return .ref(payload)
+    }
+
+    /// Ghostty's built-in path link is checked before user rules, so it claims a dotted cross-project ref such as
+    /// `group/my.proj!12`, with whatever prose punctuation its greedy match kept. Only the cross-project shape is
+    /// taken back: a bare `!12` or hash never reaches here through the path link. When a file of that name exists,
+    /// ghostty delivers its absolute path instead, and that is left alone: which segments named the project is lost.
+    static func reclaimedRefDisposition(_ raw: String, path: LinkDisposition) -> LinkDisposition {
+        guard path == .ignore else { return path }
+        var payload = Substring(raw)
+        while let last = payload.last, ".,;:)?!*=&".contains(last) { payload = payload.dropLast() }
+        return refDisposition(String(payload), patterns: [crossProjectRefPattern])
+    }
+
     /// Extensions a clicked path may carry: markdown for plannotator, the rest for revdiff.
     static let openPathExtensions: Set<String> = [
         "md", "markdown", "swift", "py", "go", "ts", "tsx", "js", "jsx", "java", "kt", "sh", "zsh", "zig",
@@ -159,8 +203,8 @@ public enum LinkPolicy {
     ]
 
     /// Relative paths need a `/` and no leading `-` (the script takes the path after `--`, but a gate should
-    /// not lean on that). Only an absolute path may hold a space: ghostty resolves a match against the pane's
-    /// pwd, so a pane under `Application Support` delivers one.
+    /// not lean on that); a bare name comes only through `pathScheme`. Only an absolute path may hold a space:
+    /// ghostty resolves a match against the pane's pwd, so a pane under `Application Support` delivers one.
     static let openPathPatterns = [
         #"^[\w.@+][\w.@+~-]*(?:/[\w.@+~-]+)+$"#,
         #"^~(?:/[\w.@+~-]+)+$"#,
@@ -175,20 +219,37 @@ public enum LinkPolicy {
         else { return .ignore }
         var path = Substring(raw)
         while let last = path.last, ".*;!?".contains(last) { path = path.dropLast() }
-        var line: Int?
-        if let suffix = path.range(of: #":([0-9]+)(?:-[0-9]+|:[0-9]+)?$"#, options: .regularExpression) {
-            let digits = path[suffix].dropFirst().prefix { $0.isNumber }
-            guard let value = Int(digits), value > 0 else { return .ignore }
-            line = value
-            path = path[..<suffix.lowerBound]
-        }
-        let candidate = String(path)
-        guard openPathPatterns.contains(where: { candidate.range(of: $0, options: .regularExpression) != nil })
-        else { return .ignore }
-        let name = candidate.split(separator: "/").last ?? ""
-        guard let dot = name.lastIndex(of: "."), dot != name.startIndex,
-              openPathExtensions.contains(name[name.index(after: dot)...].lowercased())
+        guard let (candidate, line) = splitLine(path),
+              openPathPatterns.contains(where: { candidate.range(of: $0, options: .regularExpression) != nil }),
+              hasOpenableExtension(candidate.split(separator: "/").last ?? "")
         else { return .ignore }
         return .openPath(path: candidate, line: line)
+    }
+
+    static func bareNameDisposition(_ payload: String) -> LinkDisposition {
+        // `controlCharacters` holds the format characters too (U+200D and kin), which `\w` would admit unseen.
+        guard payload.count <= 255, !payload.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+        else { return .ignore }
+        var name = Substring(payload)
+        while let last = name.last, ".,;:)?!*".contains(last) { name = name.dropLast() }
+        guard let (candidate, line) = splitLine(name),
+              candidate.range(of: #"^[\w@+][\w.@+~-]*$"#, options: .regularExpression) != nil,
+              hasOpenableExtension(Substring(candidate))
+        else { return .ignore }
+        return .openPath(path: candidate, line: line)
+    }
+
+    /// The path and its `:N`, `:N-M` or `:N:M` line, or nil for line 0.
+    private static func splitLine(_ path: Substring) -> (String, Int?)? {
+        guard let suffix = path.range(of: #":([0-9]+)(?:-[0-9]+|:[0-9]+)?$"#, options: .regularExpression) else {
+            return (String(path), nil)
+        }
+        guard let value = Int(path[suffix].dropFirst().prefix { $0.isNumber }), value > 0 else { return nil }
+        return (String(path[..<suffix.lowerBound]), value)
+    }
+
+    private static func hasOpenableExtension(_ name: Substring) -> Bool {
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return false }
+        return openPathExtensions.contains(name[name.index(after: dot)...].lowercased())
     }
 }

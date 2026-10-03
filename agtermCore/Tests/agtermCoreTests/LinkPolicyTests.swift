@@ -274,4 +274,70 @@ struct LinkPolicyTests {
         let raw = "docs/" + String(repeating: "a", count: 1020) + ".md"
         #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
     }
+
+    // MARK: agterm-path (bare file names minted by the link rule)
+
+    @Test(arguments: [
+        ("links.conf", "links.conf", nil),
+        ("README.md:12", "README.md", 12),
+        ("a.swift:3-9", "a.swift", 3),
+        ("a.swift:3:9", "a.swift", 3),
+        ("README.MD", "README.MD", nil),
+        ("notes.md).", "notes.md", nil),
+        ("@types.ts", "@types.ts", nil),
+        ("Заметки.md", "Заметки.md", nil),
+        ("résumé.md", "résumé.md", nil),
+    ] as [(String, String, Int?)])
+    func bareNameOpens(_ payload: String, _ path: String, _ line: Int?) {
+        #expect(LinkPolicy.disposition(for: "agterm-path:" + payload, localHosts: Self.localHosts)
+            == .openPath(path: path, line: line))
+    }
+
+    @Test(arguments: [
+        "agterm-path:", "agterm-path:docs/x.md", "agterm-path:-x.md", "agterm-path:x.exe", "agterm-path:Makefile",
+        "agterm-path:.md", "agterm-path:x.md\n", "agterm-path:x.swift:0", "agterm-path:~x.md", "agterm-path:x y.md",
+        "agterm-path:" + String(repeating: "a", count: 253) + ".md", "AGTERM-PATH:x.md", "agterm-path:x\u{200D}.md",
+        "agterm-path:x\u{202E}dm.md",
+    ])
+    func malformedBareNamesAreIgnored(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test func pathSchemeIsNotSystemOpenable() {
+        #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.pathScheme))
+    }
+
+    // MARK: agterm-ref (forge references minted by the link rules)
+
+    @Test(arguments: ["!12", "#34", "c865bc6c", "group/sub/proj#34", "owner/repo@c865bc6c"])
+    func refPayloadsAreAccepted(_ payload: String) {
+        #expect(LinkPolicy.disposition(for: "agterm-ref:" + payload, localHosts: Self.localHosts) == .ref(payload))
+    }
+
+    @Test(arguments: [
+        "agterm-ref:", "agterm-ref:!12a", "agterm-ref:#0x1", "agterm-ref:c865bc", "agterm-ref:" + String(repeating: "a", count: 41),
+        "agterm-ref:C865BC6C", "agterm-ref:../x!1", "agterm-ref:.x/y!1", "agterm-ref:!1\n", "agterm-ref:!1%0A",
+        "agterm-ref:" + String(repeating: "a/", count: 150) + "p!1", "AGTERM-REF:!1", "agterm-ref:!1?x",
+    ])
+    func malformedRefsAreIgnored(_ raw: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test func refSchemeIsNotSystemOpenable() {
+        #expect(!LinkPolicy.permittedSchemes.contains(LinkPolicy.refScheme))
+    }
+
+    @Test(arguments: [("group/my.proj!12", "group/my.proj!12"), ("group/proj!12.", "group/proj!12"),
+                      ("owner/repo@c865bc6c),", "owner/repo@c865bc6c"), ("group/my.proj!12?", "group/my.proj!12"),
+                      ("group/proj!12**.", "group/proj!12"), ("group/proj#3!=&", "group/proj#3")])
+    func dottedCrossProjectRefsAreReclaimedFromThePathLink(_ raw: String, _ payload: String) {
+        #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ref(payload))
+    }
+
+    @Test func reclaimLeavesPathsAndShortRefsAlone() {
+        #expect(LinkPolicy.disposition(for: "src/a.swift", localHosts: Self.localHosts) == .openPath(path: "src/a.swift", line: nil))
+        for raw in ["a/b.c#x", "!12", "c865bc6c"] {
+            #expect(LinkPolicy.disposition(for: raw, localHosts: Self.localHosts) == .ignore)
+        }
+    }
 }
