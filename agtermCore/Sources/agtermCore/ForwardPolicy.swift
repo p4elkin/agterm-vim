@@ -31,7 +31,7 @@ public enum ForwardPolicy {
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
             return .forwarded
-        case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult:
+        case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed
         case .windowNew, .windowSelect, .windowGo, .windowClose, .windowRename, .windowDelete,
              .windowResize, .windowMove, .windowZoom, .windowFullscreen, .windowMinimize,
@@ -47,7 +47,7 @@ public enum ForwardPolicy {
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxAttach:
+             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset:
             return .refused("a Mac feature")
         }
     }
@@ -69,6 +69,8 @@ public enum ForwardPolicy {
             // the Mac would answer a program poll with its ssh helper's status
             case .sessionOverlayResult: return request.args?.page == nil ? .served : .forwarded
             case .sessionOverlayClose, .sessionOverlayResize: return holdsJob ? .served : .forwarded
+            // `--beside`: the Mac presenting the target row attaches the session after it; no Mac call from the origin
+            case .zmxAttach: return request.args?.attach == nil ? .refused("a Mac feature") : .forwarded
             default: return .refused("not routed")
             }
         }

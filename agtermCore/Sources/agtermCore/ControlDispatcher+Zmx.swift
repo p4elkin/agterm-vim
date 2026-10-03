@@ -18,6 +18,10 @@ extension ControlDispatcher {
             // runs on the far side
             return await actions.remoteTree(host: request.args?.host?.trimmedOrNil)
         case .zmxAttach:
+            // the target names a row here, not the remote session, so a plain attach would look it up on the host
+            guard request.args?.attach == nil else {
+                return ControlResponse(ok: false, error: "zmx.attach --beside is for a headless origin")
+            }
             guard let host = request.args?.host?.trimmedOrNil else {
                 return ControlResponse(ok: false, error: "zmx.attach requires a host")
             }

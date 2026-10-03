@@ -205,19 +205,10 @@ extension ControlServer {
 
     func attachRemoteSession(host: String, session: String, window: String?,
                              transport: RemoteTransport) async -> ControlResponse {
-        let discovery = await remoteTree(host: host)
-        guard discovery.ok, let tree = discovery.result?.remote else { return discovery }
-        // by id only: remote session names are mutable and deliberately non-unique across workspaces, and
-        // `zmx tree` prints the id for exactly this hand-off
-        guard let remote = tree.sessions.first(where: { $0.id == session }) else {
-            return ControlResponse(ok: false, error: "no attachable session \(session) on \(host)")
-        }
-        // by role, never by position: a payload with two lefts or no left must fail rather than quietly
-        // become one pane, or the wrong one
-        let byRole = Dictionary(remote.panes.map { (ZmxPaneRole(controlName: $0.pane), $0.daemon) },
-                                uniquingKeysWith: { first, _ in first })
-        guard byRole.count == remote.panes.count, let left = byRole[.left] else {
-            return ControlResponse(ok: false, error: "\(host) reported panes agterm cannot address")
+        let row: RemoteRow
+        switch await discoverRemoteRow(host: host, session: session, transport: transport) {
+        case .failure(let response): return response
+        case .success(let found): row = found
         }
         let store: AppStore
         switch resolveOpenWindow(window) {
@@ -227,9 +218,6 @@ extension ControlServer {
         guard let workspace = store.currentWorkspaceID else {
             return ControlResponse(ok: false, error: "no window to attach into")
         }
-        let row = RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
-                            presentationVersion: tree.presentation, transport: transport, left: left,
-                            right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)))
         // attaching is the user asking for the session HERE, so every pane claims the lead at once
         switch insertRemoteRow(row, at: RemoteRowPlacement(store: store, workspace: workspace), claim: true) {
         case .refused(let response): return response
@@ -239,6 +227,57 @@ extension ControlServer {
             actions.focusSplitPane(created, wantSplit: created.splitFocused)
             return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
         }
+    }
+
+    /// A headless origin's `zmx.attach --beside`: its session `session` becomes a row right after `rowID`, from the
+    /// host and transport that row already uses. Unselected, as the origin's own `zmx.new` creates it: nobody here
+    /// asked to look at it. Answers with the origin's id, which is the only one the origin can use.
+    func attachBeside(rowID: UUID, session: String) async -> ControlResponse {
+        // an origin's session id is a UUID, and refusal text echoes it
+        guard UUID(uuidString: session) != nil else { return ControlResponse(ok: false, error: "invalid remote session") }
+        guard let origin = library.store(forSession: rowID)?.session(withID: rowID)?.remotePresentation?.binding.origin else {
+            return ControlResponse(ok: false, error: "the row's origin is unknown")
+        }
+        let row: RemoteRow
+        switch await discoverRemoteRow(host: origin.host, session: session, transport: origin.transport) {
+        case .failure(let response): return response
+        case .success(let found): row = found
+        }
+        // located again after the ssh round trip: the row may have moved or closed meanwhile
+        guard let store = library.store(forSession: rowID),
+              let workspace = store.workspaces.first(where: { $0.sessions.contains { $0.id == rowID } }),
+              let index = workspace.sessions.firstIndex(where: { $0.id == rowID }) else {
+            return ControlResponse(ok: false, error: "the row is no longer attached")
+        }
+        if store.workspaces.flatMap(\.sessions).contains(where: { $0.remotePresentation?.binding.remoteSessionID == session }) {
+            return ControlResponse(ok: false, error: "session \(session) already has a row here")
+        }
+        let placement = RemoteRowPlacement(store: store, workspace: workspace.id, position: index + 1, select: false)
+        switch insertRemoteRow(row, at: placement, claim: true) {
+        case .refused(let response): return response
+        case .inserted: return ControlResponse(ok: true, result: ControlResult(id: session))
+        }
+    }
+
+    private func discoverRemoteRow(host: String, session: String,
+                                   transport: RemoteTransport) async -> ControlTargetResolver.Resolution<RemoteRow> {
+        let discovery = await remoteTree(host: host)
+        guard discovery.ok, let tree = discovery.result?.remote else { return .failure(discovery) }
+        // by id only: remote session names are mutable and deliberately non-unique across workspaces, and
+        // `zmx tree` prints the id for exactly this hand-off
+        guard let remote = tree.sessions.first(where: { $0.id == session }) else {
+            return .failure(ControlResponse(ok: false, error: "no attachable session \(session) on \(host)"))
+        }
+        // by role, never by position: a payload with two lefts or no left must fail rather than quietly
+        // become one pane, or the wrong one
+        let byRole = Dictionary(remote.panes.map { (ZmxPaneRole(controlName: $0.pane), $0.daemon) },
+                                uniquingKeysWith: { first, _ in first })
+        guard byRole.count == remote.panes.count, let left = byRole[.left] else {
+            return .failure(ControlResponse(ok: false, error: "\(host) reported panes agterm cannot address"))
+        }
+        return .success(RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
+                                  presentationVersion: tree.presentation, transport: transport, left: left,
+                                  right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:))))
     }
 
     /// Inserts a bound remote row and opens its presentation stream. Shared by a user attach, which has just

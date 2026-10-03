@@ -30,6 +30,15 @@ struct ZmxCommandsTests {
         #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
     }
 
+    @Test func attachBesideTargetsTheRowAndCarriesTheSession() throws {
+        let request = try Zmx.Attach.parse(["p4linux", "s1", "--beside", "row"]).makeRequest()
+        #expect(request.target == "row")
+        #expect(request.args?.attach == "s1")
+        #expect(request.args?.host == "p4linux")
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: JSONEncoder().encode(request)) == request)
+        #expect(throws: (any Error).self) { try Zmx.Attach.parse(["p4linux", "s1", "--beside", "row", "--window", "w"]) }
+    }
+
     @Test func attachWithoutTransportFlagsLeavesThemUnset() throws {
         let request = try Zmx.Attach.parse(["buildbox", "s1"]).makeRequest()
         #expect(request.args?.transport == nil)

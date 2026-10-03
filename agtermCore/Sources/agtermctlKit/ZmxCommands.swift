@@ -90,6 +90,9 @@ struct Zmx: ParsableCommand {
 
             Closing it here ends only this side's connection: the far-side processes keep running, and \
             nothing this command does can kill them. The session is not restored after a relaunch.
+
+            On a headless origin, `--beside ROW` asks the Mac presenting ROW to attach the session right \
+            after that row, from the host and transport the row already uses.
             """)
         @Argument(help: "The host, as ssh would take it.")
         var host: String
@@ -103,6 +106,8 @@ struct Zmx: ParsableCommand {
         var moshServer: String?
         @Option(help: "Absolute path of the LOCAL mosh binary, when it is not at the first of /opt/homebrew/bin, /usr/local/bin, /usr/bin that exists.")
         var mosh: String?
+        @Option(help: "On a headless origin: the row whose presenting Mac attaches the session right after it.")
+        var beside: String?
         @OptionGroup var options: BasicOptions
 
         /// It creates a local session, so it echoes that session's id like every other create command.
@@ -111,6 +116,9 @@ struct Zmx: ParsableCommand {
         /// The server trims the transport the same way, so a padded spelling is not an unknown one there.
         /// `RemoteTransport.parse` refuses the same pairs the dispatcher refuses, with one error text.
         func validate() throws {
+            if beside != nil, window != nil || transport != nil || moshServer != nil || mosh != nil {
+                throw ValidationError("--beside takes the row's own window and transport")
+            }
             let trimmed = transport?.trimmingCharacters(in: .whitespacesAndNewlines)
             let wireTransport = trimmed?.isEmpty == true ? nil : trimmed
             do {
@@ -122,9 +130,12 @@ struct Zmx: ParsableCommand {
         }
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .zmxAttach, target: session,
-                           args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
-                                             mosh: mosh, window: window))
+            if let beside {
+                return ControlRequest(cmd: .zmxAttach, target: beside, args: ControlArgs(host: host, attach: session))
+            }
+            return ControlRequest(cmd: .zmxAttach, target: session,
+                                  args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
+                                                    mosh: mosh, window: window))
         }
     }
 

@@ -72,6 +72,25 @@ struct HeadlessForwarderTests {
         #expect(await answer.value == ControlResponse(ok: true, result: ControlResult(id: fixture.session.id.uuidString)))
     }
 
+    @Test func anAttachBesideReachesTheRowsPresenterWithTheSessionToAttach() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let presenter = try Presenter(fixture.headless.hub, session: fixture.session.id)
+        let request = HeadlessRequests.request(.zmxAttach, target: fixture.session.id.uuidString) {
+            $0.host = "p4linux"; $0.attach = "new-session"
+        }
+
+        let answer = respond(fixture, request)
+        await settle { !presenter.forwards.isEmpty }
+        let sent = try #require(presenter.forwards.first)
+        #expect(sent.request.cmd == .zmxAttach)
+        #expect(sent.request.target == fixture.session.id.uuidString)
+        #expect(sent.request.args?.attach == "new-session")
+        presenter.reply(ControlResponse(ok: true, result: ControlResult(id: "new-session")))
+
+        #expect(await answer.value == ControlResponse(ok: true, result: ControlResult(id: "new-session")))
+    }
+
     @Test(arguments: [nil, "not-a-session", "00000000-0000-0000-0000-00000000dead"])
     func aTargetThatIsNotAServerSessionIsRefused(_ target: String?) async throws {
         let fixture = try HeadlessActionFixture()
