@@ -25,14 +25,17 @@ done
 # Read pins without sourcing setup.sh, which builds macOS artifacts as a side effect.
 zmx_repo=$(sed -n 's/^ZMX_REPO="\([^"]*\)".*/\1/p' "$root/scripts/setup.sh")
 zmx_rev=$(sed -n 's/^ZMX_REV="\([^"]*\)".*/\1/p' "$root/scripts/setup.sh")
+ghostty_repo=$(sed -n 's/^GHOSTTY_REPO="\([^"]*\)".*/\1/p' "$root/scripts/setup.sh")
 target=$("$zig" env | sed -n 's/^ *\.target = "\([^"]*\)".*/\1/p')
-[[ -n "$zmx_repo" && -n "$zmx_rev" && "$target" == *-linux* ]] || {
+[[ -n "$zmx_repo" && -n "$zmx_rev" && -n "$ghostty_repo" && "$target" == *-linux* ]] || {
     echo "install: cannot resolve zmx pins or Zig's Linux host target" >&2
     exit 1
 }
 shopt -s nullglob
 patches=("$root"/scripts/zmx-patches/*.patch)
-digest=$({ if ((${#patches[@]})); then cat "${patches[@]}"; fi; } | sha256sum | cut -c1-16)
+ghostty_patches=("$root"/scripts/zmx-patches/ghostty/*.patch)
+all_patches=("${patches[@]}" "${ghostty_patches[@]}")
+digest=$({ if ((${#all_patches[@]})); then cat "${all_patches[@]}"; fi; } | sha256sum | cut -c1-16)
 stamp="$zmx_rev $target $digest"
 cache="$root/agtermCore/.build/headless-zmx"
 need_zmx=true
@@ -72,6 +75,10 @@ if $dry_run; then
     print_command "$swift" build --package-path "$root/agtermCore" -c release --product agtermctl
     if $need_zmx; then
         echo "dry-run: fetch $zmx_repo at $zmx_rev into a temporary checkout"
+        echo "dry-run: fetch $ghostty_repo at the revision zmx pins into a sibling zmx-ghostty checkout"
+        for patch in "${ghostty_patches[@]}"; do
+            print_command git apply --whitespace=nowarn "$patch"
+        done
         for patch in "${patches[@]}"; do
             print_command git apply --whitespace=nowarn "$patch"
         done
@@ -126,6 +133,17 @@ if $need_zmx; then
     git -C "$checkout" remote add origin "$zmx_repo"
     git -C "$checkout" fetch -q --depth 1 origin "$zmx_rev"
     git -C "$checkout" -c advice.detachedHead=false checkout -q FETCH_HEAD
+    # setup.sh's rule: zmx's ghostty patches go on a private checkout that a zmx patch repoints the dependency to.
+    ghostty_rev=$(sed -n 's|.*ghostty-org/ghostty#\([0-9a-f]\{40\}\)".*|\1|p' "$checkout/build.zig.zon")
+    [[ -n "$ghostty_rev" ]] || { echo "install: no ghostty revision in zmx build.zig.zon" >&2; exit 1; }
+    ghostty="$scratch/zmx-ghostty"
+    git init -q "$ghostty"
+    git -C "$ghostty" remote add origin "$ghostty_repo"
+    git -C "$ghostty" fetch -q --depth 1 origin "$ghostty_rev"
+    git -C "$ghostty" -c advice.detachedHead=false checkout -q FETCH_HEAD
+    for patch in "${ghostty_patches[@]}"; do
+        git -C "$ghostty" apply --whitespace=nowarn "$patch"
+    done
     for patch in "${patches[@]}"; do
         git -C "$checkout" apply --whitespace=nowarn "$patch"
     done

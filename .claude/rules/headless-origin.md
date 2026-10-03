@@ -204,7 +204,8 @@ the sidebar notice through `RemotePresentationState.rowNotice(host:)`, the super
 ## Install, service and versions
 
 `scripts/headless/install.sh` builds both products in release mode and zmx at `setup.sh`'s `ZMX_REV` with every
-`scripts/zmx-patches/*.patch`, for the host's Linux target, and installs them with `BUILD` into
+`scripts/zmx-patches/*.patch`, plus `ghostty/*.patch` on its private ghostty checkout as `setup.sh` does,
+for the host's Linux target, and installs them with `BUILD` into
 `~/.local/opt/agterm-headless/`. A stamp of revision, target and patch digest skips an unchanged zmx build.
 Files land by atomic rename, so a running server never sees a half-written binary.
 It installs `agterm-headless.service` as a user unit (the user has `Linger=yes`), starts it when stopped, and
