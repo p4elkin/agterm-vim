@@ -16,6 +16,8 @@ public final class Headless {
     static let commandTimeout: TimeInterval = 5
     let hub = PresentationHub(staleTimeout: 30)
     lazy var forwarder = HeadlessForwarder(hub: hub)
+    let pages = HeadlessPages()
+    lazy var pageServer: PageServer? = config.pageHost.map { PageServer(pages: pages, host: $0, port: config.pagePort) }
     let overlayJobs: OverlayJobs
     let shellLookup: () -> String?
     let streams: any HeadlessStreams
@@ -277,6 +279,31 @@ public final class Headless {
         persist(store)
         streams.closeStreams(session: session.id)
         forwarder.forget(session: session.id)
+        pages.forget(session: session.id)
+    }
+
+    enum PageServing: Equatable {
+        case published(url: String, token: String)
+        /// The file cannot be shown; the reason is the Mac's own text for a local page.
+        case invalid(String)
+        /// This origin cannot serve pages at all.
+        case unavailable(String)
+    }
+
+    /// Publishes an `--html` page for the presenting Mac to load from this origin's page server.
+    func servePage(_ file: String, grantRoot: String?, session: UUID) -> PageServing {
+        guard let host = config.pageHost, let server = pageServer else {
+            return .unavailable("an --html page needs AGTERM_HEADLESS_PAGE_HOST")
+        }
+        switch pages.publish(file: file, grantRoot: grantRoot, session: session) {
+        case .refused(let reason): return .invalid(reason)
+        case .published(let token, let path):
+            if let failure = server.ensureListening() {
+                pages.forget(token: token)
+                return .unavailable("the page server is down: \(failure)")
+            }
+            return .published(url: PageServer.url(host: host, port: server.port, token: token, path: path), token: token)
+        }
     }
 
     /// Kills one pane's daemon and closes that pane as its exit would; a failed kill changes nothing.
@@ -306,6 +333,7 @@ public final class Headless {
             store.closeSession(session.id)
             streams.closeStreams(session: session.id)
             forwarder.forget(session: session.id)
+            pages.forget(session: session.id)
         }
         persist(store)
     }

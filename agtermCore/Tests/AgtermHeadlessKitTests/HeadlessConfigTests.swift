@@ -36,4 +36,20 @@ struct HeadlessConfigTests {
 
         #expect(config.locale == ["LANG": "en_US.UTF-8", "LC_CTYPE": "C.UTF-8"])
     }
+
+    @Test func thePageHostAndPortComeFromTheEnvironment() {
+        let config = HeadlessConfig.fromEnvironment(["AGTERM_HEADLESS_PAGE_HOST": "p4linux.example.ts.net",
+                                                     "AGTERM_HEADLESS_PAGE_PORT": "19600"])
+
+        #expect(config.pageHost == "p4linux.example.ts.net")
+        #expect(config.pagePort == 19600)
+    }
+
+    @Test(arguments: [[:], ["AGTERM_HEADLESS_PAGE_HOST": "", "AGTERM_HEADLESS_PAGE_PORT": "not-a-port"]])
+    func noPageHostAndAnUnreadablePortFallBack(_ env: [String: String]) {
+        let config = HeadlessConfig.fromEnvironment(env)
+
+        #expect(config.pageHost == nil)
+        #expect(config.pagePort == HeadlessConfig.defaultPagePort)
+    }
 }

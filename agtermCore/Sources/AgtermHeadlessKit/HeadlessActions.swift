@@ -42,11 +42,35 @@ public final class HeadlessActions: ControlActions {
     public func respond(to request: ControlRequest) async -> ControlResponse {
         let session = headless.resolve(request.target)?.1
         let pane = request.args?.pane.flatMap(OverlayPane.init(controlName:))
+        if request.cmd == .sessionOverlayOpen, let html = request.args?.html {
+            return await openServedPage(request, html: html, session: session?.id)
+        }
         switch ForwardPolicy.route(request, holdsJob: session?.remoteOverlays.slot(pane) != nil) {
         case .forwarded: return await headless.forwarder.forward(request, session: session?.id)
         case .refused(let reason):
             return ControlResponse(ok: false, error: HeadlessCatalog.refusal(request.cmd, reason))
         case .served, .job: return await ControlDispatcher(actions: self).dispatch(request) ?? refuse(request.cmd)
+        }
+    }
+
+    /// An `--html` page is a file here and is drawn on the Mac, so the Mac loads it from this origin's page
+    /// server as a `--url` page. `ForwardPolicy` still refuses a raw `--html` open: that is the Mac's re-check.
+    private func openServedPage(_ request: ControlRequest, html: String, session: UUID?) async -> ControlResponse {
+        // the forwarder names what is wrong with the target
+        guard let session else { return await headless.forwarder.forward(request, session: nil) }
+        switch headless.servePage(html, grantRoot: request.args?.cwd, session: session) {
+        case .invalid(let reason): return ControlResponse(ok: false, error: reason)
+        case .unavailable(let reason): return ControlResponse(ok: false, error: HeadlessCatalog.refusal(request.cmd, reason))
+        case .published(let url, let token):
+            var sent = request
+            sent.args?.html = nil
+            sent.args?.cwd = nil
+            // the Mac refuses it for a --url page; the page shows its origin strip instead
+            sent.args?.chromeless = nil
+            sent.args?.url = url
+            let response = await headless.forwarder.forward(sent, session: session)
+            if !response.ok { headless.pages.forget(token: token) }
+            return response
         }
     }
 

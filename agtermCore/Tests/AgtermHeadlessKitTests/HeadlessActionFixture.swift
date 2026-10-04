@@ -15,7 +15,7 @@ final class HeadlessActionFixture {
 
     init(build: String? = nil, runner: FakeZmxRunner = FakeZmxRunner(), shellLookup: @escaping () -> String? = { "/bin/sh" },
          hudClock: @escaping () -> Date = Date.init, overlayClock: @escaping () -> Date = Date.init,
-         procRoot: String = "/proc") throws {
+         procRoot: String = "/proc", pageHost: String? = nil) throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-actions-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let build { try build.write(to: directory.appendingPathComponent("BUILD"), atomically: true, encoding: .utf8) }
@@ -24,7 +24,7 @@ final class HeadlessActionFixture {
             "AGTERM_HEADLESS_STATE": directory.appendingPathComponent("state").path,
             "AGTERM_HEADLESS_ZMX": directory.appendingPathComponent("unused-zmx").path,
             "LANG": "en_US.UTF-8",
-        ])
+        ].merging(pageHost.map { ["AGTERM_HEADLESS_PAGE_HOST": $0, "AGTERM_HEADLESS_PAGE_PORT": "0"] } ?? [:]) { $1 })
         let streams = streams
         headless = Headless(config: config, runner: runner, shellLookup: shellLookup, overlayClock: overlayClock,
                             procRoot: procRoot) { _, _ in streams }
@@ -35,6 +35,7 @@ final class HeadlessActionFixture {
     }
 
     func cleanUp() {
+        headless.pageServer?.stop()
         for session in store.workspaces.flatMap(\.sessions) {
             if session.hudActive { store.closeHud(session.id) }
             if let ask = session.askPending { session.cancelAsk(id: ask.id) }
