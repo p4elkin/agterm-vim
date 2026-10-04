@@ -12,9 +12,11 @@ struct RemoteCommandProcessRunner: RemoteCommandRunner {
 
     func run(_ argv: [String], deadline: TimeInterval) async -> RemoteCommandResult {
         await withCheckedContinuation { continuation in
-            Thread.detachNewThread {
+            // typed before `Thread` sees it, as in `PresentationReader.readLines`: a bare literal aborts on entry
+            let work: @Sendable () -> Void = {
                 continuation.resume(returning: Self.execute(argv, deadline: deadline))
             }
+            Thread.detachNewThread(work)
         }
     }
 

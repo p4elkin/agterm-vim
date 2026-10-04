@@ -232,6 +232,10 @@ C-boundary concurrency before changing the bridge.
 - A libdispatch callback closure written inside a `@MainActor` method inherits main-actor isolation, and
   libdispatch running it on another queue aborts under `dispatch_assert_queue`. Declare such closures
   `@Sendable` explicitly (`HookProcessRunner`'s `DispatchIO` cleanup and write handlers).
+- A closure literal handed straight to `Thread(block:)` or `Thread.detachNewThread` compiles in this target as
+  `@MainActor @Sendable`, even inside a nonisolated type, and aborts its thread on entry in
+  `dispatch_assert_queue`. Bind it to a typed `let body: @Sendable () -> Void` first, then pass `body`.
+  Verify in a Release binary: the closure's demangled symbol must not say `@Swift.MainActor`.
 - The session-wide overlay slot holds a caller's program, an HTML page, or a HUD. Raw `overlayActive` answers
   only "the slot is occupied"; a layer asking "does a cover own this session's input" reads
   `Session.coverOverlayActive`, and one asking about the covering terminal surface reads

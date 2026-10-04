@@ -475,10 +475,12 @@ final class ControlServer {
         // waits in this server's backlog while this connection holds the only accept thread.
         if Self.waitsOnNetwork(request.cmd) {
             handedOff = true
-            let worker = Thread {
+            // typed before `Thread` sees it, as in `PresentationReader.readLines`: a bare literal aborts on entry
+            let work: @Sendable () -> Void = {
                 defer { close(conn) }
                 _ = server.responseWriter(conn, runBlocking { await server.dispatch(request) })
             }
+            let worker = Thread(block: work)
             worker.name = "com.umputun.agterm.control.remote"
             worker.start()
             return

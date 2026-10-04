@@ -45,7 +45,7 @@ private final class ProcessLink: RemotePresentationLink {
         _ = fcntl(writeEnd, F_SETFL, fcntl(writeEnd, F_GETFL) | O_NONBLOCK)
         _ = fcntl(writeEnd, F_SETNOSIGPIPE, 1)
 
-        process.terminationHandler = { [weak self] finished in
+        process.terminationHandler = { @Sendable [weak self] finished in
             let reason = "exit \(finished.terminationStatus)"
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.exited(reason) } }
         }
@@ -59,18 +59,18 @@ private final class ProcessLink: RemotePresentationLink {
         // the reader stops reading past this many undelivered lines, so a busy main actor backs the child
         // up into its own pipe and never into this app's memory
         let inbound = DispatchSemaphore(value: 64)
-        Self.readLines(from: output.fileHandleForReading, wake: wake, deliver: { line in
+        PresentationReader.readLines(from: output.fileHandleForReading, wake: wake, deliver: { @Sendable line in
             inbound.wait()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { onLine(line) }
                 inbound.signal()
             }
-        }, ended: { [weak self] in
+        }, ended: { @Sendable [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.outputDidEnd() } }
         })
-        Self.readLines(from: errors.fileHandleForReading, wake: wake, deliver: { line in
+        PresentationReader.readLines(from: errors.fileHandleForReading, wake: wake, deliver: { @Sendable line in
             processLogger.notice("presentation bridge: \(String(decoding: line, as: UTF8.self), privacy: .public)")
-        }, ended: {})
+        }, ended: { @Sendable in })
     }
 
     func send(_ line: Data) {
@@ -120,14 +120,18 @@ private final class ProcessLink: RemotePresentationLink {
         endReaders()
         onClose(reason)
     }
+}
 
+private enum PresentationReader {
     /// Reads `handle` on a thread of its own, one line at a time, until its end or a byte on `wake`, then
     /// closes it and calls `ended`. A line over the frame limit ends the read undelivered, which the child
     /// sees as a closed pipe.
-    private nonisolated static func readLines(from handle: FileHandle, wake: Pipe,
-                                              deliver: @escaping @Sendable (Data) -> Void,
-                                              ended: @escaping @Sendable () -> Void) {
-        let thread = Thread {
+    static func readLines(from handle: FileHandle, wake: Pipe,
+                          deliver: @escaping @Sendable (Data) -> Void,
+                          ended: @escaping @Sendable () -> Void) {
+        // A closure literal handed straight to `Thread(block:)` compiles here as `@MainActor` and checks the
+        // executor on entry, which aborts this thread at its first line; a typed `@Sendable` value does not.
+        let body: @Sendable () -> Void = {
             let fd = handle.fileDescriptor
             var polled = [pollfd(fd: fd, events: Int16(POLLIN), revents: 0),
                           pollfd(fd: wake.fileHandleForReading.fileDescriptor, events: Int16(POLLIN), revents: 0)]
@@ -151,6 +155,7 @@ private final class ProcessLink: RemotePresentationLink {
             try? handle.close()
             ended()
         }
+        let thread = Thread(block: body)
         thread.name = "com.umputun.agterm.presentation.read"
         thread.start()
     }
