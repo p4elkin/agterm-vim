@@ -53,11 +53,31 @@ for `control.forwarded`; the frames are in [[control-api]]'s Remote sessions.
 - A forwarded `pick.open` or `--url` open records its pick or page id with that presenter, and the polls go there.
   Once that presenter is gone a pick poll answers `cancelled` and a page poll `dismissed`. A pick id no Mac opened
   answers `unknown pick: <id>`. Closing the session forgets its ids.
-- `--html` is refused: the file is on the origin.
+- `--html` never travels as is: the server serves the page and forwards a `--url` open (see `--html` pages).
 - `zmx attach --beside ROW` is the one forwarded create: the Mac presenting ROW attaches the named origin session
   right after that row, unselected, from the row's own host and transport, and answers with the origin's id.
   A plain `zmx.attach` stays refused. This is how a session made on p4linux (an offload) gets a Mac row with no
   call to the Mac; with no presenter it waits in the picker as before. `ControlServer.attachBeside` is the Mac half.
+
+## `--html` pages
+
+`HeadlessActions.respond(to:)` takes a `session.overlay.open --html` before routing: `Headless.servePage`
+publishes the file's folder (or `--cwd`) in `HeadlessPages` under a random token, checked with the Mac's own
+`HtmlOverlay.grantError`, and the request is forwarded with `url` set and `html`, `cwd` and `chromeless` cleared.
+`ForwardPolicy` still refuses a raw `--html` open, which is the Mac's re-check of a forwarded request.
+- `PageServer` binds `AGTERM_HEADLESS_PAGE_HOST`'s IPv4 address on `AGTERM_HEADLESS_PAGE_PORT` (19510), so a
+  Tailscale name listens on the tailnet only. It starts on the first `--html` open and retries a failed bind on
+  the next one, so a server started before Tailscale still serves.
+- A request path resolves with symlinks and must stay inside the token's root by whole components;
+  `Cache-Control: no-store` makes reload re-read the file.
+- A failed forward and a closed session unpublish; at most 64 tokens, oldest dropped.
+- No page host: refused as `an --html page needs AGTERM_HEADLESS_PAGE_HOST`. `install.sh` seeds it in
+  `~/.config/agterm-headless/env`, the unit's `EnvironmentFile`, and never replaces a written value.
+- A served page is a `--url` page on the Mac: no theme defaults, no `--chromeless`.
+- The page is plain http, which ATS blocks for a Tailscale name or a `100.x` address: `NSAllowsLocalNetworking`
+  covers only unqualified names, `.local` and private IP literals. `agterm/Info.plist` therefore exempts `ts.net`
+  and its subdomains (`NSExceptionAllowsInsecureHTTPLoads`); a page host outside `ts.net` fails to load.
+  Design: `docs/plans/20261004-headless-html-pages-spec.md`.
 
 ## Program overlays
 

@@ -44,6 +44,15 @@ if [[ -x "$cache/zmx" && -f "$cache/LICENSE" && -f "$cache/stamp" ]] &&
     need_zmx=false
 fi
 build=$(git -C "$root" rev-parse --short HEAD)
+env_file="$HOME/.config/agterm-headless/env"
+page_port=19510
+# The name a Mac loads an --html page under. Seeded from Tailscale once; a value someone wrote is never replaced.
+page_host=
+if ! grep -q '^AGTERM_HEADLESS_PAGE_HOST=' "$env_file" 2>/dev/null && command -v tailscale >/dev/null; then
+    page_host=$(tailscale status --json 2>/dev/null | python3 -c \
+        'import json, sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null || true)
+fi
+page_hint="install: --html pages need the tailnet to reach port $page_port, e.g. sudo ufw allow from 100.64.0.0/10 to any port $page_port proto tcp comment agterm-headless-pages"
 
 unmanaged_pids() {
     local main_pid exe path pid
@@ -91,6 +100,10 @@ if $dry_run; then
     echo "dry-run: install changed files via temporary sibling files and atomic rename"
     echo "dry-run: write $prefix/BUILD: $build"
     echo "dry-run: atomically install scripts/headless/$unit into $unit_dir"
+    if [[ -n "$page_host" ]]; then
+        echo "dry-run: append AGTERM_HEADLESS_PAGE_HOST=$page_host to $env_file"
+        echo "$page_hint"
+    fi
     print_command systemctl --user daemon-reload
     print_command systemctl --user enable "$unit"
     external=$(unmanaged_pids)
@@ -169,6 +182,13 @@ install_file "$cache/LICENSE" "$prefix/LICENSE" 644
 printf '%s\n' "$build" > "$scratch/BUILD"
 install_file "$scratch/BUILD" "$prefix/BUILD" 644
 install_file "$root/scripts/headless/$unit" "$unit_dir/$unit" 644
+if [[ -n "$page_host" ]]; then
+    mkdir -p "${env_file%/*}"
+    printf 'AGTERM_HEADLESS_PAGE_HOST=%s\n' "$page_host" >> "$env_file"
+    echo "install: page host $page_host written to $env_file"
+    echo "$page_hint"
+    server_changed=true
+fi
 systemctl --user daemon-reload
 systemctl --user enable "$unit"
 external=$(unmanaged_pids)

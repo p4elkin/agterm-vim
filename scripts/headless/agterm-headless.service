@@ -7,6 +7,8 @@ ExecStart=%h/.local/opt/agterm-headless/agterm-headless serve
 Restart=on-failure
 RestartSec=2
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# AGTERM_HEADLESS_PAGE_HOST and friends; install.sh seeds the page host from Tailscale.
+EnvironmentFile=-%h/.config/agterm-headless/env
 # The zmx daemons the server starts live in this unit's cgroup; the default control-group mode would kill every session on restart.
 KillMode=process
 
