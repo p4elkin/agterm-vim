@@ -29,6 +29,7 @@ final class ControlServerRemotePresentationTests: XCTestCase {
             identity: AppIdentity(version: "9.9.9"),
             socketPath: "/tmp/agterm-rp-\(UUID().uuidString.prefix(8)).sock"
         )
+        server.userPresent = { true }
         servers.append(server)
         let store = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
@@ -277,6 +278,36 @@ final class ControlServerRemotePresentationTests: XCTestCase {
 
         try transport.feed(.hello(PresentationHello(version: 1, kinds: ["status"], mode: .presenter)), rev: 0)
 
+        XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
+    }
+
+    func testARowNobodyIsAtAsksForTheRoleOnHelloInsteadOfTakingIt() throws {
+        let fix = try fixture()
+        fix.server.userPresent = { false }
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        try lead(pane, "leader")
+        let transport = Transport()
+        fix.server.remoteTransport = transport
+        fix.server.startRemotePresentation(for: fix.session)
+
+        try transport.feed(.hello(PresentationHello(version: 1, kinds: ["status"], mode: .presenter)), rev: 0)
+
+        XCTAssertEqual(transport.links[0].sent.last, .presenterAcquire)
+    }
+
+    func testALeadTakenWhileNobodyIsAtTheMacTakesTheRoleWhenTheUserReturns() throws {
+        let (fix, transport) = try connected()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        fix.server.userPresent = { false }
+
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertFalse(transport.links[0].sent.contains(.presenterTake))
+
+        fix.server.userPresent = { true }
+        fix.server.userReturned()
         XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
     }
 

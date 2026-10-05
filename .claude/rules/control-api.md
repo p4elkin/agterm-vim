@@ -1608,6 +1608,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `presenter.take` moves the role to the asking stream at once: the old holder is dismissed, then refused.
   A viewer sends it when its row's primary pane becomes the zmx leader, and on hello instead of acquire
   when that pane already leads, so the presenter follows the lead.
+  Only while someone is at the Mac (`UserPresence`: main display awake, session unlocked); otherwise it sends
+  acquire, and the rows it leads take the role at display wake or unlock (`userReturned`). A laptop in a dark
+  wake reattaches with the lid shut and would otherwise take the role and sleep with it.
   Never the reverse: a granted role leaves the pane cover up until a key press takes the lead.
   An origin predating the role answers mirror. Read back the viewer's `presentation.mode` and the
   origin's `presenters.presenter`. A newly opened session-associated ask or program overlay goes to that

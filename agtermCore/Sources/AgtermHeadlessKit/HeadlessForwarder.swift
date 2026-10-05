@@ -19,7 +19,12 @@ final class HeadlessForwarder {
 
     private struct Pending {
         let session: UUID
-        let continuation: CheckedContinuation<ControlResponse, Never>
+        let continuation: CheckedContinuation<Reply, Never>
+    }
+
+    private enum Reply {
+        case answered(ControlResponse)
+        case silent
     }
 
     private let hub: PresentationHub
@@ -46,7 +51,7 @@ final class HeadlessForwarder {
             guard isCurrent(owner) else {
                 return ControlResponse(ok: true, result: ControlResult(pick: ControlPickResult(result: .cancelled)))
             }
-            let response = await send(request, to: owner.session)
+            let response = await send(request, to: owner.session, retry: false).response
             if request.cmd == .pickCancel ? response.ok : response.result?.pick.map({ $0.result != .pending }) == true {
                 picks[id]?.ended = true
             }
@@ -57,7 +62,7 @@ final class HeadlessForwarder {
             guard isCurrent(owner) else {
                 return ControlResponse(ok: true, result: ControlResult(pageOutcome: ControlHtmlPageOutcome(pageID: id, outcome: .dismissed)))
             }
-            let response = await send(request, to: owner.session)
+            let response = await send(request, to: owner.session, retry: false).response
             if let outcome = response.result?.pageOutcome?.outcome, outcome != .pending { pages[id]?.ended = true }
             return response
         }
@@ -71,8 +76,7 @@ final class HeadlessForwarder {
         var sent = request
         sent.target = session.uuidString
         sent.args?.window = nil
-        let generation = hub.presenterGeneration(session: session)
-        let response = await send(sent, to: session)
+        let (response, generation) = await send(sent, to: session, retry: true)
         if request.cmd == .pickOpen, response.ok, let id = response.result?.id {
             opened += 1
             picks[id] = Owner(session: session, generation: generation, order: opened)
@@ -86,12 +90,12 @@ final class HeadlessForwarder {
 
     /// A reply from the presenter; one for a request that already timed out or failed is dropped.
     func receive(_ reply: PresentationForwarded) {
-        pending.removeValue(forKey: reply.id)?.continuation.resume(returning: reply.response)
+        pending.removeValue(forKey: reply.id)?.continuation.resume(returning: .answered(reply.response))
     }
 
     /// The session's presenter changed or left: what was waiting on it will get no reply.
     func presenterGone(session: UUID) {
-        for (id, entry) in pending where entry.session == session { finish(id, with: Self.left) }
+        for (id, entry) in pending where entry.session == session { finish(id, with: .answered(Self.left)) }
     }
 
     /// The session ended: nothing can poll its picks or pages any more.
@@ -100,25 +104,41 @@ final class HeadlessForwarder {
         pages = pages.filter { $0.value.session != session }
     }
 
-    private func send(_ request: ControlRequest, to session: UUID) async -> ControlResponse {
+    /// A presenter silent past the deadline is dropped, so the role passes to the next live viewer: a Mac that
+    /// took the role and went to sleep would otherwise hold it until the hub's stale timeout. `retry` sends a new
+    /// request once more, to that next viewer. The generation is the presenter's that answered.
+    private func send(_ request: ControlRequest, to session: UUID, retry: Bool) async -> (response: ControlResponse, generation: Int) {
+        let generation = hub.presenterGeneration(session: session)
+        switch await sendOnce(request, to: session) {
+        case .answered(let response): return (response, generation)
+        case .silent:
+            if hub.presenterGeneration(session: session) == generation { hub.dropPresenter(session: session) }
+            let next = hub.presenterGeneration(session: session)
+            guard retry, hub.presenterSupports("forward", session: session),
+                  case .answered(let response) = await sendOnce(request, to: session) else { return (Self.left, next) }
+            return (response, next)
+        }
+    }
+
+    private func sendOnce(_ request: ControlRequest, to session: UUID) async -> Reply {
         let id = UUID().uuidString
         let body = PresentationFrame.Body.controlForward(PresentationForward(id: id, request: request))
         guard (try? PresentationCodec.encode(PresentationFrame(gen: 0, rev: 0, body: body))) != nil else {
-            return Self.refusal(request, "the request is larger than the presentation frame limit")
+            return .answered(Self.refusal(request, "the request is larger than the presentation frame limit"))
         }
         return await withCheckedContinuation { continuation in
             pending[id] = Pending(session: session, continuation: continuation)
-            guard hub.sendToPresenter(body, session: session) else { return finish(id, with: Self.left) }
+            guard hub.sendToPresenter(body, session: session) else { return finish(id, with: .answered(Self.left)) }
             let deadline = deadline
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
-                self?.finish(id, with: Self.left)
+                self?.finish(id, with: .silent)
             }
         }
     }
 
-    private func finish(_ id: String, with response: ControlResponse) {
-        pending.removeValue(forKey: id)?.continuation.resume(returning: response)
+    private func finish(_ id: String, with reply: Reply) {
+        pending.removeValue(forKey: id)?.continuation.resume(returning: reply)
     }
 
     /// Drops the oldest ids beyond the limit among those that ended or whose Mac is gone; a live one is never dropped.

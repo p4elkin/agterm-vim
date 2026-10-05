@@ -172,6 +172,12 @@ public final class PresentationHub {
         subscribers.values.count { $0.session == session }
     }
 
+    /// Drops `session`'s presenter as stale, which passes the role to the next viewer that asked for it. For a holder
+    /// that was handed work and never answered.
+    public func dropPresenter(session: UUID) {
+        if let holder = grant.holder(of: session) { drop(holder, reason: .stale) }
+    }
+
     /// Whether a viewer holds `session`'s presenter role.
     public func hasPresenter(session: UUID) -> Bool { grant.holder(of: session) != nil }
 

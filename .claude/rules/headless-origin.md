@@ -47,7 +47,10 @@ nil means the stream adapter owns the connection and wrote the ok reply itself.
 for `control.forwarded`; the frames are in [[control-api]]'s Remote sessions.
 - It is refused, as `<cmd> cannot be forwarded: <reason>`, without a `--target` naming one of this origin's sessions by
   full id (`active` or a prefix does not count), with no presenter, with a presenter whose hello lacked `forward`, or
-  over the frame limit. The deadline or the presenter leaving answers `the presenting Mac left`.
+  over the frame limit. The presenter leaving answers `the presenting Mac left`.
+- A presenter silent past the deadline is dropped as stale (`PresentationHub.dropPresenter`), so the role passes to
+  the next presenter-mode viewer, and a new request is sent once more to it. A pick or page poll is not resent: its
+  Mac is gone. Without this a laptop that took the role in a dark wake held it until the 30-second stale timeout.
 - It drops `window` and sends the full id; the Mac runs it on the one row bound to that session, so a flag or a
   focus lands on the presenting Mac's row only.
 - A forwarded `pick.open` or `--url` open records its pick or page id with that presenter, and the polls go there.

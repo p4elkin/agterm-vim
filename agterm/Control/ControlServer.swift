@@ -90,6 +90,9 @@ final class ControlServer {
     var remoteRowSupervisor: RemoteRowSupervisor?
     var remoteTransport: RemotePresentationTransport = RemotePresentationProcess()
     var remoteTick: Task<Void, Never>?
+    /// Whether someone is at this Mac; a Mac nobody is at never takes the presenter role. Injectable for tests.
+    var userPresent: @MainActor () -> Bool = UserPresence.isPresent
+    var presenceObservers: [NSObjectProtocol] = []
 
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }

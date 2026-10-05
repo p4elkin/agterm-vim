@@ -22,18 +22,42 @@ extension ControlServer {
         }
         let client = RemotePresentationClient(argv: argv, presentationVersion: binding.presentationVersion,
                                               transport: remoteTransport, effects: remoteEffects(for: id),
-                                              leads: { [weak self] in self?.primaryPaneLeads(id) ?? false },
+                                              leads: { [weak self] in self?.leadsHere(id) ?? false },
                                               now: hudClock)
         remoteClients[id] = client
         client.start()
         startRemoteTick()
+        observeUserPresence()
     }
 
     /// The Mac whose primary pane leads takes the presenter role with it; the split pane's lead does not.
     func paneLeadChanged(pane: UUID, inSession id: UUID) {
         guard let session = library.store(forSession: id)?.session(withID: id), session.remotePresentation != nil,
-              pane == session.paneIdentity, primaryPaneLeads(id) else { return }
+              pane == session.paneIdentity, leadsHere(id) else { return }
         remoteClients[id]?.takePresenter()
+    }
+
+    /// A laptop in a dark wake reattaches its panes with the lid shut, which makes it lead, then sleeps again. Taking
+    /// the role then would strand every forwarded request on it until the origin's stale timeout.
+    func leadsHere(_ id: UUID) -> Bool {
+        primaryPaneLeads(id) && userPresent()
+    }
+
+    /// Someone came back to this Mac: the rows it leads take the role it declined while nobody was here.
+    func userReturned() {
+        for id in remoteClients.keys where leadsHere(id) { remoteClients[id]?.takePresenter() }
+    }
+
+    private func observeUserPresence() {
+        guard presenceObservers.isEmpty else { return }
+        let returned: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in self?.userReturned() }
+        }
+        presenceObservers = [
+            NotificationCenter.default.addObserver(forName: .agtermScreensDidWake, object: nil, queue: .main, using: returned),
+            DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"),
+                                                                object: nil, queue: .main, using: returned),
+        ]
     }
 
     func primaryPaneLeads(_ id: UUID) -> Bool {

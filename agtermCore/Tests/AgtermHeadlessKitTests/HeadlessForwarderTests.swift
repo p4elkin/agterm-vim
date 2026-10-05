@@ -138,6 +138,44 @@ struct HeadlessForwarderTests {
                                                session: fixture.session.id)
 
         #expect(response.error == "the presenting Mac left")
+        #expect(!fixture.headless.hub.hasPresenter(session: fixture.session.id))
+    }
+
+    @Test func aSilentPresenterIsDroppedAndTheRequestGoesToTheNextViewer() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        fixture.headless.forwarder = HeadlessForwarder(hub: fixture.headless.hub, deadline: 0.2)
+        let asleep = try Presenter(fixture.headless.hub, session: fixture.session.id)
+        let awake = try Presenter(fixture.headless.hub, session: fixture.session.id)
+
+        let answer = respond(fixture, HeadlessRequests.request(.sessionFlag, target: fixture.session.id.uuidString))
+        for _ in 0..<200 where awake.forwards.isEmpty { try await Task.sleep(nanoseconds: 5_000_000) }
+        awake.reply(ControlResponse(ok: true))
+
+        #expect(await answer.value == ControlResponse(ok: true))
+        #expect(asleep.forwards.count == 1)
+        #expect(awake.bodies.contains { if case .presenterGranted = $0 { true } else { false } })
+    }
+
+    @Test func aPollToASilentPresenterIsNotSentAgain() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        fixture.headless.forwarder = HeadlessForwarder(hub: fixture.headless.hub, deadline: 0.2)
+        let asleep = try Presenter(fixture.headless.hub, session: fixture.session.id)
+        let awake = try Presenter(fixture.headless.hub, session: fixture.session.id)
+        let open = respond(fixture, HeadlessRequests.request(.sessionOverlayOpen, target: fixture.session.id.uuidString) {
+            $0.url = "http://example.com"
+        })
+        await settle { asleep.forwards.count == 1 }
+        var opened = ControlResult(id: fixture.session.id.uuidString)
+        opened.pageID = "page-1"
+        asleep.reply(ControlResponse(ok: true, result: opened))
+        #expect(await open.value.result?.pageID == "page-1")
+
+        let poll = await fixture.actions.respond(to: ControlRequest(cmd: .sessionOverlayResult, args: ControlArgs(page: "page-1")))
+
+        #expect(poll.error == "the presenting Mac left")
+        #expect(awake.forwards.isEmpty)
     }
 
     @Test func thePresenterLeavingFailsWhatWaitsOnIt() async throws {
