@@ -28,6 +28,8 @@ publishes an empty body with only a warning on stderr.
   `install.sh` seeds `AGTERM_HEADLESS_PAGE_HOST` in `~/.config/agterm-headless/env` from Tailscale. The
   tailnet must reach port 19510. Unlike a local file page, a served page gets no theme defaults and no
   `--chromeless`.
+- `--url` pages load plain http from `*.ts.net` hosts: agterm exempts the tailnet from App Transport
+  Security, so a page served by a machine on the tailnet (plannotator, `--html` pages) loads away from the LAN.
 - an agent offloaded on p4linux gets its Mac row again, right after the row that started it. On the
   headless origin `agtermctl zmx attach <host> <id> --beside <row>` asks the Mac presenting that row to
   attach the session, over the presentation stream that Mac already holds, so nothing calls the Mac.

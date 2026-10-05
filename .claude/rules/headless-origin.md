@@ -74,6 +74,9 @@ publishes the file's folder (or `--cwd`) in `HeadlessPages` under a random token
 - No page host: refused as `an --html page needs AGTERM_HEADLESS_PAGE_HOST`. `install.sh` seeds it in
   `~/.config/agterm-headless/env`, the unit's `EnvironmentFile`, and never replaces a written value.
 - A served page is a `--url` page on the Mac: no theme defaults, no `--chromeless`.
+- The page is plain http, which ATS blocks for a Tailscale name or a `100.x` address: `NSAllowsLocalNetworking`
+  covers only unqualified names, `.local` and private IP literals. `agterm/Info.plist` therefore exempts `ts.net`
+  and its subdomains (`NSExceptionAllowsInsecureHTTPLoads`); a page host outside `ts.net` fails to load.
   Design: `docs/plans/20261004-headless-html-pages-spec.md`.
 
 ## Program overlays
