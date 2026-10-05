@@ -270,12 +270,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// unaffected. A pane overlay is always full-pane, so
     /// `--pane` conflicts with `session.overlay.open --size-percent` and `session.overlay.resize` refuses it.
     public var pane: String?
-    /// A surface's STABLE spawn token for `session.status`/`session.restore`/`session.text`/`session.hud.*`
-    /// (the shell's baked `AGTERM_PANE_ID`, forwarded by the agent-status hook). Resolving it against the session's
-    /// live surfaces OVERRIDES the stale role `pane`, so a call from a moved pane reaches the CURRENT slot;
-    /// empty/unknown falls back to `pane`. Opaque — validated only by resolving.
-    /// `session.restore` and `session.hud.*` diverge: an unresolvable token with NO explicit `pane` errors
-    /// rather than silently choosing session-wide or main placement. See `Session.paneRole(forToken:)`, #199.
+    /// paneID is the stable `AGTERM_PANE_ID` token; a known id overrides `pane` and an empty one counts as
+    /// absent. An unknown id needs an explicit `pane` to fall back on, except for `session.status`, which
+    /// always falls back, and `surface.cursor`, which never does.
     public var paneID: String?
     /// Absolute primary-pane split fraction (0...1) of the pane area below the titlebar band, for
     /// `session.resize`, clamped server-side to `AppStore.splitRatioMin...splitRatioMax`. Mutually exclusive
@@ -637,8 +634,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     /// from. Without the echo a caller cannot tell an out-of-range request from an honored one, both
     /// answering ok.
     public var sidebarWidth: Double?
-    /// pane is the role written by session.restore or the pane anchor resolved by ask.open.
-    /// session.restore reports it on every success, including the default-to-main path.
+    /// pane is the pane session.restore wrote, session.text read or session.type typed into, or the anchor
+    /// ask.open resolved. The first three report it on every success, the default-pane paths included.
     public var pane: String?
     /// The light/dark syncing state for `theme.set`/`theme.list`, from the stored theme: `sync` = whether it
     /// is ghostty's dual `light:,dark:` form (the terminal tracks the macOS appearance), `light`/`dark` its

@@ -27,13 +27,15 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
     /// reconnect is present while this pane's ssh lost its connection and the app waits to attach it
     /// again, omitted otherwise.
     public let reconnect: ControlReconnect?
+    /// paneID is the token `--pane-id` resolves, omitted for a slot whose surface carries none.
+    public let paneID: String?
 
     public init(id: String, kind: String, active: Bool, visible: Bool) {
         self.init(id: id, kind: kind, active: active, visible: visible, cwd: nil, backedByZmx: nil)
     }
 
-    public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil,
-                backedByZmx: Bool?, lead: ZmxLeadRole? = nil, reconnect: ControlReconnect? = nil) {
+    public init(id: String, kind: String, active: Bool, visible: Bool, cwd: String? = nil, backedByZmx: Bool?,
+                lead: ZmxLeadRole? = nil, reconnect: ControlReconnect? = nil, paneID: String? = nil) {
         self.id = id
         self.kind = kind
         self.active = active
@@ -42,6 +44,7 @@ public struct ControlSurfaceNode: Codable, Sendable, Equatable {
         self.backedByZmx = backedByZmx
         self.lead = lead
         self.reconnect = reconnect
+        self.paneID = paneID
     }
 }
 
