@@ -341,11 +341,13 @@ public final class AppStore {
                     // always the primary's. Nil means "the session's", so nothing changes for the other kinds.
                     let paneCwd = surface == .split ? (session.splitCwd ?? session.initialSplitCwd) : nil
                     let pane = session.paneIdentity(for: surface)
+                    let token = surface.surface(in: session)?.paneToken
                     return ControlSurfaceNode(id: id, kind: surface.rawValue, active: surface.isActive(in: session),
                                               visible: surface.isVisible(in: session), cwd: paneCwd,
                                               backedByZmx: session.zmxBacking(for: surface),
                                               lead: ZmxLeadBook.shared.role(pane: pane),
-                                              reconnect: RemoteReconnectBook.shared.readback(pane: pane))
+                                              reconnect: RemoteReconnectBook.shared.readback(pane: pane),
+                                              paneID: token?.isEmpty == false ? token : nil)
                 }
                 var node = ControlSessionNode(id: session.id.uuidString, name: session.displayName,
                                               cwd: session.effectiveCwd, title: session.oscTitle,
