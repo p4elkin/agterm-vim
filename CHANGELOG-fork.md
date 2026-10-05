@@ -22,6 +22,8 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- `zmx new HOST` with an empty `--command`, `--name` or `--cwd` leaves that option out on the far side instead of
+  failing there with `Missing value for '--command <command>'`.
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the
   origin drops a presenter that leaves a forwarded request unanswered, so opens and other forwarded commands stop
   failing with `the presenting Mac left` after the other laptop sleeps again.
