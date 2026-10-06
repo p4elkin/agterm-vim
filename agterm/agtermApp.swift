@@ -258,8 +258,9 @@ struct agtermApp: App {
                         // wire the keymap + runner into the action hub for the command palette's custom
                         // commands; both are built after `actions`, so not in `init`.
                         actions.settingsModel = settingsModel
-                        actions.createRemoteSession = { [weak controlServer] host, workspace, store in
-                            await controlServer?.createRemoteSessionForButton(host: host, workspace: workspace, in: store)
+                        actions.createRemoteSession = { [weak controlServer] host, workspace, store, selection in
+                            await controlServer?.createRemoteSessionForButton(host: host, workspace: workspace, in: store,
+                                                                              selectionAtClick: selection)
                                 ?? .refused("the control server is not running")
                         }
                         NotificationCenter.default.post(name: .agtermNewSessionHostChanged, object: nil)

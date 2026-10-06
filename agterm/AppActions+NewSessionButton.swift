@@ -22,9 +22,10 @@ extension AppActions {
             return nil
         }
         guard RemoteCreatePending.shared.begin(windowID) else { return nil }
+        let selection = store.selectedSessionID
         return Task { @MainActor in
             defer { RemoteCreatePending.shared.end(windowID) }
-            let outcome = await createRemoteSession(host, workspaceID, store)
+            let outcome = await createRemoteSession(host, workspaceID, store, selection)
             // a window closed during the round trip has nowhere to show the failure
             guard library.windowID(for: store) == windowID else { return }
             switch outcome {

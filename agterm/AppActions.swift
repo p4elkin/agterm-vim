@@ -65,9 +65,9 @@ final class AppActions {
     /// for a banner-clicked session whose window had closed. Nil before the scene `.task` runs.
     var openWindow: ((WindowInfo.ID) -> Void)?
 
-    /// Creates a session on a host for the "+" controls; wired by `agtermApp` to the control server, which
-    /// is built after `actions`. Nil until the scene `.task` runs.
-    var createRemoteSession: ((String, UUID, AppStore) async -> RemoteCreateOutcome)?
+    /// Creates a session on a host for the "+" controls as (host, workspace, store, selection at the click);
+    /// wired by `agtermApp` to the control server, which is built after `actions`. Nil until the scene `.task` runs.
+    var createRemoteSession: ((String, UUID, AppStore, UUID?) async -> RemoteCreateOutcome)?
 
     /// Shows a failed "+" remote create as (title, message, window). Nil uses a sheet on that window.
     var presentRemoteCreateFailure: ((String, String, UUID) -> Void)?

@@ -13,8 +13,8 @@ flagged:
   - "agtermCore/Sources/agtermCore/LinkPolicy.swift"
   # its presenter-only receive arm keeps a mirror from answering a forwarded request
   - "agtermCore/Sources/agtermCore/PresentationHub.swift"
-  # the "+" row button and New Session route to `newSessionFromButton`; taking upstream's local call
-  # there passes every test that drives the menu and silently drops the remote host
+  # the "+" row button and New Session route to `newSessionFromButton`; upstream's local call there
+  # drops the remote host, which only `NewSessionButtonTests` notices
   - "agterm/Views/WorkspaceSidebar+ContextMenu.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough

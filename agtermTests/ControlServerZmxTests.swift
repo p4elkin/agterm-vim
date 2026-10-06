@@ -648,7 +648,8 @@ final class ControlServerZmxTests: XCTestCase {
         let target = store.addWorkspace(name: "going")
         let server = makeServer(list: "", remoteRunner: newThenTree(beforeReturn: { store.removeWorkspace(target.id) }))
 
-        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: target.id, in: store)
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: target.id, in: store,
+                                                                  selectionAtClick: store.selectedSessionID)
 
         guard case .createdNotAttached(let remoteID, _) = outcome else { return XCTFail("\(outcome)") }
         XCTAssertEqual(remoteID, "s1")
@@ -662,7 +663,8 @@ final class ControlServerZmxTests: XCTestCase {
         let runner = FakeRemoteRunner(results: [Self.createdS1, RemoteCommandResult(status: 0, stdout: elsewhere, stderr: "")])
         let server = makeServer(list: "", remoteRunner: runner)
 
-        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store,
+                                                                  selectionAtClick: store.selectedSessionID)
 
         guard case .createdNotAttached(let remoteID, let error) = outcome else { return XCTFail("\(outcome)") }
         XCTAssertEqual(remoteID, "s1")
@@ -679,7 +681,8 @@ final class ControlServerZmxTests: XCTestCase {
         store.selectSession(first.id)
         let server = makeServer(list: "", remoteRunner: newThenTree())
 
-        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store,
+                                                                  selectionAtClick: store.selectedSessionID)
 
         guard case .attached(let row) = outcome else { return XCTFail("\(outcome)") }
         let sessions = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions)
@@ -709,7 +712,8 @@ final class ControlServerZmxTests: XCTestCase {
             window.makeFirstResponder(kept)
         }))
 
-        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store,
+                                                                  selectionAtClick: store.selectedSessionID)
 
         guard case .attached(let row) = outcome else { return XCTFail("\(outcome)") }
         let sessions = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions)
@@ -718,6 +722,36 @@ final class ControlServerZmxTests: XCTestCase {
         row.surface = stray
         for _ in 0..<20 { try? await Task.sleep(nanoseconds: 30_000_000) }
         XCTAssertTrue(window.firstResponder === kept)
+    }
+
+    func testButtonCreateWhileAPaletteHoldsTheSelectionInsertsUnselected() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let selected = try XCTUnwrap(store.selectedSessionID)
+        store.suppressAutoFollow()
+        defer { store.resumeAutoFollow() }
+        let server = makeServer(list: "", remoteRunner: newThenTree())
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store,
+                                                                selectionAtClick: selected)
+
+        guard case .attached = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(store.selectedSessionID, selected)
+    }
+
+    func testButtonCreateForAWorkspaceAlreadyGoneRunsNoSsh() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let gone = store.addWorkspace(name: "gone")
+        store.removeWorkspace(gone.id)
+        let runner = newThenTree()
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: gone.id, in: store,
+                                                                selectionAtClick: store.selectedSessionID)
+
+        guard case .refused(let error) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(error, "the workspace is gone")
+        XCTAssertEqual(runner.invocations.count, 0)
     }
 
     func testListReportsTheEndpointOfTheInjectedClient() throws {

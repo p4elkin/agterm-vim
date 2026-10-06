@@ -12,7 +12,8 @@ final class NewSessionButtonTests: XCTestCase {
     private var window: NSWindow?
     private var outline: SidebarOutlineView?
     private var coordinator: WorkspaceSidebar.Coordinator?
-    private var creates: [(host: String, workspace: UUID, store: AppStore)] = []
+    private struct Create { let host: String, workspace: UUID, store: AppStore, selection: UUID? }
+    private var creates: [Create] = []
     private var pendingCreate: CheckedContinuation<RemoteCreateOutcome, Never>?
     private var failures: [(title: String, windowID: UUID)] = []
 
@@ -44,8 +45,8 @@ final class NewSessionButtonTests: XCTestCase {
 
     private func useHost(answer: @escaping @MainActor () async -> RemoteCreateOutcome) {
         settings.setNewSessionHost("p4linux")
-        actions.createRemoteSession = { [weak self] host, workspace, store in
-            self?.creates.append((host, workspace, store))
+        actions.createRemoteSession = { [weak self] host, workspace, store, selection in
+            self?.creates.append(Create(host: host, workspace: workspace, store: store, selection: selection))
             return await answer()
         }
     }
@@ -91,6 +92,37 @@ final class NewSessionButtonTests: XCTestCase {
         useHost { .refused("down") }
         await actions.newSessionFromButton(workspaceID: workspace, in: store)?.value
         XCTAssertEqual(creates.count, 2)
+    }
+
+    func testTheSelectionIsTakenAtTheClickNotWhenTheCreateStarts() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let atClick = try XCTUnwrap(store.selectedSessionID)
+        let later = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp", select: false))
+        useHost { .refused("down") }
+
+        let task = actions.newSessionFromButton(workspaceID: workspace, in: store)
+        store.selectSession(later.id)
+        await task?.value
+
+        XCTAssertEqual(creates.map(\.selection), [atClick])
+    }
+
+    func testTheSidebarPlusAndItsMenuItemCreateOnTheHost() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let before = store.workspaces.flatMap(\.sessions).count
+        buildSidebar(for: store)
+        useHost { .refused("stub") }
+
+        try plusButton(for: workspace).performClick(nil)
+        await settle()
+        let menu = try XCTUnwrap(coordinator?.menu(forRow: try row(for: workspace)))
+        menu.performActionForItem(at: try XCTUnwrap(menu.items.firstIndex { $0.title == "New Session" }))
+        await settle()
+
+        XCTAssertEqual(creates.map(\.workspace), [workspace, workspace])
+        XCTAssertEqual(store.workspaces.flatMap(\.sessions).count, before)
     }
 
     func testASuccessfulCreateReportsNothingAndClearsThePendingState() async throws {

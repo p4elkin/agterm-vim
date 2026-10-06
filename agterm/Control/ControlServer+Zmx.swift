@@ -201,10 +201,13 @@ extension ControlServer {
 
     /// The "+" new-session controls: create on `host` into `workspace` of `store`, the control's own window,
     /// placed by the new-session placement setting read when the row is inserted. The row is selected only if
-    /// the window's selection is what it was at the click, so a slow host never pulls the user away.
-    func createRemoteSessionForButton(host: String, workspace: UUID, in store: AppStore) async -> RemoteCreateOutcome {
+    /// the selection is still `selectionAtClick` and nothing holds it (a palette acts on the selection), so a
+    /// slow host never pulls the user away.
+    func createRemoteSessionForButton(host: String, workspace: UUID, in store: AppStore,
+                                      selectionAtClick: UUID?) async -> RemoteCreateOutcome {
         guard let windowID = library.windowID(for: store) else { return .refused("no window to attach into") }
-        let rule = RemoteDestination.NewSessionRule(selectionAtRequest: store.selectedSessionID)
+        guard store.workspaces.contains(where: { $0.id == workspace }) else { return .refused("the workspace is gone") }
+        let rule = RemoteDestination.NewSessionRule(selectionAtRequest: selectionAtClick)
         return await createAndAttach(host: host, options: ControlZmxNewOptions(), window: nil,
                                      destination: RemoteDestination(windowID: windowID, workspace: workspace, newSessionRule: rule))
     }
@@ -284,7 +287,7 @@ extension ControlServer {
             if let rule = destination.newSessionRule {
                 let setting = settingsModel.settings.effectiveNewSessionPlacement
                 placement.position = store.newSessionInsertionIndex(inWorkspace: destination.workspace, placement: setting)
-                placement.select = store.selectedSessionID == rule.selectionAtRequest
+                placement.select = store.selectedSessionID == rule.selectionAtRequest && !store.isAutoFollowSuppressed
             }
         } else {
             guard let workspace = store.currentWorkspaceID else {

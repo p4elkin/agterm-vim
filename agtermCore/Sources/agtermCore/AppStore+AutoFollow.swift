@@ -58,6 +58,9 @@ extension AppStore {
     /// re-arm the debouncer (`autoFollowFire`'s no-reschedule contract); the next keystroke or change does.
     public func resumeAutoFollow() { autoFollowSuppressionCount = max(0, autoFollowSuppressionCount - 1) }
 
+    /// Whether a palette, rename or other suppressor holds the selection, so nothing may move it.
+    public var isAutoFollowSuppressed: Bool { autoFollowSuppressionCount > 0 }
+
     /// The single debouncer-arming seam: schedule `autoFollowFire` after `delay`, weakly so a pending fire
     /// never keeps the store alive.
     private func armAutoFollow(after delay: TimeInterval) {
