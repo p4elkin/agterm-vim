@@ -543,7 +543,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             guard row >= 0, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView
             else { return false }
             cell.newSessionPending = pending
-            cell.setColors(selected: false)
+            cell.setColors(selected: outline.selectedRowIndexes.contains(row))
             return true
         }
 
