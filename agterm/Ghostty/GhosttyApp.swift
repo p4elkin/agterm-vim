@@ -721,6 +721,10 @@ extension Notification.Name {
     /// `GhosttyApp.terminalBackgroundColor` at once instead of waiting for the window to re-key.
     static let agtermAppearanceChanged = Notification.Name("agterm.appearanceChanged")
 
+    /// Posted when the Settings new-session host changes, and once when `actions.settingsModel` is wired, so the
+    /// footer's "+" menu re-reads it; `AppActions` is not observable.
+    static let agtermNewSessionHostChanged = Notification.Name("agterm.newSessionHostChanged")
+
     /// Posted by `SystemAppearanceObserver` (app-level KVO on `NSApplication.effectiveAppearance`) on every
     /// macOS light/dark change and once at launch, carrying the resolved `isDark` in userInfo. `SettingsModel`
     /// then re-resolves the active side of a `theme = light:,dark:` pair and rewrites+reloads the config — the

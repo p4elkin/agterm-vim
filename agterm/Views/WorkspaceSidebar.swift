@@ -116,6 +116,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // flag and the exception set must re-run reconcile.
         _ = store.hideParked
         _ = store.parkedRevealedWorkspaceIDs
+        _ = RemoteCreatePending.shared.windows
         context.coordinator.reconcile()
         context.coordinator.syncSelection()
     }
@@ -400,6 +401,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
             let parkedCount: Int
             /// The remote row's stream notice, nil while it is up or for a local row.
             var presentationNotice: String?
+            /// A "+" remote create is in flight for this window; workspace rows only, so their "+" dims.
+            var newSessionPending = false
 
             func differsOnlyInLabel(from other: RowContent) -> Bool {
                 var relabeled = self
@@ -543,8 +546,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        unseen: effectiveUnseen(displayedUnseen(for: workspace)),
                        indicator: AgentIndicator(), flagged: false, parked: false,
                        focusMember: store.focusedWorkspaceIDs.contains(workspace.id),
-                       parkedCount: store.parkedCount(in: workspace) ?? 0)
+                       parkedCount: store.parkedCount(in: workspace) ?? 0, newSessionPending: newSessionPending)
         }
+
+        /// Whether this window has a "+" remote create in flight (`RemoteCreatePending`).
+        var newSessionPending: Bool { RemoteCreatePending.shared.contains(actions.library.windowID(for: store)) }
 
         /// The visible content of a session row. One builder shared by `reloadChangedContentRows` and
         /// `snapshotRowContent` so the snapshot and the diff can't drift. Both callers pass the owning

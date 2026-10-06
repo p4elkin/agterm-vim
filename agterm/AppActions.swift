@@ -65,6 +65,13 @@ final class AppActions {
     /// for a banner-clicked session whose window had closed. Nil before the scene `.task` runs.
     var openWindow: ((WindowInfo.ID) -> Void)?
 
+    /// Creates a session on a host for the "+" controls; wired by `agtermApp` to the control server, which
+    /// is built after `actions`. Nil until the scene `.task` runs.
+    var createRemoteSession: ((String, UUID, AppStore) async -> RemoteCreateOutcome)?
+
+    /// Shows a failed "+" remote create as (title, message, window). Nil uses a sheet on that window.
+    var presentRemoteCreateFailure: ((String, String, UUID) -> Void)?
+
     /// The settings model, holding the parsed keymap whose custom commands feed the action palette. It and
     /// `customCommandRunner` are built AFTER `actions` in `agtermApp.init`, so both are wired from the scene
     /// `.task` rather than passed to `init(library:)` — an init-order break. Nil until that `.task` runs.
