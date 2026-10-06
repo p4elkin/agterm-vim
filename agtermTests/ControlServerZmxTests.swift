@@ -584,6 +584,127 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertTrue(window.firstResponder === split)
     }
 
+    // MARK: - zmx.new --workspace and the "+" button
+
+    private static let createdS1 = RemoteCommandResult(status: 0, stdout: #"{"ok":true,"result":{"id":"s1"}}"#, stderr: "")
+
+    private func newThenTree(beforeReturn: (@MainActor @Sendable () -> Void)? = nil) -> FakeRemoteRunner {
+        FakeRemoteRunner(results: [Self.createdS1, RemoteCommandResult(status: 0, stdout: Self.projection, stderr: "")],
+                         beforeReturn: beforeReturn)
+    }
+
+    private func zmxNew(_ server: ControlServer, workspace: String, window: String? = nil) async throws -> ControlResponse {
+        var args = ControlArgs(host: "buildbox", window: window)
+        args.workspace = workspace
+        let response = await ControlDispatcher(actions: server).dispatch(ControlRequest(cmd: .zmxNew, args: args))
+        return try XCTUnwrap(response)
+    }
+
+    func testNewWithAWorkspaceAppendsTheRowThere() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let target = store.addWorkspace(name: "target")
+        let existing = try XCTUnwrap(store.addSession(toWorkspace: target.id, cwd: "/tmp", select: false))
+        _ = store.addWorkspace(name: "current")
+        XCTAssertNotEqual(store.currentWorkspaceID, target.id)
+        let server = makeServer(list: "", remoteRunner: newThenTree())
+
+        let response = try await zmxNew(server, workspace: String(target.id.uuidString.prefix(8)))
+
+        XCTAssertTrue(response.ok, "\(String(describing: response.error))")
+        let sessions = try XCTUnwrap(store.workspaces.first { $0.id == target.id }?.sessions)
+        XCTAssertEqual(sessions.map(\.id), [existing.id, try XCTUnwrap(UUID(uuidString: response.result?.id ?? ""))])
+        XCTAssertEqual(sessions.last?.remoteHost, "buildbox")
+    }
+
+    func testNewWithAnUnknownWorkspaceRunsNoSsh() async throws {
+        let runner = newThenTree()
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let response = try await zmxNew(server, workspace: "nope")
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "no such workspace: nope")
+        XCTAssertEqual(runner.invocations.count, 0)
+    }
+
+    func testNewWithAWorkspaceKeepsItsWindowWhenAnotherComesForward() async throws {
+        let front = try XCTUnwrap(library.activeWindowID)
+        let frontStore = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(frontStore.currentWorkspaceID)
+        let other = library.newWindow(name: "other").id
+        let otherStore = try XCTUnwrap(library.loadStore(for: other))
+        library.frontmostWindowID = front
+        let server = makeServer(list: "", remoteRunner: newThenTree(beforeReturn: { self.library.frontmostWindowID = other }))
+
+        let response = try await zmxNew(server, workspace: "active")
+
+        XCTAssertTrue(response.ok, "\(String(describing: response.error))")
+        XCTAssertEqual(frontStore.workspaces.first { $0.id == workspace }?.sessions.last?.remoteHost, "buildbox")
+        XCTAssertNil(otherStore.workspaces.flatMap(\.sessions).first { $0.remoteHost != nil })
+    }
+
+    func testButtonCreateNamesTheFarSessionWhenItsWorkspaceWentDuringTheRoundTrip() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let target = store.addWorkspace(name: "going")
+        let server = makeServer(list: "", remoteRunner: newThenTree(beforeReturn: { store.removeWorkspace(target.id) }))
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: target.id, in: store)
+
+        guard case .createdNotAttached(let remoteID, _) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(remoteID, "s1")
+        XCTAssertNil(store.workspaces.flatMap(\.sessions).first { $0.remoteHost != nil })
+    }
+
+    func testButtonCreatePlacesAfterTheSelectionAndSelectsWhenNothingMoved() async throws {
+        settingsModel.setNewSessionPlacement(AppSettings.NewSessionPlacement.afterCurrent.rawValue)
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let first = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions.first)
+        _ = store.addSession(toWorkspace: workspace, cwd: "/tmp", select: false)
+        store.selectSession(first.id)
+        let server = makeServer(list: "", remoteRunner: newThenTree())
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+
+        guard case .attached(let row) = outcome else { return XCTFail("\(outcome)") }
+        let sessions = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions)
+        XCTAssertEqual(sessions.firstIndex { $0.id == row.id }, 1)
+        XCTAssertEqual(store.selectedSessionID, row.id)
+    }
+
+    func testButtonCreateAfterTheSelectionMovedInsertsUnselectedAndLeavesFocus() async throws {
+        settingsModel.setNewSessionPlacement(AppSettings.NewSessionPlacement.afterCurrent.rawValue)
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let first = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions.first)
+        let second = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp", select: false))
+        store.selectSession(first.id)
+        // `NSWindow` defaults isReleasedWhenClosed to true; see the hosted-test rule in ui-tests.md.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        let kept = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        let stray = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        window.contentView?.addSubview(kept)
+        window.contentView?.addSubview(stray)
+        second.surface = kept
+        let server = makeServer(list: "", remoteRunner: newThenTree(beforeReturn: {
+            store.selectSession(second.id)
+            window.makeFirstResponder(kept)
+        }))
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+
+        guard case .attached(let row) = outcome else { return XCTFail("\(outcome)") }
+        let sessions = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions)
+        XCTAssertEqual(sessions.firstIndex { $0.id == row.id }, 2, "after the selection read at insert time")
+        XCTAssertEqual(store.selectedSessionID, second.id)
+        row.surface = stray
+        for _ in 0..<20 { try? await Task.sleep(nanoseconds: 30_000_000) }
+        XCTAssertTrue(window.firstResponder === kept)
+    }
+
     func testListReportsTheEndpointOfTheInjectedClient() throws {
         let server = makeServer(list: "")
 
