@@ -692,8 +692,8 @@ error keeps those names for compatibility.
   from a background pane survives typing in a DIFFERENT pane (so a `right`- or `scratch`-tagged block is
   no longer wiped by foreground typing in the main pane, and only input in the OWNING pane clears it,
   whether typed by hand or sent with `session type`, and only as Settings ▸ Agent Status ▸ Status reset
-  allows: the first key by default, Return or a newline in the text under On Enter, never when Disabled), (2) while the session is `blocked`, a status from
-  another pane that is not itself `blocked` is REFUSED with `blocked status owned by pane <pane>` —
+  allows: the first key by default, Return or a newline in the text under On Enter, never when Disabled), (2) while the session is `blocked`, or `completed` without `--auto-reset`, a status from
+  another pane that is not itself `blocked` is REFUSED with `status owned by pane <pane>` —
   it changes nothing and plays no sound, so an agent working in one pane cannot erase the other pane's
   request for input; a second pane may still report its own `blocked`, `idle` is NOT exempt (Codex's
   `session-start` hook and the shell integration's post-command hook both send it from their own pane),
@@ -2205,6 +2205,6 @@ canonical read-back names while the role and position aliases documented above a
 `agtermctl` CLI rejects a bad pane with this for session status/type/text/paste, and over the raw socket
 `session.status`, `session.restore` and `session.paste` return this same string;
 `session.type`, `session.text` and `font.*` over the raw socket instead return `invalid pane: <value>`),
-`blocked status owned by pane <pane> (write from that pane to change it)` (session status,
+`status owned by pane <pane> (write from that pane to change it)` (session status,
 the pane-precedence refusal — the one `session status` error a well-formed call can hit, so retry from the
 owning pane rather than treating it as a bad argument). Unknown commands fail to decode and return a structured error, never a crash.

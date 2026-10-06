@@ -272,6 +272,80 @@ struct AppStoreStatusTests {
         #expect(drafts.kinds.isEmpty)
     }
 
+    // MARK: - pane precedence over a sticky completed status
+
+    /// A split session whose LEFT pane holds a `completed` written without auto-reset: an open question.
+    private func stickyCompletedLeftSplitSession(autoReset: Bool = false) -> (AppStore, Session) {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/repo")!
+        store.toggleSplit(session.id)
+        store.applyControlStatus(AgentIndicator(status: .completed, autoReset: autoReset, statusPane: .left,
+                                                note: "asks: which option?"),
+                                 forSession: session.id)
+        return (store, session)
+    }
+
+    @Test(arguments: [AgentStatus.active, .completed, .idle])
+    func rightPaneCannotReplaceTheLeftPanesStickyCompleted(_ status: AgentStatus) {
+        let (store, session) = stickyCompletedLeftSplitSession()
+        let stamp = session.statusChangedAt
+
+        let result = store.applyControlStatus(AgentIndicator(status: status, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .refused(owner: .left))
+        #expect(session.agentIndicator.status == .completed)
+        #expect(session.agentIndicator.note == "asks: which option?")
+        #expect(session.statusChangedAt == stamp)
+    }
+
+    @Test func theOtherPanesBlockReplacesAStickyCompleted() {
+        let (store, session) = stickyCompletedLeftSplitSession()
+
+        let result = store.applyControlStatus(AgentIndicator(status: .blocked, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .blocked)
+        #expect(session.agentIndicator.statusPane == .right)
+    }
+
+    @Test(arguments: [AgentStatus.active, .completed, .idle])
+    func theOwningPaneChangesItsOwnStickyCompleted(_ status: AgentStatus) {
+        let (store, session) = stickyCompletedLeftSplitSession()
+
+        let result = store.applyControlStatus(AgentIndicator(status: status, statusPane: .left),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == status)
+    }
+
+    @Test func anAutoResetCompletedIsNotOwned() {
+        let (store, session) = stickyCompletedLeftSplitSession(autoReset: true)
+
+        let result = store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .active)
+        #expect(session.agentIndicator.statusPane == .right)
+    }
+
+    @Test func aSinglePaneRowReplacesItsStickyCompleted() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/repo")!
+        store.applyControlStatus(AgentIndicator(status: .completed, statusPane: .left), forSession: session.id)
+
+        let result = store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .active)
+    }
+
     @MainActor
     private final class RecordingSink: PresentationSink {
         var frames: [PresentationFrame] = []

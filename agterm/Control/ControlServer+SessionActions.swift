@@ -582,9 +582,8 @@ extension ControlServer: ControlActions {
     /// ride the EPHEMERAL indicator, lasting only until the next `session.status` without them.
     /// `update.pane` (`StatusPane`, dispatcher-validated, nil = `left`/main) records the pane that set the
     /// status, driving the pane-scoped keystroke-clear and pane-aware reveal. Renders on every non-idle one.
-    /// While a session is blocked, a write from ANOTHER pane that is neither `blocked` nor `idle` is refused
-    /// whole (`AppStore.applyControlStatus`) with a `blocked status owned by pane` error and no sound — one
-    /// pane's `active`/`completed` must not erase the other's block.
+    /// While a session is blocked or holds a `completed` without auto-reset, a non-`blocked` write from ANOTHER
+    /// pane is refused whole (`AppStore.applyControlStatus`) with a `status owned by pane` error and no sound.
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) async -> ControlResponse {
         // bind active/prefix targets before suspension, but preserve unknown-sound error precedence.
         let captured = resolver.resolveSessionTarget(target, window: window)
@@ -616,7 +615,7 @@ extension ControlServer: ControlActions {
                                        note: update.note)
         // rejected writes must return before playback: no status change means no sound.
         if case .refused(let owner) = store.applyControlStatus(indicator, forSession: id) {
-            return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue) " +
+            return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue) " +
                 "(write from that pane to change it)")
         }
         if let name = update.sound, let prepared {

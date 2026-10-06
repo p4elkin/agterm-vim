@@ -1476,9 +1476,11 @@
                 or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">completed</span> session reveal and focus the tagged
                 pane. An <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span> status preserves the current pane
                 selection. An agent running in a split or scratch should set its own pane. While a session is
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>, a status from a DIFFERENT pane that is
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">completed</span> without
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--auto-reset</span>, a status from a DIFFERENT pane that is
                 not itself <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span> is refused with
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked status owned by pane …</span>, changing nothing
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">status owned by pane …</span>, changing nothing
                 and playing no sound, so one pane's agent cannot erase the other's request for input. A second pane may still report
                 its own <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>;
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">idle</span> is not exempt, since the bundled agent hooks

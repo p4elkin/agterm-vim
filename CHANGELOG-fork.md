@@ -22,6 +22,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- On a split row, an open question (`completed` without `--auto-reset`) is no longer replaced by the other
+  pane's `active`, `completed` or `idle`; only its `blocked` or the owning pane changes it. The refusal now reads
+  `status owned by pane <pane>`, without the word `blocked`.
 - `zmx new HOST` with an empty `--command`, `--name` or `--cwd` leaves that option out on the far side instead of
   failing there with `Missing value for '--command <command>'`.
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the
