@@ -72,6 +72,35 @@ private struct SettingHint: View {
     }
 }
 
+/// The host the "+" new-session buttons create on. A draft, committed on submit, on focus loss and when the
+/// view goes, so a keystroke never saves a half-typed host.
+private struct NewSessionHostField: View {
+    let model: SettingsModel
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("New sessions are created on", text: $draft, prompt: Text("this Mac"))
+            .focused($focused)
+            .onSubmit(commit)
+            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+            .onAppear { draft = model.settings.newSessionHost ?? "" }
+            .onDisappear(perform: commit)
+            .accessibilityIdentifier("settings-new-session-host")
+        if model.settings.newSessionHost != nil, model.settings.effectiveNewSessionHost == nil {
+            SettingHint("Not a usable ssh host, so new sessions stay on this Mac.")
+                .accessibilityIdentifier("settings-new-session-host-invalid")
+        } else {
+            SettingHint("The \"+\" buttons create the session there; ⌘N and New Local Session stay on this Mac.")
+        }
+    }
+
+    private func commit() {
+        guard draft != (model.settings.newSessionHost ?? "") else { return }
+        model.setNewSessionHost(draft)
+    }
+}
+
 /// General tab: Mouse (scroll speed, right-click-pastes, workspace-row click), Sessions (new-session
 /// directory, restore mode, and the flagged view layout, here because the Interface tab is full) and the
 /// inherit-global-ghostty-config toggle; visual and
@@ -122,6 +151,7 @@ private struct GeneralSettingsView: View {
                     Text("After the current session").tag(AppSettings.NewSessionPlacement.afterCurrent)
                 }
                 .accessibilityIdentifier("settings-new-session-placement")
+                NewSessionHostField(model: model)
                 Picker("Restore sessions", selection: restoreMode) {
                     ForEach(RestoreMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
