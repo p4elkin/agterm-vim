@@ -1,9 +1,10 @@
 # The "+" button can create the session on a remote host
 
-<!-- plan-review: planning:plan-review 2026-10-06 findings=30 resolved -->
+<!-- plan-review: planning:plan-review 2026-10-06 findings=42 resolved -->
 
 Status: design agreed 2026-10-06 (Settings field, host default directory, `zmx new --workspace`).
-Plan reviewed in 4 rounds (round 4 approved; its minor points are applied), waiting for approval.
+Plan reviewed in 5 rounds (round 4 approved the design; round 5 fixed the pending state and the pair checks). Approved 2026-10-06 with a
+pending state added; implemented as a plan pair with a Claude mate.
 Supersedes the keymap `new-session-command` design kept on branch `plus-button-command-v1`.
 
 ## Contents
@@ -104,8 +105,13 @@ They had no gate; zoom, the dashboard and a picker all hide the sidebar, so noth
   - There is no fallback to a local session, which would hide that the host is down.
 - While one remote create is in flight for a window, further button clicks in that window are ignored.
   The guard is released in a `defer`, so a closed window or a failure never leaves "+" dead.
-- Nothing visible happens during the round trip, which can take up to about 20 seconds against a dead host
-  (two ssh calls, 10-second deadline each). Sasha decides at approval whether "+" shows a pending state.
+- During the round trip, up to about 20 seconds against a dead host (two ssh calls, 10-second deadline
+  each), every "+" new-session control of that window looks disabled: the sidebar row "+" buttons, the
+  right-click "New Session" item and the footer "New Session" item. "New Local Session" stays enabled.
+  Decided by Sasha on 2026-10-06.
+- The in-flight state lives in one `@Observable` per-window registry that both the AppKit sidebar and the
+  SwiftUI footer read, so it clears itself when the create ends, on every path. The registry IS the
+  repeated-click guard above; there is no second flag that could drift from what the user sees.
 
 ### Control API
 
@@ -120,6 +126,9 @@ They had no gate; zoom, the dashboard and a picker all hide the sidebar, so noth
 ## Plan
 
 TDD: each task writes its failing test first and runs it narrowly.
+The pair starts with `--link` for the six ignored artifacts, whose stamps match this branch's pins
+(checked 2026-10-06): `GhosttyKit.xcframework`, `.ghostty-build-stamp`, `.zmx-build-stamp`,
+`agterm/Resources/ghostty`, `agterm/Resources/terminfo`, `agterm/Resources/zmx`.
 Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a601`.
 
 ### Task 1: the setting, host-free
@@ -127,7 +136,9 @@ Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a
 - [ ] Tests in agtermCore: `AppSettings` round-trips `newSessionHost`; `effectiveNewSessionHost` is nil for
       empty, whitespace, a host `isPlain` rejects and one starting with `-`, and the trimmed host otherwise.
 - [ ] Add the field, its init parameter and `effectiveNewSessionHost`.
-- [ ] Run `cd agtermCore && swift test --filter AppSettings` - must pass before the next task.
+- [ ] Name the suite `AppSettingsNewSessionHostTests`.
+
+Check: `cd agtermCore && swift test --filter AppSettingsNewSessionHostTests 2>&1 | grep -q "Suite AppSettingsNewSessionHostTests passed"`
 
 ### Task 2: `zmx.new --workspace` in agtermCore
 
@@ -135,9 +146,14 @@ Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a
       `ZmxCommands.New` builds the request with `--workspace`; `RemoteSession.newCommand` does not forward
       `workspace`.
 - [ ] Add `workspace` to `ControlZmxNewOptions` (defaulted) and `ZmxCommands.New`; refuse in `.zmxNew`.
-- [ ] Run the filtered agtermCore tests - must pass before the next task.
+- [ ] Name the suite `ZmxNewWorkspaceTests` in `agtermCoreTests` and the CLI suite `ZmxNewWorkspaceCLITests` in
+      `agtermctlKitTests`; the checks match these names, so a renamed suite fails instead of passing empty.
+
+Check: `cd agtermCore && out=$(swift test --filter ZmxNewWorkspace 2>&1); printf '%s' "$out" | grep -q "Suite ZmxNewWorkspaceTests passed" && printf '%s' "$out" | grep -q "Suite ZmxNewWorkspaceCLITests passed"`
 
 ### Task 3: placement in the app
+
+depends: 2
 
 - [ ] Hosted tests in `agtermTests/ControlServerZmxTests.swift` with its `FakeRemoteRunner`, modelled on
       `testAFarRefusalOfNewIsReturnedAsItCameAndCreatesNoRow`:
@@ -159,9 +175,12 @@ Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a
       calls it with the plain append rule and maps the outcome back to a `ControlResponse`; pin the window
       with the workspace before ssh; re-check the workspace and compute the index after discovery; call
       `focusSplitPane` only for a selected insert.
-- [ ] Run the new tests with `-only-testing` - must pass before the next task.
+
+Check: `scripts/test-app.sh -only-testing:agtermTests/ControlServerZmxTests 2>&1 | grep -q "Test Suite 'ControlServerZmxTests' passed"`
 
 ### Task 4: the controls
+
+depends: 1, 3
 
 - [ ] Hosted tests first, with the remote create injected as a stub closure:
   - host set: the closure gets the store's window and the workspace, and no local row is added;
@@ -177,20 +196,42 @@ Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a
       `AppActions` is not observable and `settingsModel` is wired in the scene `.task`, after the first
       render. So the toolbar keeps a `@State` mirror of the host, seeded from `actions.settingsModel` when
       already wired, and refreshed on a new `.agtermNewSessionHostChanged` notification. `setNewSessionHost`
-      posts it, and the scene `.task` posts it once right after `actions.settingsModel = settingsModel`.
+      posts it (Task 5), and the scene `.task` posts it once right after `actions.settingsModel = settingsModel`.
       The menu sits in the sidebar footer, `WindowContentView.bottomBar`. The mirror lives on
       `WindowContentView`; `onReceive` and an `onAppear` re-seed go on `bottomBar`'s `HStack`, since a
       collapsed sidebar may unmount it, never on the root body chain, which is at the type checker's limit (see the `FullscreenEdgeObserver` comment).
-- [ ] Run the new tests and `SidebarNewSessionPlacementTests` with `-only-testing` - must pass.
+- [ ] The pending state: a per-window `@Observable` in-flight registry, set and cleared (in `defer`) by
+      `newSessionFromButton`; it is the repeated-click guard.
+  - Sidebar row "+": add a pending flag to the workspace `RowContent` built by `rowContent(forWorkspace:)`, so
+    `reloadChangedContentRows()` reloads that row; `updateNSView` reads the registry so reconcile runs. The
+    cell configure path sets `addButton.isEnabled` on EVERY configure, since cells are recycled, and
+    `setColors` lowers the "+" alpha while pending, because an explicit `contentTintColor` does not dim by
+    itself.
+  - Right-click "New Session": `menu(forRow:)` builds the menu fresh with `autoenablesItems = false`, so set
+    `isEnabled = !pending` at build time. No `validateMenuItem`; a menu left open across the end of a create
+    stays dimmed until reopened, which is acceptable.
+  - Footer "New Session": `.disabled` from the registry.
+  - Hosted tests: the registry is set while the stubbed create is pending and clear after it returns, on
+    success and on failure; the real sidebar cell's "+" is disabled during the pending create and enabled
+    after.
+- [ ] The new tests live in `agtermTests/NewSessionButtonTests.swift`.
+
+Check: `scripts/test-app.sh -only-testing:agtermTests/NewSessionButtonTests -only-testing:agtermTests/SidebarNewSessionPlacementTests 2>&1 | grep -q "Test Suite 'NewSessionButtonTests' passed"`
 
 ### Task 5: Settings UI
+
+depends: 1, 4
 
 - [ ] `SettingsModel.setNewSessionHost`, next to `setNewSessionPlacement`; it posts the toolbar's notification.
 - [ ] The Settings ▸ Sessions text field with commit on submit, on focus loss and in `onDisappear`, and the
       invalid-host note.
-- [ ] Run `-only-testing` for any settings view test touched; the field itself is checked by hand in Task 7.
+- [ ] The field itself is checked by hand in Task 7.
+
+Check: `make build`
 
 ### Task 6: docs
+
+depends: 4, 5
 
 - [ ] `.claude/rules/settings.md`: the field, the exemption, the button-only placement rule.
 - [ ] `.claude/rules/control-api.md`: `zmx.new [HOST] --workspace` in the Remote sessions bullet.
@@ -198,14 +239,26 @@ Worktree branch `worktree-plus-button-command`, reset to `origin/main` at `7e41a
       `WorkspaceSidebar+ContextMenu.swift` joins the `flagged` list in `.claude/rules/fork-merge.md`.
 - [ ] `CHANGELOG-fork.md` under `## Unreleased`.
 
+Check: `git diff --check 7e41a601`
+
 ### Task 7: gates and manual check (main session)
+
+depends: 6
+owner: lead
 
 - [ ] Each once: `cd agtermCore && swift test`, `make test-app`, `make lint`, `make build`.
 - [ ] Debug instance with an isolated short `AGTERM_STATE_DIR`, host `p4linux` in its Settings: "+" on a
       non-current workspace, the right-click item, the toolbar item and "New Local Session"; an unreachable
-      host for the alert. ⚠️ Each real click creates a session on p4linux; close them afterwards.
+      host for the alert, and the dimmed "+" while it waits. ⚠️ Each real click creates a session on
+      p4linux; close them afterwards.
+
+Check: `cd agtermCore && swift test`
 
 ## Consumers of the new fields
+
+The per-window in-flight registry has 6 consumers: `newSessionFromButton` (sets and clears it, and is the
+guard), the workspace `RowContent`, the sidebar cell configure and `setColors` path, the right-click
+"New Session" item, the footer "New Session" item, and the hosted tests.
 
 `AppSettings.newSessionHost` has 5 consumers:
 
