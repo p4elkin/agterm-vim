@@ -175,8 +175,8 @@ extension ControlServer {
         }
     }
 
-    /// Create a session on `host`, then attach it here exactly as `zmx attach` would. A far refusal is
-    /// returned as it came and creates no row. With `options.workspace` the window and workspace are pinned
+    /// Create a session on `host`, then attach it here exactly as `zmx attach` would. A far refusal's error
+    /// comes back unchanged and creates no row. With `options.workspace` the window and workspace are pinned
     /// before the round trip, so a window brought forward meanwhile cannot redirect the row.
     func createRemoteSession(host: String, options: ControlZmxNewOptions, window: String?) async -> ControlResponse {
         var destination: RemoteDestination?

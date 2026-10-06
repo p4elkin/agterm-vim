@@ -655,6 +655,21 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertNil(store.workspaces.flatMap(\.sessions).first { $0.remoteHost != nil })
     }
 
+    func testButtonCreateNamesTheFarSessionWhenDiscoveryLosesIt() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let elsewhere = Self.projection.replacingOccurrences(of: #""id":"s1""#, with: #""id":"s9""#)
+        let runner = FakeRemoteRunner(results: [Self.createdS1, RemoteCommandResult(status: 0, stdout: elsewhere, stderr: "")])
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store)
+
+        guard case .createdNotAttached(let remoteID, let error) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(remoteID, "s1")
+        XCTAssertEqual(error, "no attachable session s1 on buildbox")
+        XCTAssertNil(store.workspaces.flatMap(\.sessions).first { $0.remoteHost != nil })
+    }
+
     func testButtonCreatePlacesAfterTheSelectionAndSelectsWhenNothingMoved() async throws {
         settingsModel.setNewSessionPlacement(AppSettings.NewSessionPlacement.afterCurrent.rawValue)
         let store = try XCTUnwrap(library.activeStore)
