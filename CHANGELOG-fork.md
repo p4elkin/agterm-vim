@@ -36,6 +36,10 @@ publishes an empty body with only a warning on stderr.
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the
   origin drops a presenter that leaves a forwarded request unanswered, so opens and other forwarded commands stop
   failing with `the presenting Mac left` after the other laptop sleeps again.
+- Text typed into a headless origin's pane (`agtermctl session type`) clears a blocked or completed status by the
+  Status reset mode in `settings.json` in the server's state directory, read on every call. It always used
+  `first key` before, so an arrow key sent to a question picker cleared the pending question even with Return set
+  on the Mac. Only `statusReset` is read; without the file the mode stays `first key`.
 
 ### Added
 

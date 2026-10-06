@@ -64,6 +64,7 @@ is the `.claude/rules` file that owns the design.
   attach the session right after it, which is how a p4linux offload gets its Mac row.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
+  `session type` clears a status by the `statusReset` in the server's own `settings.json`, read on every call.
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's
   `agtermctl` is the server's own CLI, and agterm-agents' `agtermctl` shim is gone.
   Design in `docs/plans/20260929-headless-origin-spec.md`, rules in `.claude/rules/headless-origin.md`.
