@@ -87,12 +87,19 @@ private struct NewSessionHostField: View {
             .onAppear { draft = model.settings.newSessionHost ?? "" }
             .onDisappear(perform: commit)
             .accessibilityIdentifier("settings-new-session-host")
-        if model.settings.newSessionHost != nil, model.settings.effectiveNewSessionHost == nil {
+        if draftIsUnusable {
             SettingHint("Not a usable ssh host, so new sessions stay on this Mac.")
                 .accessibilityIdentifier("settings-new-session-host-invalid")
         } else {
             SettingHint("The \"+\" buttons create the session there; ⌘N and New Local Session stay on this Mac.")
         }
+    }
+
+    /// Checked against the text as typed, not the saved value, so the note shows before the field commits.
+    private var draftIsUnusable: Bool {
+        var probe = model.settings
+        probe.newSessionHost = draft
+        return !draft.trimmingCharacters(in: .whitespaces).isEmpty && probe.effectiveNewSessionHost == nil
     }
 
     private func commit() {
