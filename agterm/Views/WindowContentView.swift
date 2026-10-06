@@ -82,6 +82,8 @@ struct WindowContentView: View {
     @State var notificationBadgeEnabled: Bool = WindowContentView.resolvedNotificationBadgeEnabled()
     /// The title-bar / sidebar-footer chrome the user hid in Settings ▸ Interface, read by `shows(_:)`.
     @State var hiddenInterfaceElements: Set<InterfaceElement> = WindowContentView.resolvedHiddenInterfaceElements()
+    /// The Settings new-session host, mirrored because `AppActions` is not observable; see `bottomBar`.
+    @State var newSessionHost: String?
     /// Whether the recent-sessions popover (the mouse form of the Ctrl-Tab switcher) is shown, anchored on
     /// the title-bar clock button. Non-private so `+RecentSessions`'s button/rows can toggle it.
     @State var recentSessionsShown = false
@@ -776,7 +778,15 @@ struct WindowContentView: View {
 
             if shows(.newSession) {
                 Menu {
-                    Button("New Session") { actions.newSession() }
+                    Button("New Session") {
+                        if let workspace = store.currentWorkspaceID { actions.newSessionFromButton(workspaceID: workspace, in: store) }
+                    }
+                    .disabled(RemoteCreatePending.shared.contains(windowID))
+                    if newSessionHost != nil {
+                        Button("New Local Session") {
+                            if let workspace = store.currentWorkspaceID { actions.newLocalSession(workspaceID: workspace, in: store) }
+                        }
+                    }
                     Button("Open Directory…") { actions.openDirectory() }
                 } label: {
                     Image(systemName: "plus.rectangle")
@@ -788,7 +798,7 @@ struct WindowContentView: View {
                 .tint(chromeText)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help(helpHint("New Session", .newSession))
+                .help(newSessionHost.map { "New Session on \($0)" } ?? helpHint("New Session", .newSession))
                 .accessibilityLabel("Add session")
                 .accessibilityIdentifier("add-session")
             }
@@ -845,6 +855,11 @@ struct WindowContentView: View {
         .foregroundStyle(chromeText)
         // no explicit background: the sidebar is transparent (the window's terminal color shows through),
         // so a `.bar` material here would paint a mismatched darker strip.
+        // here, not on the root body chain, which is at the type checker's limit (see `FullscreenEdgeObserver`)
+        .onAppear { newSessionHost = actions.settingsModel?.settings.effectiveNewSessionHost }
+        .onReceive(NotificationCenter.default.publisher(for: .agtermNewSessionHostChanged)) { _ in
+            newSessionHost = actions.settingsModel?.settings.effectiveNewSessionHost
+        }
     }
 
 }

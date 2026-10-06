@@ -1355,6 +1355,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   With a host, the Mac runs the far side's bare form over ssh (`RemoteSession.newCommand`, each value one
   `--flag=value` word) and then attaches the returned id exactly as `zmx.attach` does; a far refusal comes
   back unchanged and creates no row. It waits on the network off the accept thread like `zmx.attach`.
+  `--workspace` (id, prefix or `active`, never a name) places the row; it needs a host and never reaches the
+  far side. With it the window and workspace are pinned BEFORE the round trip, so a window brought forward
+  meanwhile cannot redirect the row; without it the window still resolves after discovery. It appends, as
+  every socket attach does: only the "+" path applies `newSessionPlacement` ([[settings]]).
 - `zmx.tree`'s host is OPTIONAL, and that is the whole design. Bare, it builds this app's own attachable
   sessions across every open window; with a host, it sshes once and runs the BARE form on the far side.
   So the far-side operation is an ordinary public command a user can run and test on its own, there is no

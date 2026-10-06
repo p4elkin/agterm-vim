@@ -116,6 +116,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         // flag and the exception set must re-run reconcile.
         _ = store.hideParked
         _ = store.parkedRevealedWorkspaceIDs
+        _ = RemoteCreatePending.shared.windows
         context.coordinator.reconcile()
         context.coordinator.syncSelection()
     }
@@ -400,6 +401,14 @@ struct WorkspaceSidebar: NSViewRepresentable {
             let parkedCount: Int
             /// The remote row's stream notice, nil while it is up or for a local row.
             var presentationNotice: String?
+            /// A "+" remote create is in flight for this window; workspace rows only, so their "+" dims.
+            var newSessionPending = false
+
+            func differsOnlyInNewSessionPending(from other: RowContent) -> Bool {
+                var marked = self
+                marked.newSessionPending = other.newSessionPending
+                return newSessionPending != other.newSessionPending && marked == other
+            }
 
             func differsOnlyInLabel(from other: RowContent) -> Bool {
                 var relabeled = self
@@ -502,6 +511,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 lastRowContent[id] = content
                 guard let node = nodeCache[id] else { return }
                 if node.kind == .session, previous?.differsOnlyInLabel(from: content) == true, relabel(node, content.label) { return }
+                // in place, because a reload re-runs the hover reset and would hide the "+" under the pointer
+                if previous?.differsOnlyInNewSessionPending(from: content) == true,
+                   markNewSessionPending(node, content.newSessionPending) { return }
                 outline.reloadItem(node)
             }
             for workspace in store.workspaces {
@@ -524,6 +536,17 @@ struct WorkspaceSidebar: NSViewRepresentable {
             return true
         }
 
+        /// Dims or restores a workspace row's live "+"; false when the row has no cell.
+        private func markNewSessionPending(_ node: SidebarNode, _ pending: Bool) -> Bool {
+            guard let outline = outlineView else { return false }
+            let row = outline.row(forItem: node)
+            guard row >= 0, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView
+            else { return false }
+            cell.newSessionPending = pending
+            cell.setColors(selected: outline.selectedRowIndexes.contains(row))
+            return true
+        }
+
         /// Records every row's current visible content, keyed by id, so the next reconcile can diff it.
         private func snapshotRowContent() {
             var snapshot: [UUID: RowContent] = [:]
@@ -543,8 +566,11 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        unseen: effectiveUnseen(displayedUnseen(for: workspace)),
                        indicator: AgentIndicator(), flagged: false, parked: false,
                        focusMember: store.focusedWorkspaceIDs.contains(workspace.id),
-                       parkedCount: store.parkedCount(in: workspace) ?? 0)
+                       parkedCount: store.parkedCount(in: workspace) ?? 0, newSessionPending: newSessionPending)
         }
+
+        /// Whether this window has a "+" remote create in flight (`RemoteCreatePending`).
+        var newSessionPending: Bool { RemoteCreatePending.shared.contains(actions.library.windowID(for: store)) }
 
         /// The visible content of a session row. One builder shared by `reloadChangedContentRows` and
         /// `snapshotRowContent` so the snapshot and the diff can't drift. Both callers pass the owning

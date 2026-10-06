@@ -316,6 +316,12 @@ final class SettingsModel {
     func setNewSessionCustomDirectory(_ value: String?) { settings.newSessionCustomDirectory = value; try? settingsStore.save(settings) }
     /// setNewSessionPlacement persists placement for future session creation; nil restores `end`.
     func setNewSessionPlacement(_ value: String?) { settings.newSessionPlacement = value; try? settingsStore.save(settings) }
+    func setNewSessionHost(_ value: String?) {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.newSessionHost = trimmed?.isEmpty == false ? trimmed : nil
+        try? settingsStore.save(settings)
+        NotificationCenter.default.post(name: .agtermNewSessionHostChanged, object: nil)
+    }
     /// Persist whether a GUI session close first asks for confirmation (nil = off). `AppActions` reads it on
     /// demand at close time, so it just saves.
     func setConfirmCloseSession(_ value: Bool?) { settings.confirmCloseSession = value; try? settingsStore.save(settings) }

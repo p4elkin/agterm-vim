@@ -65,6 +65,13 @@ final class AppActions {
     /// for a banner-clicked session whose window had closed. Nil before the scene `.task` runs.
     var openWindow: ((WindowInfo.ID) -> Void)?
 
+    /// Creates a session on a host for the "+" controls as (host, workspace, store, selection at the click);
+    /// wired by `agtermApp` to the control server, which is built after `actions`. Nil until the scene `.task` runs.
+    var createRemoteSession: ((String, UUID, AppStore, UUID?) async -> RemoteCreateOutcome)?
+
+    /// Shows a failed "+" remote create as (title, message, window). Nil uses a sheet on that window.
+    var presentRemoteCreateFailure: ((String, String, UUID) -> Void)?
+
     /// The settings model, holding the parsed keymap whose custom commands feed the action palette. It and
     /// `customCommandRunner` are built AFTER `actions` in `agtermApp.init`, so both are wired from the scene
     /// `.task` rather than passed to `init(library:)` — an init-order break. Nil until that `.task` runs.
@@ -140,7 +147,10 @@ final class AppActions {
     /// The cwd for a new session: the new-session-directory setting (home / the current session's cwd / a
     /// fixed custom dir) resolved against the active session's focused-pane cwd, home when `settingsModel`
     /// isn't wired. Read as the `addSession` argument, so it captures the cwd BEFORE the new session exists.
-    func resolvedNewSessionCwd() -> String {
+    func resolvedNewSessionCwd() -> String { resolvedNewSessionCwd(in: store) }
+
+    /// The same, against a given window's active session rather than the frontmost one.
+    func resolvedNewSessionCwd(in store: AppStore?) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let current = store?.activeSession.map { $0.localWorkingDirectory(reported: $0.focusedCwd, homeDirectory: home) }
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home

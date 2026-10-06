@@ -142,6 +142,9 @@ extension WorkspaceSidebar.Coordinator {
             let newSession = NSMenuItem(title: "New Session", action: #selector(menuNewSession(_:)), keyEquivalent: "")
             newSession.target = self
             newSession.representedObject = node
+            // built fresh per right-click with autoenable off, so no `validateMenuItem`; an open menu keeps
+            // the state it opened with.
+            newSession.isEnabled = !newSessionPending
             menu.addItem(newSession)
             let openSession = NSMenuItem(title: "Open Directory…", action: #selector(menuOpenSession(_:)), keyEquivalent: "")
             openSession.target = self
@@ -244,7 +247,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuNewSession(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
-        addNewSession(toWorkspace: node.id)
+        actions.newSessionFromButton(workspaceID: node.id, in: store)
     }
 
     /// Inline "+" button on a workspace row, the right-click "New Session" action. The button carries no
@@ -256,7 +259,7 @@ extension WorkspaceSidebar.Coordinator {
         guard let outline = outlineView else { return }
         let row = outline.row(for: sender)
         guard row >= 0, let node = outline.item(atRow: row) as? SidebarNode, node.kind == .workspace else { return }
-        addNewSession(toWorkspace: node.id)
+        actions.newSessionFromButton(workspaceID: node.id, in: store)
     }
 
     @objc private func menuDeleteWorkspace(_ sender: NSMenuItem) {
@@ -284,13 +287,6 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuOpenSession(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         openDirectoryAndAddSession(toWorkspace: node.id)
-    }
-
-    /// addNewSession shares the directory and placement settings of `AppActions.newSession()`
-    /// with the workspace row's New Session and "+".
-    private func addNewSession(toWorkspace workspaceID: UUID) {
-        addSession(toWorkspace: workspaceID, cwd: actions.resolvedNewSessionCwd(),
-                   at: actions.resolvedNewSessionIndex(in: workspaceID, store: store))
     }
 
     /// Adds a session to `workspaceID` at `cwd` and selects it; a nil `index` appends.

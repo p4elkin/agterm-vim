@@ -201,16 +201,19 @@ public struct ControlSessionCreateOptions: Equatable, Sendable {
     }
 }
 
-/// Creation on the origin; the destination window belongs to the local attach, not these options.
+/// Creation on the origin, plus where the local attach puts the row. `workspace` is local only and never
+/// reaches the origin; the destination window still belongs to the attach.
 public struct ControlZmxNewOptions: Equatable, Sendable {
     public let name: String?
     public let command: String?
     public let cwd: String?
+    public let workspace: String?
 
-    public init(name: String? = nil, command: String? = nil, cwd: String? = nil) {
+    public init(name: String? = nil, command: String? = nil, cwd: String? = nil, workspace: String? = nil) {
         self.name = name
         self.command = command
         self.cwd = cwd
+        self.workspace = workspace
     }
 }
 

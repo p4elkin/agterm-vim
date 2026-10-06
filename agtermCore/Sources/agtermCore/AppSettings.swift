@@ -327,6 +327,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var newSessionCustomDirectory: String?
     /// newSessionPlacement stores a `NewSessionPlacement` raw value; nil means `end`.
     public var newSessionPlacement: String?
+    /// The ssh host a "+" new-session button creates its session on; nil = this Mac. Read through
+    /// `effectiveNewSessionHost`. No control command sets or reads it, like the two fields above.
+    public var newSessionHost: String?
     /// Whether a GUI session close (⌘W, the File/palette Close Session, the sidebar row's Close) confirms
     /// first; nil = off. Read on demand; the control channel's `session.close` never prompts.
     public var confirmCloseSession: Bool?
@@ -390,7 +393,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 blockedStatusSoundName: String? = nil, statusReset: String? = nil, rightClickPaste: Bool? = nil,
                 workspaceRowClickExpands: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
-                newSessionPlacement: String? = nil,
+                newSessionPlacement: String? = nil, newSessionHost: String? = nil,
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, recencyDwell: String? = nil,
@@ -435,6 +438,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
         self.newSessionPlacement = newSessionPlacement
+        self.newSessionHost = newSessionHost
         self.confirmCloseSession = confirmCloseSession
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
         self.autoFollowAttention = autoFollowAttention
@@ -502,6 +506,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public var effectiveNewSessionPlacement: NewSessionPlacement {
         newSessionPlacement.flatMap(NewSessionPlacement.init(rawValue:)) ?? .end
+    }
+
+    /// The trimmed `newSessionHost`, or nil when it is blank or a value `zmx.new` would refuse.
+    public var effectiveNewSessionHost: String? {
+        guard let host = newSessionHost?.trimmingCharacters(in: .whitespacesAndNewlines),
+              RemoteSession.isPlain(host), !host.hasPrefix("-") else { return nil }
+        return host
     }
 
     /// The resolved cursor shape, or nil when unset OR when the stored raw name is one this version does
