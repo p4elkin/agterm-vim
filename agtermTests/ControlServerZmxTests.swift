@@ -724,6 +724,21 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertTrue(window.firstResponder === kept)
     }
 
+    func testButtonCreateComparesAgainstTheSelectionAtTheClick() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let first = try XCTUnwrap(store.selectedSessionID)
+        let second = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp", select: false))
+        store.selectSession(second.id)
+        let server = makeServer(list: "", remoteRunner: newThenTree())
+
+        let outcome = await server.createRemoteSessionForButton(host: "buildbox", workspace: workspace, in: store,
+                                                                selectionAtClick: first)
+
+        guard case .attached = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(store.selectedSessionID, second.id)
+    }
+
     func testButtonCreateWhileAPaletteHoldsTheSelectionInsertsUnselected() async throws {
         let store = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
