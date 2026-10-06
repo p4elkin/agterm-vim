@@ -20,6 +20,12 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Changed
+
+- Upstream's `Open links in` setting decides who opens a web link clicked in a pane. `Browser`, the default,
+  keeps `agterm-open-link` and its Jira and merge request views; `Session overlay` shows every web link as a
+  page over the session instead. File paths, forge refs and xchat links work the same under both.
+
 ### Fixed
 
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the

@@ -881,6 +881,10 @@ surface=$(agtermctl tree --json |
 agtermctl surface zoom show --target "$surface"
 agtermctl surface zoom hide --target "$surface"
 
+# Look at the session under a running overlay and come back; the overlay keeps running meanwhile.
+# The explicit id matters: with an overlay open, a bare `surface zoom` zooms the overlay itself.
+agtermctl surface zoom toggle --target "surface:$sid:left"
+
 # Read the current zoom back (the zoomed surface's control id; null when nothing is zoomed).
 agtermctl tree --json | jq -r '.result.tree.zoomedSurface'
 ```

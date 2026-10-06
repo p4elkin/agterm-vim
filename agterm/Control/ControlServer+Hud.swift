@@ -207,9 +207,10 @@ extension ControlServer {
     /// paneMetrics measures the cell from `fontSize`, the HUD surface's own. A scoped call reads the deck-frame cache, falling back to its
     /// deck-hosted surface before the preference arrives; zoom and dashboard hosts are excluded. An unscoped
     /// call unions the live pane frames, so a hidden focused split contributes its one maximized surface.
-    /// libghostty reports no cell metrics; an unmeasured session takes the cap.
+    /// An unmeasured session takes the cap.
     func paneMetrics(for session: Session, pane: OverlayPane? = nil, fontSize: Double) -> PaneMetrics {
-        let cell = Self.cellSize(family: settingsModel.settings.fontFamily, size: fontSize)
+        let cell = liveCellSize(of: session, fontSize: fontSize)
+            ?? Self.cellSize(family: settingsModel.settings.fontFamily, size: fontSize)
         let size: (width: Double, height: Double)
         if let pane, let frame = session.hudPaneFrames[pane] {
             size = (frame.width, frame.height)
@@ -234,6 +235,21 @@ extension ControlServer {
                            paneWidth: size.width, paneHeight: size.height,
                            paddingWidth: Self.windowPadding.horizontal,
                            paddingHeight: Self.windowPadding.vertical)
+    }
+
+    /// liveCellSize is the cell libghostty really draws for this session, scaled to `fontSize` when the HUD
+    /// has its own. The estimate below measures the Settings font, which is not the drawn one when none is
+    /// set there or a user `ghostty.conf` names another, and a short cell budgets rows the panel cannot hold.
+    ///
+    /// The scale divides by the size THAT surface is drawn at, read from it: `session.fontSize` carries
+    /// neither the dashboard's override nor a split pane's zoom.
+    func liveCellSize(of session: Session, fontSize: Double) -> (width: Double, height: Double)? {
+        for case let view as GhosttySurfaceView in [session.surface, session.splitSurface] {
+            guard let cell = view.cellSize(), let drawn = view.currentFontSize() else { continue }
+            let scale = fontSize / drawn
+            return (width: cell.width * scale, height: cell.height * scale)
+        }
+        return nil
     }
 
     /// One cell of `family` at `size`: the horizontal advance of a digit (every glyph advances the same in

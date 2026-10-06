@@ -181,6 +181,20 @@ extension AppStore {
         setAgentIndicator(AgentIndicator(), forSession: session.id)
     }
 
+    /// clearPaneOwnedState drops what the program in `pane` owned when its shell is replaced in place: its
+    /// status, and a HUD, ask or pane overlay anchored to it. The pane, its identity and its persisted pins stay.
+    public func clearPaneOwnedState(_ sessionID: UUID, pane: StatusPane) {
+        guard let session = session(withID: sessionID), pane != .scratch else { return }
+        let identity = pane == .left ? session.paneIdentity : session.splitPaneIdentity
+        if let identity, session.hudPaneIdentity == identity { closeHud(sessionID) }
+        if let identity, session.askPaneIdentity == identity { session.cancelPendingAsk() }
+        let slot: OverlayPane = pane == .left ? .left : .right
+        closePaneOverlay(sessionID, pane: slot)
+        // one handed to another Mac lives in the remote slot only, and the pane's kill does not end its job
+        closeRemoteOverlay(sessionID, pane: slot)
+        clearIndicatorOwnedByPane(pane, of: session)
+    }
+
     // drops a departing pane's override and its text file; call it before the identity naming the file goes.
     private func dropPaneBackground(_ pane: StatusPane, of session: Session) {
         if session.paneBackgrounds[pane]?.kind == .text, let key = session.backgroundFileKey(for: pane) {
@@ -374,8 +388,8 @@ extension AppStore {
     /// pane hosts both variants), so only the layout re-flows and the program never re-spawns. False with no
     /// open overlay. A HUD in the slot takes the narrower `HudLayout.clampSizePercent` bound instead, so no
     /// resize path can grow a message until it covers the session it is about, and the percent reaches its
-    /// WIDTH alone: its height stays measured from the message, which a resize does not change (the text
-    /// wraps at `HudLayout.maxColumns`, not at the panel).
+    /// WIDTH alone: its height stays as measured when the message was posted. A markdown message rewraps at
+    /// the new width, so one made narrower can need more rows than that height and end in `… N more`.
     @discardableResult public func resizeOverlay(_ sessionID: UUID, sizePercent: Int?) -> Bool {
         guard let session = session(withID: sessionID), session.overlayActive else { return false }
         let hud = session.hudActive

@@ -267,6 +267,9 @@ paths:
 - Open attention through `show_attention` (Ctrl-Shift-I), Navigate > Go to Attention, or Show Attention
   in the action palette. The titlebar bell opens a popover, not this palette. Palette opening is
   keep-in-sync exempt.
+- Ctrl-J/Ctrl-K move the selection through `CommandPalette.selectionStep`, which resolves the key with
+  `chordKey` from `NSApp.currentEvent`; `KeyPress` carries only the typed character, which is not `j`/`k`
+  on a non-Latin layout. See [[keymap]] for the layout rule.
 - Keep the next-runloop `fieldFocused = true` retry: button-opened palettes otherwise lose first responder,
   even though no current titlebar button uses this path.
 - Rename actions post begin-edit notifications; the Coordinator edits the selected row asynchronously after

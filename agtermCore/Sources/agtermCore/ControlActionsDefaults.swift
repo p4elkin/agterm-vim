@@ -52,6 +52,10 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("browser.clear"))
     }
 
+    func linkOpenMode(_: LinkOpenMode?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("browser.links"))
+    }
+
     func runCustomCommand(name _: String, target _: String?, window _: String?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("keymap.run"))
     }
@@ -144,6 +148,11 @@ public extension ControlActions {
 
     func swapSessionPanes(_: String?, window _: String?) async -> ControlResponse {
         ControlResponse(ok: false, error: "session.swap is not supported by this host")
+    }
+
+    func restartSessionPane(_: String?, window _: String?,
+                            options _: ControlSessionRestartOptions) async -> ControlResponse {
+        ControlResponse(ok: false, error: "session.restart is not supported by this host")
     }
 
     func takeSessionLead(_: String?, window _: String?, pane _: StatusPane?) -> ControlResponse {
