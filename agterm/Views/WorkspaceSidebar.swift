@@ -404,6 +404,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
             /// A "+" remote create is in flight for this window; workspace rows only, so their "+" dims.
             var newSessionPending = false
 
+            func differsOnlyInNewSessionPending(from other: RowContent) -> Bool {
+                var marked = self
+                marked.newSessionPending = other.newSessionPending
+                return newSessionPending != other.newSessionPending && marked == other
+            }
+
             func differsOnlyInLabel(from other: RowContent) -> Bool {
                 var relabeled = self
                 relabeled.label = other.label
@@ -505,6 +511,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 lastRowContent[id] = content
                 guard let node = nodeCache[id] else { return }
                 if node.kind == .session, previous?.differsOnlyInLabel(from: content) == true, relabel(node, content.label) { return }
+                // in place, because a reload re-runs the hover reset and would hide the "+" under the pointer
+                if previous?.differsOnlyInNewSessionPending(from: content) == true,
+                   markNewSessionPending(node, content.newSessionPending) { return }
                 outline.reloadItem(node)
             }
             for workspace in store.workspaces {
@@ -524,6 +533,17 @@ struct WorkspaceSidebar: NSViewRepresentable {
                   let field = cell.textField else { return false }
             field.stringValue = label
             cell.needsLayout = true
+            return true
+        }
+
+        /// Dims or restores a workspace row's live "+"; false when the row has no cell.
+        private func markNewSessionPending(_ node: SidebarNode, _ pending: Bool) -> Bool {
+            guard let outline = outlineView else { return false }
+            let row = outline.row(forItem: node)
+            guard row >= 0, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView
+            else { return false }
+            cell.newSessionPending = pending
+            cell.setColors(selected: false)
             return true
         }
 

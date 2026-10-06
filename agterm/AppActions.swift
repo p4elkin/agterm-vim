@@ -147,7 +147,10 @@ final class AppActions {
     /// The cwd for a new session: the new-session-directory setting (home / the current session's cwd / a
     /// fixed custom dir) resolved against the active session's focused-pane cwd, home when `settingsModel`
     /// isn't wired. Read as the `addSession` argument, so it captures the cwd BEFORE the new session exists.
-    func resolvedNewSessionCwd() -> String {
+    func resolvedNewSessionCwd() -> String { resolvedNewSessionCwd(in: store) }
+
+    /// The same, against a given window's active session rather than the frontmost one.
+    func resolvedNewSessionCwd(in store: AppStore?) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let current = store?.activeSession.map { $0.localWorkingDirectory(reported: $0.focusedCwd, homeDirectory: home) }
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home

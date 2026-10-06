@@ -93,6 +93,37 @@ final class NewSessionButtonTests: XCTestCase {
         XCTAssertEqual(creates.count, 2)
     }
 
+    func testASuccessfulCreateReportsNothingAndClearsThePendingState() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let windowID = try XCTUnwrap(library.windowID(for: store))
+        let row = try XCTUnwrap(store.activeSession)
+        useHost { .attached(row) }
+
+        await actions.newSessionFromButton(workspaceID: workspace, in: store)?.value
+
+        XCTAssertTrue(failures.isEmpty)
+        XCTAssertFalse(RemoteCreatePending.shared.contains(windowID))
+    }
+
+    func testAWindowClosedDuringTheCreateGetsNoAlert() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let windowID = try XCTUnwrap(library.windowID(for: store))
+        library.newWindow(name: "survivor")
+        useHost { await self.suspendedAnswer() }
+
+        let task = actions.newSessionFromButton(workspaceID: workspace, in: store)
+        await settle()
+        library.closeWindow(windowID)
+        pendingCreate?.resume(returning: .refused("down"))
+        pendingCreate = nil
+        await task?.value
+
+        XCTAssertTrue(failures.isEmpty)
+        XCTAssertFalse(RemoteCreatePending.shared.contains(windowID))
+    }
+
     func testFailuresReachThePresenterWithTheirOwnTitles() async throws {
         let store = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
@@ -124,9 +155,11 @@ final class NewSessionButtonTests: XCTestCase {
         XCTAssertTrue(creates.isEmpty)
     }
 
-    func testABackgroundWindowsButtonCreatesInThatWindow() throws {
+    func testABackgroundWindowsButtonCreatesInThatWindowFromItsOwnDirectory() throws {
+        settings.setNewSessionDirectory(AppSettings.NewSessionDirectory.currentSession.rawValue)
         let background = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(background.currentWorkspaceID)
+        let own = try XCTUnwrap(background.addSession(toWorkspace: workspace, cwd: NSTemporaryDirectory()))
         let before = background.workspaces.flatMap(\.sessions).count
         library.newWindow(name: "front")
         XCTAssertFalse(library.activeStore === background)
@@ -134,6 +167,10 @@ final class NewSessionButtonTests: XCTestCase {
         actions.newSessionFromButton(workspaceID: workspace, in: background)
 
         XCTAssertEqual(background.workspaces.flatMap(\.sessions).count, before + 1)
+        let created = try XCTUnwrap(background.activeSession)
+        XCTAssertNotEqual(created.id, own.id)
+        XCTAssertEqual(created.initialCwd, own.localWorkingDirectory(reported: own.focusedCwd,
+                                                                    homeDirectory: NSHomeDirectory()))
     }
 
     func testTheSidebarPlusIsDisabledWhileACreateIsPending() async throws {
@@ -142,10 +179,12 @@ final class NewSessionButtonTests: XCTestCase {
         buildSidebar(for: store)
         useHost { await self.suspendedAnswer() }
 
+        try plusButton(for: workspace).superview.flatMap { $0 as? SidebarCellView }?.setAddButtonVisible(true)
         let task = actions.newSessionFromButton(workspaceID: workspace, in: store)
         await settle()
         coordinator?.reconcile()
         XCTAssertEqual(try plusButton(for: workspace).isEnabled, false)
+        XCTAssertEqual(try plusButton(for: workspace).isHidden, false, "the hovered + dims, it does not vanish")
         XCTAssertEqual(try newSessionMenuItem(for: workspace).isEnabled, false)
 
         pendingCreate?.resume(returning: .refused("down"))

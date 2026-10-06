@@ -24,7 +24,10 @@ extension AppActions {
         guard RemoteCreatePending.shared.begin(windowID) else { return nil }
         return Task { @MainActor in
             defer { RemoteCreatePending.shared.end(windowID) }
-            switch await createRemoteSession(host, workspaceID, store) {
+            let outcome = await createRemoteSession(host, workspaceID, store)
+            // a window closed during the round trip has nowhere to show the failure
+            guard library.windowID(for: store) == windowID else { return }
+            switch outcome {
             case .attached:
                 break
             case .refused(let error):
@@ -38,7 +41,7 @@ extension AppActions {
 
     func newLocalSession(workspaceID: UUID, in store: AppStore) {
         guard uiActionsEnabled(for: library.windowID(for: store)),
-              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(),
+              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(in: store),
                                              at: resolvedNewSessionIndex(in: workspaceID, store: store))
         else { return }
         // a user-initiated selection on THIS window's store: note activity so it buys the full idle grace
@@ -50,8 +53,8 @@ extension AppActions {
 
     private func reportRemoteCreateFailure(_ title: String, _ message: String, _ windowID: UUID) {
         if let presentRemoteCreateFailure { return presentRemoteCreateFailure(title, message, windowID) }
-        // a window closed during the round trip has nowhere to show the sheet
-        guard let window = WindowRegistry.shared.window(for: windowID), window.isVisible else { return }
+        // a minimized window shows the sheet when it is restored
+        guard let window = WindowRegistry.shared.window(for: windowID) else { return }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
