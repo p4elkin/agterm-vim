@@ -119,7 +119,7 @@ final class ControlServerStatusSoundTests: XCTestCase {
         gate.release.signal()
         let response = await pending.value
         XCTAssertFalse(response.ok)
-        XCTAssertEqual(response.error, "blocked status owned by pane right (write from that pane to change it)")
+        XCTAssertEqual(response.error, "status owned by pane right (write from that pane to change it)")
         XCTAssertEqual(session.agentIndicator.status, .blocked)
         await assertNoPlayback()
     }

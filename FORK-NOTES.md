@@ -332,6 +332,8 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 
 - `agtermctl session status <state> --note TEXT` — a one-line reason on the agent status, read back as
   `statusNote` on `tree` and `note` on the `status` event, far rows included. `control-api.md` has the rules.
+- A `completed` written without `--auto-reset` is owned by its pane like a `blocked`: another pane's
+  non-`blocked` write is refused with `status owned by pane <pane>`. `control-api.md` has the rules.
 - `agtermctl session mark` and `session bookmark add|list|go|remove` — the bookmarks above.
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.

@@ -138,7 +138,7 @@ public final class HeadlessActions: ControlActions {
                                            autoReset: update.autoReset ?? false, color: update.color,
                                            shape: update.shape, statusPane: pane, note: update.note)
             if case .refused(let owner) = store.applyControlStatus(indicator, forSession: session.id) {
-                return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue)")
+                return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue)")
             }
             return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
         }

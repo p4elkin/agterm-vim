@@ -976,10 +976,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   mixed versions, and `applyRemoteStatus` drops a wire note that fails the same check.
 - Pane is left/right/scratch, nil meaning left. It controls pane-scoped keystroke clearing and GUI
   blocked/completed reveal. Control attention navigation changes selection only.
-- Pane also decides PRECEDENCE while a session is blocked: a write from another pane that is neither
-  itself `blocked` is refused whole with `blocked status owned by pane <pane>`, changing nothing and
-  playing no sound. A hook's `active` must not erase the other pane's block. `blocked` from a second pane
-  replaces (it is a real second request), `idle` is NOT exempt (the bundled hooks emit it unprompted from
+- Pane also decides PRECEDENCE while a session is blocked, or holds a `completed` written without
+  `--auto-reset` (an open question): a write from another pane that is not itself `blocked` is refused
+  whole with `status owned by pane <pane>`, changing nothing and playing no sound.
+  A hook's `active` must not erase the other pane's block. `blocked` from a second pane replaces (it is a real second request), `idle` is NOT exempt (the bundled hooks emit it unprompted from
   their own pane), and same-pane writes are unrestricted, so a
   single-pane session behaves exactly as before. `session.type` into the owning pane clears the block like a
   keystroke, an empty payload excepted. Two simultaneous blocks still collapse to one; see [[notifications]].
@@ -1730,7 +1730,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `overlay.result` reports how it ended. `overlay.resize` reaches only the stream the job was handed to and
   answers `the viewer showing this overlay is gone` without it. Both are best effort: what the viewer applied
   is not read back. `overlay.text` and `overlay.copy` refuse with `overlay is shown on another Mac`. Read the
-  reservation back as `remoteOverlays` (`pane`, `sizePercent`) on the origin's session node.
+  reservation back as `remoteOverlays` (`pane`, `sizePercent`, `job`, `command`) on the origin's session node.
+  `command` is the open's string byte for byte, so a launcher can recognise its own overlay by comparing it.
 - Losing the presenter ends its overlays for good: no later stream adopts one. An unclaimed job is cancelled,
   a held surface's slot is freed, and a running job keeps its slot until its helper reports, which the
   helper does when the ssh terminal goes. On the viewer a held surface closes at once and a running one

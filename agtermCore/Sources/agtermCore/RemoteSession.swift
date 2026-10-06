@@ -85,7 +85,8 @@ public enum RemoteSession {
     public static func newCommand(host: String, options: ControlZmxNewOptions, connectTimeout: Int = 5) throws -> [String] {
         try validate(host: host)
         let flags = [("name", options.name), ("command", options.command), ("cwd", options.cwd)]
-            .compactMap { flag, value in value.map { "--\(flag)=\($0)" } }
+            // `--flag=` with nothing after it is a missing value to the far side's parser, not an empty one
+            .compactMap { flag, value in value.flatMap { $0.isEmpty ? nil : "--\(flag)=\($0)" } }
         let chain = cliPathPrefix + " && agtermctl " + CommandRestore.shellQuotedLine(["zmx", "new", "--json"] + flags)
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
         return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false) + [remote]

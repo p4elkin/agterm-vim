@@ -184,7 +184,7 @@ struct AppStoreRemoteOverlayTests {
             job: job, pane: nil, sizePercent: 60, backgroundColor: "#102030", follow: true, wait: true)))
         #expect(session.remoteOverlays.slot(nil) == RemoteOverlaySlot(job: job, pane: nil,
                                                                       owner: hub.presenterGeneration(session: session.id),
-                                                                      sizePercent: 60, wait: true))
+                                                                      sizePercent: 60, wait: true, command: "revdiff"))
         #expect(!session.overlayActive)
         #expect(!session.programOverlayActive)
         #expect(jobs.job(job)?.context == Self.context)
@@ -476,15 +476,29 @@ struct AppStoreRemoteOverlayTests {
 
     @Test func theTreeReportsTheReservedSlotAndNoLocalOverlay() throws {
         let (session, _) = try origin(split: true)
-        _ = open(session, size: 50)
-        _ = open(session, pane: .right)
+        let whole = try job(of: open(session, size: 50))
+        let right = try job(of: open(session, pane: .right))
 
         let node = try #require(store.controlTree().workspaces[0].sessions.first { $0.id == session.id.uuidString })
 
-        #expect(node.remoteOverlays == [ControlRemoteOverlayNode(pane: nil, sizePercent: 50),
-                                        ControlRemoteOverlayNode(pane: "right", sizePercent: nil)])
+        #expect(node.remoteOverlays == [
+            ControlRemoteOverlayNode(pane: nil, sizePercent: 50, job: whole, command: "revdiff"),
+            ControlRemoteOverlayNode(pane: "right", sizePercent: nil, job: right, command: "revdiff"),
+        ])
         #expect(!node.overlay)
         #expect(node.paneOverlays == nil)
+    }
+
+    @Test func theTreeReportsTheCommandExactlyAsTheOpenGaveIt() throws {
+        let (session, _) = try origin(split: true)
+        let command = #""$HOME/.local/bin/agterm-chat-reader" --row 'A B' --room 'it''s  "x"'"#
+        _ = store.openRemoteOverlay(session.id, options: ControlSessionOverlayOpenOptions(
+            command: command, cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, follow: true, pane: .right),
+                                    context: Self.context)
+
+        let node = try #require(store.controlTree().workspaces[0].sessions.first { $0.id == session.id.uuidString })
+
+        #expect(node.remoteOverlays?.first?.command == command)
     }
 
     @Test func theTreeOmitsRemoteOverlaysWhenNoneIsHeld() throws {

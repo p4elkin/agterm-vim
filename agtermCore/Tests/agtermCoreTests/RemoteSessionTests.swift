@@ -86,6 +86,17 @@ struct RemoteSessionTests {
         #expect(try fake.calls() == [["zmx", "new", "--json"]])
     }
 
+    @Test func newOmitsAnEmptyValueTheFarSideWouldReadAsMissing() throws {
+        let fake = try FakeRemote()
+        defer { fake.cleanUp() }
+        try fake.installAgtermctl(exitCodes: [0])
+        let options = ControlZmxNewOptions(name: "", command: "", cwd: "")
+
+        _ = try fake.runRemote(RemoteSession.newCommand(host: "buildbox", options: options))
+
+        #expect(try fake.calls() == [["zmx", "new", "--json"]])
+    }
+
     @Test func newRefusesAHostileHost() {
         #expect(throws: RemoteSession.InvocationError.invalidHost) {
             try RemoteSession.newCommand(host: "-oProxyCommand=touch /tmp/pwned", options: ControlZmxNewOptions())
