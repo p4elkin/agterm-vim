@@ -28,6 +28,12 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- the "+" new-session buttons can create the session on another machine. Set Settings ▸ Sessions ▸ "New
+  sessions are created on" to a host such as `p4linux`, and the sidebar workspace "+", its "New Session"
+  item and the footer "New Session" create there and attach the row in the clicked workspace. The buttons
+  dim while it runs, and a failure shows an alert instead of quietly opening a local session. The footer
+  menu gains "New Local Session", and ⌘N stays local. `agtermctl zmx new HOST --workspace <id>` places a
+  scripted session the same way.
 - `agtermctl session overlay open --html <file>` works from a session on the headless origin. The
   server serves the file's folder (or `--cwd`) over HTTP on its Tailscale name, under a random token, and
   the presenting Mac loads it as a `--url` page, CSS and images included; reload re-reads the file.

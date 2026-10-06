@@ -34,6 +34,14 @@ paths:
   selection only when that lives in the destination workspace. Open Directory, folder drops, and
   `open -a agterm <dir>` keep appending; `session new` keeps its own `--after`/`--before` rules.
   Deliberate control exemption, like `newSessionDirectory`: no command sets or reads it.
+  A "+" remote create (below) reads it after the ssh round trip, in `ControlServer`, not at the click.
+- `newSessionHost` (fork; nil = this Mac) sends the "+" controls — the workspace row "+", its New Session
+  item and the footer New Session — to `AppActions.newSessionFromButton`, which creates on that host through
+  `ControlServer.createRemoteSessionForButton`. `effectiveNewSessionHost` drops a value `zmx.new` would
+  refuse. The footer then adds New Local Session; ⌘N, menus, palette and `session new` stay local.
+  `RemoteCreatePending` is both the one-create-per-window guard and what dims those controls, so the two
+  cannot drift. A failure is a sheet with no local fallback, which would hide a dead host. The field saves
+  on submit, focus loss and disappear, never per keystroke. Same control exemption as its siblings.
 - `sidebarFontSize` and `interfaceFontSize` are separate settings, both 9...20 default 13, read through
   `effectiveSidebarFontSize`/`effectiveInterfaceFontSize`. Neither falls back to the other: the sidebar
   is a density knob, the palette a readability one.
