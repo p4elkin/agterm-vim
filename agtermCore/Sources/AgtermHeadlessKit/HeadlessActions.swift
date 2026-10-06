@@ -8,6 +8,8 @@ public final class HeadlessActions: ControlActions {
     private let headless: Headless
     private let identity: AppIdentity
     private let hudClock: () -> Date
+    /// Read on every `session.type`, so an edited `statusReset` applies without a restart; nothing else in it is used.
+    private let settings: SettingsStore
     private struct HudAutoHide {
         let revision: UUID
         let deadline: Date
@@ -19,6 +21,7 @@ public final class HeadlessActions: ControlActions {
     public init(headless: Headless, installDirectory: URL, hudClock: @escaping () -> Date = Date.init) {
         self.headless = headless
         self.hudClock = hudClock
+        settings = SettingsStore(directory: URL(fileURLWithPath: headless.config.stateDirectory))
         let commit = (try? String(contentsOf: installDirectory.appendingPathComponent("BUILD"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         identity = AppIdentity(version: Headless.programVersion, recordedCommit: commit)
@@ -416,7 +419,7 @@ public final class HeadlessActions: ControlActions {
         if !options.text.isEmpty, let store = headless.library.store(forSession: lane.session),
            store.session(withID: lane.session)?.agentIndicator.clearedBy(
                pane: lane.pane, keystroke: InterruptKeystroke.classify(text: options.text),
-               reset: AppSettings().effectiveStatusReset) == true {
+               reset: settings.load().effectiveStatusReset) == true {
             store.setAgentIndicator(AgentIndicator(), forSession: lane.session)
         }
         return ControlResponse(ok: true, result: ControlResult(id: lane.session.uuidString))

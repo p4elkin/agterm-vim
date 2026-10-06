@@ -127,6 +127,9 @@ Only `zmx.tree` (async), `session.type` and `DaemonWatcher`'s listing run zmx of
 lane per daemon, and is never retried: the daemon may have queued input before failing. It is served, not
 forwarded to a Mac, because a session viewed only on a closed laptop, or made on p4linux and not attached yet,
 has no presenter while room delivery and the compact tools still type into it.
+Typed text clears a pane's `blocked` or `completed` status by `statusReset` in `<state dir>/settings.json`
+(`SettingsStore`), read on every call so an edit applies to the next one. It is the only key the server reads
+there, and a missing or unreadable file means `firstKey`. The Mac's own setting never reaches this server.
 
 ## The pane environment
 
