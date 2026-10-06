@@ -1647,7 +1647,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `overlay.result` reports how it ended. `overlay.resize` reaches only the stream the job was handed to and
   answers `the viewer showing this overlay is gone` without it. Both are best effort: what the viewer applied
   is not read back. `overlay.text` and `overlay.copy` refuse with `overlay is shown on another Mac`. Read the
-  reservation back as `remoteOverlays` (`pane`, `sizePercent`) on the origin's session node.
+  reservation back as `remoteOverlays` (`pane`, `sizePercent`, `job`, `command`) on the origin's session node.
+  `command` is the open's string byte for byte, so a launcher can recognise its own overlay by comparing it.
 - Losing the presenter ends its overlays for good: no later stream adopts one. An unclaimed job is cancelled,
   a held surface's slot is freed, and a running job keeps its slot until its helper reports, which the
   helper does when the ssh terminal goes. On the viewer a held surface closes at once and a running one

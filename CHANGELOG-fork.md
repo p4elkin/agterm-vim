@@ -30,6 +30,8 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- `tree` reports each held remote overlay's `job` and `command` in `remoteOverlays`, the command exactly as the
+  open received it, so a launcher can find the overlay it started on a headless row.
 - `agtermctl session overlay open --html <file>` works from a session on the headless origin. The
   server serves the file's folder (or `--cwd`) over HTTP on its Tailscale name, under a random token, and
   the presenting Mac loads it as a `--url` page, CSS and images included; reload re-reads the file.

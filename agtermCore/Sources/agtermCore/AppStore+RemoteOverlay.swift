@@ -37,7 +37,7 @@ extension AppStore {
         let job = jobs.register(session: sessionID, pane: pane, owner: owner, context: context)
         let size = pane == nil ? options.sizePercent.map { min(100, max(1, $0)) } : nil
         session.remoteOverlays.reserve(RemoteOverlaySlot(job: job, pane: pane, owner: owner, sizePercent: size,
-                                                              wait: options.wait))
+                                                              wait: options.wait, command: options.command))
         clearOverlayExitCode(pane, in: session)
         hub.sendToPresenter(.overlayRequest(PresentationOverlay(
             job: job, pane: identity.flatMap { $0 }.map { .identity($0) }, sizePercent: size, backgroundColor: options.backgroundColor,
@@ -138,7 +138,9 @@ extension AppStore {
     func remoteOverlayNodes(of session: Session) -> [ControlRemoteOverlayNode]? {
         let slots = session.remoteOverlays.slots
         guard !slots.isEmpty else { return nil }
-        return slots.map { ControlRemoteOverlayNode(pane: $0.pane?.rawValue, sizePercent: $0.sizePercent) }
+        return slots.map {
+            ControlRemoteOverlayNode(pane: $0.pane?.rawValue, sizePercent: $0.sizePercent, job: $0.job, command: $0.command)
+        }
     }
 
     private func localOverlayHolds(_ pane: OverlayPane?, in session: Session) -> Bool {

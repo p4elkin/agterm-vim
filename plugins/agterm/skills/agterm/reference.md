@@ -172,7 +172,7 @@ never whether the panes' ssh connections are),
 `presenters` (on an origin session: `mirrors`, how many streams mirror it without presenting, one per
 attached row and not per Mac, and `presenter: true` when one presents it; omitted when none does),
 `remoteOverlays` (on an origin session: the overlay slots a presenting Mac holds, each `{pane?,
-sizePercent?}`, while the session itself stays uncovered here; omitted when none is held),
+sizePercent?, job, command}`, `command` exactly as the open gave it, while the session itself stays uncovered here; omitted when none is held),
 `hasSplit` (whether a second pane exists at all, shown or hidden with ⌘D; omitted when there is none —
 read THIS to decide whether a session has a split, because a hidden split reports `split: false` while
 its pane stays alive, and it is present exactly when `splitRatio`/`splitFocused` can be),

@@ -15,10 +15,12 @@ public struct RemoteOverlaySlot: Equatable, Sendable {
     public var wait = false
     /// Whether the program already ended, its result recorded, while a held surface keeps the slot.
     public var ended = false
+    public let command: String
 
     public init(job: String, pane: OverlayPane?, owner: Int, sizePercent: Int?, wait: Bool = false,
-                ended: Bool = false) {
+                ended: Bool = false, command: String = "") {
         self.job = job
+        self.command = command
         self.pane = pane
         self.owner = owner
         self.sizePercent = sizePercent

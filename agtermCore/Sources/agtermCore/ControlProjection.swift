@@ -525,10 +525,16 @@ public struct ControlRemoteOverlayNode: Codable, Sendable, Equatable {
     public let pane: String?
     /// The size requested for a session-wide overlay; what the viewer applied is not reported.
     public let sizePercent: Int?
+    /// The job the viewer runs, as `overlay run-job` names it.
+    public let job: String?
+    /// The program exactly as the open received it, so a caller can recognise an overlay it started.
+    public let command: String?
 
-    public init(pane: String?, sizePercent: Int?) {
+    public init(pane: String?, sizePercent: Int?, job: String? = nil, command: String? = nil) {
         self.pane = pane
         self.sizePercent = sizePercent
+        self.job = job
+        self.command = command
     }
 }
 
