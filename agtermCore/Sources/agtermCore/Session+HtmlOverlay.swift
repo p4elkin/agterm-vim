@@ -4,10 +4,11 @@ extension Session {
     /// htmlOverlayActive means a page covers the session: it owns input like a program but has no terminal
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
+    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil }
 
     /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
     /// `programOverlayActive` instead.
-    public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive }
+    public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
 
     public func paneOverlayIsHtml(_ pane: OverlayPane) -> Bool { paneOverlay(pane)?.html != nil }
 
@@ -20,6 +21,7 @@ extension Session {
     /// htmlHidesTerminal says whether a page covers the terminal a `--pane` font command addresses: the
     /// session-wide page covers both split panes and a shown scratch, a pane page only its own pane.
     public func htmlHidesTerminal(_ pane: StatusPane?) -> Bool {
+        if rebasedOverlayActive { return false }
         switch pane {
         case .scratch: return htmlOverlayActive && scratchActive
         case nil, .left: return htmlOverlayActive || paneOverlayIsHtml(.left)
@@ -31,7 +33,7 @@ extension Session {
     /// order `topmostSurface` resolves covers; nil when a terminal is on top.
     public var topmostHtmlOverlay: HtmlOverlay? {
         if htmlOverlayActive { return htmlOverlay }
-        if programOverlayActive || scratchActive { return nil }
+        if programOverlayActive || rebasedOverlayActive || scratchActive { return nil }
         return focusedOverlayPane.flatMap { paneOverlay($0)?.html }
     }
 
@@ -41,6 +43,8 @@ extension Session {
         overlaySurface?.teardown()
         HtmlOverlayReleases.shared.release(htmlOverlay)
         htmlOverlay = nil
+        RebasedOverlayReleases.shared.release(rebasedOverlay)
+        rebasedOverlay = nil
     }
 
     // false when no slot of this session holds page `id`

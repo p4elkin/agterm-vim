@@ -7,6 +7,7 @@ public enum DashboardCover: Equatable, Sendable {
     case page(identity: String, title: String?)
     /// command is nil for a replica, whose stored command is the ssh helper line, not the remote program.
     case program(command: String?)
+    case rebased(project: String)
 }
 
 extension Session {
@@ -14,6 +15,7 @@ extension Session {
     /// pane's own overlay. A HUD and a floating overlay leave the panes lit in the deck, so they cover nothing.
     public func dashboardCover(for pane: OverlayPane) -> DashboardCover? {
         if fullOverlayActive {
+            if let rebased = rebasedOverlay { return .rebased(project: rebased.project) }
             if let page = htmlOverlay { return .page(identity: page.identity, title: page.current?.title) }
             return .program(command: overlayReplica == nil ? overlayCommand : nil)
         }

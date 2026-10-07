@@ -414,6 +414,8 @@ extension AppStore {
         session.overlaySurface = nil
         HtmlOverlayReleases.shared.release(session.htmlOverlay)
         session.htmlOverlay = nil
+        RebasedOverlayReleases.shared.release(session.rebasedOverlay)
+        session.rebasedOverlay = nil
         session.overlayCommand = nil
         session.overlayCwd = nil
         session.overlayWait = false

@@ -114,6 +114,19 @@ final class ControlServerLinkOverlayTests: XCTestCase {
         XCTAssertFalse(server.openLinkOverlay(url, session: UUID()))
     }
 
+    func testRebasedKeepsItsSlotAndRefusesTerminalFontCommands() throws {
+        let (store, session) = try addSession()
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil))
+        defer { store.closeOverlay(session.id) }
+
+        let response = server.font(session.id.uuidString, window: nil, pane: nil, action: "increase_font_size:1")
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "Rebased overlay has no terminal font size")
+        XCTAssertFalse(server.openLinkOverlay(try XCTUnwrap(URL(string: "http://127.0.0.1:1/")), session: session.id))
+        XCTAssertEqual(session.rebasedOverlay, overlay)
+    }
+
     private func addSession() throws -> (AppStore, Session) {
         let store = try XCTUnwrap(library.activeStore)
         let owner = try XCTUnwrap(store.currentWorkspaceID)

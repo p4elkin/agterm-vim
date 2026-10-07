@@ -345,6 +345,7 @@ public final class Session: Identifiable {
 
     /// htmlOverlay is the page the session-wide slot shows instead of a program; see `HtmlOverlay`.
     public var htmlOverlay: HtmlOverlay?
+    public var rebasedOverlay: RebasedOverlay?
 
     /// The percent of the pane an opaque framed panel occupies with the session still VISIBLE behind it; nil
     /// is the full-pane program overlay, which hides it and draws translucent. 1...100 for a floating PROGRAM
@@ -548,7 +549,7 @@ public final class Session: Identifiable {
 
     /// programOverlayActive: the slot runs a CALLER'S PROGRAM, either coverage variant, the terminal-surface
     /// question. Neither a HUD nor a page counts; "a session-wide cover owns input" is `coverOverlayActive`.
-    public var programOverlayActive: Bool { overlayActive && !hudActive && htmlOverlay == nil }
+    public var programOverlayActive: Bool { overlayActive && !hudActive && htmlOverlay == nil && rebasedOverlay == nil }
 
     /// fullOverlayActive says a program or page covers the whole session, with no size percent. It hides the
     /// panes and a shown scratch, since under window translucency anything left visible would bleed through.
@@ -991,7 +992,7 @@ public final class Session: Identifiable {
     /// helper would take first responder off the session the message is about — the deck's exemptions one
     /// layer down.
     public var topmostSurface: (any TerminalSurface)? {
-        if htmlOverlayActive { return nil }
+        if htmlOverlayActive || rebasedOverlayActive { return nil }
         if programOverlayActive { return overlaySurface }
         if scratchActive { return scratchSurface }
         if let pane = focusedOverlayPane { return paneOverlaySurface(pane) }
