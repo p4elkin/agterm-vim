@@ -197,6 +197,8 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `htmlOverlays` (the pages in the overlay slots, see `session overlay open --html` and `--url`; `overlay` and
 `paneOverlays` count them as covers too),
+`rebasedOverlay` (fork only: `{project, state, error?}`, where `state` is `starting`, `shown`, or `failed`;
+omitted when the session has no Rebased overlay. Its size remains in `overlaySizePercent`),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
 `{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter,
@@ -346,7 +348,10 @@ reading the tree gets its version floor without a second round-trip; it is not d
 `window.list`, where a caller uses `version` instead), `liveReset` (the Live sessions reset state, app-global
 like `app`: `pending` until the quit that follows a confirmed `zmx reset`, `last` for the launch that consumed
 it; omitted when neither applies), and `indexUnsaved` (true while the last write of the window index failed,
-omitted otherwise; app-wide, and it clears on the next index write that lands). `idleMs` is live
+omitted otherwise; app-wide, and it clears on the next index write that lands).
+`rebased` is fork-only app status: `{jvm, error?, projects}`, with `jvm` `starting`, `running`, or `failed`
+and `projects` an array of project directories. It is omitted until Rebased first starts.
+`idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four

@@ -132,4 +132,20 @@ final class ControlServerLinkOverlayTests: XCTestCase {
         let owner = try XCTUnwrap(store.currentWorkspaceID)
         return (store, try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: NSHomeDirectory())))
     }
+
+    func testTreeReadsTheAppGlobalRebasedStatusAndOmitsNotStarted() throws {
+        let before = RebasedStatusProvider.status
+        defer { RebasedStatusProvider.status = before }
+        let (store, session) = try addSession()
+        RebasedStatusProvider.status = { .init(jvm: "notStarted") }
+        XCTAssertNil(server.buildTree(in: store).rebased)
+
+        let status = ControlRebasedNode(jvm: "failed", error: "missing Rebased app", projects: ["/repo"])
+        RebasedStatusProvider.status = { status }
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/repo", state: .failed("missing Rebased app")), sizePercent: 60))
+        defer { store.closeOverlay(session.id) }
+        let tree = server.buildTree(in: store)
+        XCTAssertEqual(tree.rebased, status)
+        XCTAssertEqual(tree.workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.project, "/repo")
+    }
 }

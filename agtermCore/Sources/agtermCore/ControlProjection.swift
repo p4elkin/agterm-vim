@@ -356,6 +356,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// htmlOverlays lists the pages in this session's overlay slots, session-wide first then left and right;
     /// omitted when none is open. `overlay` and `paneOverlays` report their slots as covered too.
     public let htmlOverlays: [ControlHtmlOverlayNode]?
+    public let rebasedOverlay: ControlRebasedOverlayNode?
 
     public init(id: String, name: String, cwd: String, title: String? = nil, active: Bool, split: Bool,
                 hasSplit: Bool? = nil, backedByZmx: Bool?, splitAxis: String? = nil,
@@ -378,7 +379,8 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 context: String? = nil, remoteHost: String? = nil, splitCwd: String? = nil,
                 liveAttribution: String? = nil, splitLiveAttribution: String? = nil,
                 presentation: ControlPresentationNode? = nil, presenters: ControlPresentersNode? = nil,
-                remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil) {
+                remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil,
+                rebasedOverlay: ControlRebasedOverlayNode? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -434,6 +436,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.presenters = presenters
         self.remoteOverlays = remoteOverlays
         self.htmlOverlays = htmlOverlays
+        self.rebasedOverlay = rebasedOverlay
     }
 }
 
@@ -710,6 +713,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// indexUnsaved is true while the last `windows.json` write failed, omitted otherwise. App-global like
     /// `app`.
     public let indexUnsaved: Bool?
+    public let rebased: ControlRebasedNode?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil,
@@ -721,11 +725,12 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
                 pickPending: String? = nil, askPending: String? = nil,
                 app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil,
-                indexUnsaved: Bool? = nil, linkOpenMode: String? = nil) {
+                indexUnsaved: Bool? = nil, linkOpenMode: String? = nil, rebased: ControlRebasedNode? = nil) {
         self.workspaces = workspaces
         self.linkOpenMode = linkOpenMode
         self.liveReset = liveReset
         self.indexUnsaved = indexUnsaved
+        self.rebased = rebased
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
         self.recencyDwellMs = recencyDwellMs
