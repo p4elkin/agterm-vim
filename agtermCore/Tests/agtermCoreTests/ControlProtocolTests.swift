@@ -3,6 +3,13 @@ import Testing
 @testable import agtermCore
 
 struct ControlProtocolTests {
+    @Test func rebasedRoundTripsAndOlderRequestsDecode() throws {
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(cwd: "/repo", sizePercent: 60, rebased: true))
+        #expect(try roundTrip(request) == request)
+        let data = Data(#"{"cmd":"session.overlay.open","args":{"command":"cat"}}"#.utf8)
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: data).args?.rebased == nil)
+    }
+
     @Test func askWidthRoundTripsAndNullMeansAuto() throws {
         let request = ControlRequest(cmd: .askOpen, args: ControlArgs(width: 50))
         #expect(try roundTrip(request) == request)

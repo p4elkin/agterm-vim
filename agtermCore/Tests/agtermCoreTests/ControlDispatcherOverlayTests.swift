@@ -4,6 +4,39 @@ import Testing
 
 @MainActor
 struct ControlDispatcherOverlayTests {
+    @Test func rebasedOpenRoutesItsOwnContentWithTheProject() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayOpen, target: "session",
+                                                     args: ControlArgs(cwd: "/repo", sizePercent: 60, rebased: true)))
+        #expect(actions.calls == [
+            .overlayOpen(target: "session", window: nil,
+                         ControlSessionOverlayOpenOptions(command: "", cwd: "/repo", wait: false, sizePercent: 60,
+                                                          backgroundColor: nil, rebased: true))
+        ])
+    }
+
+    @Test(arguments: [
+        (ControlArgs(command: "cat", rebased: true), "COMMAND"),
+        (ControlArgs(html: "/tmp/r.html", rebased: true), "--html"),
+        (ControlArgs(url: "http://localhost:5173/", rebased: true), "--url"),
+        (ControlArgs(pane: "left", rebased: true), "--pane"),
+        (ControlArgs(wait: true, rebased: true), "--wait"),
+        (ControlArgs(javascript: true, rebased: true), "--js"),
+        (ControlArgs(navigation: true, rebased: true), "--navigation"),
+        (ControlArgs(chromeless: true, rebased: true), "--chromeless"),
+        (ControlArgs(persistent: true, rebased: true), "--persistent"),
+        (ControlArgs(browse: true, rebased: true), "--browse"),
+        (ControlArgs(color: "#102030", rebased: true), "--background-color"),
+    ])
+    func rebasedRejectsOtherOccupantsAndTheirOptions(_ args: ControlArgs, _ option: String) async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayOpen, target: "session", args: args))
+        #expect(response == ControlResponse(ok: false, error: "session.overlay.open: --rebased cannot be combined with \(option)"))
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func sessionOverlayOpenRejectsInvalidInputsBeforeCallingActions() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

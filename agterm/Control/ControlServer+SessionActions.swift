@@ -37,6 +37,12 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if options.rebased {
+                if store.session(withID: id)?.remoteHost != nil {
+                    return ControlResponse(ok: false, error: "Rebased overlays open on the Mac that holds the repository")
+                }
+                return ControlResponse(ok: false, error: "not implemented")
+            }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }

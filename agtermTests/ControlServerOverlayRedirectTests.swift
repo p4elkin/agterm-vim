@@ -9,6 +9,33 @@ import agtermCore
 /// remotely — so they assert the overlay REALLY opened (`overlayActive`), not merely that the response said ok.
 @MainActor
 final class ControlServerOverlayRedirectTests: XCTestCase {
+    func testRebasedSkipsTheRedirectDecision() throws {
+        let (_, session) = try makeSession()
+        session.viewer = freshViewer()
+        OverlayRedirectController.shared.setEnabled(true)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: "/repo", wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, rebased: true)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil, options: options)
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "not implemented")
+        XCTAssertNil(response.result?.overlayRedirect)
+        XCTAssertFalse(session.overlayActive)
+    }
+
+    func testRebasedRefusesARemoteRowBeforeRedirecting() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: "/tmp", remoteHost: "origin"))
+        session.viewer = freshViewer()
+        OverlayRedirectController.shared.setEnabled(true)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, rebased: true)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil, options: options)
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "Rebased overlays open on the Mac that holds the repository")
+        XCTAssertNil(response.result?.overlayRedirect)
+    }
+
     private var stateDir: URL!
     private var library: WindowLibrary!
     private var server: ControlServer!
