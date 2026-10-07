@@ -128,7 +128,7 @@ targets:
         # AGTERM_STATE_DIR adopts its own agterm-debug directory (DebugStateDirectory).
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.umputun.agterm.debug
-          # Debug alone needs the three hardened-runtime exceptions; see the header of the file.
+          # Debug adds unsigned executable memory for previews; see the entitlement file's header.
           CODE_SIGN_ENTITLEMENTS: agterm/agterm-debug.entitlements
     postBuildScripts:
       # Build the Swift helpers here; setup.sh stages the pinned zmx binary and license.

@@ -33,24 +33,23 @@ paths:
   Developer ID re-sign, which runs after CI's copy and is not covered by it.
   The helper check covers `agtermctl`, zmx and `agterm-session-host` and also verifies their signatures. Use
   `codesign -d --entitlements -`; the `:-` spelling is deprecated and warns.
-- The second pins the app's own Release set to the seven TCC keys, so neither a Debug-only hardened-runtime
-  exception nor a dropped TCC key can ship. It ignores `com.apple.security.get-task-allow`, which the
+- The second pins Release to the seven TCC keys plus `allow-jit` and `disable-library-validation` for Rebased.
+  `allow-unsigned-executable-memory` stays Debug-only. It ignores `com.apple.security.get-task-allow`, which the
   ad-hoc "Sign to Run Locally" identity adds and the Developer ID re-sign drops. It compares `key=value`
   through `jq ... tojson`, not key names: a key set to `<false/>` is not granted and macOS treats it as
   absent, and codesign accepts `<string>true</string>`, which is not a Boolean and renders identically to
   one without `tojson`. Changing the set means editing that list in the same commit.
 - The third reads the two entitlements files rather than a build, and derives Debug's expected content
-  from the shipping file: Debug must be the shipping set plus exactly the three exceptions. Without it a
+  from the shipping file: Debug adds only `allow-unsigned-executable-memory`. Without it a
   TCC key added to the shipping file and missed in the Debug one leaves every job green, and Debug
   silently unable to prompt for that permission.
-- Debug and Release sign from different entitlements files. `agterm/agterm-debug.entitlements` adds
-  `disable-library-validation`, `allow-jit` and `allow-unsigned-executable-memory`: Debug is ad-hoc signed
-  and split into a stub plus `agterm.debug.dylib`, and `agtermTests` loads an ad-hoc `.xctest` into that
-  app, so library validation would reject both on a Team-ID mismatch. The Release bundle holds no dylib
-  and JIT-links nothing, so `agterm/agterm.entitlements` carries none of the three. The re-sign in
+- Debug and Release sign from different entitlements files. Both allow Rebased's differently signed
+  `libjvm` and its JIT through `disable-library-validation` and `allow-jit`.
+  Debug adds `allow-unsigned-executable-memory` for Xcode previews. Its ad-hoc dylib and hosted test bundle
+  also use the shipping library-validation exception. The re-sign in
   `project.yml` reads `$CODE_SIGN_ENTITLEMENTS` rather than a literal path, so it follows the
   configuration. Restoring a literal path there would re-sign Debug from the shipping file, stripping the
-  three exceptions and breaking the ad-hoc `.xctest` load in `make test-app`.
+  preview exception.
 - A separate `cookbook: ["cookbook/**"]` filter gates the Linux `cookbook` job. Recipe-only changes run
   no macOS jobs. Keep `.github/workflows/ci.yml` in both filters: the inline cookbook checks must run when
   changed; its Swift membership also runs macOS jobs.
