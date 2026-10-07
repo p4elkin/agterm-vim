@@ -381,6 +381,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether `session.overlay.open` may redirect an overlay to/from a paired machine; nil/false = off.
     /// The persisted half of `OverlayRedirectController` — unlike normal mode, this survives a restart.
     public var overlayRedirectEnabled: Bool?
+    public var rebasedAppPath: String?
+
+    public var effectiveRebasedAppPath: String { rebasedAppPath ?? "/Applications/Rebased.app" }
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -408,7 +411,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 hiddenInterfaceElements: [String]? = nil, shownInterfaceElements: [String]? = nil,
                 autoHideSidebarInactiveWindows: Bool? = nil, flaggedViewLayout: String? = nil,
                 linkOpenMode: String? = nil,
-                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil) {
+                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil,
+                rebasedAppPath: String? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -461,6 +465,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.htmlOverlayZoom = htmlOverlayZoom
         self.welcomeShown = welcomeShown
         self.overlayRedirectEnabled = overlayRedirectEnabled
+        self.rebasedAppPath = rebasedAppPath
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.

@@ -1,0 +1,3 @@
+extension AppActions {
+    func toggleRebasedOverlay() {}
+}

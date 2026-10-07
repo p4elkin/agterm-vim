@@ -3,6 +3,14 @@ import Testing
 @testable import agtermCore
 
 struct AppSettingsTests {
+    @Test func rebasedAppPathRoundTripsAndDefaultsForOlderSettings() throws {
+        let settings = AppSettings(rebasedAppPath: "/Applications/Rebased Custom.app")
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.rebasedAppPath == settings.rebasedAppPath)
+        #expect(decoded.effectiveRebasedAppPath == "/Applications/Rebased Custom.app")
+        #expect(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)).effectiveRebasedAppPath == "/Applications/Rebased.app")
+    }
+
     @Test func jsonRoundTrips() throws {
         let original = AppSettings(fontFamily: "SF Mono", fontSize: 14, theme: "Adwaita Dark")
         let data = try JSONEncoder().encode(original)

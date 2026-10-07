@@ -208,6 +208,7 @@ final class CustomCommandRunner {
         if let chord = keymap.equivalent(for: .newSessionInWorkspace) {
             sequences[.newSessionInWorkspace, default: []].insert([chord], at: 0)
         }
+        if let chord = keymap.equivalent(for: .rebasedToggle) { sequences[.rebasedToggle, default: []].insert([chord], at: 0) }
         commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences,
                                             builtinRepeating: keymap.builtinRepeating)
         normalMode.rebuild(binds: keymap.normalModeBinds)
