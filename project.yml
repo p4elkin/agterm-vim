@@ -108,6 +108,9 @@ targets:
         MARKETING_VERSION: "0.0.0"
         CURRENT_PROJECT_VERSION: "0.0.0"
         GIT_COMMIT: ""
+        # Swift imports the C JNI shim; JBR headers stay private to its implementation.
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/agterm/Rebased/JNI"
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/agterm/Rebased/JNI/include $(SRCROOT)/agterm/Rebased/JNI/include/darwin"
         ENABLE_HARDENED_RUNTIME: YES
         OTHER_LDFLAGS:
           - "-lc++"
@@ -230,6 +233,8 @@ targets:
         INFOPLIST_KEY_NSPrincipalClass: HostedWindowHider
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/agterm.app/Contents/MacOS/agterm"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/agterm/Rebased/JNI"
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/agterm/Rebased/JNI/include $(SRCROOT)/agterm/Rebased/JNI/include/darwin"
         CODE_SIGN_IDENTITY: "-"
         # Hosted AppKit tests call isolated app code on the main actor; strict
         # checking adds XCTest boundary failures without improving that coverage.
