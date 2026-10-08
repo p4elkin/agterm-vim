@@ -2,7 +2,7 @@ import agtermCore
 
 @MainActor
 enum RebasedStatusProvider {
-    static var status: () -> ControlRebasedNode = { .init(jvm: "notStarted") }
+    static var status: () -> ControlRebasedNode = { RebasedHost.shared.status }
 
     static var readback: ControlRebasedNode? {
         let current = status()

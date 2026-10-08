@@ -29,8 +29,9 @@ struct RebasedInstallTests {
     private func install(product: String? = nil, release: String = "JAVA_VERSION=\"25.0.4\"\n") throws -> RebasedInstall {
         try RebasedInstall(bundlePath: bundle, stateDirectory: state,
                            productInfo: .init(path: productPath, contents: product ?? self.product),
-                           vmOptions: .init(path: optionsPath, contents: "# heap\n\n-Xmx2048m\n  # comment\n-Dfixture=$APP_PACKAGE/Contents\n"),
-                           runtimeRelease: .init(path: releasePath, contents: release), architecture: "aarch64")
+                           vmOptions: .init(path: optionsPath, contents: "# heap\n\n-Xmx2048m\n  # comment\n-Dfixture=$APP_PACKAGE/Contents\n-Dhome=$USER_HOME/x\n"),
+                           runtimeRelease: .init(path: releasePath, contents: release), architecture: "aarch64",
+                           homeDirectory: "/Users/tester")
     }
 
     @Test func optionsFollowLauncherOrderAndOverrideStandalonePaths() throws {
@@ -40,7 +41,7 @@ struct RebasedInstallTests {
         #expect(install.jvmOptions == [
             "-XX:ErrorFile=\(state)/rebased/log/java_error_in_agterm_%p.log",
             "-XX:HeapDumpPath=\(state)/rebased/log/java_error_in_agterm.hprof",
-            "-Xmx2048m", "-Dfixture=\(bundle)/Contents",
+            "-Xmx2048m", "-Dfixture=\(bundle)/Contents", "-Dhome=/Users/tester/x",
             "-Didea.home.path=\(bundle)/Contents", "-Didea.config.path=standalone",
             "-Djava.class.path=\(bundle)/Contents/lib/platform-loader.jar:\(bundle)/Contents/lib/util.jar",
             "-Dide.native.launcher=true", "-Dsun.java.command=com.intellij.idea.Main",

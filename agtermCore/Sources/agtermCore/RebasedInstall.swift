@@ -45,7 +45,8 @@ public struct RebasedInstall: Sendable {
     }
 
     public init(bundlePath: String, stateDirectory: String, productInfo: FileInput, vmOptions: FileInput,
-                runtimeRelease: FileInput, architecture: String = RebasedInstall.nativeArchitecture) throws {
+                runtimeRelease: FileInput, architecture: String = RebasedInstall.nativeArchitecture,
+                homeDirectory: String = NSHomeDirectory()) throws {
         let productText = try productInfo.requiredContents()
         let optionsText = try vmOptions.requiredContents()
         let releaseText = try runtimeRelease.requiredContents()
@@ -77,7 +78,8 @@ public struct RebasedInstall: Sendable {
             + ["-Djava.class.path=\(classPath)", "-Dide.native.launcher=true", "-Dsun.java.command=\(launch.mainClass)"]
             + ["-Didea.config.path=\(root)/config", "-Didea.system.path=\(root)/system",
                "-Didea.plugins.path=\(root)/plugins", "-Didea.log.path=\(root)/log"])
-            .map { $0.replacingOccurrences(of: "$APP_PACKAGE", with: bundlePath) }
+            .map { $0.replacingOccurrences(of: "$APP_PACKAGE", with: bundlePath)
+                .replacingOccurrences(of: "$USER_HOME", with: homeDirectory) }
     }
 
     public static func pluginCacheKey(buildNumber: String, sourceDigest: String) -> String {

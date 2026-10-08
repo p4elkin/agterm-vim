@@ -109,6 +109,8 @@ struct agtermApp: App {
                                           zmxOutdatedBefore: restored.zmxOutdatedBefore)
         _controlServer = State(initialValue: controlServer)
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
+        RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
+                                     stateDirectory: stateDirectory)
         LinkOpener.shared.overlay = { [weak controlServer] url, session in
             controlServer?.openLinkOverlay(url, session: session) ?? false
         }
