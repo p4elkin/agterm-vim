@@ -32,7 +32,7 @@ final class RebasedHost {
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
     var frames: any RebasedFrames = RebasedFrameKeeper()
     var keymap: () -> Keymap = { Keymap(builtinOverrides: [:], commands: []) }
-    var toggle: () -> Void = {}
+    var toggle: (UUID?) -> Void = { _ in }
     var appPath: () -> String = { "/Applications/Rebased.app" }
     var stateDirectory = PersistenceStore.defaultDirectory
     var store: (UUID) -> AppStore? = { _ in nil }
@@ -56,7 +56,9 @@ final class RebasedHost {
     private var entries: [UUID: Entry] = [:]
     private var frameNumbers: [String: Int] = [:]
     private(set) var visible: [String: UUID] = [:]
-    private var hiddenSlots: Set<UUID> = []
+    // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
+    private var visibleSlots: Set<UUID> = []
+    private var saving = false
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -70,7 +72,7 @@ final class RebasedHost {
     private var seenWindows: Set<Int> = []
 
     func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
-                   keymap: @escaping () -> Keymap, toggle: @escaping () -> Void) {
+                   keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void) {
         self.appPath = appPath
         self.keymap = keymap
         self.toggle = toggle
@@ -244,7 +246,7 @@ final class RebasedHost {
         frameNumbers[project] = number
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
         for entry in waiting { setState(.shown, session: entry.session) }
-        let onScreen = waiting.filter { !hiddenSlots.contains($0.session) }
+        let onScreen = waiting.filter { visibleSlots.contains($0.session) }
         guard let latest = onScreen.max(by: { $0.order < $1.order }) else {
             _ = runtime.call("hide", project)
             return
@@ -270,7 +272,7 @@ final class RebasedHost {
             frames.attach(window, to: hostWindow(waiting.session))
         } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown,
                   let current = entry(for: last), owner == nil || current.project == owner {
-            show(session: last)
+            reveal(session: last)
             frames.attach(window, to: hostWindow(last))
         } else {
             frames.orderOut(window)
@@ -279,7 +281,7 @@ final class RebasedHost {
 
     private func waitingOnScreen(_ project: String?) -> Entry? {
         entries.values.filter { entry in
-            (project == nil || entry.project == project) && !hiddenSlots.contains(entry.session)
+            (project == nil || entry.project == project) && visibleSlots.contains(entry.session)
                 && overlayState(entry) == .starting
         }.max { $0.order < $1.order }
     }
@@ -287,7 +289,7 @@ final class RebasedHost {
     // MARK: - Visibility
 
     func show(session: UUID) {
-        guard let entry = entry(for: session), let number = frameNumbers[entry.project],
+        guard visibleSlots.contains(session), let entry = entry(for: session), let number = frameNumbers[entry.project],
               let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
         visible[entry.project] = session
@@ -303,14 +305,30 @@ final class RebasedHost {
         hide(entry)
     }
 
+    // A dialog usually wants an answer (a credential prompt), so its hidden session comes forward first.
+    private func reveal(session: UUID) {
+        store(session)?.selectSession(session)
+        hostWindow(session)?.makeKeyAndOrderFront(nil)
+        visibleSlots.insert(session)
+        show(session: session)
+    }
+
+    /// The session whose shown frame, or a window attached over it, is `window`.
+    func owner(of window: NSWindow) -> UUID? {
+        visible.first { project, session in
+            frameNumbers[project].flatMap(self.window) === window
+                || (window.parent != nil && window.parent === hostWindow(session))
+        }?.value
+    }
+
     /// The slot view's report: whether its session's slot is on screen and uncovered. Hiding the frame on
     /// a session switch, a closed or minimized window and an agterm palette over the slot all come here.
     func setSlotVisible(_ isVisible: Bool, session: UUID) {
         if isVisible {
-            hiddenSlots.remove(session)
+            visibleSlots.insert(session)
             show(session: session)
         } else {
-            hiddenSlots.insert(session)
+            visibleSlots.remove(session)
             hide(session: session)
         }
     }
@@ -321,11 +339,21 @@ final class RebasedHost {
         frames.refit(host: window)
     }
 
-    /// Saves the IDE's unsaved documents before agterm exits; the bridge answers within 2 s. A JVM that never
-    /// ran costs nothing.
-    func saveBeforeQuit() {
-        guard jvm == .running else { return }
-        _ = runtime.call("saveAll", "")
+    /// Saves the IDE's unsaved documents before agterm exits, waiting at most `timeout`: the bridge bounds its
+    /// own wait, but a JNI call or a stalled disk read is not bounded by it. A JVM that never ran costs
+    /// nothing. Returns whether the save answered in time.
+    @discardableResult
+    func saveBeforeQuit(timeout: TimeInterval = 2) -> Bool {
+        guard jvm == .running, !saving else { return false }
+        saving = true
+        let runtime = runtime
+        let done = DispatchSemaphore(value: 0)
+        let body: @Sendable () -> Void = {
+            _ = runtime.call("saveAll", "")
+            done.signal()
+        }
+        DispatchQueue.global(qos: .userInitiated).async(execute: body)
+        return done.wait(timeout: .now() + timeout) == .success
     }
 
     private func hide(_ entry: Entry) {
@@ -412,7 +440,7 @@ final class RebasedHost {
         case .agterm:
             return event
         case .toggle:
-            if event.type == .keyDown { toggle() }
+            if event.type == .keyDown { toggle(owner(of: key)) }
             return nil
         case .ide:
             key.sendEvent(event)

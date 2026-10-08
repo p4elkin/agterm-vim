@@ -63,7 +63,8 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
                                                                            backgroundColor: nil, rebased: true))
     }
 
-    private func frameOpened() {
+    private func frameOpened(_ session: Session) {
+        RebasedHost.shared.setSlotVisible(true, session: session.id)
         RebasedHost.shared.handle(event: "ready", payload: "")
         RebasedHost.shared.handle(event: "frameOpened", payload: "\(stateDir.path)\t7")
     }
@@ -73,7 +74,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         let response = openRebased(session, sizePercent: 70)
         XCTAssertTrue(response.ok, response.error ?? "")
         XCTAssertEqual(runtime.starts, 1)
-        frameOpened()
+        frameOpened(session)
         let node = try XCTUnwrap(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString })
         XCTAssertEqual(node.rebasedOverlay, ControlRebasedOverlayNode(project: stateDir.path, state: "shown"))
         XCTAssertEqual(node.overlaySizePercent, 70)
@@ -83,7 +84,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
     func testCloseHidesTheFrame() throws {
         let (_, session) = try addSession()
         XCTAssertTrue(openRebased(session).ok)
-        frameOpened()
+        frameOpened(session)
         XCTAssertTrue(server.closeSessionOverlay(session.id.uuidString, window: nil, pane: nil).ok)
         XCTAssertNil(session.rebasedOverlay)
         XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
@@ -113,7 +114,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
     func testAHiddenSlotHidesTheFrameAndShowsItAgain() throws {
         let (_, session) = try addSession()
         XCTAssertTrue(openRebased(session).ok)
-        frameOpened()
+        frameOpened(session)
         let project = RebasedHost.canonical(stateDir.path)
         RebasedHost.shared.setSlotVisible(false, session: session.id)
         XCTAssertEqual(runtime.calls.last, "hide \(project)")
@@ -126,8 +127,8 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
     func testAFrameArrivingWhileTheSlotIsHiddenWaitsForIt() throws {
         let (_, session) = try addSession()
         XCTAssertTrue(openRebased(session).ok)
-        RebasedHost.shared.setSlotVisible(false, session: session.id)
-        frameOpened()
+        RebasedHost.shared.handle(event: "ready", payload: "")
+        RebasedHost.shared.handle(event: "frameOpened", payload: "\(stateDir.path)\t7")
         XCTAssertEqual(session.rebasedOverlay?.state, .shown)
         XCTAssertFalse(RebasedHost.shared.isShown(in: session.id))
         RebasedHost.shared.setSlotVisible(true, session: session.id)
@@ -139,8 +140,18 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertTrue(runtime.calls.isEmpty)
         let (_, session) = try addSession()
         XCTAssertTrue(openRebased(session).ok)
-        frameOpened()
+        frameOpened(session)
         RebasedHost.shared.saveBeforeQuit()
         XCTAssertEqual(runtime.calls.last, "saveAll ")
+    }
+
+    func testToggleForAGivenSessionClosesThatSessionsOverlay() throws {
+        let (store, session) = try addSession()
+        let (_, other) = try addSession()
+        XCTAssertTrue(openRebased(session).ok)
+        store.selectSession(other.id)
+        actions.toggleRebasedOverlay(session: session.id)
+        XCTAssertNil(session.rebasedOverlay)
+        XCTAssertFalse(other.overlayActive)
     }
 }

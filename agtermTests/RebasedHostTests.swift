@@ -21,7 +21,13 @@ final class FakeRebasedRuntime: RebasedRuntime, @unchecked Sendable {
     }
 
     func bindEvents() -> RebasedRuntimeError? { binds.count > 1 ? binds.removeFirst() : binds.first ?? nil }
+    var saveGate: DispatchSemaphore?
+
     func call(_ command: String, _ argument: String) -> String {
+        if command == "saveAll", let saveGate {
+            saveGate.wait()
+            return "ok"
+        }
         calls.append("\(command) \(argument)")
         return "ok"
     }
@@ -96,6 +102,7 @@ final class RebasedHostTests: XCTestCase {
 
     private func open(_ session: Session, project: String? = nil) {
         XCTAssertNil(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: project ?? self.project), sizePercent: nil))
+        host.setSlotVisible(true, session: session.id)
         host.open(session: session.id)
     }
 
@@ -328,5 +335,59 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "windowOpened", payload: "9\tdialog\t\(project)")
         XCTAssertEqual(Array(frames.log.dropFirst(before)), ["orderOut dialogA"])
         XCTAssertFalse(host.isShown(in: first.id))
+    }
+
+    func testAFrameWaitsForASlotThatNeverReportedVisible() {
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project), sizePercent: nil))
+        host.open(session: first.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertFalse(host.isShown(in: first.id))
+        XCTAssertTrue(frames.log.isEmpty)
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(frames.log, ["adopt frame in host1"])
+    }
+
+    func testReopeningAKnownFrameIntoAHiddenSlotWaits() {
+        startAndShow(first)
+        store.closeOverlay(first.id)
+        host.setSlotVisible(false, session: first.id)
+        let before = frames.log.count
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project), sizePercent: nil))
+        host.open(session: first.id)
+        XCTAssertEqual(frames.log.count, before)
+        XCTAssertFalse(host.isShown(in: first.id))
+    }
+
+    func testTheToggleFromAnIDEWindowTargetsTheSessionThatOwnsIt() throws {
+        open(first)
+        open(second, project: otherProject)
+        host.handle(event: "ready", payload: "")
+        _ = window("frameA", number: 7)
+        let frameB = window("frameB", number: 8)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        host.handle(event: "frameOpened", payload: "\(otherProject)\t8")
+        host.keyWindow = { frameB }
+        host.isIDEKeyWindowOverride = true
+        host.keymap = { parseKeymap("map ctrl+shift+r rebased_toggle").keymap }
+        var toggled: [UUID?] = []
+        host.toggle = { toggled.append($0) }
+        let chord = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .shift], timestamp: 0,
+                                                   windowNumber: 0, context: nil, characters: "r", charactersIgnoringModifiers: "r",
+                                                   isARepeat: false, keyCode: 15))
+        XCTAssertNil(host.route(chord))
+        XCTAssertEqual(toggled, [second.id])
+    }
+
+    func testQuitSaveReturnsAtItsDeadlineWhenTheBridgeStalls() {
+        startAndShow(first)
+        let gate = DispatchSemaphore(value: 0)
+        runtime.saveGate = gate
+        let start = Date()
+        XCTAssertFalse(host.saveBeforeQuit(timeout: 0.2))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+        XCTAssertFalse(host.saveBeforeQuit(timeout: 0.2), "a timed-out save is not issued twice")
+        gate.signal()
     }
 }

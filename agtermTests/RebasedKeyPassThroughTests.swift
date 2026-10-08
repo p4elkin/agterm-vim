@@ -68,7 +68,7 @@ final class RebasedKeyPassThroughTests: XCTestCase {
         host.isIDEKeyWindowOverride = true
         host.keymap = { parseKeymap("map ctrl+shift+r rebased_toggle").keymap }
         var toggles = 0
-        host.toggle = { toggles += 1 }
+        host.toggle = { _ in toggles += 1 }
         let handler = RebasedHost.monitor(host)
         let find = try key("f", keyCode: 3, flags: .command)
         XCTAssertNil(handler(find), "an IDE key is consumed, so agterm's menu never sees it")

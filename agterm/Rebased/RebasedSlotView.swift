@@ -46,7 +46,8 @@ private final class RebasedSlotNSView: NSView {
     let session: UUID
     var wanted = false { didSet { if wanted != oldValue { sync() } } }
     private var observers: [NSObjectProtocol] = []
-    private var shown = false
+    // nil until the first report, which is always sent: the host treats an unreported slot as hidden
+    private var shown: Bool?
 
     init(session: UUID) {
         self.session = session
