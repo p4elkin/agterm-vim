@@ -59,6 +59,7 @@ final class RebasedHost {
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
     private var saving = false
+    private var pendingDialogs: [UUID: [NSWindow]] = [:]
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -272,8 +273,7 @@ final class RebasedHost {
             frames.attach(window, to: hostWindow(waiting.session))
         } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown,
                   let current = entry(for: last), owner == nil || current.project == owner {
-            reveal(session: last)
-            frames.attach(window, to: hostWindow(last))
+            reveal(session: last, dialog: window)
         } else {
             frames.orderOut(window)
         }
@@ -288,10 +288,14 @@ final class RebasedHost {
 
     // MARK: - Visibility
 
+    /// A ready frame marks the overlay shown at once; the frame itself moves onto the slot only while the
+    /// slot's view reports it on screen.
     func show(session: UUID) {
-        guard visibleSlots.contains(session), let entry = entry(for: session), let number = frameNumbers[entry.project],
+        guard let entry = entry(for: session), let number = frameNumbers[entry.project],
               let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
+        setState(.shown, session: session)
+        guard visibleSlots.contains(session) else { return }
         visible[entry.project] = session
         lastShown = session
         lastShownByProject[entry.project] = session
@@ -305,12 +309,18 @@ final class RebasedHost {
         hide(entry)
     }
 
-    // A dialog usually wants an answer (a credential prompt), so its hidden session comes forward first.
-    private func reveal(session: UUID) {
+    // A dialog usually wants an answer (a credential prompt), so its session comes forward. The slot's own
+    // report still decides: under a palette or the dashboard the dialog waits off screen until it clears.
+    private func reveal(session: UUID, dialog: NSWindow) {
         store(session)?.selectSession(session)
         hostWindow(session)?.makeKeyAndOrderFront(nil)
-        visibleSlots.insert(session)
-        show(session: session)
+        if visibleSlots.contains(session) {
+            show(session: session)
+            frames.attach(dialog, to: hostWindow(session))
+        } else {
+            frames.orderOut(dialog)
+            pendingDialogs[session, default: []].append(dialog)
+        }
     }
 
     /// The session whose shown frame, or a window attached over it, is `window`.
@@ -327,6 +337,10 @@ final class RebasedHost {
         if isVisible {
             visibleSlots.insert(session)
             show(session: session)
+            for dialog in pendingDialogs.removeValue(forKey: session) ?? [] where isShown(in: session) {
+                frames.attach(dialog, to: hostWindow(session))
+                dialog.orderFront(nil)
+            }
         } else {
             visibleSlots.remove(session)
             hide(session: session)

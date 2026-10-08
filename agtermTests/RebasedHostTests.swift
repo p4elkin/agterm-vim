@@ -358,6 +358,12 @@ final class RebasedHostTests: XCTestCase {
         host.open(session: first.id)
         XCTAssertEqual(frames.log.count, before)
         XCTAssertFalse(host.isShown(in: first.id))
+        XCTAssertEqual(state(first), .shown, "the frame is ready, only off screen")
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(first), .shown)
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(frames.log.last, "adopt frame in host1")
+        XCTAssertEqual(runtime.starts, 1)
     }
 
     func testTheToggleFromAnIDEWindowTargetsTheSessionThatOwnsIt() throws {
@@ -389,5 +395,17 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
         XCTAssertFalse(host.saveBeforeQuit(timeout: 0.2), "a timed-out save is not issued twice")
         gate.signal()
+    }
+
+    func testADialogUnderACoverWaitsUntilTheSlotIsVisibleAgain() {
+        startAndShow(first)
+        host.setSlotVisible(false, session: first.id)
+        let before = frames.log.count
+        _ = window("dialog", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t\(project)")
+        XCTAssertEqual(Array(frames.log.dropFirst(before)), ["orderOut dialog"])
+        XCTAssertFalse(host.isShown(in: first.id))
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(Array(frames.log.suffix(2)), ["adopt frame in host1", "attach dialog to host1"])
     }
 }
