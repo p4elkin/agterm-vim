@@ -110,7 +110,8 @@ struct agtermApp: App {
         _controlServer = State(initialValue: controlServer)
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
         RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
-                                     stateDirectory: stateDirectory)
+                                     stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
+                                     toggle: { actions.toggleRebasedOverlay() })
         LinkOpener.shared.overlay = { [weak controlServer] url, session in
             controlServer?.openLinkOverlay(url, session: session) ?? false
         }

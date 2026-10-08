@@ -1,30 +1,13 @@
 import AppKit
 import agtermCore
 
-/// What the host does to IDE windows. Task 10's frame keeper replaces the plain child-window version.
+/// What the host does to IDE windows; `RebasedFrameKeeper` in the app, a recorder in tests.
 @MainActor
 protocol RebasedFrames: AnyObject {
     func adopt(_ frame: NSWindow, in host: NSWindow?)
     func attach(_ window: NSWindow, to host: NSWindow?)
     func detach(_ window: NSWindow)
     func orderOut(_ window: NSWindow)
-}
-
-@MainActor
-final class ChildWindowFrames: RebasedFrames {
-    func adopt(_ frame: NSWindow, in host: NSWindow?) {
-        attach(frame, to: host)
-        frame.alphaValue = 1
-    }
-
-    func attach(_ window: NSWindow, to host: NSWindow?) {
-        guard let host, window.parent !== host else { return }
-        window.parent?.removeChildWindow(window)
-        host.addChildWindow(window, ordered: .above)
-    }
-
-    func detach(_ window: NSWindow) { window.parent?.removeChildWindow(window) }
-    func orderOut(_ window: NSWindow) { window.orderOut(nil) }
 }
 
 /// Owns the embedded Rebased JVM and maps its project frames onto session overlays; the single owner, like
@@ -46,7 +29,9 @@ final class RebasedHost {
     }
 
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
-    var frames: any RebasedFrames = ChildWindowFrames()
+    var frames: any RebasedFrames = RebasedFrameKeeper()
+    var keymap: () -> Keymap = { Keymap(builtinOverrides: [:], commands: []) }
+    var toggle: () -> Void = {}
     var appPath: () -> String = { "/Applications/Rebased.app" }
     var stateDirectory = PersistenceStore.defaultDirectory
     var store: (UUID) -> AppStore? = { _ in nil }
@@ -75,10 +60,14 @@ final class RebasedHost {
     private var deadlinePassed = false
     private var opens = 0
     private var bornObserver: CFRunLoopObserver?
+    private var keyMonitor: Any?
     private var seenWindows: Set<Int> = []
 
-    func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL) {
+    func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
+                   keymap: @escaping () -> Keymap, toggle: @escaping () -> Void) {
         self.appPath = appPath
+        self.keymap = keymap
+        self.toggle = toggle
         self.stateDirectory = stateDirectory
         store = { [weak library] in library?.store(forSession: $0) }
         hostWindow = { [weak library] session in
@@ -138,6 +127,7 @@ final class RebasedHost {
         bound = false
         deadlinePassed = false
         installBornObserver()
+        installKeyRouter()
         let runtime = runtime, path = appPath(), directory = stateDirectory
         offMain({
             do { try runtime.start(appPath: path, stateDirectory: directory) } catch { return error }
@@ -307,6 +297,30 @@ final class RebasedHost {
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         bornObserver = observer
+    }
+
+    // agterm's menu stays installed while the IDE is key, so without this a chord both menus bind (⌘F) would
+    // fire agterm's item as well as reach the IDE.
+    private func installKeyRouter() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            self?.route(event) ?? event
+        }
+    }
+
+    func route(_ event: NSEvent) -> NSEvent? {
+        guard let key = NSApp.keyWindow, Self.isIDEWindow(key) else { return event }
+        let chord = event.keymapChord(produced: event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers)
+        switch RebasedMenuPolicy(keymap: keymap()).route(chord, keyWindow: .ide) {
+        case .agterm:
+            return event
+        case .toggle:
+            if event.type == .keyDown { toggle() }
+            return nil
+        case .ide:
+            key.sendEvent(event)
+            return nil
+        }
     }
 
     private func hideNewFrames() {

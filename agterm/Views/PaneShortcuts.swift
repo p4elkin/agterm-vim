@@ -29,7 +29,8 @@ final class PaneShortcuts {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        if RebasedHost.shared.isIDEKeyWindow { return false }
         let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
         guard mods == .control else { return false }
         switch event.keyCode {

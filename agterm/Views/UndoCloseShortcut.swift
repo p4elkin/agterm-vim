@@ -20,7 +20,8 @@ final class UndoCloseShortcut {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        if RebasedHost.shared.isIDEKeyWindow { return false }
         guard actions.store?.pendingCloseSummary != nil else { return false }
         guard NSApp.keyWindow?.firstResponder is NSText == false else { return false }
         guard let chord = chord(from: event), matchesUndoCloseChord(chord) else { return false }

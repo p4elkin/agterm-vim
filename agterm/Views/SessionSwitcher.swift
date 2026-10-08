@@ -49,7 +49,8 @@ final class SessionSwitcher {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        if RebasedHost.shared.isIDEKeyWindow { return false }
         if event.keyCode == Self.tabKey, event.modifierFlags.contains(.control) {
             guard canSwitch() else {
                 reset()
