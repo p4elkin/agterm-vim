@@ -43,8 +43,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
-- Rebased opens on a remote row too, from a p4linux shell or the Mac: the Mac fetches the host's commits and
-  branches over ssh into a local mirror, then shows it, so `--diff main...HEAD` works on a repository that
+- Rebased opens on a remote row too, from a p4linux shell or the Mac: the Mac fetches the host's commits,
+  branches and `origin/*` branches over ssh into a local mirror, then shows it, so `--diff main...HEAD` or
+  `--diff origin/main...origin/feature` works on a repository that
   lives on the other machine. Uncommitted work there is not shown. `tree` reports `rebasedOverlay.state`
   `fetching` meanwhile and `rebasedOverlay.source` as `host:path`.
 - `session overlay open --rebased --diff RANGE` opens the changes of a commit range in Rebased: `A..B`,

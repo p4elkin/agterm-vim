@@ -42,13 +42,15 @@ public struct RebasedMirror: Equatable, Sendable {
 
     public func source(top: String) -> String { host + ":" + top }
 
-    /// HEAD is detached so the fetch may move every branch, and a range names the host's refs unchanged.
+    /// HEAD is detached so the fetch may move every branch, and a range names the host's refs unchanged:
+    /// `origin/x` resolves only because the host's remote-tracking refs are copied too.
     public func refreshCommands(top: String, directory: String) -> [[String]] {
         let git = "/usr/bin/git"
         return [
             [git, "init", "-q", directory],
             [git, "-C", directory, "fetch", "-q", "--prune", "--force", "--update-head-ok", source(top: top),
-             "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*", "+HEAD:refs/agterm/head"],
+             "+refs/heads/*:refs/heads/*", "+refs/remotes/*:refs/remotes/*", "+refs/tags/*:refs/tags/*",
+             "+HEAD:refs/agterm/head"],
             [git, "-C", directory, "checkout", "-q", "--force", "--detach", "refs/agterm/head"],
         ]
     }
