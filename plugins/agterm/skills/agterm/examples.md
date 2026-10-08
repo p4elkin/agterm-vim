@@ -840,8 +840,9 @@ focus the tagged pane. An `active` tag is informational and preserves the curren
 Without `--pane` the status is treated as coming from the main (`left`) pane, so a block set from the split
 can be wiped by typing in the main pane and the reveal lands on the wrong surface.
 
-The tag also protects a block from the OTHER pane's agent: while the session is `blocked`, a status from a
-different pane that is not itself `blocked` is refused with `blocked status owned by pane <pane>`,
+The tag also protects a block from the OTHER pane's agent: while the session is `blocked`, or `completed`
+without `--auto-reset`, a status from a different pane that is not itself `blocked` is refused with
+`status owned by pane <pane>`,
 so an agent reporting `active` after every tool call cannot erase its neighbour's request for input. With
 an agent in each pane, tag both or the second one's ordinary work looks like it comes from the first.
 
@@ -880,6 +881,10 @@ surface=$(agtermctl tree --json |
     | .id')
 agtermctl surface zoom show --target "$surface"
 agtermctl surface zoom hide --target "$surface"
+
+# Look at the session under a running overlay and come back; the overlay keeps running meanwhile.
+# The explicit id matters: with an overlay open, a bare `surface zoom` zooms the overlay itself.
+agtermctl surface zoom toggle --target "surface:$sid:left"
 
 # Read the current zoom back (the zoomed surface's control id; null when nothing is zoomed).
 agtermctl tree --json | jq -r '.result.tree.zoomedSurface'

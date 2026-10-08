@@ -6,7 +6,7 @@ import Foundation
 public enum StatusWriteResult: Equatable, Sendable {
     case applied
     /// The write was dropped whole — no status change, no `statusChangedAt` restamp, no control event — because
-    /// `owner` holds a blocked status this pane may not replace.
+    /// `owner` holds a blocked or sticky completed status this pane may not replace.
     case refused(owner: StatusPane)
 }
 
@@ -24,11 +24,12 @@ extension AppStore {
     /// block. The owning pane clears its own status through any of them, and the GUI Clear Status paths
     /// bypass this rule entirely. Same-pane writes are unrestricted, so a single pane behaves exactly as
     /// before. Panes are compared AFTER `normalizedPane`, so a promoted survivor's stale `.right` matches the
-    /// `.left` it is stored as.
+    /// `.left` it is stored as. A `completed` without `autoReset` (an open question) is owned the same way.
     @discardableResult
     public func applyControlStatus(_ indicator: AgentIndicator, forSession id: UUID) -> StatusWriteResult {
-        if let session = session(withID: id), session.agentIndicator.status == .blocked,
-           indicator.status != .blocked {
+        if let session = session(withID: id), indicator.status != .blocked,
+           session.agentIndicator.status == .blocked
+            || (session.agentIndicator.status == .completed && !session.agentIndicator.autoReset) {
             let owner = session.agentIndicator.normalizedPane(hasSplit: session.hasSplit) ?? .left
             let writer = indicator.normalizedPane(hasSplit: session.hasSplit) ?? .left
             if owner != writer { return .refused(owner: owner) }

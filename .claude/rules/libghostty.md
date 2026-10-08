@@ -253,7 +253,9 @@ paths:
   `openFilePath` hands either to `agterm-open-path` with the pane's cwd. What `LinkPolicy` accepts, and why, is in
   `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 - `.open` of an `http`/`https` link from a pane goes to `agterm-open-link` when it is installed, which shows
-  a Jira issue or merge request over the pane or opens the browser; `NSWorkspace` is the fallback. A Jira
+  a Jira issue or merge request over the pane or opens the browser; upstream's `LinkOpener` is the fallback.
+  Only while Settings' `Open links in` is `Browser`: `Session overlay` hands every web link to `LinkOpener`,
+  and the fork's `.xchat`/`.openPath`/`.ref` never reach it (`openLink` dispatches them first). A Jira
   key reaches it as a URL through a user `link` rule; an MR URL through the built-in URL link. Overlay
   surfaces carry no session, so a link clicked inside a view still opens the browser; see
   `docs/plans/completed/20260930-clickable-links-spec.md`.

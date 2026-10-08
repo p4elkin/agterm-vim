@@ -18,7 +18,7 @@ struct Session: ParsableCommand {
         subcommands: [New.self, Duplicate.self, Close.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
-                      Text.self, Status.self, Restore.self, FlagCommand.self, Park.self, Context.self,
+                      Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Context.self,
                       Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
                       Overlay.self, Hud.self]
     )
@@ -399,16 +399,6 @@ struct Session: ParsableCommand {
         }
     }
 
-    struct Seen: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Clear a session's unseen-notification badge without changing the selection or focus (idempotent).")
-        @OptionGroup var target: TargetOptions
-        @OptionGroup var options: ClientOptions
-
-        func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .sessionSeen, target: target.target, args: options.withWindow())
-        }
-    }
-
     struct Search: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Search a session's terminal output (open the bar, set a needle, or step matches).")
         @Argument(help: "Needle to search for (omit to just open the bar).") var needle: String?
@@ -585,6 +575,7 @@ struct Session: ParsableCommand {
             @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
             @Flag(name: .long, help: "With --html, show the page without agterm's strip naming it; ⌘W or session overlay close closes it.") var chromeless = false
             @Flag(name: .long, help: Open.persistentHelp) var persistent = false
+            @Flag(name: .long, help: Open.browseHelp) var browse = false
             @Option(name: .long, help: """
                 Working directory (default: the session's current directory). With --html, grants read access \
                 inside this directory; relative links resolve beside FILE. Without --cwd, the page has no file access.
@@ -622,6 +613,7 @@ struct Session: ParsableCommand {
                 if chromeless, html == nil { throw ValidationError("--chromeless requires --html") }
                 if chromeless, navigation { throw ValidationError("--chromeless cannot be combined with --navigation") }
                 if persistent, url == nil { throw ValidationError("--persistent requires --url") }
+                if browse, url == nil { throw ValidationError("--browse requires --url") }
                 if url != nil, cwd != nil { throw ValidationError("--cwd cannot be combined with --url") }
                 if let backgroundColor, !WatermarkConfig.isValidColorHex(backgroundColor) {
                     throw ValidationError("background-color must be a #rrggbb hex value")
@@ -642,7 +634,8 @@ struct Session: ParsableCommand {
                                                                      pane: pane, color: backgroundColor,
                                                                      html: html.map(Overlay.absolutePath),
                                                                      navigation: navigation ? true : nil, url: url,
-                                                                     javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil)))
+                                                                     javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
+                                                                     browse: browse ? true : nil)))
             }
 
             /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
@@ -841,8 +834,8 @@ struct Session: ParsableCommand {
             @Argument(help: "Message shown in the panel (omit with --file).") var message: String?
             @Option(name: .long, help: "Read the message from FILE instead of the argument.") var file: String?
             @Flag(name: .long, help: """
-                Render the message as markdown, up to \(HudSpec.maxMarkdownLength) characters. A single newline \
-                inside a paragraph is a soft break; end a line with two spaces or a backslash to break it.
+                Render the message as markdown, up to \(HudSpec.maxMarkdownLength) characters. A single newline inside a paragraph is a \
+                soft break; end a line with two spaces or a backslash to break it. A link is underlined and opens on a command-click.
                 """)
             var markdown = false
             @Option(name: .customLong("font-size"), help: """
@@ -985,6 +978,16 @@ struct Session: ParsableCommand {
 }
 
 extension Session {
+    struct Seen: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Clear a session's unseen-notification badge without changing the selection or focus (idempotent).")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionSeen, target: target.target, args: options.withWindow())
+        }
+    }
+
     /// The overlay and HUD arms share one accepted range for `--size-percent`, so the gate belongs to
     /// neither. `1...100` is the input domain both document; the narrower bound for rendering a HUD is a
     /// presentation limit applied app-side, not a rejection.

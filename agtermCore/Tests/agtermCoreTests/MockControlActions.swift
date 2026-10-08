@@ -41,6 +41,7 @@ class MockControlActionsBase {
         case sessionBookmarkList(target: String?, window: String?, all: Bool)
         case sessionBookmarkRemove(target: String?, window: String?, turn: Int)
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
+        case sessionRestart(target: String?, window: String?, ControlSessionRestartOptions)
         case sessionSplit(target: String?, window: String?, String?, SplitAxis?, command: ControlSplitCommand?)
         case sessionSplitClose(target: String?, window: String?)
         case sessionSwap(target: String?, window: String?)
@@ -58,6 +59,7 @@ class MockControlActionsBase {
         case hooksReload
         case hooksList
         case browserClear
+        case browserLinks(LinkOpenMode?)
         case version
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
@@ -162,6 +164,7 @@ class MockControlActionsBase {
     var nextKeymapListResponse = ControlResponse(ok: true)
     var nextHooksReloadResponse = ControlResponse(ok: true)
     var nextBrowserClearResponse = ControlResponse(ok: true)
+    var nextBrowserLinksResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
@@ -227,6 +230,7 @@ class MockControlActionsBase {
     /// supplied here, so a test must address sessions by full uuid.
     var markStore: AppStore?
     var nextSessionSwapResponse = ControlResponse(ok: true)
+    var nextSessionRestartResponse = ControlResponse(ok: true)
 
     func controlTree(window: String?) -> ControlResponse {
         calls.append(.tree(window: window))
@@ -400,6 +404,12 @@ class MockControlActionsBase {
         return nextSessionRestoreResponse
     }
 
+    func restartSessionPane(_ target: String?, window: String?,
+                            options: ControlSessionRestartOptions) async -> ControlResponse {
+        calls.append(.sessionRestart(target: target, window: window, options))
+        return nextSessionRestartResponse
+    }
+
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         splitSession(target, window: window, mode: mode, axis: nil)
     }
@@ -495,6 +505,11 @@ class MockControlActionsBase {
     func clearBrowser() async -> ControlResponse {
         calls.append(.browserClear)
         return nextBrowserClearResponse
+    }
+
+    func linkOpenMode(_ mode: LinkOpenMode?) -> ControlResponse {
+        calls.append(.browserLinks(mode))
+        return nextBrowserLinksResponse
     }
 
     func appIdentity() -> ControlResponse {

@@ -6,7 +6,7 @@ description: >
   reorder sessions and workspaces; split panes; toggle the scratch terminal; run overlay programs
   and read their exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
   post a HUD or desktop notification; show a picker or question dialog; display an image inline; type
-  into a session or one pane by stable id, copy its selection or search its scrollback; manage windows; set font size and
+  into or restart a pane by its stable id, copy its selection or search its scrollback; manage windows; set font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
   a closed window's session screen; subscribe to status, notification, lifecycle, selection,
   pane-visibility and tree-change events.
@@ -47,7 +47,7 @@ the control channel is available:
 - `AGTERM_PANE` / `AGTERM_PANE_ID`: the surface's spawn role (`left`|`right`|`scratch`) and stable
   per-surface token. The role is not rewritten after promotion or swap; the token resolves the LIVE slot.
   Prefer `--pane-id "$AGTERM_PANE_ID"` where supported: `session status`, `session restore`,
-  `session text`, `session type`, `surface cursor` and `session hud`. `tree --json` lists each surface's
+  `session text`, `session type`, `session restart`, `surface cursor` and `session hud`. `tree --json` lists each surface's
   token as `surfaces[].paneID`. The agent-status hook forwards both values for compatibility.
 - `TERM_PROGRAM=agterm` / `TERM_PROGRAM_VERSION` (agterm's version): the terminal identity, replacing
   the `ghostty` pair embedded libghostty would set. A tool that decides a capability from a list of
@@ -114,7 +114,8 @@ selected before it joins `sessionRecency`, in ms, omitted when the setting is Im
 control `session select` both record without waiting it out),
 `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), `sidebarFlaggedLayout` (`flat` or `tree`, app-wide —
+(`tree` or `flagged` — the read side of `sidebar mode`), `linkOpenMode` (`browser` or `overlay`, app-wide —
+the read side of `browser links`), `sidebarFlaggedLayout` (`flat` or `tree`, app-wide —
 the read side of `sidebar flagged-layout`), `sidebarWidth` (the sidebar divider position in
 points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`, `quickVisible` (whether the
 quick terminal is shown — the read side of the write-only `quick` command; app-level, so every window
@@ -391,6 +392,12 @@ omitted when expanded).
 - `session lead [--pane left|right]`: for a session shared with another Mac, take the lead of a pane here
   (what a key press on its "in use" cover does). `tree`'s `surfaces[].lead` reads `leader`/`follower`/
   `unowned`. On the Mac the session runs on, a covered pane still takes `session type`/`text`.
+- `session restart --pane-id ID [--command LINE]`: end one pane's shell and its foreground program, and start a
+  new login shell there running LINE. Same pane, same stable id, blank screen, nothing typed. Without
+  `--command` it runs the program the pane is running now again, with the same arguments, and refuses when
+  a shell holds the pane or the program cannot be read. Use it to start a program over in its pane instead
+  of typing into it; the reply carries the old and new shell pids, and `restart.replayedArgv` on a replay.
+  Live sessions mode only.
 - `session swap`: exchange the two terminals' physical positions and primary/split roles without restarting
   them. Focus follows the terminal; axis and divider ratio stay fixed. Works on shown or hidden splits and
   under zoom/dashboard; errors when there is no split or either surface is not ready. Read the new primary
@@ -407,7 +414,7 @@ omitted when expanded).
   the absolute primary-pane fraction of the area below the titlebar (left or top; 0..1, clamped to
   0.05..0.95). The grow options are
   aliases for growing the primary or split pane. Prints the applied fraction.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--note` attaches a one-line reason, max 256 UTF-8 bytes and no line breaks, read back as the tree `statusNote` field and the `status` event's `note`, cleared by the next status set without it; `--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it, and while the session is `blocked` a status from another pane that is not itself `blocked` is refused with `blocked status owned by pane <pane>` so one pane's agent cannot erase the other's request for input, `idle` included since the bundled hooks emit it unprompted; any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a Dock-menu session, a sidebar row click) reveals that pane when the status needs attention (`blocked`/`completed`); `active` preserves the existing pane selection; the pane reads back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--note` attaches a one-line reason, max 256 UTF-8 bytes and no line breaks, read back as the tree `statusNote` field and the `status` event's `note`, cleared by the next status set without it; `--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it, and while the session is `blocked`, or `completed` without `--auto-reset`, a status from another pane that is not itself `blocked` is refused with `status owned by pane <pane>` so one pane's agent cannot erase the other's request for input, `idle` included since the bundled hooks emit it unprompted; any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a Dock-menu session, a sidebar row click) reveals that pane when the status needs attention (`blocked`/`completed`); `active` preserves the existing pane selection; the pane reads back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `session flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
 - `session park [on|off|toggle]` — mark a session parked: the row is kept, whatever agent it held is not.
   The row draws dimmed and stays selectable, navigable and where it is; only the look changes, unless
@@ -494,7 +501,9 @@ omitted when expanded).
   `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud close` — post a small **passive** panel over the session saying what you are doing
   ("gathering options…"). Unlike an overlay it takes no input and steals nothing: the session keeps first
-  responder, the user keeps typing, and the terminal behind it is neither dimmed nor click-blocked. Use it
+  responder, the user keeps typing, and the terminal behind it is neither dimmed nor click-blocked. With
+  `--markdown` a `[label](url)` link is underlined and opens on ⌘-click, so the panel can link the PR or
+  ticket it is about. Use it
   for the seconds an agent needs before it can show something (computing picker items, waiting on a slow
   command), then take it down. `open` is the default subcommand, so `session hud "…"` posts; a message that is
   literally `update` or `close` needs the explicit `session hud open` verb. `--detail` adds a dim second line,
@@ -546,8 +555,8 @@ window; read back as `minimized` on `window list`).
 **surface** — `surface zoom [show|hide|toggle] [--target surface:<session-id>:left|right|scratch|overlay|overlay-left|overlay-right|quick] [--window W]`
 — zoom a terminal surface to fill the window (sidebar hidden; a slim title-bar strip with an exit
 button remains). Omit `--target` to use the active surface;
-copy an explicit surface id from `tree --json` to address a hidden split/scratch or a background
-session. `quick` is the one target that is not a window surface: it grows the quick-terminal panel to
+copy an explicit surface id from `tree --json` to address a hidden split/scratch, a pane under a
+running overlay, or a background session. `quick` is the one target that is not a window surface: it grows the quick-terminal panel to
 fill its screen, takes no `--window`, is refused while the panel is hidden, and is never what an omitted
 `--target` resolves to. `hide` exits zoom; `toggle`
 enters/exits only this zoom mode, not macOS window zoom.
@@ -667,7 +676,7 @@ with `--error-position POS` and `--error-pane left|right`; see
 
 **hooks** — `hooks reload` — re-read `hooks.conf` (prints the parse-diagnostic count); `hooks list` — every `on <kind> <shell...>` line with its running pid and elapsed seconds, pending and dropped counts, last failure, and a retired marker for a removed line whose script still runs. A hook gets the event JSON on stdin plus `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`; one process per line at a time with a 256-deep queue behind it. Both commands are app-global and refuse a target or `--window`.
 
-**browser** - `browser clear` - remove every cookie and all site data that `--persistent` URL overlays saved; refused while one is open. App-global, no target or `--window`.
+**browser** - `browser clear` - remove every cookie and all site data that `--persistent` URL overlays saved; refused while one is open. `browser links [browser|overlay]` - set or print where a clicked web link in a terminal opens: the system browser (default) or a full session web overlay with saved logins; read back from `linkOpenMode` in `tree`. Both app-global, no target or `--window`.
 
 **config** - `config reload` - re-read the agterm-scoped `ghostty.conf` (prints the diagnostic count).
 
@@ -820,6 +829,9 @@ agtermctl session overlay open --url http://localhost:5173/ --js --target "$AGTE
   page. `agtermctl browser clear` empties the store, and is refused while a `--persistent` page is open.
   A login that sends the page to another site (OAuth, SSO, a popup) still fails: the page stays on its
   origin. Apps on `localhost` with different ports share cookies in the store.
+- Pass `--browse` to let the page leave its first site: links, redirects and scripts can then take it to
+  any `http` or `https` address, a redirect login included, and the strip names the site shown. A popup
+  login still fails. `tree` reports `browse` for each page.
 
 Every page gets the terminal theme as CSS variables: `--agterm-background`, `--agterm-foreground` and
 `--agterm-color-0` to `--agterm-color-15`, the theme's ANSI palette by slot (1 red, 2 green, 3 yellow, 4 blue,

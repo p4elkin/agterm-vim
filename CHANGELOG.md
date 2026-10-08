@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.35.1 - 2026-10-05
+
+### Improved
+
+- **Restart the program in one pane.** `session restart --command LINE (--pane-id ID | --pane left|right)` ends one Live pane's shell and its foreground program, then starts a new login shell in the same pane that runs LINE and stays interactive. The pane keeps its place, its stable id and its `AGTERM_*` environment, and nothing is typed into it. The reply carries the old and new shell pids. It works on a hidden split, in a background window and with the display asleep. Non-live, remote and scratch panes are refused #699 @umputun
+
+### Bug Fixes
+
+- the command a Live pane was created with (`session new --command`) kept running after the pane or its session was closed. Ending a pane's shell now sends a hangup to its foreground job, the way closing a terminal does. Background jobs, including nohup and disowned ones, are left alone #699 @umputun
+
 ## v0.35.0 - 2026-10-04
 
 ### New Features

@@ -20,13 +20,26 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Changed
+
+- Upstream's `Open links in` setting decides who opens a web link clicked in a pane. `Browser`, the default,
+  keeps `agterm-open-link` and its Jira and merge request views; `Session overlay` shows every web link as a
+  page over the session instead. File paths, forge refs and xchat links work the same under both.
+
 ### Fixed
 
+- On a split row, an open question (`completed` without `--auto-reset`) is no longer replaced by the other
+  pane's `active`, `completed` or `idle`; only its `blocked` or the owning pane changes it. The refusal now reads
+  `status owned by pane <pane>`, without the word `blocked`.
 - `zmx new HOST` with an empty `--command`, `--name` or `--cwd` leaves that option out on the far side instead of
   failing there with `Missing value for '--command <command>'`.
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the
   origin drops a presenter that leaves a forwarded request unanswered, so opens and other forwarded commands stop
   failing with `the presenting Mac left` after the other laptop sleeps again.
+- Text typed into a headless origin's pane (`agtermctl session type`) clears a blocked or completed status by the
+  Status reset mode in `settings.json` in the server's state directory, read on every call. It always used
+  `first key` before, so an arrow key sent to a question picker cleared the pending question even with Return set
+  on the Mac. Only `statusReset` is read; without the file the mode stays `first key`.
 
 ### Added
 

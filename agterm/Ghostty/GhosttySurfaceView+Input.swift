@@ -177,6 +177,29 @@ extension GhosttySurfaceView {
         _ = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods(event))
     }
 
+    /// Forwards the ⌘-click `HudLinkClick` claims for a HUD panel, so libghostty opens the link under it. It
+    /// moves no focus.
+    func passiveClick(_ state: ghostty_input_mouse_state_e, with event: NSEvent) {
+        guard let surface else { return }
+        reportMousePos(from: event)
+        _ = ghostty_surface_mouse_button(surface, state, GHOSTTY_MOUSE_LEFT, mods(event))
+    }
+
+    /// Tells a HUD panel where the pointer is while `HudLinkClick` sees ⌘ held over it, or with nil that it
+    /// is gone, so libghostty resolves the link under it and asks for the pointing hand.
+    func passivePointer(at windowPoint: NSPoint?, with event: NSEvent) {
+        guard let surface else { return }
+        guard let windowPoint else {
+            ghostty_surface_mouse_pos(surface, -1, -1, GHOSTTY_MODS_NONE)
+            lastReportedMousePoint = NSPoint(x: -1, y: -1)
+            return
+        }
+        let local = convert(windowPoint, from: nil)
+        let point = NSPoint(x: local.x, y: bounds.height - local.y)
+        ghostty_surface_mouse_pos(surface, point.x, point.y, mods(event))
+        lastReportedMousePoint = point
+    }
+
     // forward right-/middle-button press/release so libghostty's mouse bindings fire (right-click-action),
     // in the left handlers' `mouse_pos`-then-`mouse_button` order minus the focus grab — these buttons
     // don't move first responder. no terminal context menu, so the return value is discarded.
@@ -511,6 +534,8 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     func applyMouseShape(_ shape: ghostty_action_mouse_shape_e) {
         guard shape != mouseShape else { return }
         mouseShape = shape
+        // a HUD panel is never `deckVisible`; it paints the shape only while `HudLinkClick` hovers it
+        if HudLinkClick.hovered === self { Self.nsCursor(for: shape).set() }
         if deckVisible, pointerInside, ownsPointer() { Self.nsCursor(for: shape).set() }
     }
 
@@ -565,13 +590,23 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     /// host-free `LinkPolicy`. A `file://` link is REVEALED in Finder, never opened — reveal executes nothing.
     func openLink(_ raw: String) {
         switch LinkPolicy.disposition(for: raw) {
-        case let .open(url): openWebLink(url)
-        case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case let .xchat(id): openXchatMessage(id)
         case let .openPath(path, line): openFilePath(path, line: line)
         case let .ref(payload): openRef(payload)
-        case .ignore: return
+        // the overlay setting takes a web link from `agterm-open-link`; browser keeps the helper first
+        case let .open(url) where LinkOpener.shared.mode() == .browser:
+            if !openWebLink(url) { LinkOpener.shared.follow(raw, from: linkClickOrigin) }
+        case .open, .reveal, .ignore: LinkOpener.shared.follow(raw, from: linkClickOrigin)
         }
+    }
+
+    /// Which kind of surface a clicked link came from, read off the ownership each factory already sets.
+    /// HUD first: its surface sits in the session's overlay slot like a program's.
+    var linkClickOrigin: LinkPolicy.ClickOrigin {
+        if hudBodyFile != nil { return .hud }
+        if let session { return .pane(session.id) }
+        if let owner = watermarkSession { return .scratch(owner.id) }
+        return focusSession == nil ? .quick : .programOverlay
     }
 
     /// Show a parked cross-agent message in an overlay over the session that was clicked, by running
@@ -616,15 +651,13 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     }
 
     /// A pane's web link goes through `agterm-open-link`, which shows a Jira or merge request view or opens the
-    /// browser itself. An overlay surface has no session, so a link clicked inside a view opens the browser.
-    private func openWebLink(_ url: URL) {
-        if OpenLinkLaunch.handles(url), let session {
-            let pane: CommandContext.Pane = isSplitPane ? .right : .left
-            let arguments = OpenLinkLaunch.arguments(url: url, session: session, pane: pane,
-                                                     socket: env["AGTERM_SOCKET"])
-            if runAgentHelper(OpenLinkLaunch.helperName, arguments: arguments, sessionID: session.id) { return }
-        }
-        NSWorkspace.shared.open(url)
+    /// browser itself. False leaves the link to `LinkOpener`: an overlay surface has no session.
+    private func openWebLink(_ url: URL) -> Bool {
+        guard OpenLinkLaunch.handles(url), let session else { return false }
+        let pane: CommandContext.Pane = isSplitPane ? .right : .left
+        let arguments = OpenLinkLaunch.arguments(url: url, session: session, pane: pane,
+                                                 socket: env["AGTERM_SOCKET"])
+        return runAgentHelper(OpenLinkLaunch.helperName, arguments: arguments, sessionID: session.id)
     }
 
     @discardableResult

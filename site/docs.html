@@ -1073,7 +1073,8 @@
                   back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL;
                   ⌘W closes it like any overlay. A file page opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span>
                   has no strip, so a dashboard fills its session or split pane like a native view. ⌘+, ⌘− and ⌘0 zoom the page, and every later page opens at that zoom. A page runs no JavaScript of its
-                  own unless opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span>. A web page keeps cookies and logins only while it is open, unless opened with
+                  own unless opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span>, and one that does can close its own overlay
+                  with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">window.close()</span>. A web page keeps cookies and logins only while it is open, unless opened with
                   <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--persistent</span>, which uses one saved store shared by these pages;
                   <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl browser clear</span> empties it. A login that goes through another site still fails. A link the page opens in your browser
                   asks you first. Pages can match the terminal
@@ -1095,7 +1096,8 @@
                   hiding the sidebar and collapsing the title bar to a slim strip with the traffic lights, the window title, and an exit button
                   (⌘W leaves zoom too). A view mode, not a layout change: exiting
                   restores split ratios, focus, and visibility exactly as they were, and everything else keeps running behind it.
-                  Scripts can zoom any surface by id with <code style="color: #e6e1d7">agtermctl surface zoom</code>. Distinct
+                  Scripts can zoom any surface by id with <code style="color: #e6e1d7">agtermctl surface zoom</code>, including the
+                  pane under a running overlay, which keeps running and returns when zoom exits. Distinct
                   from macOS window zoom and full screen, which size the window itself.
                 </p>
               </div>
@@ -1452,7 +1454,9 @@
                 <span
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
-                ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed, right-click-to-paste, whether clicking a workspace
+                ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed, right-click-to-paste,
+                <strong style="color: #e6e1d7">Open links in</strong> (Browser, or Session overlay to show a ⌘-clicked web
+                link over its session; see <a href="#links" style="color: #6d82f3">links</a>), whether clicking a workspace
                 row expands or collapses it (on by default; the disclosure triangle always does), a
                 <strong style="color: #e6e1d7">Flagged view layout</strong> that picks a flat list or a workspace tree for the
                 flagged view in every window (the tree shares each workspace's collapse state with the ordinary tree, so
@@ -2681,7 +2685,9 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               tables render, and the message may run to 4096 characters. Standard markdown rules apply, so a single newline
               inside a paragraph is a space; use list items, or end a line with two spaces, to keep rows apart. A board taller
               than the panel is clipped, its excess rows giving way to a dim <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">… N more</span>. The file is read once per
-              command, so push each change with an update.
+              command, so push each change with an update. A link shows its label underlined, and a ⌘-click opens it as it
+              would in the terminal, so a board can carry the pull request or the ticket it is about. That is the one click
+              the panel takes; any other still reaches the terminal behind it.
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--file status.md</span> reads the message from a file, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--font-size PT</span> gives the panel its own
               font size, set when it opens. A controller agent can keep one in a corner of its session with
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session hud --file status.md --markdown --font-size 11 --position top-right</span> and refresh it with
@@ -2958,7 +2964,8 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session status --pane-id</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session restore --pane-id</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session text --pane-id</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session type --pane-id</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session type --pane-id</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session restart --pane-id</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">surface cursor --pane-id</span> to resolve the current slot), so a
               script can drive its own window without hard-coding ids. The shell also identifies its terminal as
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TERM_PROGRAM=agterm</span>, with
@@ -3101,6 +3108,17 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">clipboard-write = ask</span> or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">deny</span>. Each prompt offers
               <em>Don't ask again this session</em>.
+            </p>
+            <p id="links" style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A ⌘-click on a web link opens it in your browser. With
+              <strong style="color: #e6e1d7">Settings ▸ General ▸ Open links in</strong> set to Session overlay, or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl browser links overlay</span>, an http or https link
+              opens in a web overlay over its session instead: JavaScript on, navigation buttons, and the saved browser
+              store, so a login made there lasts. That store is agterm's own; nothing is taken from your browser. The page
+              may go on to other sites, and its strip always names the site shown. The link still opens in the browser
+              when it sits in a HUD, when a HUD is up on the session, when the terminal is zoomed, when the session
+              already has an overlay, or in the quick terminal. So does a plain http link to anything but a local
+              address (localhost, a .local name, an IP address), which the overlay could not load.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               A ⌘-click on a

@@ -46,8 +46,8 @@ public enum ForwardPolicy {
         // a forwarded scratch would open a login shell on the Mac
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
             return .refused("no terminal surface")
-        case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear:
+        case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
+             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks:
             return .refused("a Mac feature")
         }
     }

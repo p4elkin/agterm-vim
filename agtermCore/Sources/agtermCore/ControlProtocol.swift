@@ -41,6 +41,7 @@ public enum Command: String, Codable, Sendable {
     case sessionBookmarkList = "session.bookmark.list"
     case sessionBookmarkGo = "session.bookmark.go"
     case sessionBookmarkRemove = "session.bookmark.remove"
+    case sessionRestart = "session.restart"
     case sessionBackground = "session.background"
     case sessionSplit = "session.split"
     case sessionSplitClose = "session.split.close"
@@ -112,6 +113,7 @@ public enum Command: String, Codable, Sendable {
     case hooksReload = "hooks.reload"
     case hooksList = "hooks.list"
     case browserClear = "browser.clear"
+    case browserLinks = "browser.links"
     case configReload = "config.reload"
     case themeSet = "theme.set"
     case themeList = "theme.list"
@@ -445,6 +447,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var chromeless: Bool?
     /// persistent opens a `--url` page on the saved browser store (`--persistent`) instead of an in-memory one.
     public var persistent: Bool?
+    /// browse lets a `--url` page's main frame leave its first origin for any HTTP(S) site (`--browse`).
+    public var browse: Bool?
     /// value is the answer `session.overlay.submit` hands back from a page; empty is a real answer.
     public var value: String?
     /// page is the page id `session.overlay.result` reads the outcome of, instead of a program's exit status.
@@ -484,7 +488,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -575,6 +579,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.chromeless = chromeless
         self.persistent = persistent
         self.attach = attach
+        self.browse = browse
     }
 }
 
@@ -675,6 +680,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var pageID: String?
     /// A page's selector outcome for `session.overlay.result --page`.
     public var pageOutcome: ControlHtmlPageOutcome?
+    /// restart is what `session.restart` replaced: the pane's stable id and its shell before and after.
+    public var restart: ControlRestartReceipt?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -690,9 +697,11 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 zmx: ControlZmxInventory? = nil, remote: ControlRemoteTree? = nil,
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
-                pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil) {
+                pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
+                restart: ControlRestartReceipt? = nil) {
         self.overlayRedirect = overlayRedirect
         self.bookmarks = bookmarks
+        self.restart = restart
         self.width = width
         self.height = height
         self.restore = restore
@@ -789,6 +798,7 @@ public enum OverlayHtmlError {
     public static let chromelessWithNavigation = "session.overlay.open: --chromeless cannot be combined with --navigation"
     public static let persistentRequiresURL = "session.overlay.open: --persistent requires --url"
     public static let persistentUnavailable = "persistent browser storage is not available"
+    public static let browseRequiresURL = "session.overlay.open: --browse requires --url"
     /// presenter: a page is shown on this Mac, so it is refused while another Mac presents the session.
     public static let presenter = "a viewer presents this session: an html overlay would open where nobody sees it"
     public static let noOverlay = "no overlay"

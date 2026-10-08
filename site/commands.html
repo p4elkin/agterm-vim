@@ -491,7 +491,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">["right"]</span> or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">["left","right"]</span>, omitted when neither is),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span> (the pages in the overlay slots as
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, zoom?, id}</span>, one of file and url set,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id}</span>, one of file and url set,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">state</span> being loading, loaded or failed; omitted when none is open),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hud</span> (the message panel holding the session-wide
                 slot — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?}</span>, where
@@ -587,6 +587,9 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">autoFollowMs</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarVisible</span>,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarMode</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">linkOpenMode</span> (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span>, the read side of
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">browser links</span>; app-wide),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarFlaggedLayout</span> (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">flat</span> or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>, the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar flagged-layout</span>; app-wide, so every window reports the
@@ -1358,6 +1361,51 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session restart [--command LINE] (--pane-id ID | --pane left|right) [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.restart</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Replace the shell of one pane. The pane's shell and its foreground program are ended, then a new
+                login shell starts in the same pane, runs <span style="font-family: &quot;JetBrains Mono&quot;, monospace">LINE</span>
+                and stays as an interactive shell afterwards. The pane keeps its place, its stable id and its
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">AGTERM_*</span> environment, and starts with an
+                empty screen. Nothing is typed into the pane. A hidden split and a pane in a background window restart like any
+                other.
+              </p>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Without <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> the new shell runs the pane's current foreground program again: the
+                arguments <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> reports as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">foreground</span> or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitForeground</span>, in the directory
+                that program is running in. That is the program as it runs now, not the line that started it, so environment assignments,
+                redirections and the other parts of a pipeline are not reconstructed. A replay is refused, with nothing
+                changed, when a shell holds the pane (the pane's own shell running a builtin or a loop included), when the
+                program cannot be read (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">sudo</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">top</span>), when its directory is unavailable, or when
+                it is listed in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restore-denylist.conf</span>. An empty <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--command</span> is an error, never a replay.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The reply comes once the new shell exists and carries
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restart.oldPid</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restart.newPid</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restart.paneID</span>, plus
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pane</span>. A replay adds
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">restart.replayedArgv</span>, the program it asked
+                the new shell to run. The pids are the pane's shells, not the
+                program <span style="font-family: &quot;JetBrains Mono&quot;, monospace">LINE</span> starts; read that from
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">foreground</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">splitForeground</span>. Requires Live sessions
+                mode and a local pane; the scratch terminal is refused. A pane id that does not resolve is an error even beside
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--pane</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">LINE</span> is one shell line of at most 4096
+                bytes. The pane's status and any ask, HUD or pane overlay anchored to it are cleared; its restore pin is kept.
+                A background or disowned job of the old shell is not ended. An error naming the old shell's pid means its
+                daemon kill was confirmed. If the old foreground job survives SIGKILL or the pane cannot be rebuilt, the pane
+                closes and the error says so. A startup timeout reports only that no new shell was observed. The command
+                does not need the display awake.
+              </p>
+            </div>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session lead [--pane left|right] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.lead</div>
@@ -1476,9 +1524,11 @@
                 or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">completed</span> session reveal and focus the tagged
                 pane. An <span style="font-family: &quot;JetBrains Mono&quot;, monospace">active</span> status preserves the current pane
                 selection. An agent running in a split or scratch should set its own pane. While a session is
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>, a status from a DIFFERENT pane that is
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>, or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">completed</span> without
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--auto-reset</span>, a status from a DIFFERENT pane that is
                 not itself <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span> is refused with
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked status owned by pane …</span>, changing nothing
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">status owned by pane …</span>, changing nothing
                 and playing no sound, so one pane's agent cannot erase the other's request for input. A second pane may still report
                 its own <span style="font-family: &quot;JetBrains Mono&quot;, monospace">blocked</span>;
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">idle</span> is not exempt, since the bundled agent hooks
@@ -1799,7 +1849,7 @@
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.open</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Show a local HTML file, such as an artifact an agent generated, in the overlay slot instead of running a program. Placement, sizing, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--follow</span>, ⌘W and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay close</span> work as for a program; a page never exits on its own. The panel carries a strip naming the file or origin, followed by the page title dimmed, and a close button; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span> adds back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span> drops the strip so the page fills its panel, the session or pane when <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--size-percent</span> is omitted, without hiding the sidebar or title bar; it closes with ⌘W (the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">close_session</span> binding, rebindable in the keymap), the page's own <span style="font-family: &quot;JetBrains Mono&quot;, monospace">data-agterm=&quot;session.overlay.close&quot;</span> button, or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session overlay close</span>. It takes no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span> and no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--url</span>, whose strip is what names the site.
+                Show a local HTML file, such as an artifact an agent generated, in the overlay slot instead of running a program. Placement, sizing, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--follow</span>, ⌘W and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay close</span> work as for a program. A page stays until it is closed; one opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span> can close its own overlay with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">window.close()</span> when the web view accepts the call; it may refuse, for example after <span style="font-family: &quot;JetBrains Mono&quot;, monospace">history.pushState</span>. The panel carries a strip naming the file or origin, followed by the page title dimmed, and a close button; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span> adds back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span> drops the strip so the page fills its panel, the session or pane when <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--size-percent</span> is omitted, without hiding the sidebar or title bar; it closes with ⌘W (the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">close_session</span> binding, rebindable in the keymap), the page's own <span style="font-family: &quot;JetBrains Mono&quot;, monospace">data-agterm=&quot;session.overlay.close&quot;</span> button, or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session overlay close</span>. It takes no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span> and no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--url</span>, whose strip is what names the site.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Without <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span> the page has no file access (it is loaded from the file's text), so keep it self-contained. With <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd DIR</span> it may read files inside DIR, which must contain FILE; / and the home directory are refused. A page that styles nothing takes the terminal theme's colors, with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> replacing the background; any CSS the page sets wins. Every page also gets the theme as CSS variables, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-background</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-foreground</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-color-0</span> to <span style="font-family: &quot;JetBrains Mono&quot;, monospace">15</span> (the ANSI palette), for pages built to match the terminal; a theme change reloads a file page and reaches a URL page at its next load. The page's own JavaScript is off unless <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span> is passed, so generated pages should be static HTML, CSS and SVG; images and stylesheets load. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> reports <span style="font-family: &quot;JetBrains Mono&quot;, monospace">javascript</span> for each page. A clicked http(s) link opens in the default browser once the user confirms a prompt naming its origin, and after Cancel the page asks nothing more until the user clicks or types in it. Popups, dialogs, file-chooser requests, dropped or pasted files and camera or microphone requests are refused. Mutually exclusive with a command and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--wait</span>; refused while another Mac presents the session.
@@ -1813,11 +1863,13 @@
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl session overlay open --url URL [--navigation] [--js] [--persistent] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target T] [--window W]
+                agtermctl session overlay open --url URL [--navigation] [--js] [--persistent] [--browse] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.open</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                Show a web page by URL in the overlay slot, typically a dev server you are running or a docs page. Everything about <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--html</span> applies, except that URL must be an absolute http or https URL, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--block</span> are refused, and the page gets no bridge to agterm.
+                Show a web page by URL in the overlay slot, typically a dev server you are running or a docs page. Everything about <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--html</span> applies, except that URL must be an absolute http or https URL, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--block</span> are refused, and the page gets no bridge to agterm. With <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--browse</span> the page may leave
+                the site it opened: links, redirects, forms and scripts can take it to any http or https address, so a redirect
+                login works, and the strip names the site of the document shown. Read it back as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browse</span>.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 The server must be reachable from the Mac running agterm, where <span style="font-family: &quot;JetBrains Mono&quot;, monospace">localhost</span> points. Plain http works for local addresses (localhost, .local, IP literals); use https for public hosts. Pass <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--js</span> for web apps that require client-side JavaScript. It keeps browser styling: an opaque canvas and no theme text color or scheme, only the theme variables, so <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> changes <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--agterm-background</span> and never the browser canvas. The page is pinned to its origin: same-origin navigations and redirects load in place; a clicked link elsewhere, or a clicked link's redirect elsewhere, goes through the same confirmation and leaves the page loaded; a redirect to another origin during a load nobody clicked fails it with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">navigation blocked</span>. Each overlay has its own in-memory browser storage, gone when it closes. With <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--persistent</span> the page instead uses one saved store shared by every such page, so cookies and site data survive the overlay and an app restart; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">persistent</span> reads it back and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser clear</span> empties it. The open fails, with nothing opened, when the store cannot be read or when it reaches the app before a clear's removal has finished. A socket request queues behind a socket-issued clear and then runs. A login that leaves the origin (OAuth, SSO, a popup) still fails, apps on one host with different ports share cookies, and a cookie without an expiry is not promised to outlive the app. Read back <span style="font-family: &quot;JetBrains Mono&quot;, monospace">url</span> in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span>.
@@ -2057,11 +2109,13 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--markdown</span> renders the message as standard markdown (CommonMark plus GFM tables): headings, bold,
-                italic, strikethrough, nested lists, code blocks, block quotes, rules and tables, with a link showing its label and
-                raw HTML staying literal. It raises the message cap to 4096 characters and allows newlines and tabs in it; the
+                italic, strikethrough, nested lists, code blocks, block quotes, rules and tables, with
+                raw HTML staying literal. A link shows its label, underlined when a ⌘-click opens it:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">http</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">https</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">mailto</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ftp</span> open, a local <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file://</span> link is revealed in Finder, and a link to anything
+                else is its plain label. That ⌘-click is the one click the panel takes, and it moves no focus. It raises the message cap to 4096 characters and allows newlines and tabs in it; the
                 detail keeps the plain rules. A message that renders nothing visible is refused like an empty one. A single newline inside a paragraph is a space, so end a line with two spaces or a
-                backslash, or use list items; lists always render tight. Text wraps at 60 columns while table rows stay intact,
-                all left-aligned as one block. What does not fit is clipped: a row too wide ends in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">…</span>, and rows past the
+                backslash, or use list items; lists always render tight. Text wraps at the panel's width, 60 columns at most, while table rows stay intact,
+                all left-aligned as one block. What does not fit is clipped: a table row too wide ends in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">…</span>, and rows past the
                 panel's height give way to a dim <span style="font-family: &quot;JetBrains Mono&quot;, monospace">… N more</span>, itself clipped in a narrow panel. Trailing all-empty table
                 rows and an all-empty header row are not shown; a table is framed in box-drawing borders with a rule under its header.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--file FILE</span> reads the message from a UTF-8 file instead of the argument (exactly one of the two), once
@@ -2375,7 +2429,8 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">surface:&lt;session-id&gt;:&lt;left|right|scratch|overlay|overlay-left|overlay-right&gt;</span>
                 id (from <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>'s
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">surfaces[].id</span>) zooms that exact surface, including a
-                hidden-but-alive split or scratch.
+                hidden-but-alive split or scratch, or a pane under a running overlay: the overlay keeps running and
+                returns when zoom exits.
               </p>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">quick</span> is the one target that is not a window's
@@ -3275,6 +3330,28 @@
                 after the removal finished, and with nothing ever saved it answers ok. Refused while a persistent page is open, one in a
                 just-closed session that can still be restored included, since an open page writes its login back. Clearing local data does not sign
                 you out on the server. App-global; a target or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> is refused.
+              </p>
+            </div>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl browser links [browser|overlay]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">browser.links</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Set where a clicked http or https link in a terminal opens, or with no mode print the current one.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser</span>, the default, hands it to the system browser.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span> opens it in a full session web overlay with JavaScript, navigation
+                buttons and the saved browser store, as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--url URL --browse --js --navigation --persistent</span>
+                would, without selecting the session. App-global; a target or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span> is refused.
+                Read back <span style="font-family: &quot;JetBrains Mono&quot;, monospace">linkOpenMode</span> at the top of <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree --json</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                The link still opens in the browser when it was clicked in a HUD, a program overlay or the quick terminal,
+                when a HUD is up on the session, when the window has a zoomed terminal, when the session-wide overlay slot
+                is taken, when another Mac presents the session, or when the saved store cannot be used. A plain http link
+                uses the overlay only for an unqualified host name such as localhost, a .local name or an IP address;
+                http to any other host name opens in the browser. mailto, ftp and file links are unaffected. Same setting as Settings ▸ General ▸ Open links in.
               </p>
             </div>
           </section>

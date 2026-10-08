@@ -363,7 +363,8 @@ paths:
   leader tail such as `ctrl+a>left`.
   Bare function keys may start commands, map alternatives/leaders, and global hotkeys.
   `global-hotkey f5` takes F5 machine-wide, including from local map/command bindings.
-- Host-free `namedKey(forKeyCode:)` is shared by `CustomCommandRunner` and `UndoCloseShortcut`.
+- `CustomCommandRunner` and `UndoCloseShortcut` build their chord through `NSEvent.keymapChord(produced:)`,
+  which applies host-free `namedKey(forKeyCode:)` and then `chordKey`; each passes its own accessor.
   `KeybindTests` pins its range exactly to `bindableNamedKeys`; keep
   `KeymapUITests.testCustomCommandArrowChordFires` because a private-use AppKit glyph can otherwise
   create an unspellable runtime chord.
