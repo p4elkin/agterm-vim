@@ -3,9 +3,6 @@
 import agtermCore
 import AppKit
 import GhosttyKit
-import os
-
-private let logger = Logger(subsystem: "com.umputun.agterm", category: "GhosttySurfaceLinks")
 
 extension GhosttySurfaceView {
     // MARK: - Drag and drop (issue #51)
@@ -662,24 +659,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
 
     @discardableResult
     private func runAgentHelper(_ name: String, arguments: [String], sessionID: UUID) -> Bool {
-        let candidates = ["\(NSHomeDirectory())/.local/bin/\(name)", "/opt/homebrew/bin/\(name)"]
-        guard let tool = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            logger.warning("link clicked but \(name, privacy: .public) is not installed")
-            return false
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        process.arguments = arguments
-        var environment = ProcessInfo.processInfo.environment
-        environment["AGTERM_SESSION_ID"] = sessionID.uuidString
-        process.environment = environment
-        do {
-            try process.run()
-            return true
-        } catch {
-            logger.warning("\(name, privacy: .public) failed to launch: \(error.localizedDescription, privacy: .public)")
-            return false
-        }
+        LinkOpener.shared.helper(name, arguments, sessionID)
     }
 }
 

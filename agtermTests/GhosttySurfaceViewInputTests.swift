@@ -10,10 +10,15 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         var opened: [URL] = []
         var revealed: [URL] = []
         var overlaid: [(URL, UUID)] = []
+        var helpers: [(String, [String])] = []
     }
 
-    private func recordLinks(mode: LinkOpenMode, overlayOpens: Bool) -> Followed {
+    private func recordLinks(mode: LinkOpenMode, overlayOpens: Bool, helperStarts: Bool = false) -> Followed {
         let followed = Followed()
+        LinkOpener.shared.helper = { name, arguments, _ in
+            followed.helpers.append((name, arguments))
+            return helperStarts
+        }
         LinkOpener.shared.mode = { mode }
         LinkOpener.shared.open = { followed.opened.append($0) }
         LinkOpener.shared.reveal = { followed.revealed.append($0) }
@@ -67,6 +72,19 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         pane.openLink(url.absoluteString)
         XCTAssertEqual(refused.overlaid.count, 1)
         XCTAssertEqual(refused.opened, [url])
+    }
+
+    func testBrowserModeHandsAWebLinkToTheOpenLinkHelperFirst() throws {
+        let session = Session(initialCwd: NSTemporaryDirectory())
+        let pane = bareSurface()
+        pane.session = session
+        let web = try XCTUnwrap(URL(string: "https://example.com/"))
+
+        let followed = recordLinks(mode: .browser, overlayOpens: true, helperStarts: true)
+        pane.openLink(web.absoluteString)
+
+        XCTAssertEqual(followed.helpers.map(\.0), [OpenLinkLaunch.helperName])
+        XCTAssertTrue(followed.opened.isEmpty)
     }
 
     func testBrowserModeAHudAndNonWebLinksNeverReachTheOverlay() throws {
