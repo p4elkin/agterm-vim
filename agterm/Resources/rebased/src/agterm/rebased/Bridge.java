@@ -93,6 +93,23 @@ public final class Bridge implements BiFunction<String, String, String> {
     return null;
   }
 
+  // A project already open (one IntelliJ reopened before this plugin listened) gets no new window event.
+  private static void open(String dir) {
+    for (Project p : ProjectManager.getInstance().getOpenProjects()) {
+      var frame = WindowManager.getInstance().getFrame(p);
+      if (frame != null && p.getBasePath() != null && sameDirectory(p.getBasePath(), dir)) {
+        openedProject(frame, p.getBasePath(), windowNumber(frame));
+        return;
+      }
+    }
+    ProjectUtil.openOrImport(Path.of(dir), null, true);
+  }
+
+  private static boolean sameDirectory(String a, String b) {
+    try { return Path.of(a).toRealPath().equals(Path.of(b).toRealPath()); }
+    catch (java.io.IOException e) { return Path.of(a).normalize().equals(Path.of(b).normalize()); }
+  }
+
   private static void onWindowEvent(WindowEvent e) {
     Window w = e.getWindow();
     if (e.getID() == WindowEvent.WINDOW_OPENED) {
@@ -165,7 +182,7 @@ public final class Bridge implements BiFunction<String, String, String> {
         for (String[] ev : flush) hostEvent(ev[0], ev[1]);
         return "ok";
       }
-      case "open" -> { writeSafe(() -> ProjectUtil.openOrImport(Path.of(arg), null, true)); return "ok"; }
+      case "open" -> { writeSafe(() -> open(arg)); return "ok"; }
       case "hide" -> { later(() -> projectFrames(arg).forEach(f -> f.setVisible(false))); return "ok"; }
       case "show" -> { later(() -> projectFrames(arg).forEach(f -> { f.setVisible(true); f.toFront(); })); return "ok"; }
       case "saveAll" -> {

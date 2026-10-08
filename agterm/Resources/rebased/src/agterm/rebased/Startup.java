@@ -16,6 +16,8 @@ public final class Startup implements AppLifecycleListener {
       @Override public boolean canExitApplication() { Bridge.log("exit vetoed"); return false; }
       @Override public boolean canRestartApplication() { Bridge.log("restart vetoed"); return false; }
     }, app);
+    // agterm opens the projects it wants; one reopened from the last run would sit hidden and cost memory
+    com.intellij.ide.GeneralSettings.getInstance().setReopenLastProject(false);
     Bridge.install();
     Bridge.log("installed from " + from);
   }
