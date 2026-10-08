@@ -10,7 +10,7 @@ struct RebasedMenuPolicyTests {
         (Chord(mods: .control, key: "space"), .ide),
         (Chord(mods: .command, key: "q"), .agterm),
         (Chord(mods: .command, key: "h"), .agterm),
-        (Chord(mods: [.control, .shift], key: "r"), .toggle),
+        (Chord(mods: [.control, .shift], key: "r"), .toggle)
     ])
     func anIDEKeyWindowGetsEveryKeyButQuitHideAndTheToggle(_ chord: Chord, _ expected: RebasedMenuPolicy.Route) {
         #expect(policy.route(chord, keyWindow: .ide) == expected)
