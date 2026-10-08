@@ -20,7 +20,7 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
   `window`, `workspace`, `sidebar`, `theme`, `font`, `keymap`, `config`, `quick`, `dashboard`, `mode` and
   `session go|move|duplicate|park|resize` (no windows or UI); `surface zoom|cursor`, `session scratch` and
   `session lead` (no terminal surface); `session pairing`, `overlay-redirect`, `hooks`, `restore` and
-  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages.
+  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages; `--rebased` (fork only).
 - **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch
   close/move prints the affected session count, and `tree`/`window list` print a human listing. Use
   `--json` when you need to read ids or values back.
@@ -846,6 +846,12 @@ error keeps those names for compatibility.
   scratch override ends with that scratch terminal. Errors `session has no split pane` / `session has no
   scratch terminal` when the pane does not exist, and `--pane must be left, right, or scratch` on a bad
   name. Read the default from `background` and pane overrides from `paneBackgrounds` in `tree --json`.
+- `session overlay open --rebased [--cwd DIR] [--size-percent N] [--follow] [--target] [--window W]` (fork only)
+  — show Rebased, the IntelliJ-platform git client, for the git repository holding `--cwd` (default: the
+  session's working directory). The IDE runs inside agterm; the first open starts it and can take seconds,
+  read `rebasedOverlay.state` (`starting`, `shown`, `failed`). One repository's window is shown in one
+  session at a time. Refused on a headless origin and for a remote session. Combines with nothing but the
+  options listed.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no
@@ -1752,7 +1758,7 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 - Plus the other `$AGT_*` context vars the runner exports.
 
 Built-in action names for `map` include: `new_window`, `new_workspace`, `new_session`,
-`new_session_in_workspace`,
+`new_session_in_workspace`, `rebased_toggle` (fork only),
 `open_directory`, `rename_session`, `duplicate_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_horizontal_split`, `toggle_scratch`, `toggle_sidebar`,
 `focus_workspace`, `toggle_workspace_filter`, `quick_terminal`,
@@ -1760,6 +1766,10 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
 `previous_window`, `next_window`, `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
 `keymap.conf` in `$EDITOR`, then `agtermctl keymap reload`.
+
+`rebased_toggle` (fork only) ships no default chord: bind it with a `map` line. It opens Rebased for the
+focused session's repository, or hides the overlay when it is shown. Over the Rebased window only that
+direct chord works, never a leader sequence, because ⌃Space is the IDE's completion.
 
 `new_session_in_workspace` ships no default chord and no menu item, so it only exists once you bind it —
 `nmap space>n>w new_session_in_workspace`, or a `map` line for a global chord. It opens a picker listing

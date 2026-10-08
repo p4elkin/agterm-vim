@@ -179,7 +179,7 @@ targets:
           # builds, so adding the helper would otherwise break the seal. --deep because a clean
           # build can reach here before Xcode has signed agterm.debug.dylib. Entitlements come in a
           # SECOND pass instead: --deep applies them to every nested binary, and helpers carry no app
-          # TCC entitlements.
+          # entitlements.
           codesign --force --deep --options runtime --sign - "$CODESIGNING_FOLDER_PATH"
           # CODE_SIGN_ENTITLEMENTS, not a literal path: Debug and Release use different files.
           codesign --force --options runtime --entitlements "$SRCROOT/$CODE_SIGN_ENTITLEMENTS" --sign - "$CODESIGNING_FOLDER_PATH"

@@ -14,7 +14,8 @@ paths:
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
 - Developer ID signing is inside-out: `agtermctl`, zmx and `agterm-session-host` are signed first with no
-  entitlements, then the app is sealed with its TCC entitlements. The script rejects any helper carrying them.
+  entitlements, then the app is sealed with its entitlements: the TCC keys plus Rebased's `allow-jit` and
+  `disable-library-validation`. The script rejects any helper carrying them.
 - Before writing or committing a release section, put the exact `CHANGELOG-fork.md` text in a temp file and
   pass it through the `draft-approval` skill's `draft-review.sh`; address annotations and get explicit
   chat approval. `release_notes()` publishes that section as the GitHub release body.

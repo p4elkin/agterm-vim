@@ -126,8 +126,8 @@ paths:
   command; `closeSplitPane` keeps primary when both exist and otherwise closes the session.
   `focusAfterReparent` restores focus after the surviving view changes host.
 - Pane focus actions, menu/palette, and `session.focus` gate on `hasSplit`, not `isSplit`, so they also swap
-  the maximized hidden pane. Ctrl-1/Ctrl-2 use an app-wide event monitor and always consume these reserved
-  keys, even when no split exists.
+  the maximized hidden pane. Ctrl-1/Ctrl-2 use an app-wide event monitor and consume these reserved
+  keys even when no split exists, except while a Rebased IDE window is key ([[rebased-overlay]]).
 - Swap Panes is a role-and-view exchange, exposed through View, the action palette, and `session.swap` with
   no default shortcut. It gates on `hasSplit`, including a hidden split, and stays available under terminal
   zoom and the dashboard. Focus follows the terminal; axis and ratio stay with the layout.

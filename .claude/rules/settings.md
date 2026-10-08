@@ -279,6 +279,8 @@ paths:
   which is what makes the toggle survive a relaunch. It has NO Settings UI and no menu item — the keymap
   chord (`map <chord> overlay_redirect_toggle`), the palette action, and `agtermctl overlay-redirect
   toggle` are the three ways in.
+- `rebasedAppPath` (fork only, see [[rebased-overlay]]) names the Rebased bundle, nil for
+  `/Applications/Rebased.app` through `effectiveRebasedAppPath`. Settings > General edits it.
 - `flaggedViewLayout` is a raw `FlaggedViewLayout` (`flat`|`tree`), nil for the default `flat`, resolved by
   `effectiveFlaggedViewLayout` and mirrored to `GhosttyApp.flaggedViewLayout`. App-wide, never per window.
   Every sidebar Coordinator picks it up on `.agtermAppearanceChanged`, and only one showing the flagged view

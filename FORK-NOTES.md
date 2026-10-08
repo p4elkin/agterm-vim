@@ -32,6 +32,8 @@ is the `.claude/rules` file that owns the design.
 
 **Panes and sessions**
 
+- **Rebased in an overlay** — the IntelliJ-platform git client runs inside agterm and shows a session's
+  repository in its overlay slot, docked to the window. `.claude/rules/rebased-overlay.md`.
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
   the workstation appears on the laptop mirroring it.
   Section below; design in `.claude/rules/overlay-redirect.md`.
