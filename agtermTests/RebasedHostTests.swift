@@ -10,7 +10,11 @@ private final class FakeRuntime: RebasedRuntime, @unchecked Sendable {
     private(set) var starts = 0
     private(set) var calls: [String] = []
 
-    func start(appPath: String, stateDirectory: URL) throws {
+    func prepare(appPath: String, stateDirectory: URL) throws -> RebasedLaunch {
+        RebasedLaunch(libjvm: "", options: [], mainClass: "")
+    }
+
+    func launch(_ launch: RebasedLaunch) throws {
         starts += 1
         if let startError { throw startError }
         created = true
@@ -50,6 +54,7 @@ final class RebasedHostTests: XCTestCase {
     private var windows: [Int: NSWindow] = [:]
     private var hostWindows: [UUID: NSWindow] = [:]
     private let project = "/tmp"
+    private let otherProject = "/usr"
 
     override func setUp() async throws {
         directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("rebased-host-\(UUID().uuidString)")
@@ -66,7 +71,10 @@ final class RebasedHostTests: XCTestCase {
         host.window = { [unowned self] in windows[$0] }
         host.hostWindow = { [unowned self] in hostWindows[$0] }
         host.after = { [unowned self] delay, work in timers.append((delay, work)) }
-        host.offMain = { work, done in done(work()) }
+        host.offMain = { work, done in
+            work()
+            done()
+        }
         host.install()
         hostWindows[first.id] = window("host1")
         hostWindows[second.id] = window("host2")
@@ -223,5 +231,79 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertTrue(host.isIDEKeyWindow)
         host.isIDEKeyWindowOverride = false
         XCTAssertFalse(host.isIDEKeyWindow)
+    }
+
+    func testAnOpenDuringStartupGetsItsOwnDeadlineEvenAfterTheFirstIsReleased() {
+        runtime.binds = [.notReady]
+        open(first)
+        open(second)
+        store.closeOverlay(first.id)
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(second), .failed(RebasedHost.deadlineMessage))
+    }
+
+    func testTheDeadlineRunsWhileLaunchIsStillPendingAndALateLaunchServesTheRetry() {
+        var pending: [(work: @Sendable () -> Void, done: @MainActor @Sendable () -> Void)] = []
+        host.offMain = { work, done in pending.append((work, done)) }
+        func runNext() {
+            let next = pending.removeFirst()
+            next.work()
+            next.done()
+        }
+        open(first)
+        runNext()
+        XCTAssertEqual(pending.count, 1, "launch is in flight")
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(first), .failed(RebasedHost.deadlineMessage))
+        runNext()
+        host.handle(event: "ready", payload: "")
+        XCTAssertEqual(host.jvm, .running)
+        store.closeOverlay(first.id)
+        open(first)
+        XCTAssertEqual(runtime.starts, 1)
+        XCTAssertEqual(runtime.calls, ["open \(project)"])
+    }
+
+    func testALateFrameStaysHiddenAndServesTheRetry() {
+        open(first)
+        host.handle(event: "ready", payload: "")
+        fire(RebasedHost.readyDeadline)
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertEqual(state(first), .failed(RebasedHost.deadlineMessage))
+        XCTAssertEqual(runtime.calls.last, "hide \(project)")
+        XCTAssertTrue(frames.log.isEmpty)
+        store.closeOverlay(first.id)
+        open(first)
+        XCTAssertEqual(state(first), .shown)
+        XCTAssertEqual(frames.log, ["adopt frame in host1"])
+        XCTAssertEqual(runtime.starts, 1)
+    }
+
+    func testAFailedEventIsNotRevivedByItsFrame() {
+        open(first)
+        host.handle(event: "failed", payload: "main threw")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertEqual(state(first), .failed("main threw"))
+        XCTAssertTrue(frames.log.isEmpty)
+    }
+
+    func testDialogsGoToTheirOwnProject() {
+        open(first)
+        open(second, project: otherProject)
+        host.handle(event: "ready", payload: "")
+        _ = window("frameA", number: 7)
+        _ = window("frameB", number: 8)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        host.handle(event: "frameOpened", payload: "\(otherProject)\t8")
+        _ = window("dialogB", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t\(otherProject)")
+        XCTAssertEqual(frames.log.last, "attach dialogB to host2")
+        host.hide(session: first.id)
+        _ = window("dialogA", number: 10)
+        host.handle(event: "windowOpened", payload: "10\tdialog\t\(project)")
+        XCTAssertEqual(Array(frames.log.suffix(2)), ["adopt frameA in host1", "attach dialogA to host1"])
+        XCTAssertTrue(host.isShown(in: first.id))
     }
 }

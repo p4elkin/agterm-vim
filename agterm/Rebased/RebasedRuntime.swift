@@ -5,13 +5,21 @@ import agtermCore
 
 /// What `RebasedHost` needs from the JVM, so its lifecycle can be tested without one.
 protocol RebasedRuntime: Sendable {
-    /// Builds the plugin, reads the install and starts the JVM. Blocking; called off the main actor.
-    func start(appPath: String, stateDirectory: URL) throws
+    /// Reads the install and builds the plugin. Blocking; called off the main actor.
+    func prepare(appPath: String, stateDirectory: URL) throws -> RebasedLaunch
+    /// Creates the JVM and resolves its main class; it can block without bound. Called off the main actor.
+    func launch(_ launch: RebasedLaunch) throws
     /// Binds `hostEvent` and calls `hello`. `nil` once bound; `RebasedRuntimeError.notReady` until the
     /// plugin has published its bridge.
     func bindEvents() -> RebasedRuntimeError?
     func call(_ command: String, _ argument: String) -> String
     var jvmCreated: Bool { get }
+}
+
+struct RebasedLaunch: Sendable {
+    let libjvm: String
+    let options: [String]
+    let mainClass: String
 }
 
 enum RebasedRuntimeError: Error, Equatable, LocalizedError {
@@ -29,7 +37,7 @@ enum RebasedRuntimeError: Error, Equatable, LocalizedError {
 struct JNIRebasedRuntime: RebasedRuntime {
     private static let notReady = "Rebased bridge is not ready"
 
-    func start(appPath: String, stateDirectory: URL) throws {
+    func prepare(appPath: String, stateDirectory: URL) throws -> RebasedLaunch {
         let app = URL(fileURLWithPath: appPath)
         func input(_ relative: String) -> RebasedInstall.FileInput {
             let url = app.appendingPathComponent(relative)
@@ -42,11 +50,15 @@ struct JNIRebasedRuntime: RebasedRuntime {
         _ = try RebasedPluginBuilder(appBundle: app, stateDirectory: stateDirectory).build(buildNumber: install.buildNumber)
         // IntelliJ's own screen menu would fight SwiftUI over NSApp.mainMenu; MacMenuSettings reads the jb flag first.
         let options = install.jvmOptions + ["-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"]
-        let libjvm = app.appendingPathComponent("Contents/jbr/Contents/Home/lib/server/libjvm.dylib").path
-        let cOptions = options.map { strdup($0) }
+        return RebasedLaunch(libjvm: app.appendingPathComponent("Contents/jbr/Contents/Home/lib/server/libjvm.dylib").path,
+                             options: options, mainClass: install.mainClass)
+    }
+
+    func launch(_ launch: RebasedLaunch) throws {
+        let cOptions = launch.options.map { strdup($0) }
         defer { cOptions.forEach { free($0) } }
         let error = cOptions.map { UnsafePointer($0) }.withUnsafeBufferPointer {
-            rb_start(libjvm, $0.baseAddress, Int32(cOptions.count), install.mainClass)
+            rb_start(launch.libjvm, $0.baseAddress, Int32(cOptions.count), launch.mainClass)
         }
         if let error { throw RebasedRuntimeError.failed(String(cString: error)) }
     }

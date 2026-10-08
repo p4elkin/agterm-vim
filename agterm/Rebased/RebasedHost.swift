@@ -43,10 +43,10 @@ final class RebasedHost {
             work()
         }
     }
-    var offMain: (@escaping @Sendable () -> (any Error)?, @escaping @MainActor @Sendable ((any Error)?) -> Void) -> Void = { work, done in
+    var offMain: (@escaping @Sendable () -> Void, @escaping @MainActor @Sendable () -> Void) -> Void = { work, done in
         Task.detached(priority: .userInitiated) {
-            let error = work()
-            await done(error)
+            work()
+            await done()
         }
     }
     var isIDEKeyWindowOverride: Bool?
@@ -56,6 +56,9 @@ final class RebasedHost {
     private var frameNumbers: [String: Int] = [:]
     private(set) var visible: [String: UUID] = [:]
     private var lastShown: UUID?
+    private var lastShownByProject: [String: UUID] = [:]
+    private var armed: Set<UUID> = []
+    private var prepared = false
     private var bound = false
     private var deadlinePassed = false
     private var opens = 0
@@ -112,9 +115,9 @@ final class RebasedHost {
         switch jvm {
         case .running:
             if frameNumbers[project] != nil { show(session: session) } else { _ = runtime.call("open", project) }
-            armDeadline()
+            armDeadline(overlay.id)
         case .starting:
-            if deadlinePassed { armDeadline() }
+            if prepared { armDeadline(overlay.id) }
         case .notStarted:
             start()
         case .failed(let error):
@@ -122,19 +125,38 @@ final class RebasedHost {
         }
     }
 
+    // The deadline starts once the plugin is built, ahead of `launch`, which can block without bound; a late
+    // launch still binds and its `ready` serves the next open.
     private func start() {
         jvm = .starting
+        prepared = false
         bound = false
         deadlinePassed = false
         installBornObserver()
         installKeyRouter()
         let runtime = runtime, path = appPath(), directory = stateDirectory
-        offMain({
-            do { try runtime.start(appPath: path, stateDirectory: directory) } catch { return error }
-            return nil
-        }, { [weak self] error in
+        let result = ResultBox<RebasedLaunch>()
+        offMain({ result.set { try runtime.prepare(appPath: path, stateDirectory: directory) } }, { [weak self] in
             guard let self else { return }
-            if let error { fail(error.localizedDescription) } else { armDeadline(); bind() }
+            switch result.value {
+            case .success(let launch):
+                prepared = true
+                for (id, entry) in entries where overlayState(entry) == .starting { armDeadline(id) }
+                self.launch(launch)
+            case .failure(let error):
+                fail(error.localizedDescription)
+            case nil:
+                break
+            }
+        })
+    }
+
+    private func launch(_ launch: RebasedLaunch) {
+        let runtime = runtime
+        let result = ResultBox<Void>()
+        offMain({ result.set { try runtime.launch(launch) } }, { [weak self] in
+            guard let self else { return }
+            if case .failure(let error) = result.value { fail(error.localizedDescription) } else { bind() }
         })
     }
 
@@ -150,15 +172,14 @@ final class RebasedHost {
         }
     }
 
-    private func armDeadline() {
-        let waiting = Set(entries.keys)
+    private func armDeadline(_ id: UUID) {
+        guard armed.insert(id).inserted else { return }
         after(Self.readyDeadline) { [weak self] in
             guard let self else { return }
+            armed.remove(id)
             if jvm == .starting { deadlinePassed = true }
-            for id in waiting {
-                guard let entry = entries[id], overlayState(entry) == .starting else { continue }
-                setState(.failed(Self.deadlineMessage), session: entry.session)
-            }
+            guard let entry = entries[id], overlayState(entry) == .starting else { return }
+            setState(.failed(Self.deadlineMessage), session: entry.session)
         }
     }
 
@@ -187,8 +208,9 @@ final class RebasedHost {
         case "frameClosed":
             frameClosed(project: Self.canonical(payload))
         case "windowOpened":
-            guard fields.count == 2, let number = Int(fields[0]), let window = window(number) else { return }
-            windowOpened(window, kind: fields[1])
+            guard fields.count >= 2, let number = Int(fields[0]), let window = window(number) else { return }
+            let owner = fields.count > 2 && !fields[2].isEmpty ? Self.canonical(fields[2]) : nil
+            windowOpened(window, kind: fields[1], owner: owner)
         case "failed":
             fail(payload)
         default:
@@ -196,11 +218,16 @@ final class RebasedHost {
         }
     }
 
+    // A frame that arrives after its overlays failed stays hidden for the next open instead of reviving them.
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
-        let waiting = entries.values.filter { $0.project == project }
+        let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
+        guard let latest = waiting.max(by: { $0.order < $1.order }) else {
+            _ = runtime.call("hide", project)
+            return
+        }
         for entry in waiting { setState(.shown, session: entry.session) }
-        if let latest = waiting.max(by: { $0.order < $1.order }) { show(session: latest.session) }
+        show(session: latest.session)
     }
 
     private func frameClosed(project: String) {
@@ -211,12 +238,12 @@ final class RebasedHost {
         }
     }
 
-    private func windowOpened(_ window: NSWindow, kind: String) {
-        if kind == "welcome" {
-            frames.orderOut(window)
-        } else if let session = visible.values.first {
+    private func windowOpened(_ window: NSWindow, kind: String, owner: String?) {
+        if kind == "welcome" { return frames.orderOut(window) }
+        let visibleSession = owner.map { visible[$0] } ?? lastShown.flatMap { isShown(in: $0) ? $0 : nil } ?? visible.values.first
+        if let session = visibleSession {
             frames.attach(window, to: hostWindow(session))
-        } else if kind == "dialog", let last = lastShown, entry(for: last) != nil {
+        } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown, entry(for: last) != nil {
             show(session: last)
             frames.attach(window, to: hostWindow(last))
         } else {
@@ -229,8 +256,10 @@ final class RebasedHost {
     func show(session: UUID) {
         guard let entry = entry(for: session), let number = frameNumbers[entry.project],
               let frame = window(number) else { return }
+        if case .failed = overlayState(entry) { return }
         visible[entry.project] = session
         lastShown = session
+        lastShownByProject[entry.project] = session
         setState(.shown, session: session)
         _ = runtime.call("show", entry.project)
         frames.adopt(frame, in: hostWindow(session))
@@ -249,6 +278,7 @@ final class RebasedHost {
     }
 
     private func release(_ overlayID: UUID) {
+        armed.remove(overlayID)
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
     }
@@ -330,4 +360,10 @@ final class RebasedHost {
             window.alphaValue = 0
         }
     }
+}
+
+// Carries one off-main result back to the main actor; written once before the hop, read once after it.
+private final class ResultBox<Value>: @unchecked Sendable {
+    private(set) var value: Result<Value, any Error>?
+    func set(_ work: () throws -> Value) { value = Result(catching: work) }
 }
