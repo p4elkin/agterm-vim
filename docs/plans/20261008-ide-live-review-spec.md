@@ -211,7 +211,10 @@ already gives: the `RebasedDiff` range grammar (`A..B`, `A...B`, `A` for `A..HEA
   stderr tail in a warning balloon. The publish itself (clipboard, published file, PUBLISHED status) is
   unchanged either way.
 - The plugin ignores a hook file that is not owned by the user or is writable by group or others.
-- `editRemark` resets a READ remark to PENDING (Sasha's decision).
+- A real text edit resets a READ remark to PENDING (Sasha's decision). An unchanged edit changes nothing.
+- An acknowledgement skips a remark whose text changed after its batch was recorded, so the edited text
+  goes out with the next Publish Unread (Sasha's decision; a per-remark revision recorded with the batch).
+- Hooks run on one serial executor, so they reach the flush in publish order.
 - Prerequisite, manual and one time: a claude-remarks build installed into agterm's embedded plugin
   directory, `<stateDir>/rebased/plugins/` (`idea.plugins.path` in `RebasedInstall`). agterm never
   installs it. A normal IntelliJ install does not count.
