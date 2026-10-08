@@ -80,7 +80,7 @@ flowchart LR
    With `AGTERM_ANNOTATE_CODE_VIEWER` unset on a Mac row, the viewer is `rebased`.
 2. The launcher claims the project (see [Project claim](#project-claim)), writes the room, and opens the
    reader on the right.
-3. It opens `session overlay open --rebased --pane left --cwd <checkout> --diff <merge-base> --on-close '<flush> <run> --final'`.
+3. It opens `session overlay open --rebased --pane left --cwd <checkout> --diff <merge-base>.. --working-tree --on-close '<flush> <run> --final'`.
 4. The open answers with the overlay id and the view request id. The launcher waits, within one
    deadline, until the read-back shows that request's view `opened` and the
    claude-remarks handshake port equals `rebased.port`. Then it marks the claim active and exits.
@@ -128,26 +128,34 @@ All of this is fork-only, like the rest of `--rebased`.
 
 ### Views
 
-Bridge verbs on the existing string channel in `Bridge.apply`, and new events.
+This builds on `--diff RANGE` from `ff7c2338` ("Rebased: --diff RANGE opens a commit range's changes",
+branch `worktree-rebased-diff`), which must be on `main` before the agterm-vim plan starts. That commit
+already gives: the `RebasedDiff` range grammar (`A..B`, `A...B`, `A` for `A..HEAD`), the bridge verb
+`diff <base>\t<head>\t<0|1>\t<dir>` in `RangeDiff.java` through Git4Idea (`GitChangeUtils.getDiff`,
+`GitHistoryUtils.getMergeBase`), the `Git4Idea` dependency and classpath, and read-back
+`rebasedOverlay.diff`. The live review extends it rather than adding a second diff path.
 
-- `diff <request>\t<dir>\t<base>`: a diff **editor tab** inside the project frame
-  (`DiffEditorTabFilesManager`), never a dialog, which could cover the right pane.
-  Platform-only: `Change`s from `SimpleContentRevision` (base text from `git show <base>:<path>`) and
-  `CurrentContentRevision`. The bridge keeps compiling against `Contents/lib` only.
-  The codex mate's static `javap` probe found all four classes there in build 262; a runtime probe is the
-  plan's first task.
-  - Paths come from `git diff --name-status -z <base> --`, run off the main thread and off the EDT with
-    a bounded timeout, revision and paths separated by `--`.
-  - Tracked changes only. Untracked files are not shown, as `git diff` does not show them.
-  - Added and modified files: the right side is the working copy, so claude-remarks accepts remarks
-    there (`remarkTargetProblem` in `claude-remarks/src/main/kotlin/dev/sasha/clauderemarks/store/RemarkTarget.kt:155`).
-  - Deleted files are shown; they have no working-copy line and take no remarks.
-  - Renames show as one change. Binary files are omitted, with one notice row naming them.
-  - Base text is decoded with the file's charset as the working copy reports it.
-  - An empty range opens nothing and reports `opened` with detail `0`.
+- `--working-tree` on `--diff`: the right side is the working copy instead of the range's head
+  (`GitChangeUtils.getDiffWithWorkingDir` from the range's start, the merge base for `A...`).
+  claude-remarks accepts remarks on a working-copy side
+  (`remarkTargetProblem` in `claude-remarks/src/main/kotlin/dev/sasha/clauderemarks/store/RemarkTarget.kt:155`).
+  Without it, a HEAD-side file takes remarks only while it equals the disk copy.
+  - Tracked changes only, as `git diff` shows. Deleted files are shown and take no remarks.
+  - An empty range opens nothing visible and reports `opened` with detail `0`.
+- In a **pane** overlay the diff must stay inside the pane, so the right reader stays visible. Today
+  `RangeDiff` shows `VcsDiffUtil.showChangesDialog`, a dialog of the project frame, which can cover the
+  reader. The plan's first task probes two fixes in an isolated Debug instance and keeps the one that works:
+  fit the changes dialog to the holder's rect, or show the changes as an editor tab in the frame.
+  A session-wide overlay keeps the dialog.
+  The probe opens an actual file diff from the browser, not only the file list: every resulting diff
+  window, and any error dialog, must stay inside the left pane with the reader visible. If the fitted
+  dialog cannot guarantee that, pane overlays use the editor tab.
+- A git error today is a modal error dialog only. It also becomes a `viewFailed` event.
 - `openFile <request>\t<dir>\t<path>\t<line>`: the file in an editor, caret at the line (1-based, 0 for none).
 - `port`: answers the IDE's built-in server port, which the host exposes as read-back.
-- Events: `viewOpened <request>\t<detail>` after the editor tab is installed, not when queued;
+- Events: `viewOpened <request>\t<detail>` once the chosen viewer for the current request is installed
+  (the changes browser, or the editor tab), and for a pane overlay once it is fitted to the holder; never
+  when queued. An empty range is `opened` with detail `0`;
   `viewFailed <request>\t<reason>`. `<detail>` is the changed-file count or the path.
 - `RebasedHost` gives every view request a new id, stores the requested kind and target apart from the
   result, clears the previous result, and accepts events only for the current request id.
@@ -173,16 +181,19 @@ Bridge verbs on the existing string channel in `Bridge.apply`, and new events.
 
 - On `session overlay open --rebased`:
   - `--pane left|right`;
-  - `--diff <rev>` or `--file <path>[:<line>]`, mutually exclusive;
+  - `--working-tree` (with `--diff` only), and `--file <path>[:<line>]`, which excludes `--diff`;
   - `--project <dir>`: open exactly `<dir>`, without the `.git` walk in `RebasedHost.projectDirectory`
     (plan mode needs it for `~/.claude/plans`, because the walk finds `~/.claude`);
   - `--on-close <command>`.
+  - An open carrying `--on-close` always needs a **fresh** holder: when the session already holds a Rebased
+    overlay, it is refused before anything about that holder changes. `ff7c2338`'s reuse (a `--diff` for
+    the project already shown goes to that overlay) stays for opens without `--on-close`.
   - Each of `--diff`, `--file`, `--project`, `--on-close` without `--rebased` is refused.
 - A successful open or show answers `{id: <session>, overlay: <overlay id>, request: <view request id>}`.
   `agtermctl` prints the same JSON with `--json`.
 - `session overlay close --overlay <id>` closes only when the slot still holds that overlay id; otherwise
   it is refused and closes nothing.
-- New `session rebased show (--diff <rev> | --file <path>[:<line>])` for the session's open overlay.
+- New `session rebased show (--diff RANGE [--working-tree] | --file <path>[:<line>])` for the session's open overlay.
   The agent uses it to point Sasha at a line during a review.
 
 ## claude-remarks: the publish hook
@@ -244,7 +255,8 @@ One live review per remarks identity at a time.
   `AGTERM_REMOTE_SELF_HOST` is unset, the tree is not headless, and the `rebasedAppPath` bundle exists;
   otherwise the current default. A **named** `rebased` where it cannot run is exit 2, never a quiet switch.
 - The base: with `--base`, the merge base is resolved to a commit, and a failure is an error, never the
-  raw ref (today `merge_base` falls back to it). Without `--base`, the diff is against `HEAD`.
+  raw ref (today `merge_base` falls back to it). The overlay gets `--diff <merge-base>.. --working-tree`.
+  Without `--base`, it gets `--diff HEAD.. --working-tree`: the uncommitted changes.
 - Readiness, inside one deadline: the read-back shows this request's view `opened`, then
   `~/.claude-remarks/<hash>.json` exists and its `port` equals `rebased.port` of the addressed instance.
   The errors name the three cases: no handshake (plugin missing), a port that answers nothing (stale
@@ -317,7 +329,7 @@ agterm-vim:
 | read-back `rebasedOverlay.pane` | `ControlRebasedOverlayNode`, `agterm-review-live`, agterm skill | 3 |
 | hidden state, read-back `rebasedOverlay.hidden` | `AppActions+Rebased` toggle, `RebasedHost` hide/show, `ControlRebasedOverlayNode`, agterm skill | 4 |
 | view request (id, kind, target, state, detail, deadline) | `RebasedHost` (issue, pending, deadline, event match), `Bridge` (verbs, events), `RebasedOverlay` model, `ControlRebasedOverlayNode`, `agterm-review-live` readiness, agterm skill | 6 |
-| bridge verbs `diff`, `openFile`, `port` | `RebasedHost` | 1 |
+| bridge verb `diff` gains a request id and the working-tree flag; new `openFile`, `port` | `RebasedHost`, `RebasedDiff.bridgeArgument` | 2 |
 | events `viewOpened`, `viewFailed` | `RebasedHost` event switch | 1 |
 | read-back `rebased.port` | `RebasedStatusProvider` / top-level `rebased` node, `agterm-review-live` readiness, agterm skill | 3 |
 | `onClose` | `RebasedHost` common release, session/workspace/window teardown, pane teardown, `frameClosed` handling, `AppDelegate` termination drain, read-back `rebasedOverlay.onClose` (armed: bool) | 6 |
@@ -357,11 +369,12 @@ Per `CLAUDE.md` "Cross-surface contracts":
 
 ## Tests by behavior
 
-- agterm-vim: CLI and protocol round-trip; dispatcher conflicts for every Rebased-only flag; pane
+- agterm-vim: an `--on-close` open beside an existing same-project holder is refused and leaves its id, view
+  and callback unchanged; CLI and protocol round-trip; dispatcher conflicts for every Rebased-only flag; pane
   projection; one Rebased overlay per session; toggle hide → show → close keeps one holder and runs
   `onClose` once; `onClose` once across overlapping release paths, failed start → close, promotion,
-  quit cancellation; view request ids reject a late event from an earlier request; editor-tab diff opens
-  for added, modified, deleted, renamed, binary and empty ranges.
+  quit cancellation; view request ids reject a late event from an earlier request; the working-tree diff
+  opens inside the pane for added, modified, deleted, renamed and empty ranges.
 - claude-remarks: two disjoint publishes before either hook runs each deliver their own bytes; the
   ownership check; timeout kill; editRemark resets READ.
 - agterm-agents: refused open with an existing left-pane occupant closes nothing; a replacement before
@@ -387,7 +400,7 @@ Per `CLAUDE.md` "Cross-surface contracts":
 
 `pair start --plan` works in one repository, so this is three plans, run in order:
 
-1. **agterm-vim** (L): the platform diff probe first; then one-pane slot, toggle hide, views, `onClose`,
+1. **agterm-vim** (L), once `ff7c2338` is on `main`: the pane diff probe first; then one-pane slot, toggle hide, views, `onClose`,
    flags, `session rebased show`, read-back, docs. The other two depend on its flags.
 2. **claude-remarks** (M): the publish hook with stdin bytes, its balloons, the ownership check, the
    editRemark reset, tests.
