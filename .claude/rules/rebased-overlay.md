@@ -47,8 +47,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   is not consulted), turns off "reopen last project", and reports a project that is already open on `open`.
 - Model changes run write-safe: `invokeLater(any)` then `invokeLater(current)`. `ModalityState.any()` alone
   raises "IDE Internal Errors".
-- `saveAll` returns only once the on-disk bytes equal the document's, line separator, charset and BOM
-  included, within 2 s.
+- `saveAll` answers `ok` only once the on-disk bytes equal the document's, line separator, charset and BOM
+  included; after 2 s it answers a timeout instead, and quit goes on either way.
 
 ### The host and the frame
 
@@ -56,12 +56,17 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   Each open gets its own 30 s deadline, armed after the plugin build and before `launch`, which can block
   without bound. A late `ready` serves the next open.
 - One project frame is shown in one place. A second session on the same repository takes it; closing that
-  session hands it back.
+  session or hiding its slot hands it to the newest other holder whose slot is on screen.
 - A slot counts as hidden until its view reports it visible. The palette, dashboard, pick and zoom hide the
-  frame through `rebasedCovered`.
+  frame through `rebasedCovered`, and a pending `session ask` through `RebasedSlot.isVisible`: all are drawn
+  inside the agterm window, under the child frame.
 - A dialog attaches to the window of its owning project. One that arrives while its overlay is hidden waits,
   queued per overlay, and is dropped when that overlay closes. A pre-frame dialog ("Trust project?")
-  attaches to the slot being opened.
+  belongs to the overlay being opened, on screen or queued, never to another visible project.
+- The born observer sets alpha 0 on every new frame-like AWT window; `windowOpened` sets it back for anything
+  that is not a project frame.
+- `RebasedStateLock` holds `<stateDir>/rebased/.agterm.lock` from the first start: a second agterm on the same
+  state directory is refused, because IntelliJ's own directory lock would `System.exit` it.
 - `RebasedFrameKeeper` makes the frame a child window of the agterm window, so it moves with it.
   The frame is borderless: square corners, no shadow, not movable, no edge to drag. AWT rebuilds the style
   mask whenever the IDE changes a style bit, so the keeper observes `styleMask` and flattens again.

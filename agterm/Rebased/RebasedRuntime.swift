@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 import RebasedJNI
 import agtermCore
 
@@ -38,6 +39,7 @@ struct JNIRebasedRuntime: RebasedRuntime {
     private static let notReady = "Rebased bridge is not ready"
 
     func prepare(appPath: String, stateDirectory: URL) throws -> RebasedLaunch {
+        try RebasedStateLock.acquire(stateDirectory.appendingPathComponent("rebased"))
         let app = URL(fileURLWithPath: appPath)
         func input(_ relative: String) -> RebasedInstall.FileInput {
             let url = app.appendingPathComponent(relative)
@@ -74,6 +76,32 @@ struct JNIRebasedRuntime: RebasedRuntime {
     }
 
     var jvmCreated: Bool { rb_jvm_created() }
+}
+
+/// One embedded IDE per state directory: in a second process IntelliJ's own directory lock calls
+/// `System.exit`, and that process is agterm. Held for the process's life once taken.
+enum RebasedStateLock {
+    static let message = "Rebased is already running in another agterm instance on this state directory"
+    private static let held = OSAllocatedUnfairLock<Int32?>(initialState: nil)
+
+    static func acquire(_ directory: URL) throws {
+        try held.withLock { descriptor in
+            if descriptor == nil { descriptor = try lock(directory) }
+        }
+    }
+
+    static func lock(_ directory: URL) throws -> Int32 {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let descriptor = open(directory.appendingPathComponent(".agterm.lock").path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard descriptor >= 0 else {
+            throw RebasedRuntimeError.failed("Cannot open the Rebased state lock: \(String(cString: strerror(errno)))")
+        }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            close(descriptor)
+            throw RebasedRuntimeError.failed(message)
+        }
+        return descriptor
+    }
 }
 
 // The shim frees both strings when this returns, so they are copied before the hop.

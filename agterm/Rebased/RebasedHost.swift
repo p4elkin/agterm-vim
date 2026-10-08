@@ -217,8 +217,8 @@ final class RebasedHost {
 
     // MARK: - Events
 
+    // A project path can hold a tab, so it is always the field split off last.
     func handle(event kind: String, payload: String) {
-        let fields = payload.components(separatedBy: "\t")
         switch kind {
         case "ready":
             jvm = .running
@@ -228,11 +228,12 @@ final class RebasedHost {
                 _ = runtime.call("open", project)
             }
         case "frameOpened":
-            guard fields.count == 2, let number = Int(fields[1]) else { return }
-            frameOpened(project: Self.canonical(fields[0]), number: number)
+            guard let tab = payload.lastIndex(of: "\t"), let number = Int(payload[payload.index(after: tab)...]) else { return }
+            frameOpened(project: Self.canonical(String(payload[..<tab])), number: number)
         case "frameClosed":
             frameClosed(project: Self.canonical(payload))
         case "windowOpened":
+            let fields = payload.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
             guard fields.count >= 2, let number = Int(fields[0]), let window = window(number) else { return }
             let owner = fields.count > 2 && !fields[2].isEmpty ? Self.canonical(fields[2]) : nil
             windowOpened(window, kind: fields[1], owner: owner)
@@ -250,7 +251,7 @@ final class RebasedHost {
         for entry in waiting { setState(.shown, session: entry.session) }
         let onScreen = waiting.filter { visibleSlots.contains($0.session) }
         guard let latest = onScreen.max(by: { $0.order < $1.order }) else {
-            _ = runtime.call("hide", project)
+            if visible[project] == nil { _ = runtime.call("hide", project) }
             return
         }
         show(session: latest.session)
@@ -266,12 +267,20 @@ final class RebasedHost {
 
     private func windowOpened(_ window: NSWindow, kind: String, owner: String?) {
         if kind == "welcome" { return frames.orderOut(window) }
-        let visibleSession = owner.map { visible[$0] } ?? lastShown.flatMap { isShown(in: $0) ? $0 : nil } ?? visible.values.first
-        if let session = visibleSession {
+        // the born observer hid it as a possible project frame; only the keeper reveals those
+        window.alphaValue = 1
+        if let owner, let session = visible[owner] {
             frames.attach(window, to: hostWindow(session))
-        } else if kind == "dialog", let waiting = waitingOnScreen(owner) {
+        } else if kind == "dialog", let (id, waiting) = waiting(owner) {
             // IntelliJ can ask before any frame exists ("Trust project?"); it belongs to the slot being opened
-            frames.attach(window, to: hostWindow(waiting.session))
+            if visibleSlots.contains(waiting.session) {
+                frames.attach(window, to: hostWindow(waiting.session))
+            } else {
+                frames.orderOut(window)
+                pendingDialogs[id, default: []].append(window)
+            }
+        } else if owner == nil, let session = lastShown.flatMap({ isShown(in: $0) ? $0 : nil }) ?? visible.values.first {
+            frames.attach(window, to: hostWindow(session))
         } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown,
                   let current = entry(for: last), owner == nil || current.project == owner {
             reveal(session: last, dialog: window)
@@ -280,11 +289,14 @@ final class RebasedHost {
         }
     }
 
-    private func waitingOnScreen(_ project: String?) -> Entry? {
-        entries.values.filter { entry in
-            (project == nil || entry.project == project) && visibleSlots.contains(entry.session)
-                && overlayState(entry) == .starting
-        }.max { $0.order < $1.order }
+    // The opening overlay a frameless dialog belongs to, the one on screen first, then the newest.
+    private func waiting(_ project: String?) -> (UUID, Entry)? {
+        entries.filter { (project == nil || $0.value.project == project) && overlayState($0.value) == .starting }
+            .max { lhs, rhs in
+                let left = visibleSlots.contains(lhs.value.session), right = visibleSlots.contains(rhs.value.session)
+                return left == right ? lhs.value.order < rhs.value.order : !left
+            }
+            .map { ($0.key, $0.value) }
     }
 
     // MARK: - Visibility
@@ -339,7 +351,8 @@ final class RebasedHost {
             visibleSlots.insert(session)
             show(session: session)
             let queued = overlayID(for: session).flatMap { pendingDialogs.removeValue(forKey: $0) } ?? []
-            for dialog in queued where isShown(in: session) {
+            let opening = entry(for: session).map { overlayState($0) == .starting } ?? false
+            for dialog in queued where isShown(in: session) || opening {
                 frames.attach(dialog, to: hostWindow(session))
                 dialog.orderFront(nil)
             }
@@ -377,6 +390,17 @@ final class RebasedHost {
         visible[entry.project] = nil
         _ = runtime.call("hide", entry.project)
         if let number = frameNumbers[entry.project], let frame = window(number) { frames.detach(frame) }
+        handBack(entry)
+    }
+
+    // Another slot already on screen for the project would otherwise say "shown in another session" over
+    // nothing until its own visibility changed.
+    private func handBack(_ previous: Entry) {
+        let next = entries.values.filter {
+            $0.project == previous.project && $0.session != previous.session && visibleSlots.contains($0.session)
+                && overlayState($0) == .shown
+        }.max { $0.order < $1.order }
+        if let next { show(session: next.session) }
     }
 
     private func release(_ overlayID: UUID) {
@@ -409,19 +433,16 @@ final class RebasedHost {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
-    /// The repository holding `cwd`, or `cwd` itself outside a repository.
+    /// The nearest directory at or above `cwd` holding `.git`, or `cwd` itself outside a repository. Read from
+    /// the file system, not `git rev-parse`, whose process the main actor would wait on without bound.
     nonisolated static func projectDirectory(for cwd: String) -> String {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", cwd, "rev-parse", "--show-toplevel"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return cwd }
-        let output = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let top = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return process.terminationStatus == 0 && !top.isEmpty ? top : cwd
+        var directory = URL(fileURLWithPath: cwd).standardizedFileURL
+        while true {
+            if FileManager.default.fileExists(atPath: directory.appendingPathComponent(".git").path) { return directory.path }
+            let parent = directory.deletingLastPathComponent()
+            guard parent.path != directory.path else { return cwd }
+            directory = parent
+        }
     }
 
     // An IDE frame is visible from the turn AWT orders it in; hide it there, before Core Animation commits,

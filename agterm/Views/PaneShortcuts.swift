@@ -3,8 +3,9 @@ import AppKit
 
 /// App-wide Ctrl-1 / Ctrl-2 focus the active session's left (primary) / right (split) pane directly, a
 /// faster alias for the ⌘⌥←/→ menu nav. Caught by an `NSEvent` local monitor rather than a SwiftUI shortcut
-/// so it isn't a duplicate menu item, like the Ctrl-Tab switcher. Always consumed (reserved app shortcuts),
-/// so they never leak to the shell — on a non-split session `focusPane` no-ops instead of printing "1".
+/// so it isn't a duplicate menu item, like the Ctrl-Tab switcher. Consumed (reserved app shortcuts) so they
+/// never leak to the shell — on a non-split session `focusPane` no-ops instead of printing "1" — except
+/// while a Rebased IDE window is key, which gets them.
 @MainActor
 final class PaneShortcuts {
     private let library: WindowLibrary

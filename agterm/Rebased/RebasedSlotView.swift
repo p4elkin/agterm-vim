@@ -9,9 +9,12 @@ struct RebasedSlot: View {
     let visible: Bool
     let foreground: Color
 
+    // A pending ask is drawn inside the agterm window, under the frame, so the frame gives way to it.
+    static func isVisible(_ visible: Bool, session: Session) -> Bool { visible && session.askPending == nil }
+
     var body: some View {
         ZStack {
-            RebasedSlotView(session: session.id, visible: visible)
+            RebasedSlotView(session: session.id, visible: Self.isVisible(visible, session: session))
             if let message {
                 Text(message)
                     .foregroundStyle(foreground.opacity(0.7))

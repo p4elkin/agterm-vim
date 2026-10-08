@@ -421,4 +421,103 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(frames.log.last, "adopt frameB in host1")
         XCTAssertFalse(frames.log.contains("attach dialogA to host1"))
     }
+
+    func testClosingTheOwnerHandsTheFrameToAnotherVisibleHolder() {
+        startAndShow(first)
+        open(second)
+        XCTAssertEqual(frames.log.last, "adopt frame in host2")
+        store.closeOverlay(second.id)
+        XCTAssertEqual(frames.log.last, "adopt frame in host1")
+        XCTAssertTrue(host.isShown(in: first.id))
+    }
+
+    func testHidingTheOwnersSlotHandsTheFrameToAnotherVisibleHolder() {
+        startAndShow(first)
+        open(second)
+        host.setSlotVisible(false, session: second.id)
+        XCTAssertEqual(frames.log.last, "adopt frame in host1")
+        XCTAssertTrue(host.isShown(in: first.id))
+    }
+
+    func testADialogBeforeAnyFrameWaitsForItsHiddenOpeningSlot() {
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project), sizePercent: nil))
+        host.open(session: first.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("trust", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t")
+        XCTAssertEqual(frames.log.last, "orderOut trust")
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(frames.log.last, "attach trust to host1")
+    }
+
+    func testADialogBeforeAnyFrameIgnoresAnotherVisibleProject() {
+        startAndShow(first)
+        XCTAssertNil(store.openRebasedOverlay(second.id, overlay: RebasedOverlay(project: otherProject), sizePercent: nil))
+        host.open(session: second.id)
+        _ = window("trust", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t")
+        XCTAssertEqual(frames.log.last, "orderOut trust")
+    }
+
+    func testARepeatedFrameReportKeepsTheFrameShown() {
+        startAndShow(first)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertTrue(host.isShown(in: first.id))
+        XCTAssertEqual(runtime.calls.last, "show \(project)")
+    }
+
+    func testAnotherIDEWindowIsMadeVisibleAgain() {
+        startAndShow(first)
+        let editor = window("editor", number: 8)
+        editor.alphaValue = 0
+        host.handle(event: "windowOpened", payload: "8\tpopup")
+        XCTAssertEqual(editor.alphaValue, 1)
+        XCTAssertEqual(frames.log.last, "attach editor to host1")
+    }
+
+    func testAProjectPathWithATabStillParses() {
+        let tabbed = "/tmp/a\tb"
+        open(first, project: tabbed)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(tabbed)\t7")
+        XCTAssertTrue(host.isShown(in: first.id))
+        _ = window("dialog", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t\(tabbed)")
+        XCTAssertEqual(frames.log.last, "attach dialog to host1")
+    }
+
+    func testTheProjectIsTheNearestDirectoryHoldingGit() throws {
+        let manager = FileManager.default
+        let repo = directory.appendingPathComponent("repo ")
+        let deeper = repo.appendingPathComponent("sub/deeper")
+        try manager.createDirectory(at: deeper, withIntermediateDirectories: true)
+        try manager.createDirectory(at: repo.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        let worktree = directory.appendingPathComponent("wt")
+        try manager.createDirectory(at: worktree, withIntermediateDirectories: true)
+        try Data("gitdir: /elsewhere".utf8).write(to: worktree.appendingPathComponent(".git"))
+        let plain = directory.appendingPathComponent("plain")
+        try manager.createDirectory(at: plain, withIntermediateDirectories: true)
+
+        XCTAssertEqual(RebasedHost.projectDirectory(for: deeper.path), repo.path)
+        XCTAssertEqual(RebasedHost.projectDirectory(for: repo.path + "/"), repo.path)
+        XCTAssertEqual(RebasedHost.projectDirectory(for: worktree.path), worktree.path)
+        XCTAssertEqual(RebasedHost.projectDirectory(for: plain.path), plain.path)
+    }
+
+    func testAPendingAskHidesTheSlot() {
+        XCTAssertTrue(RebasedSlot.isVisible(true, session: first))
+        first.openAsk(PendingAsk(id: "a", title: "t", buttons: []))
+        XCTAssertFalse(RebasedSlot.isVisible(true, session: first))
+        XCTAssertFalse(RebasedSlot.isVisible(false, session: second))
+    }
+
+    func testASecondHolderOfTheStateDirectoryIsRefused() throws {
+        let state = directory.appendingPathComponent("rebased")
+        let held = try RebasedStateLock.lock(state)
+        defer { close(held) }
+        XCTAssertThrowsError(try RebasedStateLock.lock(state)) { error in
+            XCTAssertEqual(error as? RebasedRuntimeError, .failed(RebasedStateLock.message))
+        }
+    }
 }

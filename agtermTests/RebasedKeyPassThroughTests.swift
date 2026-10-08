@@ -60,9 +60,14 @@ final class RebasedKeyPassThroughTests: XCTestCase {
         XCTAssertTrue(try consumed(ide: false) { shortcut.handleKeyDown(event) })
     }
 
+    private final class RecordingWindow: NSWindow {
+        var received: [NSEvent] = []
+        override func sendEvent(_ event: NSEvent) { received.append(event) }
+    }
+
     func testTheRouterConsumesIDEKeysAndPassesTheRest() throws {
         let host = RebasedHost()
-        let ide = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [], backing: .buffered, defer: true)
+        let ide = RecordingWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [], backing: .buffered, defer: true)
         ide.isReleasedWhenClosed = false
         host.keyWindow = { ide }
         host.isIDEKeyWindowOverride = true
@@ -72,9 +77,11 @@ final class RebasedKeyPassThroughTests: XCTestCase {
         let handler = RebasedHost.monitor(host)
         let find = try key("f", keyCode: 3, flags: .command)
         XCTAssertNil(handler(find), "an IDE key is consumed, so agterm's menu never sees it")
+        XCTAssertEqual(ide.received, [find])
         XCTAssertNil(handler(try key("r", keyCode: 15, flags: [.control, .shift])))
         XCTAssertEqual(toggles, 1)
         XCTAssertNotNil(handler(try key("q", keyCode: 12, flags: .command)))
+        XCTAssertEqual(ide.received, [find], "the toggle chord and agterm's chords never reach the IDE")
         host.isIDEKeyWindowOverride = false
         XCTAssertNotNil(handler(find))
         XCTAssertNotNil(RebasedHost.monitor(nil)(find))
