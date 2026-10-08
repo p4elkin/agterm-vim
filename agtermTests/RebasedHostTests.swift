@@ -139,6 +139,47 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(host.status, ControlRebasedNode(jvm: "running", projects: [project]))
     }
 
+    private let range = RebasedDiff(base: "main", head: "HEAD", mergeBase: true)
+    private var diffCall: String { "diff main\tHEAD\t1\t\(project)" }
+
+    func testADiffOpensOnceTheFrameIsShown() {
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project, diff: range), sizePercent: nil))
+        host.setSlotVisible(true, session: first.id)
+        host.open(session: first.id)
+        host.handle(event: "ready", payload: "")
+        XCTAssertFalse(runtime.calls.contains(diffCall))
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertEqual(runtime.calls.suffix(2), ["show \(project)", diffCall])
+        host.setSlotVisible(false, session: first.id)
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(runtime.calls.filter { $0 == diffCall }.count, 1)
+    }
+
+    func testADiffOnTheOpenOverlayIsSentAtOnceAndRecorded() {
+        startAndShow(first)
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range))
+        XCTAssertEqual(runtime.calls.last, diffCall)
+        XCTAssertEqual(first.rebasedOverlay?.diff, range)
+        XCTAssertEqual(state(first), .shown)
+    }
+
+    func testADiffWaitsWhileTheSlotIsHidden() {
+        startAndShow(first)
+        host.setSlotVisible(false, session: first.id)
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range))
+        XCTAssertFalse(runtime.calls.contains(diffCall))
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(runtime.calls.last, diffCall)
+    }
+
+    func testADiffOnAnotherProjectIsRefusedLikeAnyOpen() {
+        startAndShow(first)
+        XCTAssertEqual(host.openOverlay(in: store, session: first.id, cwd: otherProject, sizePercent: nil, diff: range),
+                       RebasedOverlayOpenFailure.alreadyOpen.message)
+        XCTAssertNil(first.rebasedOverlay?.diff)
+    }
+
     func testFailedStartFailsTheOverlayAndARetryStartsAgain() {
         runtime.startError = RebasedRuntimeError.failed("dlopen failed")
         open(first)

@@ -16,6 +16,31 @@ struct ControlDispatcherOverlayTests {
         ])
     }
 
+    @Test func rebasedDiffRoutesTheParsedRange() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayOpen, target: "session",
+                                                     args: ControlArgs(cwd: "/repo", rebased: true, diff: "main...")))
+        #expect(actions.calls == [
+            .overlayOpen(target: "session", window: nil,
+                         ControlSessionOverlayOpenOptions(command: "", cwd: "/repo", wait: false, sizePercent: nil,
+                                                          backgroundColor: nil, rebased: true,
+                                                          rebasedDiff: RebasedDiff(base: "main", head: "HEAD", mergeBase: true)))
+        ])
+    }
+
+    @Test(arguments: [
+        (ControlArgs(command: "cat", diff: "a..b"), "session.overlay.open: --diff requires --rebased"),
+        (ControlArgs(rebased: true, diff: "-p"), "session.overlay.open: invalid --diff range"),
+    ])
+    func rebasedDiffRefusesAMisuse(_ args: ControlArgs, _ error: String) async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let response = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayOpen, target: "session", args: args))
+        #expect(response == ControlResponse(ok: false, error: error))
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test(arguments: [
         (ControlArgs(command: "cat", rebased: true), "COMMAND"),
         (ControlArgs(html: "/tmp/r.html", rebased: true), "--html"),

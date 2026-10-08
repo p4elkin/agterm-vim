@@ -2,11 +2,13 @@ public struct ControlRebasedOverlayNode: Codable, Sendable, Equatable {
     public let project: String
     public let state: String
     public let error: String?
+    public let diff: String?
 
-    public init(project: String, state: String, error: String? = nil) {
+    public init(project: String, state: String, error: String? = nil, diff: String? = nil) {
         self.project = project
         self.state = state
         self.error = error
+        self.diff = diff
     }
 }
 
@@ -25,9 +27,9 @@ public struct ControlRebasedNode: Codable, Sendable, Equatable {
 extension RebasedOverlay {
     var controlNode: ControlRebasedOverlayNode {
         switch state {
-        case .starting: .init(project: project, state: "starting")
-        case .shown: .init(project: project, state: "shown")
-        case .failed(let error): .init(project: project, state: "failed", error: error)
+        case .starting: .init(project: project, state: "starting", diff: diff?.spec)
+        case .shown: .init(project: project, state: "shown", diff: diff?.spec)
+        case .failed(let error): .init(project: project, state: "failed", error: error, diff: diff?.spec)
         }
     }
 }

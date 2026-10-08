@@ -436,6 +436,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// is then WebKit's read grant.
     public var html: String?
     public var rebased: Bool?
+    /// diff is the range a `--rebased` open shows, as typed; the dispatcher parses it.
+    public var diff: String?
     /// current makes `session.overlay.reload` reload the page the user navigated to, not the original file.
     public var current: Bool?
     /// navigation gives an `--html` or `--url` overlay its toolbar.
@@ -489,7 +491,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -582,6 +584,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.attach = attach
         self.browse = browse
         self.rebased = rebased
+        self.diff = diff
     }
 }
 

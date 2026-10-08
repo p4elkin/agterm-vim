@@ -67,6 +67,9 @@ final class RebasedPluginBuilderTests: XCTestCase {
             assert Arrays.equals(Bridge.savedBytes("é\\n", null, StandardCharsets.ISO_8859_1, null), latin);
             var file = Path.of(args[0]);
             Files.write(file, little);
+            assert Arrays.equals(Bridge.diffFields("main\\tHEAD\\t1\\t/repo\\twith tab"),
+                                 new String[]{"main", "HEAD", "1", "/repo\\twith tab"});
+            assert Bridge.diffFields("main\\tHEAD") == null;
             assert Bridge.onDisk(file.toString(), little);
             assert !Bridge.onDisk(file.toString(), utf8);
             Files.delete(file);

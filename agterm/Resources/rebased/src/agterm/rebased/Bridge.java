@@ -106,6 +106,19 @@ public final class Bridge implements BiFunction<String, String, String> {
     ProjectUtil.openOrImport(Path.of(dir), null, true);
   }
 
+  static Project openProject(String dir) {
+    for (Project p : ProjectManager.getInstance().getOpenProjects()) {
+      if (p.getBasePath() != null && sameDirectory(p.getBasePath(), dir)) return p;
+    }
+    return null;
+  }
+
+  // `<base>\t<head>\t<0|1>\t<project>`: the project is last because a path may hold a tab.
+  static String[] diffFields(String arg) {
+    String[] fields = arg.split("\t", 4);
+    return fields.length == 4 ? fields : null;
+  }
+
   private static boolean sameDirectory(String a, String b) {
     try { return Path.of(a).toRealPath().equals(Path.of(b).toRealPath()); }
     catch (java.io.IOException e) { return Path.of(a).normalize().equals(Path.of(b).normalize()); }
@@ -188,6 +201,12 @@ public final class Bridge implements BiFunction<String, String, String> {
       case "open" -> { writeSafe(() -> open(arg)); return "ok"; }
       case "hide" -> { later(() -> projectFrames(arg).forEach(f -> f.setVisible(false))); return "ok"; }
       case "show" -> { later(() -> projectFrames(arg).forEach(f -> { f.setVisible(true); f.toFront(); })); return "ok"; }
+      case "diff" -> {
+        String[] fields = diffFields(arg);
+        if (fields == null) return "malformed diff";
+        RangeDiff.show(fields[0], fields[1], fields[2].equals("1"), fields[3]);
+        return "ok";
+      }
       case "saveAll" -> {
         // saveAllDocuments returns before the bytes are on disk, so the answer waits for the files themselves.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);

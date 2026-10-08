@@ -197,7 +197,8 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `htmlOverlays` (the pages in the overlay slots, see `session overlay open --html` and `--url`; `overlay` and
 `paneOverlays` count them as covers too),
-`rebasedOverlay` (fork only: `{project, state, error?}`, where `state` is `starting`, `shown`, or `failed`;
+`rebasedOverlay` (fork only: `{project, state, error?, diff?}`, where `state` is `starting`, `shown`, or `failed`
+and `diff` the last `--diff` range, normalized to `A..B` or `A...B`;
 omitted when the session has no Rebased overlay. Its size remains in `overlaySizePercent`),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
@@ -846,12 +847,16 @@ error keeps those names for compatibility.
   scratch override ends with that scratch terminal. Errors `session has no split pane` / `session has no
   scratch terminal` when the pane does not exist, and `--pane must be left, right, or scratch` on a bad
   name. Read the default from `background` and pane overrides from `paneBackgrounds` in `tree --json`.
-- `session overlay open --rebased [--cwd DIR] [--size-percent N] [--follow] [--target] [--window W]` (fork only)
+- `session overlay open --rebased [--cwd DIR] [--diff RANGE] [--size-percent N] [--follow] [--target] [--window W]` (fork only)
   — show Rebased, the IntelliJ-platform git client, for the git repository holding `--cwd` (default: the
   session's working directory). The IDE runs inside agterm; the first open starts it and can take seconds,
   read `rebasedOverlay.state` (`starting`, `shown`, `failed`). One repository's window is shown in one
   session at a time. Refused on a headless origin and for a remote session. Combines with nothing but the
   options listed.
+  `--diff RANGE` also opens the changes of a commit range once the IDE is on screen: `A..B`, `A...B`
+  (from their merge base) or `A` (`A..HEAD`); an empty side is `HEAD`, and a side starting with `-` or `.`
+  is refused. When the session already shows Rebased for that repository, the range goes to it instead
+  of being refused. A bad ref shows IntelliJ's error dialog, not a command error.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no

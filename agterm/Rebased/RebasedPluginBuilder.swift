@@ -53,8 +53,9 @@ struct RebasedPluginBuilder: Sendable {
         let classes = staging.appendingPathComponent("classes")
         try manager.createDirectory(at: classes, withIntermediateDirectories: false)
         let java = files.filter { $0.pathExtension == "java" }
+        let classpath = ["Contents/lib/*", "Contents/plugins/vcs-git/lib/*"].map { appBundle.appendingPathComponent($0).path }
         try run(appBundle.appendingPathComponent("Contents/jbr/Contents/Home/bin/javac"),
-                arguments: ["--release", "21", "-cp", appBundle.appendingPathComponent("Contents/lib/*").path, "-d", classes.path] + java.map(\.path),
+                arguments: ["--release", "21", "-cp", classpath.joined(separator: ":"), "-d", classes.path] + java.map(\.path),
                 directory: staging, stderr: staging.appendingPathComponent("javac.stderr"))
         try manager.copyItem(at: source.appendingPathComponent("res/META-INF"), to: classes.appendingPathComponent("META-INF"))
         let archive = staging.appendingPathComponent("agterm-bridge.jar")

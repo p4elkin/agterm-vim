@@ -38,8 +38,13 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   tool, so `/usr/bin/zip -r -X` packs it) into `<stateDir>/rebased/plugins/agterm-bridge`, keyed by build
   number and source digest.
 - The plugin publishes a `BiFunction` under the system property `agterm.rebased.bridge`. The host calls it
-  for `open`, `hide`, `show` and `saveAll`, and registers the native `hostEvent` on its class, then calls
-  `hello`; the plugin queues events until then.
+  for `open`, `hide`, `show`, `diff` and `saveAll`, and registers the native `hostEvent` on its class, then
+  calls `hello`; the plugin queues events until then.
+- `diff <base>\t<head>\t<0|1>\t<dir>` runs `GitChangeUtils.getDiff` (after `GitHistoryUtils.getMergeBase`
+  for `1`) on a pooled thread and shows `VcsDiffUtil.showChangesDialog`, a non-modal dialog of the project
+  frame; a git error shows a modal error dialog. `RangeDiff` holds the Git plugin calls so Bridge loads
+  without them, and the plugin depends on `Git4Idea` and compiles against `plugins/vcs-git/lib`.
+  The host sends it only while the frame is shown in the asking session, since the dialog attaches there.
 - Events: `ready`, `frameOpened <dir>\t<n>`, `frameClosed <dir>`,
   `windowOpened <n>\t<welcome|dialog|popup>\t<ownerDir>`, `failed`.
   The C callback copies its strings before hopping to the main queue.
@@ -89,10 +94,13 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 
 ### Control surface
 
-- `session overlay open --rebased [--size-percent N]`, `rebased_toggle` (keyless, see [[keymap]]) and the
-  "Toggle Rebased" palette row.
-- Read-back: the session's `rebasedOverlay: {project, state}`, and a top-level `rebased: {jvm, projects}`
-  that is absent until the JVM has started.
+- `session overlay open --rebased [--diff RANGE] [--size-percent N]`, `rebased_toggle` (keyless, see
+  [[keymap]]) and the "Toggle Rebased" palette row.
+- `RebasedDiff` (core) parses `--diff`: `A..B`, `A...B`, or `A` for `A..HEAD`, an empty side meaning `HEAD`.
+  Its sides reach git as arguments, so one starting with `-` or `.` is refused in the CLI and the dispatcher.
+  A `--diff` for the repository the session already shows goes to that overlay rather than being refused.
+- Read-back: the session's `rebasedOverlay: {project, state, diff?}`, and a top-level `rebased: {jvm, projects}`
+  that is absent until the JVM has started. `diff` is the last range asked for, not proof the dialog opened.
 - The headless origin refuses `--rebased` (`ForwardPolicy`), and a session on a remote origin gets
   `RebasedHost.remoteRefusal`: the IDE needs the repository on this Mac.
 - `site/commands.html` does not list it: fork-only commands stay off the upstream site, as for `zmx.new`.

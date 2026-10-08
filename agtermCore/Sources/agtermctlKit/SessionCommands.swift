@@ -566,6 +566,7 @@ struct Session: ParsableCommand {
             @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html or --url.") var command: String?
             @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
             @Flag(name: .long, help: "Open Rebased for the local repository instead of running COMMAND.") var rebased = false
+            @Option(name: .long, help: "With --rebased, show the changes of RANGE: A..B, A...B (from the merge base), or A (A..HEAD).") var diff: String?
             @Option(name: .long, help: """
                 Show this http or https URL instead of running COMMAND; links to its own origin load in place. \
                 localhost means the Mac running agterm.
@@ -604,7 +605,7 @@ struct Session: ParsableCommand {
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
-                if rebased { return try validateRebased() }
+                if rebased || diff != nil { return try validateRebased() }
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
                 if [command, html, url].compactMap({ $0 }).count != 1 {
                     throw ValidationError("provide exactly one of COMMAND, --html or --url")
@@ -637,7 +638,7 @@ struct Session: ParsableCommand {
                                                                      html: html.map(Overlay.absolutePath),
                                                                      navigation: navigation ? true : nil, url: url,
                                                                      javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
-                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil)))
+                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil, diff: diff)))
             }
 
             /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
@@ -1002,6 +1003,8 @@ extension Session {
 
 extension Session.Overlay.Open {
     func validateRebased() throws {
+        guard rebased else { throw ValidationError("--diff requires --rebased") }
+        if let diff, RebasedDiff(spec: diff) == nil { throw ValidationError("--diff takes A..B, A...B or A; neither side may start with - or .") }
         if command != nil || html != nil || url != nil || pane != nil || wait || block || javascript || navigation
             || chromeless || persistent || browse || backgroundColor != nil {
             throw ValidationError("--rebased cannot be combined with COMMAND, page, pane, wait, block, or background options")
