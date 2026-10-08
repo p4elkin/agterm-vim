@@ -180,6 +180,89 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertNil(first.rebasedOverlay?.diff)
     }
 
+    // MARK: Remote rows
+
+    private func remoteRow(refresh: Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure>) throws -> (Session, MirrorCalls) {
+        let workspace = store.addWorkspace(name: "remote")
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "p4linux"))
+        hostWindows[session.id] = window("remote")
+        let calls = MirrorCalls()
+        host.mirrorRefresh = { mirror, _ in
+            calls.append(mirror)
+            return refresh
+        }
+        return (session, calls)
+    }
+
+    private let mirrored = RebasedMirrorRefresh.Copy(directory: "/tmp", source: "p4linux:/home/s/repo")
+
+    func testARemoteRowFetchesThenOpensTheMirror() throws {
+        let (remote, calls) = try remoteRow(refresh: .success(mirrored))
+        var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.offMain = { work, done in pending.append((work, done)) }
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo/sub", sizePercent: nil, diff: range))
+        XCTAssertEqual(remote.rebasedOverlay?.state, .fetching)
+        XCTAssertEqual(remote.rebasedOverlay?.source, "p4linux:/home/s/repo/sub")
+        XCTAssertEqual(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range),
+                       "Rebased is still fetching from p4linux")
+        let id = remote.rebasedOverlay?.id
+        let (work, done) = try XCTUnwrap(pending.first)
+        work()
+        done()
+        XCTAssertEqual(calls.paths, ["/home/s/repo/sub"])
+        XCTAssertEqual(remote.rebasedOverlay, RebasedOverlay(project: project, diff: range, source: "p4linux:/home/s/repo", id: try XCTUnwrap(id)))
+        XCTAssertEqual(host.jvm, .starting)
+    }
+
+    func testAFailedFetchFailsTheOverlayWithoutStartingTheIDE() throws {
+        let (remote, _) = try remoteRow(refresh: .failure(.init(message: "p4linux found no repository at /home/s: exit 128")))
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s", sizePercent: nil))
+        XCTAssertEqual(remote.rebasedOverlay?.state, .failed("p4linux found no repository at /home/s: exit 128"))
+        XCTAssertEqual(runtime.starts, 0)
+    }
+
+    func testARangeOnAnOpenRemoteOverlayRefreshesTheMirrorFirst() throws {
+        let (remote, calls) = try remoteRow(refresh: .success(mirrored))
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        host.setSlotVisible(true, session: remote.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range))
+        XCTAssertEqual(calls.paths, ["/home/s/repo", "/home/s/repo"])
+        XCTAssertEqual(runtime.calls.last, diffCall)
+        XCTAssertEqual(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/other", sizePercent: nil, diff: range),
+                       RebasedOverlayOpenFailure.alreadyOpen.message)
+        XCTAssertEqual(calls.paths.count, 2)
+    }
+
+    func testAFailedRefreshUnderAnOpenIDESendsNoRange() throws {
+        let (remote, _) = try remoteRow(refresh: .success(mirrored))
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        host.setSlotVisible(true, session: remote.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        host.mirrorRefresh = { _, _ in .failure(.init(message: "offline")) }
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range))
+        XCTAssertFalse(runtime.calls.contains(diffCall))
+        XCTAssertEqual(remote.rebasedOverlay?.state, .shown)
+    }
+
+    func testAnOverlayClosedWhileFetchingStaysClosed() throws {
+        let (remote, _) = try remoteRow(refresh: .success(mirrored))
+        var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.offMain = { work, done in pending.append((work, done)) }
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        store.closeOverlay(remote.id)
+        let (work, done) = try XCTUnwrap(pending.first)
+        work()
+        done()
+        XCTAssertNil(remote.rebasedOverlay)
+        XCTAssertEqual(runtime.starts, 0)
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+    }
+
     func testFailedStartFailsTheOverlayAndARetryStartsAgain() {
         runtime.startError = RebasedRuntimeError.failed("dlopen failed")
         open(first)
@@ -573,4 +656,13 @@ final class RebasedHostTests: XCTestCase {
         host.setSlotVisible(true, session: first.id)
         XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
+}
+
+final class MirrorCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var mirrors: [RebasedMirror] = []
+
+    func append(_ mirror: RebasedMirror) { lock.withLock { mirrors.append(mirror) } }
+
+    var paths: [String] { lock.withLock { mirrors.map(\.path) } }
 }

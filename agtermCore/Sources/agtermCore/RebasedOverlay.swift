@@ -2,7 +2,8 @@ import Foundation
 
 public struct RebasedOverlay: Equatable, Sendable {
     public enum State: Equatable, Sendable {
-        case starting, shown, failed(String)
+        /// A remote row's repository is being mirrored to this Mac; `project` is still the host's path.
+        case fetching, starting, shown, failed(String)
     }
 
     public let id: UUID
@@ -10,12 +11,16 @@ public struct RebasedOverlay: Equatable, Sendable {
     public var state: State
     /// The range last asked for with `--diff`; the bridge shows it once the frame is on screen.
     public var diff: RebasedDiff?
+    /// `host:path` of the repository a remote row's `project` mirrors, nil on a local row.
+    public let source: String?
 
-    public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, id: UUID = UUID()) {
+    public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, source: String? = nil,
+                id: UUID = UUID()) {
         self.id = id
         self.project = project
         self.state = state
         self.diff = diff
+        self.source = source
     }
 }
 

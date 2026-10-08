@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import agtermCore
 
 /// What the host does to IDE windows; `RebasedFrameKeeper` in the app, a recorder in tests.
@@ -51,6 +52,10 @@ final class RebasedHost {
         }
     }
     var isIDEKeyWindowOverride: Bool?
+    var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = {
+        RebasedMirrorRefresh.run($0, stateDirectory: $1)
+    }
+    private static let logger = Logger(subsystem: "com.umputun.agterm", category: "RebasedHost")
 
     private(set) var jvm = JVM.notStarted
     private var entries: [UUID: Entry] = [:]
@@ -63,6 +68,8 @@ final class RebasedHost {
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
     // keyed by overlay id like the dialogs; sent once the frame is shown in its own session
     private var pendingDiffs: [UUID: RebasedDiff] = [:]
+    // sessions whose mirror is being refreshed; a second open would race the same git directory
+    private var fetching: Set<UUID> = []
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -123,12 +130,12 @@ final class RebasedHost {
     /// A `diff` for the project already open in the session goes to that overlay instead of a new one.
     func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, diff: RebasedDiff? = nil) -> String? {
         guard let session = store.session(withID: id) else { return RebasedOverlayOpenFailure.unknownSession.message }
-        if session.remoteHost != nil { return Self.remoteRefusal }
+        if session.remoteHost != nil {
+            return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, diff: diff)
+        }
         let project = Self.projectDirectory(for: cwd ?? session.focusedCwd)
         if let diff, let open = session.rebasedOverlay, Self.canonical(open.project) == Self.canonical(project) {
-            session.rebasedOverlay?.diff = diff
-            pendingDiffs[open.id] = diff
-            sendDiff(session: id)
+            deliver(diff, to: session)
             return nil
         }
         if let failure = store.openRebasedOverlay(id, overlay: RebasedOverlay(project: project, diff: diff), sizePercent: sizePercent) {
@@ -138,7 +145,63 @@ final class RebasedHost {
         return nil
     }
 
-    static let remoteRefusal = "Rebased overlays open on the Mac that holds the repository"
+    private func deliver(_ diff: RebasedDiff, to session: Session) {
+        guard let open = session.rebasedOverlay else { return }
+        session.rebasedOverlay?.diff = diff
+        pendingDiffs[open.id] = diff
+        sendDiff(session: session.id)
+    }
+
+    // MARK: - Remote rows
+
+    /// A remote row opens a `RebasedMirror` of its host's repository, refreshed on every open so a range names the
+    /// host's newest commits. The slot shows `fetching` until the first refresh lands.
+    private func openRemote(in store: AppStore, session: Session, path: String, sizePercent: Int?, diff: RebasedDiff?) -> String? {
+        let host = session.remoteHost ?? ""
+        guard let mirror = RebasedMirror(host: host, path: path) else { return "Rebased cannot mirror \(host):\(path)" }
+        if fetching.contains(session.id) { return "Rebased is still fetching from \(host)" }
+        let overlayID: UUID
+        if let open = session.rebasedOverlay {
+            guard let source = open.source, RebasedMirror.covers(source: source, host: host, path: path) else {
+                return RebasedOverlayOpenFailure.alreadyOpen.message
+            }
+            overlayID = open.id
+        } else {
+            let placeholder = RebasedOverlay(project: path, state: .fetching, diff: diff, source: mirror.source(top: path))
+            if let failure = store.openRebasedOverlay(session.id, overlay: placeholder, sizePercent: sizePercent) {
+                return failure.message
+            }
+            overlayID = placeholder.id
+        }
+        fetching.insert(session.id)
+        let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
+        let result = ResultBox<RebasedMirrorRefresh.Copy>()
+        offMain({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
+            self?.mirrored(result.value, session: sessionID, overlay: overlayID, diff: diff)
+        })
+        return nil
+    }
+
+    // A failed refresh under an open IDE sends no range: the mirror would answer with the host's older commits.
+    private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, session sessionID: UUID, overlay overlayID: UUID,
+                          diff: RebasedDiff?) {
+        fetching.remove(sessionID)
+        guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedOverlay,
+              current.id == overlayID else { return }
+        switch (result, current.state == .fetching) {
+        case (.success(let copy)?, true):
+            session.rebasedOverlay = RebasedOverlay(project: copy.directory, diff: current.diff, source: copy.source, id: overlayID)
+            open(session: sessionID)
+        case (.success?, false):
+            if let diff { deliver(diff, to: session) }
+        case (.failure(let error)?, let placeholder):
+            let message = (error as? RebasedMirrorRefresh.Failure)?.message ?? error.localizedDescription
+            if placeholder { setState(.failed(message), session: sessionID) }
+            Self.logger.error("\(message, privacy: .public)")
+        case (nil, _):
+            break
+        }
+    }
 
     /// Takes over a Rebased overlay the store has just opened in `session`.
     func open(session: UUID) {

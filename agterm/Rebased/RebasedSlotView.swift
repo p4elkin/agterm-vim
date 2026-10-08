@@ -26,6 +26,7 @@ struct RebasedSlot: View {
 
     private var message: String? {
         switch session.rebasedOverlay?.state {
+        case .fetching?: "Fetching \(session.rebasedOverlay?.source ?? "the repository")…"
         case .starting?: "Starting Rebased…"
         case .failed(let error)?: error
         case .shown? where !RebasedHost.shared.isShown(in: session.id): "Rebased is shown in another session"

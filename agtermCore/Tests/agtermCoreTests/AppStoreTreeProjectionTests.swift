@@ -6,7 +6,7 @@ import Testing
 // reports. Split out of `AppStoreTests.swift` for the file size limit.
 @MainActor
 struct AppStoreTreeProjectionTests {
-    @Test(arguments: [RebasedOverlay.State.starting, .shown, .failed("missing Rebased app")])
+    @Test(arguments: [RebasedOverlay.State.fetching, .starting, .shown, .failed("missing Rebased app")])
     func rebasedOverlayProjectsItsStateAndError(_ state: RebasedOverlay.State) throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")
@@ -18,6 +18,7 @@ struct AppStoreTreeProjectionTests {
         #expect(rebasedOverlay.project == "/repo")
         #expect(node.overlaySizePercent == 60)
         switch state {
+        case .fetching: #expect(rebasedOverlay.state == "fetching" && rebasedOverlay.error == nil)
         case .starting: #expect(rebasedOverlay.state == "starting" && rebasedOverlay.error == nil)
         case .shown: #expect(rebasedOverlay.state == "shown" && rebasedOverlay.error == nil)
         case .failed(let error): #expect(rebasedOverlay.state == "failed" && rebasedOverlay.error == error)
