@@ -345,6 +345,12 @@ final class SettingsModel {
     }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
+    func setRebasedAppPath(_ path: String) {
+        guard path != settings.effectiveRebasedAppPath else { return }
+        settings.rebasedAppPath = path == "/Applications/Rebased.app" ? nil : path
+        try? settingsStore.save(settings)
+    }
+
     /// Persist the overlay-redirect toggle and fan it into `OverlayRedirectController`, the value the pill
     /// and `openSessionOverlay`'s decision read. Not a ghostty key — save-only, no config rewrite or surface
     /// reload. Persisted, unlike normal mode: Sasha should not have to re-arm this every launch.

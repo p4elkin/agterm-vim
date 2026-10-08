@@ -34,6 +34,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     /// hand, matching `session.new --workspace-name --create-workspace`. Keyless and menu-less, so it needs
     /// the `CustomCommandRunner.rebuild()` merge line like `normalMode` and `overlayRedirectToggle`.
     case newSessionInWorkspace = "new_session_in_workspace"
+    case rebasedToggle = "rebased_toggle"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
     /// `map`s one. Every action that ships with a key returns it here, including the six arrow-bound ones —
@@ -74,7 +75,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
              .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
              .toggleWorkspaceFilter, .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
-             .normalMode, .overlayRedirectToggle, .newSessionInWorkspace,
+             .normalMode, .overlayRedirectToggle, .newSessionInWorkspace, .rebasedToggle,
              .previousWindow, .nextWindow:
             return nil
         }

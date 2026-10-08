@@ -11,6 +11,20 @@ import Glibc
 @MainActor
 @Suite(.serialized)
 struct HeadlessPagesTests {
+    @Test(arguments: [false, true])
+    func rebasedOpenIsRefusedOnTheHeadlessOrigin(_ withHtml: Bool) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let request = HeadlessRequests.request(.sessionOverlayOpen, target: fixture.session.id.uuidString) {
+            $0.rebased = true
+            if withHtml { $0.html = "/tmp/report.html" }
+        }
+        let response = await fixture.actions.respond(to: request)
+        #expect(!response.ok)
+        #expect(response.error == "session.overlay.open is not available on a headless origin: Rebased overlays open on a Mac only")
+        #expect(fixture.headless.pages.count == 0)
+    }
+
     final class Folder {
         let root: URL
         init() throws {

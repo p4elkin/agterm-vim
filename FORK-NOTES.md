@@ -32,10 +32,11 @@ is the `.claude/rules` file that owns the design.
 
 **Panes and sessions**
 
+- **Rebased in an overlay** — the IntelliJ-platform git client runs inside agterm and shows a session's
+  repository in its overlay slot, docked to the window. `.claude/rules/rebased-overlay.md`.
 - **"+" creates on a remote host** — Settings ▸ Sessions names a host, and the "+" new-session controls
   create the session there through `zmx new HOST`, in the clicked workspace, dimmed while it runs.
   `zmx new HOST --workspace` places a scripted one. `.claude/rules/settings.md`, `control-api.md`.
-
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
   the workstation appears on the laptop mirroring it.
   Section below; design in `.claude/rules/overlay-redirect.md`.

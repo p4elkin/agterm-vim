@@ -632,6 +632,14 @@ final class NormalModeKeyRoutingTests: XCTestCase {
         XCTAssertTrue(fired.isEmpty, "arming fires nothing on its own")
     }
 
+    func testABareMapToTheKeylessRebasedToggleFiresThroughTheRunner() throws {
+        let seeded = try seededRunner(keymap: "map ctrl+shift+r rebased_toggle\n")
+        seeded.start()
+        defer { seeded.stop() }
+        XCTAssertTrue(seeded.handleKeyDown(try keyDown("r", keyCode: 15, flags: [.control, .shift]), in: window))
+        XCTAssertEqual(fired, [.rebasedToggle])
+    }
+
     /// ⚠️ The regression for `CustomCommandRunner.rebuild()`'s keyless-action merge, driven through the REAL
     /// runner. `overlay_redirect_toggle` is keyless like `normal_mode`: no default chord and no menu item, so
     /// a single-chord `map` line lands in `builtinOverrides` (a would-be menu equivalent) and never in the

@@ -16,6 +16,17 @@ flagged:
   # the "+" row button and New Session route to `newSessionFromButton`; upstream's local call there
   # drops the remote host, which only `NewSessionButtonTests` notices
   - "agterm/Views/WorkspaceSidebar+ContextMenu.swift"
+  # Rebased overlay: a resolution dropping one of these lines silently loses part of it
+  - "agtermCore/Sources/agtermCore/Session+HtmlOverlay.swift"
+  - "agtermCore/Sources/agtermCore/ControlDispatcher+Overlay.swift"
+  - "agtermCore/Sources/agtermCore/ForwardPolicy.swift"
+  - "agterm/AppDelegate.swift"
+  - "agterm/Views/WindowContentView.swift"
+  - "agterm/Views/WindowContentView+Detail.swift"
+  - "agterm/Control/ControlServer+SessionActions.swift"
+  - "agterm/Views/SessionSwitcher.swift"
+  - "agterm/Views/PaneShortcuts.swift"
+  - "agterm/Views/UndoCloseShortcut.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
@@ -111,6 +122,14 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   fails the Mac `swift test` build there and in `ForwardPolicy.kind(of:)`, and a new `ControlActions` requirement without a default fails
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
+- The Rebased overlay's hooks into upstream files ([[rebased-overlay]]) are one or two lines each, and
+  every one is invisible to the gates when lost:
+  `Session+HtmlOverlay.swift` (`rebasedOverlayActive` in `coverOverlayActive`, `focusTarget`, `htmlHidesTerminal`),
+  `AppDelegate.swift` (`saveBeforeQuit` in `applicationWillTerminate`),
+  `WindowContentView+Detail.swift` (the slot branch), `WindowContentView.swift` (`rebasedCovered`),
+  `ControlServer+SessionActions.swift` and `ControlDispatcher+Overlay.swift` (the `--rebased` route),
+  `ForwardPolicy.swift` (the headless refusal), and the `isIDEKeyWindow` early return in `SessionSwitcher.swift`,
+  `PaneShortcuts.swift` and `UndoCloseShortcut.swift`, without which ⌃Tab, ⌃1/⌃2 and ⌘Z never reach the IDE.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].

@@ -37,6 +37,14 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if options.rebased {
+                if let refusal = RebasedHost.shared.openOverlay(in: store, session: id, cwd: options.cwd,
+                                                                 sizePercent: options.sizePercent) {
+                    return ControlResponse(ok: false, error: refusal)
+                }
+                if options.follow { store.selectSession(id) }
+                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+            }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }

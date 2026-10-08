@@ -349,9 +349,11 @@ paths:
   `builtinSequences` — or a bound chord parses, resolves, and fires nothing. A single-chord `map` line to a
   keyless action lands in `builtinOverrides` (a would-be menu equivalent) and never in `builtinSequences`,
   which is the monitor's only table; only a 2+-chord leader lands there by itself. This is now a PATTERN,
-  not a one-off: the block holds THREE entries, `normal_mode`, `overlay_redirect_toggle` (fork only,
-  [[overlay-redirect]]) and `new_session_in_workspace` (fork only, [[menu-actions]]), each needing the
-  identical line for the identical reason. Grep that block before adding a fourth keyless action, and
+  not a one-off: the block holds FOUR entries, `normal_mode`, `overlay_redirect_toggle` (fork only,
+  [[overlay-redirect]]), `new_session_in_workspace` (fork only, [[menu-actions]]) and `rebased_toggle`
+  (fork only, [[rebased-overlay]]), each needing the identical line for the identical reason.
+  Over a Rebased IDE window only `rebased_toggle`'s direct chord fires, never a leader. Grep that block
+  before adding a fifth keyless action, and
   pin it with a runner-level test, not a keymap-level one — a keymap-level test passes either way.
 - Write shifted symbols as `shift+<base>`: `shift+/` for `?`, `shift+=` for `+`, `shift+5` for `%`, and
   `shift+.` for `>`. `CustomCommandRunner` uses `characters(byApplyingModifiers: [])` to recover that

@@ -43,6 +43,11 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- Rebased, the IntelliJ-platform git client, opens in a session's overlay slot for that session's
+  repository: `agtermctl session overlay open --rebased`, the `rebased_toggle` keymap action, or Toggle
+  Rebased in the action palette. The IDE runs inside agterm and stays docked to the window; switching
+  sessions, the dashboard and the palette hide it. Needs Rebased in `/Applications` (Settings > General
+  names another path). `tree` reports `rebasedOverlay` per session and `rebased` for the IDE itself.
 - `tree` reports each held remote overlay's `job` and `command` in `remoteOverlays`, the command exactly as the
   open received it, so a launcher can find the overlay it started on a headless row.
 - the "+" new-session buttons can create the session on another machine. Set Settings ▸ Sessions ▸ "New

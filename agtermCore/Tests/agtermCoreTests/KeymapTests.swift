@@ -21,6 +21,13 @@ command "Second" ctrl+shift+g echo two
 """
 
 struct KeymapTests {
+    @Test func rebasedToggleBindsThroughAMapLine() {
+        let (keymap, diagnostics) = parseKeymap("map ctrl+shift+r rebased_toggle")
+        #expect(diagnostics.isEmpty)
+        #expect(keymap.equivalent(for: .rebasedToggle) == Chord(mods: [.control, .shift], key: "r"))
+        #expect(BuiltinAction.rebasedToggle.defaultChord == nil)
+    }
+
     @Test(arguments: ["f5", "f20", "f5>x", "ctrl+f5>x", "shift+f6"])
     func functionKeyCommands(_ shortcut: String) {
         let (keymap, diagnostics) = parseKeymap("command \"Run\" \(shortcut) echo hello")

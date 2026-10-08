@@ -37,9 +37,12 @@ with Rebased 1.1.20 (build 262.10968, JBR 25.0.4):
 - **Exit veto.** A 20-line plugin registers `ApplicationListener.canExitApplication() → false` through
   `addApplicationListener`. IntelliJ's exit request was refused; host and IDE stayed up. A `plugin.xml`
   topic listener would not be consulted: `ApplicationImpl.canExit` reads only the dispatcher's listeners.
-- **Menu bar.** IntelliJ writes its items into whatever `NSApp.mainMenu` is installed when its frame first
-  becomes key, once. The host keeps that object and swaps menus on key-window changes. Measured across
-  repeated focus switches.
+- **Menu bar.** Swapping menus does not work in agterm. IntelliJ writes into whatever `NSApp.mainMenu` is
+  installed, and so does SwiftUI: a Debug agterm rewrote a foreign menu on every state change (a new
+  session, a new window), dropping its items for its own (Task 0, 2026-10-08). With
+  `-DjbScreenMenuBar.enabled=false -Dapple.laf.useScreenMenuBar=false`, IntelliJ leaves `NSApp.mainMenu`
+  alone and shows its menu as a main-menu button in its own toolbar (`MainMenuWithButton`). `MacMenuSettings`
+  reads `jbScreenMenuBar.enabled` first, so `apple.laf.useScreenMenuBar` alone is not enough.
 - **libghostty in the same process.** The spike linked `libghostty-internal.a` and called `ghostty_init` first.
   Ghostty's sentry (Breakpad backend, `task_set_exception_ports`) is on for macOS by default and starts in
   `ghostty_init`. The JVM ran 40 s of IntelliJ work, which takes deliberate memory faults, and survived. No
@@ -109,27 +112,34 @@ the open and the toggle chord answer "overlay already open".
 IntelliJ turns into "close project", the overlay closes. If the JVM fails to start, the slot shows the error
 and the tree reports it. ⌘W and the toggle chord close it like any overlay.
 
+**Frames before adoption.** A run-loop observer sets `alphaValue = 0` on any frame-like AWT window
+(miniaturizable) in the run-loop turn it appears, before Core Animation commits. The Welcome frame is
+ordered out when the bridge names it. A project frame is shown before IntelliJ attaches its project, so
+the bridge polls for the project (up to 5 s; 2.3 s measured) before it reports `frameOpened`.
+
 **Windows the IDE opens later.** The plugin reports every AWT window it opens. While the overlay is visible,
 agterm attaches the new window to the host window. While it is hidden, a new dialog brings the overlay back
 in its last session, because a dialog usually wants an answer (a git credential prompt). A popup that
 appears while hidden is ordered out.
 
-**Keys.** While an IDE window is key, agterm's keymap stays out of the way. `CustomCommandRunner` already
+**Keys and the menu bar.** agterm's SwiftUI menu stays installed all the time, and IntelliJ runs with its
+screen menu bar off (see the spike results). That alone sends a chord both ways: with the IDE key, ⌘F fired
+agterm's menu item and reached the IDE too. So while any IDE window is key (a frame, a dialog, a popup), one
+local `NSEvent` monitor hands each key event straight to that window and consumes it, ahead of agterm's menu.
+`RebasedMenuPolicy` decides the few keys that stay with agterm: the direct chord bound to `rebased_toggle`,
+⌘Q and ⌘H. `reconcileStockMenuChords` needs no change.
+
+While an IDE window is key, agterm's keymap stays out of the way. `CustomCommandRunner` already
 passes keys for windows outside `WindowRegistry`. Three other app-wide local monitors do not, and each checks
 one predicate, "the key window is an IDE window", owned by `RebasedHost`: `SessionSwitcher` (⌃Tab is
-IntelliJ's Switcher), `PaneShortcuts` (⌃1, ⌃2) and `UndoCloseShortcut` (⌘Z). One more local monitor, active
-only while an IDE window is key, matches the direct chord bound to `rebased_toggle` and nothing else. A leader
+IntelliJ's Switcher), `PaneShortcuts` (⌃1, ⌃2) and `UndoCloseShortcut` (⌘Z), in case one runs before the
+router. A leader
 sequence does not work over the IDE: the leader ⌃Space is IntelliJ's code completion, and swallowing it
 would break completion. Session navigation chords do not work over the IDE in v1.
 
-**The menu bar.** SwiftUI owns agterm's menu and `AppDelegate.reconcileStockMenuChords` patches it on
-activation, keymap change and menu-tracking start. Before the first IDE frame becomes key, agterm installs a
-sacrificial empty `NSMenu`, so IntelliJ writes into that object and never into SwiftUI's. From then on, key
-window kind decides the menu: an IDE window installs the IDE menu, an agterm window reinstalls the saved
-SwiftUI menu. `reconcileStockMenuChords` returns early while the IDE menu is installed.
-
 **Quit.** `applicationWillTerminate` asks the bridge to `saveAll`, waiting at most 2 s, before the existing
-flush. Process exit ends the JVM. IntelliJ's own exit stays vetoed.
+flush. Measured from a blocked main thread: about 0.05 s. `saveAllDocuments` returns before the bytes are on
+disk, so the bridge answers only once each saved file's disk content equals its document. Process exit ends the JVM. IntelliJ's own exit stays vetoed.
 
 ## What changes in agterm
 
@@ -148,8 +158,8 @@ Pure parts go to `agtermCore`, side effects stay in the app target, per the #78 
     `programOverlayActive` excludes it. The cover-site list in `control-api.md` (the paragraph on an HTML
     page as a third occupant) names 11 cover sites and 3 program-only sites. Each of the 14 is checked in the
     plan by name; most need no edit because they read `coverOverlayActive` already.
-  - `RebasedMenuPolicy`: given the key window's kind and what has been installed, which menu object to
-    install. Pure and tested.
+  - `RebasedMenuPolicy`: given the key window's kind and a key event, whether the event goes to the IDE
+    window or stays with agterm (the toggle chord, ⌘Q, ⌘H). Pure and tested.
   - Control: protocol argument, dispatcher branch in `overlayContent`, projection fields (see below).
 - **App target**, new folder `agterm/Rebased/`
   - `RebasedJVM`: the JNI shim. A small C file compiled into the app with vendored `jni.h` and `jni_md.h`
@@ -158,11 +168,10 @@ Pure parts go to `agtermCore`, side effects stay in the app target, per the #78 
     thread hops to the main queue, the same rule as `GhosttyCallbacks`.
   - `RebasedHost`: the single owner, like `HtmlOverlayRegistry`. It starts the JVM lazily, keeps the
     project-to-window map, attaches and detaches child windows, hides chrome, fits frames, runs the key
-    monitor and the menu policy.
+    router and the menu policy.
   - `RebasedSlotView`: the `NSViewRepresentable` placeholder composed in `overlayPanel` of
     `WindowContentView+Detail.swift`, as a third branch of the `Group` in `overlayPanel`, beside `HtmlOverlayView` and `TerminalView`, sized by the existing `OverlayPanelStyle`.
-  - `AppDelegate`: the `saveAll` step in `applicationWillTerminate`, and the early return in
-    `reconcileStockMenuChords`.
+  - `AppDelegate`: the `saveAll` step in `applicationWillTerminate`.
 - **Signing.** `agterm/agterm.entitlements` gains `com.apple.security.cs.allow-jit` and
   `com.apple.security.cs.disable-library-validation`. Nothing new is bundled as a Mach-O, so
   `scripts/sign-local.sh` and the post-build signing script do not change. The two `ci.yml` entitlement
@@ -187,9 +196,14 @@ What it does:
 - Publishes a bridge object in `System.getProperties()` under `agterm.rebased.bridge`. Its type is a JDK
   interface, so agterm can call it through JNI without seeing the plugin's class loader. Commands: `open`,
   `show`, `hide`, `saveAll`.
-- Declares `static native void hostEvent(String kind, String payload)`. agterm binds it with
-  `RegisterNatives` on the bridge's class. Events: `ready`, `frameOpened <dir> <windowNumber>`,
-  `frameClosed <dir>`, `windowOpened <windowNumber> <dialog|popup>`.
+- Declares `static native void hostEvent(String kind, String payload)`. agterm polls for the bridge
+  property, binds `hostEvent` with `RegisterNatives` on the bridge's class, then calls `hello`; the plugin
+  queues events until `hello`. Events: `ready`, `frameOpened <dir> <windowNumber>`,
+  `frameClosed <dir>`, `windowOpened <windowNumber> <welcome|dialog|popup> <dir or empty>`.
+  Event fields are tab-separated. The window owner chain identifies the project for dialogs and popups.
+- Model changes (`open`, `saveAll`) run write-safe: hop to the EDT under `ModalityState.any()`, then
+  queue the change under the modality current there. Under `any()` alone IntelliJ refuses them and opens
+  its "IDE Internal Errors" dialog.
 - Finds a frame's `NSWindow` with `MacUtil.getWindowFromJavaWindow` and reports its `windowNumber`. agterm
   resolves it with `NSApp.window(withWindowNumber:)`.
 
@@ -242,12 +256,13 @@ All three accepted as recommended on 2026-10-07.
 ## Tests and gates
 
 - `agtermCore` tests: `RebasedInstall` against a fixture `product-info.json` and `.vmoptions` (substitution,
-  class path order, overrides, version check). `RebasedMenuPolicy` transitions. The predicate sites,
+  class path order, overrides, version check). `RebasedMenuPolicy` decisions. The predicate sites,
   found by grep: a site in `agtermCore` gets a test that it reads the right predicate; a site in an app
   view is listed in its commit and checked live. Slot teardown hides the frame. Protocol, dispatcher and CLI parsing of `--rebased`,
   including the rejected combinations and the headless refusal. Projection of both read-back fields.
 - The first plan tasks verify what the spike did not, inside a Debug agterm, before the rest is built:
-  1. the sacrificial menu keeps SwiftUI's menu untouched, and SwiftUI does not replace the IDE menu;
+  1. the menu: measured that swapping fails under SwiftUI, and that the in-frame IDE menu plus the key
+     router works;
   2. hide and show through `setVisible` keep the frame attached and keyboard focus sane;
   3. the attached frame follows the window into and out of native full screen;
   4. opening a project shows no visible jump: the restored bounds stay hidden until the fit settles, and a

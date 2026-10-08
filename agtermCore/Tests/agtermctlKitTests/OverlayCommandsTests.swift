@@ -5,6 +5,27 @@ import agtermCore
 @testable import agtermctlKit
 
 struct OverlayCommandsTests {
+    @Test func rebasedOpenSendsItsProjectSizeAndTarget() throws {
+        let req = try request(["session", "overlay", "open", "--rebased", "--cwd", "repo", "--size-percent", "60", "--target", "s"])
+        #expect(req.cmd == .sessionOverlayOpen)
+        #expect(req.target == "s")
+        #expect(req.args?.rebased == true)
+        #expect(req.args?.cwd == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("repo").standardizedFileURL.path)
+        #expect(req.args?.sizePercent == 60)
+        #expect(req.args?.command == nil)
+        #expect(try request(["session", "overlay", "open", "--rebased"]).args?.cwd == nil)
+        #expect(try request(["session", "overlay", "open", "cat"]).args?.rebased == nil)
+    }
+
+    @Test(arguments: [
+        ["cat"], ["--html", "/tmp/r.html"], ["--url", "http://localhost:5173/"], ["--pane", "left"],
+        ["--wait"], ["--block"], ["--js"], ["--navigation"], ["--chromeless"], ["--persistent"], ["--browse"],
+        ["--background-color", "#102030"],
+    ])
+    func rebasedRejectsIncompatibleOptions(_ extra: [String]) {
+        #expect(rejects(["session", "overlay", "open", "--rebased"] + extra))
+    }
+
     private func request(_ argv: [String]) throws -> ControlRequest {
         let parsed = try Agtermctl.parseAsRoot(argv)
         guard let command = parsed as? any RequestCommand else {

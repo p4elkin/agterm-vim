@@ -349,3 +349,4 @@ spans intact, and format long catalogs as lists.
 - `overlay-redirect.md`: which machine an overlay opens on, the two pairing fields, the two-phase open.
 - `fork-merge.md`: merging upstream into this fork, the gate set, the files that keep colliding.
 - `headless-origin.md`: the Linux headless origin server, and the Linux test gate.
+- `rebased-overlay.md`: Rebased hosted in-process in the overlay slot: JVM, bridge plugin, frame, keys.

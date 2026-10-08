@@ -157,6 +157,9 @@ final class AppActionsPaletteTests: XCTestCase {
 
         XCTAssertTrue(viaPalette.isDisjoint(with: paletteLess), "an action must have exactly one dispatch path")
         XCTAssertEqual(viaPalette.union(paletteLess), Set(BuiltinAction.allCases))
+        XCTAssertTrue(viaPalette.contains(.rebasedToggle))
+        XCTAssertNil(actions.paletteLessHandler(for: .rebasedToggle))
+        XCTAssertTrue(actions.paletteActions().contains { $0.title == "Toggle Rebased" })
     }
 
     // MARK: - the new-session workspace picker

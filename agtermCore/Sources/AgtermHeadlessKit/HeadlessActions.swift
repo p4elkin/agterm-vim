@@ -45,7 +45,7 @@ public final class HeadlessActions: ControlActions {
     public func respond(to request: ControlRequest) async -> ControlResponse {
         let session = headless.resolve(request.target)?.1
         let pane = request.args?.pane.flatMap(OverlayPane.init(controlName:))
-        if request.cmd == .sessionOverlayOpen, let html = request.args?.html {
+        if request.cmd == .sessionOverlayOpen, request.args?.rebased != true, let html = request.args?.html {
             return await openServedPage(request, html: html, session: session?.id)
         }
         switch ForwardPolicy.route(request, holdsJob: session?.remoteOverlays.slot(pane) != nil) {

@@ -3,6 +3,13 @@ import Testing
 @testable import agtermCore
 
 struct ForwardPolicyTests {
+    @Test(arguments: [false, true])
+    func rebasedIsRefusedBeforeTheProgramJobRoute(_ holdsJob: Bool) {
+        #expect(ForwardPolicy.kind(of: .sessionOverlayOpen) == .routed)
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .refused("Rebased overlays open on a Mac only"))
+    }
+
     static let served: Set<String> = [
         "tree", "events.read", "version", "window.list", "zmx.new", "zmx.tree", "zmx.present", "zmx.list",
         "notify", "session.status", "session.context", "session.seen", "session.new", "session.mark",

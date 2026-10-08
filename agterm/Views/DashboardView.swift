@@ -331,11 +331,13 @@ private struct DashboardOverlayCover: View {
 
     private var symbol: String {
         if case .page = cover { return "doc.richtext" }
+        if case .rebased = cover { return "arrow.triangle.branch" }
         return "terminal"
     }
 
     private var kind: String {
         if case .page = cover { return "HTML overlay" }
+        if case .rebased = cover { return "Rebased overlay" }
         return "Program overlay"
     }
 
@@ -343,6 +345,7 @@ private struct DashboardOverlayCover: View {
         switch cover {
         case .page(let identity, _): identity
         case .program(let command): command
+        case .rebased(let project): project
         }
     }
 }

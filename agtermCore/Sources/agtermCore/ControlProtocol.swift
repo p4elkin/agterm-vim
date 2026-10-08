@@ -435,6 +435,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// html is the absolute path of the page `session.overlay.open --html` shows instead of running `command`; `cwd`
     /// is then WebKit's read grant.
     public var html: String?
+    public var rebased: Bool?
     /// current makes `session.overlay.reload` reload the page the user navigated to, not the original file.
     public var current: Bool?
     /// navigation gives an `--html` or `--url` overlay its toolbar.
@@ -488,7 +489,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -580,6 +581,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.persistent = persistent
         self.attach = attach
         self.browse = browse
+        self.rebased = rebased
     }
 }
 

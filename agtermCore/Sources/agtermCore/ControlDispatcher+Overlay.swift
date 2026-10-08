@@ -7,10 +7,12 @@ extension ControlDispatcher {
         case .sessionOverlayOpen:
             let command = request.args?.command ?? ""
             let page: HtmlSource?
+            let rebased: Bool
             switch Self.overlayContent(command: command, args: request.args) {
             case .rejected(let response): return response
-            case .program: page = nil
-            case .page(let source): page = source
+            case .program: page = nil; rebased = false
+            case .page(let source): page = source; rebased = false
+            case .rebased: page = nil; rebased = true
             }
             if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
                 return ControlResponse(ok: false, error: "invalid color: \(color) (#rrggbb)")
@@ -41,7 +43,8 @@ extension ControlDispatcher {
                                                 javascript: request.args?.javascript ?? false,
                                                 chromeless: request.args?.chromeless ?? false,
                                                 persistent: request.args?.persistent ?? false,
-                                                browse: request.args?.browse ?? false
+                                                browse: request.args?.browse ?? false,
+                                                rebased: rebased
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
@@ -124,10 +127,23 @@ extension ControlDispatcher {
         case rejected(ControlResponse)
         case program
         case page(HtmlSource)
+        case rebased
     }
 
     private static func overlayContent(command: String, args: ControlArgs?) -> OverlayContent {
         let reject = { (error: String) in OverlayContent.rejected(ControlResponse(ok: false, error: error)) }
+        if args?.rebased == true {
+            let conflicts: [(Bool, String)] = [
+                (!command.isEmpty, "COMMAND"), (args?.html != nil, "--html"), (args?.url != nil, "--url"),
+                (args?.pane != nil, "--pane"), (args?.wait == true, "--wait"), (args?.javascript == true, "--js"),
+                (args?.navigation == true, "--navigation"), (args?.chromeless == true, "--chromeless"),
+                (args?.persistent == true, "--persistent"), (args?.browse == true, "--browse"), (args?.color != nil, "--background-color")
+            ]
+            if let conflict = conflicts.first(where: { $0.0 }) {
+                return reject("session.overlay.open: --rebased cannot be combined with \(conflict.1)")
+            }
+            return .rebased
+        }
         switch (args?.html, args?.url) {
         case (nil, nil):
             if args?.navigation == true { return reject(OverlayHtmlError.navigationWithoutPage) }

@@ -321,7 +321,10 @@ extension WindowContentView {
                     // too — a passive panel registers no drag types and tracks no pointer, so a file drop
                     // keeps reaching the pane behind it. Its one cursor write is `HudLinkClick`'s, over a link.
                     Group {
-                        if let page = session.htmlOverlay, session.htmlOverlayActive {
+                        if session.rebasedOverlayActive {
+                            RebasedSlot(session: session, visible: live && onScreen && !rebasedCovered,
+                                        foreground: chromeText)
+                        } else if let page = session.htmlOverlay, session.htmlOverlayActive {
                             HtmlOverlayView(store: store, session: session, overlay: page,
                                             backgroundColor: session.overlayBackgroundColor, isActive: live,
                                             visible: live, foreground: chromeText, background: terminalColor)

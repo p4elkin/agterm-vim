@@ -59,14 +59,16 @@ struct PaletteCatalogTests {
             "Collapse Workspace",
             "Focus Left Pane",
             "Focus Right Pane",
+            "Toggle Rebased",
         ])
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 55)
+        #expect(PaletteCommand.allCases.count == 56)
     }
 
     @Test func idsRoundTripThroughRawValue() {
+        #expect(PaletteCommand.toggleRebased.builtinAction == .rebasedToggle)
         for command in PaletteCommand.allCases {
             #expect(PaletteCommand(rawValue: command.rawValue) == command)
         }
@@ -228,7 +230,7 @@ struct PaletteCatalogTests {
 
     private static let needSession: Set<PaletteCommand> = [
         .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit, .toggleHorizontalSplit,
-        .swapPanes, .toggleScratch, .find,
+        .swapPanes, .toggleScratch, .toggleRebased, .find,
         .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
         .firstSession, .lastSession,
     ]

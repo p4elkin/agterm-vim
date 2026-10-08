@@ -77,6 +77,9 @@ extension ControlServer {
             }
             // after the pane checks, so a missing pane keeps its error, and before the realized one, since a
             // page zooms without its terminal
+            if session.rebasedOverlayActive {
+                return ControlResponse(ok: false, error: "Rebased overlay has no terminal font size")
+            }
             if session.htmlHidesTerminal(pane) {
                 self.settingsModel.stepHtmlOverlayZoom(action)
                 return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))

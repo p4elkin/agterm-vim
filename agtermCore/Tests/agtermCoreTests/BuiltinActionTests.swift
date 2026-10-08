@@ -36,9 +36,10 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.normalMode.rawValue == "normal_mode")
         #expect(BuiltinAction.overlayRedirectToggle.rawValue == "overlay_redirect_toggle")
         #expect(BuiltinAction.newSessionInWorkspace.rawValue == "new_session_in_workspace")
+        #expect(BuiltinAction.rebasedToggle.rawValue == "rebased_toggle")
         #expect(BuiltinAction.previousWindow.rawValue == "previous_window")
         #expect(BuiltinAction.nextWindow.rawValue == "next_window")
-        #expect(BuiltinAction.allCases.count == 51)
+        #expect(BuiltinAction.allCases.count == 52)
     }
 
     @Test func rejectsUnknownName() {
@@ -132,6 +133,7 @@ struct BuiltinActionTests {
             .dashboard: Chord(mods: [.command, .shift], key: "g"),
             .normalMode: nil,
             .overlayRedirectToggle: nil,
+            .rebasedToggle: nil,
             .newSessionInWorkspace: nil,
         ]
         #expect(expected.count == BuiltinAction.allCases.count)
@@ -190,7 +192,7 @@ struct BuiltinActionTests {
             .renameWindow, .deleteWindow, .renameWorkspace, .deleteWorkspace, .renameSession, .duplicateSession,
             .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
             .toggleWorkspaceFilter, .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
-            .normalMode, .overlayRedirectToggle, .newSessionInWorkspace,
+            .normalMode, .overlayRedirectToggle, .newSessionInWorkspace, .rebasedToggle,
             .previousWindow, .nextWindow,
         ]
         for action in keyless {

@@ -104,6 +104,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
     case deleteWorkspace, toggleFlaggedView, clearFlagged, clearFocus
     case addWorkspaceToFocus, toggleWorkspaceFilter
     case expandWorkspaces, collapseWorkspaces, toggleWorkspaceCollapse, focusLeftPane, focusRightPane
+    case toggleRebased
 
     /// Whether the command can RUN right now — the single owner of menu enablement, read by the menu item's
     /// `.disabled(…)`, by the palette row (which stays listed but renders inert) and by the key monitor's
@@ -113,7 +114,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         guard isVisible(in: context), !isCoveredByModal(context) else { return false }
         switch self {
         case .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit,
-             .toggleHorizontalSplit, .toggleScratch,
+             .toggleHorizontalSplit, .toggleScratch, .toggleRebased,
              .find, .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
              .firstSession, .lastSession:
             return context.hasActiveSession
@@ -252,6 +253,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .toggleWorkspaceCollapse: return context.activeWorkspaceCollapsed ? "Expand Workspace" : "Collapse Workspace"
         case .focusLeftPane: return context.activeSplitAxis == .topBottom ? "Focus Top Pane" : "Focus Left Pane"
         case .focusRightPane: return context.activeSplitAxis == .topBottom ? "Focus Bottom Pane" : "Focus Right Pane"
+        case .toggleRebased: return "Toggle Rebased"
         }
     }
 
@@ -282,6 +284,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .toggleSplit: return .toggleSplit
         case .toggleHorizontalSplit: return .toggleHorizontalSplit
         case .toggleScratch: return .toggleScratch
+        case .toggleRebased: return .rebasedToggle
         case .toggleTerminalZoom: return .toggleTerminalZoom
         case .toggleSidebar: return .toggleSidebar
         case .toggleFlag: return .toggleFlag

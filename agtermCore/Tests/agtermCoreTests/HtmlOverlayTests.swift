@@ -44,6 +44,124 @@ struct HtmlOverlayTests {
         return { released }
     }
 
+    @Test func rebasedCoversWithoutATerminalOrPageFocusTarget() {
+        split()
+        session.scratchActive = true
+        session.scratchSurface = SpySurface(paneToken: "scratch")
+        #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
+        session.splitFocused = true
+        session.rebasedOverlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(!session.rebasedOverlayActive)
+        session.rebasedOverlay = nil
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: 60) == nil)
+        #expect(session.rebasedOverlayActive)
+        #expect(session.coverOverlayActive)
+        #expect(!session.programOverlayActive)
+        #expect(!session.htmlOverlayActive)
+        #expect(session.topmostSurface == nil)
+        #expect(session.focusTarget(wantSplit: false) == nil)
+        #expect(session.focusTarget(wantSplit: true) == nil)
+        session.scratchActive = false
+        #expect(session.topmostHtmlOverlay == nil)
+        #expect(!session.htmlCovers(nil))
+        #expect(StatusPane.allCases.allSatisfy { !session.htmlHidesTerminal($0) })
+        #expect(!session.htmlHidesTerminal(nil))
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+        #expect(!TerminalZoomSurface.overlay.isAvailable(in: session))
+        #expect(!TerminalZoomSurface.primary.isVisible(in: session))
+    }
+
+    @Test func rebasedOpenReplacesAHudAndResetsTheSlot() {
+        #expect(store.openOverlay(session.id, command: "true"))
+        store.recordOverlayExit(session.id, code: 3)
+        #expect(store.closeOverlay(session.id))
+        #expect(store.openHud(session.id, command: "hud", spec: HudSpec(message: "x"), file: "/tmp/h",
+                              size: HudPanelSize(widthPercent: 30, heightPercent: 10)))
+        let generation = session.overlaySlotGeneration
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: 60) == nil)
+        #expect(session.rebasedOverlay == overlay)
+        #expect(session.rebasedOverlay?.state == .starting)
+        #expect(session.overlaySizePercent == 60)
+        #expect(session.overlaySlotGeneration == generation + 1)
+        #expect(session.overlayExitCode == nil)
+        #expect(!session.hudActive)
+    }
+
+    @Test func rebasedPresenterRefusalNamesRebased() throws {
+        let hub = PresentationHub(staleTimeout: 30)
+        let presenter = Sink()
+        store.presentationHub = hub
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        let failure = store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil)
+        #expect(failure == .presenter)
+        #expect(failure?.message == "a viewer presents this session: a Rebased overlay would open where nobody sees it")
+    }
+
+    @Test func rebasedOpenPreservesAProgramPageOrRebasedOccupant() {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openOverlay(session.id, command: "htop"))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == .alreadyOpen)
+        #expect(session.overlayCommand == "htop")
+        #expect(session.rebasedOverlay == nil)
+        #expect(store.closeOverlay(session.id))
+        let html = page()
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: html, sizePercent: nil) == nil)
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == .alreadyOpen)
+        #expect(session.htmlOverlay == html)
+        #expect(store.closeOverlay(session.id))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil) == .alreadyOpen)
+        #expect(session.rebasedOverlay == overlay)
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: html, sizePercent: nil) == .alreadyOpen)
+        #expect(!store.openOverlay(session.id, command: "htop"))
+        #expect(store.openRebasedOverlay(UUID(), overlay: overlay, sizePercent: nil) == .unknownSession)
+        #expect(store.htmlOverlayCommandFailure(session.id, pane: nil) == .notHtml)
+    }
+
+    @Test(arguments: ["overlay", "session", "workspace", "pending", "window", "direct"])
+    func rebasedTeardownReleasesItsOccupantOnce(path: String) throws {
+        var released: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { released.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        switch path {
+        case "overlay":
+            #expect(store.closeOverlay(session.id))
+            #expect(!store.closeOverlay(session.id))
+        case "session": store.closeSession(session.id)
+        case "workspace":
+            store.addWorkspace(name: "other")
+            store.removeWorkspace(workspace.id)
+        case "pending":
+            #expect(store.softCloseSession(session.id, grace: 60))
+            #expect(released.isEmpty)
+            store.finalizeAllPendingCloses()
+        case "window":
+            for member in store.workspaces.flatMap(\.sessions) { member.teardownOverlaySlot() }
+        default: session.teardownOverlaySlot()
+        }
+        session.teardownOverlaySlot()
+        #expect(session.rebasedOverlay == nil)
+        #expect(released == [overlay.id])
+    }
+
+    @Test func rebasedDashboardCoverAndResizeFollowTheSlot() {
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil) == nil)
+        #expect(session.dashboardCover(for: .left) == .rebased(project: "/tmp/repo"))
+        #expect(session.dashboardCover(for: .right) == .rebased(project: "/tmp/repo"))
+        #expect(store.resizeOverlay(session.id, sizePercent: 50))
+        #expect(session.overlaySizePercent == 50)
+        #expect(session.dashboardCover(for: .left) == nil)
+        #expect(session.coverOverlayActive)
+        let node = store.controlTree().workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }
+        #expect(node?.overlay == true)
+        #expect(node?.overlaySizePercent == 50)
+    }
+
     @Test(arguments: [
         ("/a/b/report.html", String?.none, true),
         ("/a/b/report.html", "/a/b", true),

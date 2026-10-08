@@ -317,7 +317,7 @@ public final class AppStore {
                             dashboardFontMode: () -> String? = { nil }, app: AppIdentity? = nil,
                             liveReset: ControlLiveResetReadback? = nil, indexUnsaved: Bool = false,
                             flaggedLayout: FlaggedViewLayout? = nil, htmlZoom: Double? = nil,
-                            linkOpenMode: LinkOpenMode? = nil) -> ControlTree {
+                            linkOpenMode: LinkOpenMode? = nil, rebased: ControlRebasedNode? = nil) -> ControlTree {
         let activeID = selectedSessionID
         // `currentWorkspaceID`, not the selected session's owner: an EMPTY destination selects nothing, so
         // deriving this from the selection alone made `tree` name the workspace `workspace.go` just left.
@@ -406,7 +406,8 @@ public final class AppStore {
                                               liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
                                               presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                               remoteOverlays: remoteOverlayNodes(of: session),
-                                              htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
+                                              htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom),
+                                              rebasedOverlay: session.rebasedOverlayActive ? session.rebasedOverlay?.controlNode : nil)
                 if session.remoteHost != nil {
                     node.remoteState = session.remotePresentation?.rowState.rawValue
                     node.remoteSession = session.remotePresentation?.binding.remoteSessionID
@@ -433,7 +434,7 @@ public final class AppStore {
                            dashboardFontMode: dashboardFontMode(),
                            sessionRecency: controlSessionRecency(),
                            pickPending: pickPending(), askPending: askPending(), app: app, liveReset: liveReset,
-                           indexUnsaved: indexUnsaved ? true : nil, linkOpenMode: linkOpenMode?.rawValue)
+                           indexUnsaved: indexUnsaved ? true : nil, linkOpenMode: linkOpenMode?.rawValue, rebased: rebased)
     }
 
     /// The tree's `paneOverlays`: the panes covered by their own overlay, omitted when neither is.

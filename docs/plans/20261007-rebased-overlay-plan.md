@@ -161,6 +161,9 @@ owner: lead
   later IDE keys install `ide`; an agterm key installs `agterm`; `other` (a panel, the quick terminal)
   changes nothing; repeated events are idempotent. `reconcileAllowed` is false while `ide` is installed.
 - [ ] Implement it as a pure value type.
+- [ ] Superseded by Task 0's menu result (see the spec's "Keys and the menu bar"): the menu is never
+  swapped. Task 10 rewrites `RebasedMenuPolicy` and its tests into the key-routing rule. The type and the
+  test class keep their names, because `land --final` reruns this task's check.
 - [ ] Acceptance: `grep -rq RebasedMenuPolicyTests agtermCore/Tests && cd agtermCore && swift test --no-parallel --filter RebasedMenuPolicyTests`
 
 ### Task 4: `session overlay open --rebased`
@@ -250,7 +253,10 @@ depends: 0, 1, 7
 - [ ] Java source in `agterm/Resources/rebased/` (a folder resource in `project.yml`, like `hud`, and added
   to the target's `excludes:` list as `Resources/hud` is), from the Task 0 plugin: exit and restart veto,
   the bridge object (`open`, `show`, `hide`, `saveAll`), the `hostEvent` native, and an AWT window
-  listener that reports `frameOpened`, `frameClosed` and `windowOpened`.
+  listener that reports `frameOpened`, `frameClosed` and `windowOpened`. Port the Task 0 plugin's
+  details: the `hello` queue, the Welcome kind, the project poll before `frameOpened`, the write-safe hop
+  for `open` and `saveAll`, and `saveAll` waiting until the files on disk match. Drop the spike-only
+  commands.
 - [ ] `RebasedPluginBuilder` (app): when `pluginCacheKey` differs from the stamp in the plugins dir, run
   Rebased's `jbr/Contents/Home/bin/javac --release 21 -cp '<lib>/*'`, then `/usr/bin/zip -r -X` the
   classes and `META-INF/plugin.xml` into `lib/<name>.jar`, as Task 0 measured. Write the stamp last.
@@ -274,6 +280,11 @@ depends: 0, 1, 2, 5, 7, 8
 - [ ] The JVM state (`notStarted | starting | running | failed`) is separate from each overlay's state.
   A `ready` after the deadline moves the JVM to `running`, and the next open or retry uses that JVM
   without `rb_start`. Only a JVM that was never created is retried through `rb_start`.
+- [ ] JVM options: `RebasedInstall`'s list plus `-DjbScreenMenuBar.enabled=false` and
+  `-Dapple.laf.useScreenMenuBar=false`, last, so IntelliJ never touches `NSApp.mainMenu` (Task 0).
+- [ ] Binding: poll for the `agterm.rebased.bridge` property, `RegisterNatives` on its class, then call
+  `hello`; the plugin queues events until then. A run-loop observer sets `alphaValue = 0` on every
+  frame-like AWT window the turn it appears; `windowOpened welcome` orders the Welcome frame out.
 - [ ] Project dir: `--cwd` or the session cwd, raised to `git rev-parse --show-toplevel` when inside a repo.
 - [ ] `show(session)`, `hide(session)`, and the clear-itself rules: a `frameClosed` for a shown project
   closes that session's overlay; a failed start sets `state = failed(error)`; a `RebasedOverlayReleases`
@@ -300,18 +311,18 @@ depends: 3, 6, 9
   an IDE-initiated change, snap back on `didResize`/`didMove` with its own `setFrame` marked, undo
   `didMiniaturize`. Dialogs keep their size and are only attached. `reparent(to:)` detaches from one
   window and attaches to another, for a session moved between windows.
-- [ ] The key monitor: a local `NSEvent` monitor, installed while an IDE window is key. It matches only the
-  direct chord bound to `rebased_toggle`, through a pure core type `RebasedKeyMatcher` built from a
-  `Keymap`. A leader sequence is ignored over the IDE, so ⌃Space stays IntelliJ's completion. Every other
-  key goes to the IDE untouched.
+- [ ] The key router: a local `NSEvent` monitor for key down and up. While any IDE window is key (a frame,
+  a dialog, a popup), it sends each event to that window with `sendEvent` and consumes it, ahead of
+  agterm's menu, except the keys `RebasedMenuPolicy` keeps for agterm: the direct chord bound to
+  `rebased_toggle` (matched by a pure core type `RebasedKeyMatcher` built from a `Keymap`), ⌘Q and ⌘H. A
+  leader sequence is ignored over the IDE, so ⌃Space stays IntelliJ's completion. Task 0 measured both
+  halves: without the router ⌘F fired agterm's menu item and the IDE; with it, only the IDE.
 - [ ] The other app-wide monitors pass the event through untouched while `RebasedHost.isIDEKeyWindow` is
   true: `SessionSwitcher` (⌃Tab), `PaneShortcuts` (⌃1, ⌃2) and `UndoCloseShortcut` (⌘Z). Their
   `handleKeyDown` methods become internal, so a test can call them.
-- [ ] The menu: apply `RebasedMenuPolicy` on `NSWindow.didBecomeKeyNotification`, holding the SwiftUI
-  menu object and IntelliJ's. `AppDelegate.reconcileStockMenuChords` returns early when
-  `reconcileAllowed` is false, and runs right after the policy reinstalls the agterm menu, so a keymap
-  reload made while the IDE was key is not left stale; the gate is a small internal function the test can call, because the
-  method itself is private.
+- [ ] The menu: never swapped. Rewrite `RebasedMenuPolicy` (Task 3) into the routing rule: inputs are the
+  key window's kind and the event's chord, the output is `ide` or `agterm`. Its tests move with it.
+  `reconcileStockMenuChords` is unchanged.
 - [ ] Tests:
   - hosted `RebasedFrameKeeperTests` with plain `NSWindow`s standing in for the IDE frame: a resize from
     outside snaps back; the keeper's own fit does not loop; the reveal waits for quiet; a minimize is
@@ -322,7 +333,10 @@ depends: 3, 6, 9
   - hosted `RebasedKeyPassThroughTests`: with `isIDEKeyWindow` overridden to true, the ⌃Tab, ⌃1 and ⌘Z
     handlers return the event untouched, and with it false they consume it. The ⌘Z case sets up a pending
     close first, or it passes with or without the gate;
-  - hosted `StockMenuChordTests` gains a case: the gate refuses reconcile while the IDE menu is installed.
+  - core `RebasedMenuPolicyTests`, rewritten: an IDE key window routes ⌘F, ⌘W and ⌃Space to `ide`, and
+    keeps ⌘Q, ⌘H and the toggle chord for `agterm`; an agterm or other key window routes nothing;
+  - hosted `StockMenuChordTests` gains a case: with an IDE window key, agterm's menu stays installed and
+    reconcile still applies the ⌘W split.
 - [ ] Acceptance: `test -f agtermTests/RebasedFrameKeeperTests.swift && test -f agtermTests/RebasedKeyPassThroughTests.swift && grep -rq RebasedKeyMatcherTests agtermCore/Tests && grep -qi rebased agtermTests/StockMenuChordTests.swift && (cd agtermCore && swift test --no-parallel --filter RebasedKeyMatcherTests) && /usr/bin/lockf /tmp/agterm-vim-xcode.lock scripts/test-app.sh -only-testing:agtermTests/RebasedFrameKeeperTests -only-testing:agtermTests/RebasedKeyPassThroughTests -only-testing:agtermTests/StockMenuChordTests`
 
 ### Task 11: the slot, the open and close paths, quit
@@ -381,7 +395,8 @@ depends: 5, 11, 12
   `mkdir -p "$AGTERM_STATE_DIR/windows"`, as `CLAUDE.md` describes. Address it only with `--socket`.
 - [ ] Record a `live-` line in the verification file for each: open full-pane and floating; resize and
   move the window; switch sessions and back; the IDE opens a dialog while hidden; the IDE tries to resize,
-  zoom, enter full screen and minimize; menus switch with focus and SwiftUI's menu is intact after; ⌘Q in
+  zoom, enter full screen and minimize; agterm's menu stays installed, the IDE's main-menu button opens its menus, and ⌘F with
+  the IDE key reaches only the IDE; ⌘Q in
   the IDE is refused; `tree` shows both read-back fields; closing
   the session hides the frame; a palette, the dashboard and zoom show above the slot; the direct toggle
   chord works from inside the IDE; ⌃Space completes code, ⌃Tab opens IntelliJ's Switcher, ⌃1 reaches the IDE, and ⌘Z

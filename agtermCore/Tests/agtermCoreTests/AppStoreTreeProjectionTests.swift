@@ -6,6 +6,54 @@ import Testing
 // reports. Split out of `AppStoreTests.swift` for the file size limit.
 @MainActor
 struct AppStoreTreeProjectionTests {
+    @Test(arguments: [RebasedOverlay.State.starting, .shown, .failed("missing Rebased app")])
+    func rebasedOverlayProjectsItsStateAndError(_ state: RebasedOverlay.State) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/repo", state: state), sizePercent: 60) == nil)
+        let tree = store.controlTree()
+        let node = try #require(tree.workspaces.first?.sessions.first)
+        let rebasedOverlay = try #require(node.rebasedOverlay)
+        #expect(rebasedOverlay.project == "/repo")
+        #expect(node.overlaySizePercent == 60)
+        switch state {
+        case .starting: #expect(rebasedOverlay.state == "starting" && rebasedOverlay.error == nil)
+        case .shown: #expect(rebasedOverlay.state == "shown" && rebasedOverlay.error == nil)
+        case .failed(let error): #expect(rebasedOverlay.state == "failed" && rebasedOverlay.error == error)
+        }
+        #expect(tree.rebased == nil)
+        #expect(try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree)) == tree)
+    }
+
+    @Test func rebasedFieldsAreAbsentWhenNotSuppliedAndOlderPeersDecode() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: workspace.id, cwd: "/repo")
+        let tree = store.controlTree()
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(tree)) as? [String: Any])
+        #expect(object["rebased"] == nil)
+        let node = try #require(tree.workspaces.first?.sessions.first)
+        let sessionObject = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(node)) as? [String: Any])
+        #expect(sessionObject["rebasedOverlay"] == nil)
+        let old = Data(#"{"id":"x","name":"n","cwd":"/","active":false,"split":false,"overlay":false,"scratch":false,"flagged":false}"#.utf8)
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: old).rebasedOverlay == nil)
+        #expect(try JSONDecoder().decode(ControlTree.self, from: Data(#"{"workspaces":[]}"#.utf8)).rebased == nil)
+    }
+
+    @Test func rebasedJVMStatusProjectsAtTheTreeTopLevel() throws {
+        let store = makeStore()
+        let status = ControlRebasedNode(jvm: "failed", error: "missing Rebased app", projects: ["/repo", "/other"])
+        let tree = store.controlTree(paneForeground: { _ in nil }, rebased: status)
+        #expect(tree.rebased == status)
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(tree)) as? [String: Any])
+        let rebased = try #require(object["rebased"] as? [String: Any])
+        #expect(rebased["jvm"] as? String == "failed")
+        #expect(rebased["error"] as? String == "missing Rebased app")
+        #expect(rebased["projects"] as? [String] == ["/repo", "/other"])
+        #expect(try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree)) == tree)
+    }
+
     @Test(arguments: [RemoteRowState.attached, .disconnected, .endedOnHost])
     func remoteRowStateIsReadBackAndRoundTrips(state: RemoteRowState) throws {
         let store = makeStore()
