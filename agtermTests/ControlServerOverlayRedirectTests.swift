@@ -33,18 +33,26 @@ final class ControlServerOverlayRedirectTests: XCTestCase {
         XCTAssertNotNil(session.rebasedOverlay)
     }
 
-    func testRebasedRefusesARemoteRowBeforeRedirecting() throws {
+    func testRebasedOnARemoteRowFetchesTheHostsRepositoryInsteadOfRedirecting() throws {
+        let previous = RebasedHost.shared
+        let host = RebasedHost()
+        host.runtime = FakeRebasedRuntime()
+        host.store = { [library] in library?.store(forSession: $0) }
+        host.offMain = { _, _ in }
+        RebasedHost.shared = host
+        defer { RebasedHost.shared = previous }
         let store = try XCTUnwrap(library.activeStore)
         let owner = try XCTUnwrap(store.currentWorkspaceID)
         let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: "/tmp", remoteHost: "origin"))
         session.viewer = freshViewer()
         OverlayRedirectController.shared.setEnabled(true)
-        let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil,
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: "/home/s/repo", wait: false, sizePercent: nil,
                                                        backgroundColor: nil, rebased: true)
         let response = server.openSessionOverlay(session.id.uuidString, window: nil, options: options)
-        XCTAssertFalse(response.ok)
-        XCTAssertEqual(response.error, "Rebased overlays open on the Mac that holds the repository")
+        XCTAssertTrue(response.ok, response.error ?? "")
         XCTAssertNil(response.result?.overlayRedirect)
+        XCTAssertEqual(session.rebasedOverlay?.state, .fetching)
+        XCTAssertEqual(session.rebasedOverlay?.source, "origin:/home/s/repo")
     }
 
     private var stateDir: URL!

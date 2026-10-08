@@ -11,18 +11,36 @@ import Glibc
 @MainActor
 @Suite(.serialized)
 struct HeadlessPagesTests {
-    @Test(arguments: [false, true])
-    func rebasedOpenIsRefusedOnTheHeadlessOrigin(_ withHtml: Bool) async throws {
+    @Test func rebasedOpenWithAPageIsRefusedOnTheHeadlessOrigin() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }
         let request = HeadlessRequests.request(.sessionOverlayOpen, target: fixture.session.id.uuidString) {
             $0.rebased = true
-            if withHtml { $0.html = "/tmp/report.html" }
+            $0.html = "/tmp/report.html"
         }
         let response = await fixture.actions.respond(to: request)
         #expect(!response.ok)
-        #expect(response.error == "session.overlay.open is not available on a headless origin: Rebased overlays open on a Mac only")
+        #expect(response.error == "session.overlay.open is not available on a headless origin: an --html page is a file on the origin; use --url")
         #expect(fixture.headless.pages.count == 0)
+    }
+
+    @Test func rebasedOpenReachesThePresenterWithTheOriginsDirectory() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let presenter = try HeadlessForwarderTests.Presenter(fixture.headless.hub, session: fixture.session.id)
+        let request = HeadlessRequests.request(.sessionOverlayOpen, target: fixture.session.id.uuidString) {
+            $0.rebased = true
+            $0.cwd = "/home/s/repo"
+            $0.diff = "main...HEAD"
+        }
+        let answer = Task { await fixture.actions.respond(to: request) }
+        for _ in 0..<200 where presenter.forwards.isEmpty { await Task.yield() }
+        let sent = try #require(presenter.forwards.first?.request)
+        presenter.reply(ControlResponse(ok: true, result: ControlResult(id: fixture.session.id.uuidString)))
+        #expect(await answer.value.ok)
+        #expect(sent.args?.rebased == true)
+        #expect(sent.args?.cwd == "/home/s/repo")
+        #expect(sent.args?.diff == "main...HEAD")
     }
 
     final class Folder {

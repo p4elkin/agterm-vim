@@ -99,10 +99,22 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - `RebasedDiff` (core) parses `--diff`: `A..B`, `A...B`, or `A` for `A..HEAD`, an empty side meaning `HEAD`.
   Its sides reach git as arguments, so one starting with `-` or `.` is refused in the CLI and the dispatcher.
   A `--diff` for the repository the session already shows goes to that overlay rather than being refused.
-- Read-back: the session's `rebasedOverlay: {project, state, diff?}`, and a top-level `rebased: {jvm, projects}`
-  that is absent until the JVM has started. `diff` is the last range asked for, not proof the dialog opened.
-- The headless origin refuses `--rebased` (`ForwardPolicy`), and a session on a remote origin gets
-  `RebasedHost.remoteRefusal`: the IDE needs the repository on this Mac.
+- Read-back: the session's `rebasedOverlay: {project, state, diff?, source?}`, and a top-level
+  `rebased: {jvm, projects}` that is absent until the JVM has started. `diff` is the last range asked for,
+  not proof the dialog opened.
+
+### Remote rows
+
+- The IDE reads only this Mac's disk, so a remote row (`Session.remoteHost`) opens a `RebasedMirror` (core):
+  a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, tags and HEAD,
+  detached. Uncommitted work on the host is not in it, and edits made in the IDE never reach the host.
+- `--cwd` (or the row's cwd) is the host's path. `RebasedMirrorRefresh` asks the host for its repository top
+  over ssh (`git upload-pack` does not look upward), then `git fetch`es over ssh with `BatchMode`, off the
+  main actor. The slot reads `fetching` with `source: host:path` until it lands, then opens on the mirror.
+- Every open refreshes, so a range names the host's newest commits. One for the repository already shown
+  refreshes and then sends its `--diff`; a failed refresh under an open IDE sends nothing rather than an
+  older diff. A second open while one fetches, and one for another repository, are refused.
+- The headless origin forwards `--rebased` to the Mac presenting the row (`ForwardPolicy`), `--cwd` unchanged.
 - `site/commands.html` does not list it: fork-only commands stay off the upstream site, as for `zmx.new`.
 - `rebasedAppPath` (see [[settings]]) names the bundle, default `/Applications/Rebased.app`.
 

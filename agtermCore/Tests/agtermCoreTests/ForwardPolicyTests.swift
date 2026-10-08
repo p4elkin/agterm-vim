@@ -4,10 +4,12 @@ import Testing
 
 struct ForwardPolicyTests {
     @Test(arguments: [false, true])
-    func rebasedIsRefusedBeforeTheProgramJobRoute(_ holdsJob: Bool) {
+    func rebasedIsForwardedBeforeTheProgramJobRoute(_ holdsJob: Bool) {
         #expect(ForwardPolicy.kind(of: .sessionOverlayOpen) == .routed)
         let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true))
-        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .refused("Rebased overlays open on a Mac only"))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .forwarded)
+        let page = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(html: "/tmp/r.html", rebased: true))
+        #expect(ForwardPolicy.route(page, holdsJob: holdsJob) == .refused("an --html page is a file on the origin; use --url"))
     }
 
     static let served: Set<String> = [

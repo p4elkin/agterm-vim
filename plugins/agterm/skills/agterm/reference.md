@@ -20,7 +20,7 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
   `window`, `workspace`, `sidebar`, `theme`, `font`, `keymap`, `config`, `quick`, `dashboard`, `mode` and
   `session go|move|duplicate|park|resize` (no windows or UI); `surface zoom|cursor`, `session scratch` and
   `session lead` (no terminal surface); `session pairing`, `overlay-redirect`, `hooks`, `restore` and
-  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages; `--rebased` (fork only).
+  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages.
 - **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch
   close/move prints the affected session count, and `tree`/`window list` print a human listing. Use
   `--json` when you need to read ids or values back.
@@ -197,8 +197,9 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `htmlOverlays` (the pages in the overlay slots, see `session overlay open --html` and `--url`; `overlay` and
 `paneOverlays` count them as covers too),
-`rebasedOverlay` (fork only: `{project, state, error?, diff?}`, where `state` is `starting`, `shown`, or `failed`
-and `diff` the last `--diff` range, normalized to `A..B` or `A...B`;
+`rebasedOverlay` (fork only: `{project, state, error?, diff?, source?}`, where `state` is `fetching`, `starting`,
+`shown`, or `failed`, `diff` the last `--diff` range, normalized to `A..B` or `A...B`, and `source` the
+`host:path` a remote row's `project` mirrors;
 omitted when the session has no Rebased overlay. Its size remains in `overlaySizePercent`),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
@@ -851,8 +852,10 @@ error keeps those names for compatibility.
   — show Rebased, the IntelliJ-platform git client, for the git repository holding `--cwd` (default: the
   session's working directory). The IDE runs inside agterm; the first open starts it and can take seconds,
   read `rebasedOverlay.state` (`starting`, `shown`, `failed`). One repository's window is shown in one
-  session at a time. Refused on a headless origin and for a remote session. Combines with nothing but the
-  options listed.
+  session at a time. Combines with nothing but the options listed.
+  On a remote row `--cwd` is a path on that host, and from a headless origin's shell the command reaches the
+  Mac showing the row. The Mac fetches the host's commits and branches over ssh into a local mirror first
+  (`state` `fetching`), on every open, so uncommitted work on the host is not shown.
   `--diff RANGE` also opens the changes of a commit range once the IDE is on screen: `A..B`, `A...B`
   (from their merge base) or `A` (`A..HEAD`); an empty side is `HEAD`, and a side starting with `-` or `.`
   is refused. When the session already shows Rebased for that repository, the range goes to it instead

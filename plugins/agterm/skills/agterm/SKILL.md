@@ -96,8 +96,9 @@ program, which is how to show the user an artifact you generated. The same sessi
 (`session hud`), a small passive panel carrying a message instead of a program. A HUD can use the
 whole session or one pane as its placement bounds. The session keeps focus and stays typable
 under it.
-In this fork, Rebased occupies the session-wide slot for a local project; `--diff RANGE` shows a commit range.
-Read `rebasedOverlay: {project, state, error?, diff?}` on the session and `rebased` (`{jvm, error?, projects}`)
+In this fork, Rebased occupies the session-wide slot for the session's repository; `--diff RANGE` shows a commit
+range, and a remote row's repository is mirrored to the Mac first (its commits only).
+Read `rebasedOverlay: {project, state, error?, diff?, source?}` on the session and `rebased` (`{jvm, error?, projects}`)
 at the tree top level. Both fields are omitted until their occupant or JVM exists.
 One slot, so a session shows either a HUD or a program overlay, never both. Separately, the app has one
 **quick terminal** (a scratch shell in a floating panel at 90% of the focused screen capped at 1100x700,
