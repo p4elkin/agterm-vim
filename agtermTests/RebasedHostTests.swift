@@ -3,7 +3,7 @@ import XCTest
 @testable import agterm
 import agtermCore
 
-private final class FakeRuntime: RebasedRuntime, @unchecked Sendable {
+final class FakeRebasedRuntime: RebasedRuntime, @unchecked Sendable {
     var startError: (any Error)?
     var binds: [RebasedRuntimeError?] = [nil]
     var created = false
@@ -30,7 +30,7 @@ private final class FakeRuntime: RebasedRuntime, @unchecked Sendable {
 }
 
 @MainActor
-private final class FakeFrames: RebasedFrames {
+final class FakeRebasedFrames: RebasedFrames {
     private(set) var log: [String] = []
     var names: [ObjectIdentifier: String] = [:]
 
@@ -39,6 +39,7 @@ private final class FakeFrames: RebasedFrames {
     func attach(_ window: NSWindow, to host: NSWindow?) { log.append("attach \(name(window)) to \(name(host))") }
     func detach(_ window: NSWindow) { log.append("detach \(name(window))") }
     func orderOut(_ window: NSWindow) { log.append("orderOut \(name(window))") }
+    func refit(host: NSWindow) { log.append("refit \(name(host))") }
 }
 
 @MainActor
@@ -48,8 +49,8 @@ final class RebasedHostTests: XCTestCase {
     private var first: Session!
     private var second: Session!
     private var host: RebasedHost!
-    private var runtime: FakeRuntime!
-    private var frames: FakeFrames!
+    private var runtime: FakeRebasedRuntime!
+    private var frames: FakeRebasedFrames!
     private var timers: [(delay: TimeInterval, work: @MainActor () -> Void)] = []
     private var windows: [Int: NSWindow] = [:]
     private var hostWindows: [UUID: NSWindow] = [:]
@@ -62,8 +63,8 @@ final class RebasedHostTests: XCTestCase {
         let workspace = store.addWorkspace(name: "work")
         first = try XCTUnwrap(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
         second = try XCTUnwrap(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
-        runtime = FakeRuntime()
-        frames = FakeFrames()
+        runtime = FakeRebasedRuntime()
+        frames = FakeRebasedFrames()
         host = RebasedHost()
         host.runtime = runtime
         host.frames = frames

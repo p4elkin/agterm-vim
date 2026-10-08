@@ -8,13 +8,14 @@ protocol RebasedFrames: AnyObject {
     func attach(_ window: NSWindow, to host: NSWindow?)
     func detach(_ window: NSWindow)
     func orderOut(_ window: NSWindow)
+    func refit(host: NSWindow)
 }
 
 /// Owns the embedded Rebased JVM and maps its project frames onto session overlays; the single owner, like
 /// `HtmlOverlayRegistry`. The JVM, once created, lives as long as the process: HotSpot cannot start twice.
-@MainActor
+@MainActor @Observable
 final class RebasedHost {
-    static let shared = RebasedHost()
+    static var shared = RebasedHost()
     static let readyDeadline: TimeInterval = 30
     static let deadlineMessage = "Rebased did not start within 30 s"
 
@@ -55,6 +56,8 @@ final class RebasedHost {
     private var entries: [UUID: Entry] = [:]
     private var frameNumbers: [String: Int] = [:]
     private(set) var visible: [String: UUID] = [:]
+    private var hiddenSlots: Set<UUID> = []
+    private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
     private var armed: Set<UUID> = []
@@ -75,6 +78,9 @@ final class RebasedHost {
         store = { [weak library] in library?.store(forSession: $0) }
         hostWindow = { [weak library] session in
             library?.windowID(forSession: session).flatMap { WindowRegistry.shared.window(for: $0) }
+        }
+        (frames as? RebasedFrameKeeper)?.slotRect = { [weak self] window in
+            self?.slots[ObjectIdentifier(window)] ?? window.convertToScreen(window.contentLayoutRect)
         }
         install()
     }
@@ -105,6 +111,21 @@ final class RebasedHost {
     }
 
     // MARK: - Opening
+
+    /// Opens a Rebased overlay on `cwd`'s repository (the session's cwd without one): the shared path of
+    /// `session.overlay.open --rebased` and `rebased_toggle`. Returns the refusal, nil when it opened.
+    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?) -> String? {
+        guard let session = store.session(withID: id) else { return RebasedOverlayOpenFailure.unknownSession.message }
+        if session.remoteHost != nil { return Self.remoteRefusal }
+        let project = Self.projectDirectory(for: cwd ?? session.focusedCwd)
+        if let failure = store.openRebasedOverlay(id, overlay: RebasedOverlay(project: project), sizePercent: sizePercent) {
+            return failure.message
+        }
+        open(session: id)
+        return nil
+    }
+
+    static let remoteRefusal = "Rebased overlays open on the Mac that holds the repository"
 
     /// Takes over a Rebased overlay the store has just opened in `session`.
     func open(session: UUID) {
@@ -222,11 +243,12 @@ final class RebasedHost {
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
-        guard let latest = waiting.max(by: { $0.order < $1.order }) else {
+        for entry in waiting { setState(.shown, session: entry.session) }
+        let onScreen = waiting.filter { !hiddenSlots.contains($0.session) }
+        guard let latest = onScreen.max(by: { $0.order < $1.order }) else {
             _ = runtime.call("hide", project)
             return
         }
-        for entry in waiting { setState(.shown, session: entry.session) }
         show(session: latest.session)
     }
 
@@ -268,6 +290,31 @@ final class RebasedHost {
     func hide(session: UUID) {
         guard let entry = entry(for: session) else { return }
         hide(entry)
+    }
+
+    /// The slot view's report: whether its session's slot is on screen and uncovered. Hiding the frame on
+    /// a session switch, a closed or minimized window and an agterm palette over the slot all come here.
+    func setSlotVisible(_ isVisible: Bool, session: UUID) {
+        if isVisible {
+            hiddenSlots.remove(session)
+            show(session: session)
+        } else {
+            hiddenSlots.insert(session)
+            hide(session: session)
+        }
+    }
+
+    func setSlot(_ rect: NSRect, in window: NSWindow) {
+        guard slots[ObjectIdentifier(window)] != rect else { return }
+        slots[ObjectIdentifier(window)] = rect
+        frames.refit(host: window)
+    }
+
+    /// Saves the IDE's unsaved documents before agterm exits; the bridge answers within 2 s. A JVM that never
+    /// ran costs nothing.
+    func saveBeforeQuit() {
+        guard jvm == .running else { return }
+        _ = runtime.call("saveAll", "")
     }
 
     private func hide(_ entry: Entry) {

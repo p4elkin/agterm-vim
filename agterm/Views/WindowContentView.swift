@@ -597,6 +597,11 @@ struct WindowContentView: View {
     /// `frontmostWindowID`, and is observed, so this reacts.
     private var isFrontmost: Bool { library.activeWindowID == windowID }
 
+    /// agterm UI drawn inside this window that a Rebased frame, a child window, would sit on top of.
+    var rebasedCovered: Bool {
+        (isFrontmost && palette.mode != nil) || pick.pending != nil || dashboard.isOpen || terminalZoom.target != nil
+    }
+
     /// Where the terminal area starts ON SCREEN: the sidebar column plus its 1pt divider, or 0 whenever no
     /// sidebar is showing. The palette and switcher center their panel over THAT area rather than the whole
     /// window, which otherwise reads as off-center whenever the sidebar is up. The palette's scrim stays
