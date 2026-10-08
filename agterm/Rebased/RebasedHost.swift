@@ -90,7 +90,7 @@ final class RebasedHost {
     }
 
     var isIDEKeyWindow: Bool {
-        isIDEKeyWindowOverride ?? NSApp.keyWindow.map(Self.isIDEWindow) ?? false
+        isIDEKeyWindowOverride ?? keyWindow().map(Self.isIDEWindow) ?? false
     }
 
     static func isIDEWindow(_ window: NSWindow) -> Bool { window.className.hasPrefix("AWT") }
@@ -380,13 +380,21 @@ final class RebasedHost {
     // fire agterm's item as well as reach the IDE.
     private func installKeyRouter() {
         guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            self?.route(event) ?? event
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp], handler: Self.monitor(self))
+    }
+
+    // `nil` is the consumed answer, so a gone host must not be folded into it with `??`.
+    static func monitor(_ host: RebasedHost?) -> (NSEvent) -> NSEvent? {
+        { [weak host] event in
+            guard let host else { return event }
+            return host.route(event)
         }
     }
 
+    var keyWindow: () -> NSWindow? = { NSApp.keyWindow }
+
     func route(_ event: NSEvent) -> NSEvent? {
-        guard let key = NSApp.keyWindow, Self.isIDEWindow(key) else { return event }
+        guard isIDEKeyWindow, let key = keyWindow() else { return event }
         let chord = event.keymapChord(produced: event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers)
         switch RebasedMenuPolicy(keymap: keymap()).route(chord, keyWindow: .ide) {
         case .agterm:

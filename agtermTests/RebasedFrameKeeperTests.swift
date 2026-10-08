@@ -109,4 +109,35 @@ final class RebasedFrameKeeperTests: XCTestCase {
         XCTAssertNil(frame.parent)
         XCTAssertFalse(frame.isVisible)
     }
+
+    func testADetachedFrameIsLeftAlone() {
+        keeper.adopt(frame, in: host)
+        keeper.detach(frame)
+        fireTimers()
+        XCTAssertEqual(frame.alphaValue, 0, "a superseded reveal must not show a released frame")
+        let moved = NSRect(x: 0, y: 0, width: 50, height: 50)
+        frame.setFrame(moved, display: false)
+        NotificationCenter.default.post(name: NSWindow.didMiniaturizeNotification, object: frame)
+        XCTAssertNil(frame.parent)
+        XCTAssertEqual(frame.frame, moved)
+        keeper.adopt(frame, in: host)
+        XCTAssertTrue(frame.parent === host)
+        XCTAssertEqual(frame.frame, slot)
+    }
+
+    func testAClosingHostReleasesTheFrame() {
+        host.orderFront(nil)
+        keeper.adopt(frame, in: host)
+        host.close()
+        NotificationCenter.default.post(name: NSWindow.didMiniaturizeNotification, object: frame)
+        XCTAssertNil(frame.parent)
+    }
+
+    func testAClosedFrameIsForgotten() {
+        keeper.adopt(frame, in: host)
+        XCTAssertEqual(keeper.keptCount, 1)
+        host.removeChildWindow(frame)
+        frame.close()
+        XCTAssertEqual(keeper.keptCount, 0)
+    }
 }

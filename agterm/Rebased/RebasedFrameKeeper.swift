@@ -54,9 +54,24 @@ final class RebasedFrameKeeper: RebasedFrames {
         host.addChildWindow(window, ordered: .above)
     }
 
+    /// Ends the keeper's hold on `window` until it is adopted again: no refit, minimize undo or reveal acts on
+    /// it after this.
     func detach(_ window: NSWindow) {
+        release(window)
         window.parent?.removeChildWindow(window)
     }
+
+    private func release(_ window: NSWindow) {
+        let id = ObjectIdentifier(window)
+        kept[id]?.host = nil
+        kept[id]?.generation += 1
+    }
+
+    private func dispose(_ window: NSWindow) {
+        kept.removeValue(forKey: ObjectIdentifier(window))?.observers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    var keptCount: Int { kept.count }
 
     func orderOut(_ window: NSWindow) {
         window.orderOut(nil)
@@ -98,10 +113,16 @@ final class RebasedFrameKeeper: RebasedFrames {
             center.addObserver(forName: NSWindow.didMoveNotification, object: frame, queue: nil, using: moved),
             center.addObserver(forName: NSWindow.didMiniaturizeNotification, object: frame, queue: nil) { [weak self, weak frame] _ in
                 MainActor.assumeIsolated {
-                    guard let self, let frame else { return }
+                    guard let self, let frame, let host = self.kept[ObjectIdentifier(frame)]?.host else { return }
                     frame.deminiaturize(nil)
-                    self.attach(frame, to: self.kept[ObjectIdentifier(frame)]?.host)
+                    self.attach(frame, to: host)
                     self.fit(frame)
+                }
+            },
+            center.addObserver(forName: NSWindow.willCloseNotification, object: frame, queue: nil) { [weak self, weak frame] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let frame else { return }
+                    self.dispose(frame)
                 }
             },
         ]
@@ -123,7 +144,7 @@ final class RebasedFrameKeeper: RebasedFrames {
                 MainActor.assumeIsolated {
                     guard let self, let host else { return }
                     for child in host.childWindows ?? [] where self.kept[ObjectIdentifier(child)] != nil {
-                        host.removeChildWindow(child)
+                        self.detach(child)
                         child.orderOut(nil)
                     }
                     self.hostObservers.removeValue(forKey: ObjectIdentifier(host))?.forEach(center.removeObserver)
@@ -143,7 +164,7 @@ final class RebasedFrameKeeper: RebasedFrames {
         kept[id]?.generation += 1
         let generation = kept[id]?.generation
         after(Self.quiet) { [weak self, weak frame] in
-            guard let self, let frame, self.kept[id]?.generation == generation else { return }
+            guard let self, let frame, self.kept[id]?.generation == generation, self.kept[id]?.host != nil else { return }
             self.kept[id]?.revealed = true
             frame.alphaValue = 1
         }

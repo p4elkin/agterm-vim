@@ -59,4 +59,24 @@ final class RebasedKeyPassThroughTests: XCTestCase {
         XCTAssertFalse(try consumed(ide: true) { shortcut.handleKeyDown(event) })
         XCTAssertTrue(try consumed(ide: false) { shortcut.handleKeyDown(event) })
     }
+
+    func testTheRouterConsumesIDEKeysAndPassesTheRest() throws {
+        let host = RebasedHost()
+        let ide = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [], backing: .buffered, defer: true)
+        ide.isReleasedWhenClosed = false
+        host.keyWindow = { ide }
+        host.isIDEKeyWindowOverride = true
+        host.keymap = { parseKeymap("map ctrl+shift+r rebased_toggle").keymap }
+        var toggles = 0
+        host.toggle = { toggles += 1 }
+        let handler = RebasedHost.monitor(host)
+        let find = try key("f", keyCode: 3, flags: .command)
+        XCTAssertNil(handler(find), "an IDE key is consumed, so agterm's menu never sees it")
+        XCTAssertNil(handler(try key("r", keyCode: 15, flags: [.control, .shift])))
+        XCTAssertEqual(toggles, 1)
+        XCTAssertNotNil(handler(try key("q", keyCode: 12, flags: .command)))
+        host.isIDEKeyWindowOverride = false
+        XCTAssertNotNil(handler(find))
+        XCTAssertNotNil(RebasedHost.monitor(nil)(find))
+    }
 }
