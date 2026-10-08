@@ -47,6 +47,7 @@ struct HtmlOverlayTests {
     @Test func rebasedCoversWithoutATerminalOrPageFocusTarget() {
         split()
         session.scratchActive = true
+        session.scratchSurface = SpySurface(paneToken: "scratch")
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
         session.splitFocused = true
         session.rebasedOverlay = RebasedOverlay(project: "/tmp/repo")
@@ -60,6 +61,7 @@ struct HtmlOverlayTests {
         #expect(session.topmostSurface == nil)
         #expect(session.focusTarget(wantSplit: false) == nil)
         #expect(session.focusTarget(wantSplit: true) == nil)
+        session.scratchActive = false
         #expect(session.topmostHtmlOverlay == nil)
         #expect(!session.htmlCovers(nil))
         #expect(StatusPane.allCases.allSatisfy { !session.htmlHidesTerminal($0) })
@@ -84,6 +86,18 @@ struct HtmlOverlayTests {
         #expect(session.overlaySlotGeneration == generation + 1)
         #expect(session.overlayExitCode == nil)
         #expect(!session.hudActive)
+    }
+
+    @Test func rebasedPresenterRefusalNamesRebased() throws {
+        let hub = PresentationHub(staleTimeout: 30)
+        let presenter = Sink()
+        store.presentationHub = hub
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        let failure = store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil)
+        #expect(failure == .presenter)
+        #expect(failure?.message == "a viewer presents this session: a Rebased overlay would open where nobody sees it")
     }
 
     @Test func rebasedOpenPreservesAProgramPageOrRebasedOccupant() {

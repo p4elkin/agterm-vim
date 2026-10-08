@@ -23,7 +23,7 @@ public enum RebasedOverlayOpenFailure: Equatable, Sendable {
         switch self {
         case .unknownSession: "no such session"
         case .alreadyOpen: "overlay already open"
-        case .presenter: OverlayHtmlError.presenter
+        case .presenter: "a viewer presents this session: a Rebased overlay would open where nobody sees it"
         }
     }
 }
