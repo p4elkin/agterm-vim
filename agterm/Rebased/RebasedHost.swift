@@ -265,12 +265,22 @@ final class RebasedHost {
         let visibleSession = owner.map { visible[$0] } ?? lastShown.flatMap { isShown(in: $0) ? $0 : nil } ?? visible.values.first
         if let session = visibleSession {
             frames.attach(window, to: hostWindow(session))
+        } else if kind == "dialog", let waiting = waitingOnScreen(owner) {
+            // IntelliJ can ask before any frame exists ("Trust project?"); it belongs to the slot being opened
+            frames.attach(window, to: hostWindow(waiting.session))
         } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown, entry(for: last) != nil {
             show(session: last)
             frames.attach(window, to: hostWindow(last))
         } else {
             frames.orderOut(window)
         }
+    }
+
+    private func waitingOnScreen(_ project: String?) -> Entry? {
+        entries.values.filter { entry in
+            (project == nil || entry.project == project) && !hiddenSlots.contains(entry.session)
+                && overlayState(entry) == .starting
+        }.max { $0.order < $1.order }
     }
 
     // MARK: - Visibility

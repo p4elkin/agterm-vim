@@ -307,4 +307,12 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(Array(frames.log.suffix(2)), ["adopt frameA in host1", "attach dialogA to host1"])
         XCTAssertTrue(host.isShown(in: first.id))
     }
+
+    func testADialogBeforeAnyFrameAttachesToTheOpeningSlot() {
+        open(first)
+        host.handle(event: "ready", payload: "")
+        _ = window("trust", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t")
+        XCTAssertEqual(frames.log.last, "attach trust to host1")
+    }
 }
