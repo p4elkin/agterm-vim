@@ -604,14 +604,7 @@ struct Session: ParsableCommand {
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
-                if rebased {
-                    if command != nil || html != nil || url != nil || pane != nil || wait || block || javascript || navigation
-                        || chromeless || persistent || browse || backgroundColor != nil {
-                        throw ValidationError("--rebased cannot be combined with COMMAND, page, pane, wait, block, or background options")
-                    }
-                    try Session.validateSizePercent(sizePercent)
-                    return
-                }
+                if rebased { return try validateRebased() }
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
                 if [command, html, url].compactMap({ $0 }).count != 1 {
                     throw ValidationError("provide exactly one of COMMAND, --html or --url")
@@ -1004,5 +997,15 @@ extension Session {
         if let sizePercent, !(1...100).contains(sizePercent) {
             throw ValidationError("--size-percent must be between 1 and 100")
         }
+    }
+}
+
+extension Session.Overlay.Open {
+    func validateRebased() throws {
+        if command != nil || html != nil || url != nil || pane != nil || wait || block || javascript || navigation
+            || chromeless || persistent || browse || backgroundColor != nil {
+            throw ValidationError("--rebased cannot be combined with COMMAND, page, pane, wait, block, or background options")
+        }
+        try Session.validateSizePercent(sizePercent)
     }
 }

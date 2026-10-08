@@ -3,6 +3,7 @@ import AppKit
 /// Keeps each adopted IDE frame on its session's slot. The slot owns the frame: a size, place, zoom, full
 /// screen or minimize the IDE asks for is snapped back. A new frame stays invisible until no IDE change has
 /// arrived for `quiet`, so a project opening never shows its restored bounds.
+/// The frame is borderless: square corners, and no edge or title bar the user could drag to resize or move it.
 @MainActor
 final class RebasedFrameKeeper: RebasedFrames {
     static let quiet: TimeInterval = 0.15
@@ -11,6 +12,7 @@ final class RebasedFrameKeeper: RebasedFrames {
         weak var frame: NSWindow?
         weak var host: NSWindow?
         var observers: [NSObjectProtocol] = []
+        var style: NSKeyValueObservation?
         var revealed = false
         var generation = 0
     }
@@ -31,14 +33,10 @@ final class RebasedFrameKeeper: RebasedFrames {
         let id = ObjectIdentifier(frame)
         if kept[id] == nil {
             frame.alphaValue = 0
-            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                frame.standardWindowButton(button)?.isHidden = true
-            }
-            frame.titleVisibility = .hidden
-            frame.titlebarAppearsTransparent = true
             frame.collectionBehavior.remove(.fullScreenPrimary)
             frame.collectionBehavior.insert(.fullScreenNone)
-            kept[id] = Kept(frame: frame, observers: observe(frame))
+            flatten(frame)
+            kept[id] = Kept(frame: frame, observers: observe(frame), style: observeStyle(frame))
         }
         kept[id]?.host = host
         if let host { observeHost(host) }
@@ -68,7 +66,30 @@ final class RebasedFrameKeeper: RebasedFrames {
     }
 
     private func dispose(_ window: NSWindow) {
-        kept.removeValue(forKey: ObjectIdentifier(window))?.observers.forEach(NotificationCenter.default.removeObserver)
+        guard let entry = kept.removeValue(forKey: ObjectIdentifier(window)) else { return }
+        entry.observers.forEach(NotificationCenter.default.removeObserver)
+        entry.style?.invalidate()
+    }
+
+    private func flatten(_ frame: NSWindow) {
+        if frame.styleMask != .borderless { frame.styleMask = .borderless }
+        frame.hasShadow = false
+        frame.isMovable = false
+    }
+
+    // AWT rebuilds the style mask from its own bits whenever the IDE changes one, such as resizable or a title
+    // bar property. Deferred so the reset lands after AWT's own follow-up writes.
+    private func observeStyle(_ frame: NSWindow) -> NSKeyValueObservation {
+        frame.observe(\.styleMask) { [weak self] frame, _ in
+            MainActor.assumeIsolated {
+                guard let self, frame.styleMask != .borderless else { return }
+                self.after(0) { [weak self, weak frame] in
+                    guard let self, let frame, self.kept[ObjectIdentifier(frame)] != nil else { return }
+                    self.flatten(frame)
+                    self.fit(frame)
+                }
+            }
+        }
     }
 
     var keptCount: Int { kept.count }

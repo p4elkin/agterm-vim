@@ -43,10 +43,20 @@ final class RebasedFrameKeeperTests: XCTestCase {
         XCTAssertEqual(frame.frame, slot)
         XCTAssertEqual(frame.alphaValue, 0)
         XCTAssertTrue(frame.collectionBehavior.contains(.fullScreenNone))
-        XCTAssertEqual(frame.standardWindowButton(.closeButton)?.isHidden, true)
         fireTimers()
         XCTAssertEqual(frame.alphaValue, 1)
         XCTAssertTrue(keeper.isRevealed(frame))
+    }
+
+    func testAnAdoptedFrameIsFlatAndOnlyTheKeeperMovesIt() {
+        keeper.adopt(frame, in: host)
+        XCTAssertEqual(frame.styleMask, .borderless)
+        XCTAssertFalse(frame.hasShadow)
+        XCTAssertFalse(frame.isMovable)
+        frame.styleMask = [.titled, .resizable]
+        fireTimers()
+        XCTAssertEqual(frame.styleMask, .borderless)
+        XCTAssertEqual(frame.frame, slot)
     }
 
     func testAnIDEChangeBeforeTheRevealRestartsTheQuietWait() {
