@@ -409,17 +409,18 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(Array(frames.log.suffix(2)), ["adopt frame in host1", "attach dialog to host1"])
     }
 
-    func testAQueuedDialogOfAReleasedOverlayNeverReplays() {
+    func testAQueuedDialogOfAReleasedOverlayComesUpOnceAtRelease() {
         startAndShow(first)
         host.setSlotVisible(false, session: first.id)
         _ = window("dialogA", number: 9)
         host.handle(event: "windowOpened", payload: "9\tdialog\t\(project)")
         store.closeOverlay(first.id)
+        XCTAssertEqual(frames.log.last, "attach dialogA to host1")
         open(first, project: otherProject)
         _ = window("frameB", number: 8)
         host.handle(event: "frameOpened", payload: "\(otherProject)\t8")
         XCTAssertEqual(frames.log.last, "adopt frameB in host1")
-        XCTAssertFalse(frames.log.contains("attach dialogA to host1"))
+        XCTAssertEqual(frames.log.filter { $0 == "attach dialogA to host1" }.count, 1)
     }
 
     func testClosingTheOwnerHandsTheFrameToAnotherVisibleHolder() {
@@ -519,5 +520,16 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertThrowsError(try RebasedStateLock.lock(state)) { error in
             XCTAssertEqual(error as? RebasedRuntimeError, .failed(RebasedStateLock.message))
         }
+    }
+
+    func testADialogQueuedPastTheStartupDeadlineStillComesUp() {
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project), sizePercent: nil))
+        host.open(session: first.id)
+        _ = window("trust", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t")
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(first), .failed(RebasedHost.deadlineMessage))
+        host.setSlotVisible(true, session: first.id)
+        XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
 }

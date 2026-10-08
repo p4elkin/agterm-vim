@@ -61,10 +61,12 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   frame through `rebasedCovered`, and a pending `session ask` through `RebasedSlot.isVisible`: all are drawn
   inside the agterm window, under the child frame.
 - A dialog attaches to the window of its owning project. One that arrives while its overlay is hidden waits,
-  queued per overlay, and is dropped when that overlay closes. A pre-frame dialog ("Trust project?")
+  queued per overlay. A queued dialog is never dropped, because a modal one blocks the whole IDE: it comes up
+  when its slot is visible again, or over the session's window as soon as its overlay closes. A pre-frame dialog ("Trust project?")
   belongs to the overlay being opened, on screen or queued, never to another visible project.
 - The born observer sets alpha 0 on every new frame-like AWT window; `windowOpened` sets it back for anything
-  that is not a project frame.
+  that is not a project frame. The bridge reports only an `IdeFrameImpl` as a project frame, polling for
+  its project however slow it is, so a project frame never arrives as a popup.
 - `RebasedStateLock` holds `<stateDir>/rebased/.agterm.lock` from the first start: a second agterm on the same
   state directory is refused, because IntelliJ's own directory lock would `System.exit` it.
 - `RebasedFrameKeeper` makes the frame a child window of the agterm window, so it moves with it.

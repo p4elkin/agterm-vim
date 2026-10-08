@@ -351,11 +351,7 @@ final class RebasedHost {
             visibleSlots.insert(session)
             show(session: session)
             let queued = overlayID(for: session).flatMap { pendingDialogs.removeValue(forKey: $0) } ?? []
-            let opening = entry(for: session).map { overlayState($0) == .starting } ?? false
-            for dialog in queued where isShown(in: session) || opening {
-                frames.attach(dialog, to: hostWindow(session))
-                dialog.orderFront(nil)
-            }
+            for dialog in queued { surface(dialog, session: session) }
         } else {
             visibleSlots.remove(session)
             hide(session: session)
@@ -403,12 +399,20 @@ final class RebasedHost {
         if let next { show(session: next.session) }
     }
 
+    // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
+    // never dropped: it comes up over the session now, rather than over whatever that session opens next.
     private func release(_ overlayID: UUID) {
         armed.remove(overlayID)
-        pendingDialogs[overlayID] = nil
+        let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
         if lastShownByProject[entry.project] == entry.session { lastShownByProject[entry.project] = nil }
+        for dialog in queued { surface(dialog, session: entry.session) }
+    }
+
+    private func surface(_ dialog: NSWindow, session: UUID) {
+        frames.attach(dialog, to: hostWindow(session))
+        dialog.orderFront(nil)
     }
 
     // MARK: - Helpers

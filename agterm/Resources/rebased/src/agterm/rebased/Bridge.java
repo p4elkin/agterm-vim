@@ -7,6 +7,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.wm.WindowManager;
+import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.ui.mac.foundation.Foundation;
 import com.intellij.ui.mac.foundation.ID;
 import com.intellij.ui.mac.foundation.MacUtil;
@@ -116,8 +117,9 @@ public final class Bridge implements BiFunction<String, String, String> {
       long n = windowNumber(w);
       if (w instanceof Frame && w.getClass().getName().contains("Welcome")) {
         windowOpened(w, n, "welcome");
-      } else if (w instanceof Frame) {
-        // A project frame is shown before its project is attached to it, so poll briefly for the project.
+      } else if (w instanceof IdeFrameImpl) {
+        // A project frame is shown before its project is attached to it, so poll for the project. Detached
+        // editor and diff windows are other Frames and report at once.
         reportFrame(w, n, 0);
       } else {
         windowOpened(w, n, w instanceof Dialog ? "dialog" : "popup");
@@ -131,8 +133,9 @@ public final class Bridge implements BiFunction<String, String, String> {
     if (!w.isDisplayable()) return;
     Project p = projectOf(w);
     if (p != null && p.getBasePath() != null) { openedProject(w, p.getBasePath(), n); return; }
-    if (attempt >= 50) { windowOpened(w, n, "popup"); return; }
-    var t = new javax.swing.Timer(100, e -> reportFrame(w, n, attempt + 1));
+    // A slow project is still a project frame; reported as anything else, the host would show it unfitted.
+    if (attempt >= 650) return;
+    var t = new javax.swing.Timer(attempt < 50 ? 100 : 1000, e -> reportFrame(w, n, attempt + 1));
     t.setRepeats(false);
     t.start();
   }
