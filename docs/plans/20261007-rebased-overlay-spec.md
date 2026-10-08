@@ -199,7 +199,8 @@ What it does:
 - Declares `static native void hostEvent(String kind, String payload)`. agterm polls for the bridge
   property, binds `hostEvent` with `RegisterNatives` on the bridge's class, then calls `hello`; the plugin
   queues events until `hello`. Events: `ready`, `frameOpened <dir> <windowNumber>`,
-  `frameClosed <dir>`, `windowOpened <windowNumber> <welcome|dialog|popup>`.
+  `frameClosed <dir>`, `windowOpened <windowNumber> <welcome|dialog|popup> <dir or empty>`.
+  Event fields are tab-separated. The window owner chain identifies the project for dialogs and popups.
 - Model changes (`open`, `saveAll`) run write-safe: hop to the EDT under `ModalityState.any()`, then
   queue the change under the modality current there. Under `any()` alone IntelliJ refuses them and opens
   its "IDE Internal Errors" dialog.

@@ -48,6 +48,23 @@ public final class Bridge implements BiFunction<String, String, String> {
     if (project != null) emit("frameClosed", project);
   }
 
+  static void windowOpened(Window window, long number, String kind) {
+    emit("windowOpened", number + "\t" + kind + "\t" + ownerProject(window));
+  }
+
+  private static String ownerProject(Window window) {
+    for (Window owner = window; owner != null; owner = owner.getOwner()) {
+      String project = frameProjects.get(owner);
+      if (project != null) return project;
+    }
+    for (Window owner = window; owner != null; owner = owner.getOwner()) {
+      if (!(owner instanceof Frame)) continue;
+      Project project = projectOf(owner);
+      if (project != null && project.getBasePath() != null) return project.getBasePath();
+    }
+    return "";
+  }
+
   static void log(String s) { System.err.println("[agterm-bridge] " + s); }
 
   static void install() {
@@ -81,12 +98,12 @@ public final class Bridge implements BiFunction<String, String, String> {
     if (e.getID() == WindowEvent.WINDOW_OPENED) {
       long n = windowNumber(w);
       if (w instanceof Frame && w.getClass().getName().contains("Welcome")) {
-        emit("windowOpened", n + "\twelcome");
+        windowOpened(w, n, "welcome");
       } else if (w instanceof Frame) {
         // A project frame is shown before its project is attached to it, so poll briefly for the project.
         reportFrame(w, n, 0);
       } else {
-        emit("windowOpened", n + "\t" + (w instanceof Dialog ? "dialog" : "popup"));
+        windowOpened(w, n, w instanceof Dialog ? "dialog" : "popup");
       }
     } else if (e.getID() == WindowEvent.WINDOW_CLOSED && w instanceof Frame) {
       closedProject(w);
@@ -97,7 +114,7 @@ public final class Bridge implements BiFunction<String, String, String> {
     if (!w.isDisplayable()) return;
     Project p = projectOf(w);
     if (p != null && p.getBasePath() != null) { openedProject(w, p.getBasePath(), n); return; }
-    if (attempt >= 50) { emit("windowOpened", n + "\tpopup"); return; }
+    if (attempt >= 50) { windowOpened(w, n, "popup"); return; }
     var t = new javax.swing.Timer(100, e -> reportFrame(w, n, attempt + 1));
     t.setRepeats(false);
     t.start();

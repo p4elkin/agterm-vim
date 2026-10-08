@@ -30,6 +30,30 @@ final class RebasedPluginBuilderTests: XCTestCase {
             assert Arrays.equals(events.get(0), new String[]{"frameOpened", "/repo\\t42"});
             assert Arrays.equals(events.get(1), new String[]{"frameClosed", "/repo"});
 
+            var unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+            var parent = java.awt.Component.class.getDeclaredField("parent");
+            parent.setAccessible(true);
+            var frameA = (java.awt.Frame) unsafe.allocateInstance(java.awt.Frame.class);
+            var frameB = (java.awt.Frame) unsafe.allocateInstance(java.awt.Frame.class);
+            var dialogA = (java.awt.Dialog) unsafe.allocateInstance(java.awt.Dialog.class);
+            var dialogB = (java.awt.Dialog) unsafe.allocateInstance(java.awt.Dialog.class);
+            var nested = (java.awt.Dialog) unsafe.allocateInstance(java.awt.Dialog.class);
+            parent.set(dialogA, frameA);
+            parent.set(dialogB, frameB);
+            parent.set(nested, dialogA);
+            Bridge.openedProject(frameA, "/repo-owner-a", 77);
+            Bridge.openedProject(frameB, "/repo-owner-b", 78);
+            Bridge.windowOpened(dialogA, 80, "dialog");
+            Bridge.windowOpened(dialogB, 81, "dialog");
+            Bridge.windowOpened(nested, 82, "popup");
+            Bridge.windowOpened(null, 83, "welcome");
+            assert Arrays.equals(events.get(4), new String[]{"windowOpened", "80\\tdialog\\t/repo-owner-a"});
+            assert Arrays.equals(events.get(5), new String[]{"windowOpened", "81\\tdialog\\t/repo-owner-b"});
+            assert Arrays.equals(events.get(6), new String[]{"windowOpened", "82\\tpopup\\t/repo-owner-a"});
+            assert Arrays.equals(events.get(7), new String[]{"windowOpened", "83\\twelcome\\t"});
+
             byte[] utf8 = new byte[]{(byte)0xef, (byte)0xbb, (byte)0xbf, 97, 10};
             byte[] little = new byte[]{(byte)0xff, (byte)0xfe, 97, 0, 13, 0, 10, 0};
             byte[] big = new byte[]{(byte)0xfe, (byte)0xff, 0, 97, 0, 10};
@@ -57,7 +81,8 @@ final class RebasedPluginBuilderTests: XCTestCase {
         let home = app.appendingPathComponent("Contents/jbr/Contents/Home/bin")
         _ = try runJavaTool(home.appendingPathComponent("javac"), arguments: ["--release", "21", "-cp", classpath, "-d", classes.path, source.path], root: root)
         let output = try runJavaTool(home.appendingPathComponent("java"),
-                                    arguments: ["-ea", "-Djava.awt.headless=true", "-cp", classes.path + ":" + classpath,
+                                    arguments: ["-ea", "-Djava.awt.headless=true", "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
+                                                "-cp", classes.path + ":" + classpath,
                                                 "agterm.rebased.BridgeContracts", root.appendingPathComponent("saved.txt").path], root: root)
         XCTAssertTrue(output.contains("bridge contracts passed"), output)
     }
