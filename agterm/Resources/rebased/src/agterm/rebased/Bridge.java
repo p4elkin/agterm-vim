@@ -140,7 +140,7 @@ public final class Bridge implements BiFunction<String, String, String> {
   private static List<Frame> projectFrames(String dir) {
     List<Frame> out = new ArrayList<>();
     for (Project p : ProjectManager.getInstance().getOpenProjects()) {
-      if (!dir.isEmpty() && !dir.equals(p.getBasePath())) continue;
+      if (!dir.isEmpty() && (p.getBasePath() == null || !sameDirectory(p.getBasePath(), dir))) continue;
       var f = WindowManager.getInstance().getFrame(p);
       if (f != null) out.add(f);
     }

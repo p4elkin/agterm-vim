@@ -408,4 +408,17 @@ final class RebasedHostTests: XCTestCase {
         host.setSlotVisible(true, session: first.id)
         XCTAssertEqual(Array(frames.log.suffix(2)), ["adopt frame in host1", "attach dialog to host1"])
     }
+
+    func testAQueuedDialogOfAReleasedOverlayNeverReplays() {
+        startAndShow(first)
+        host.setSlotVisible(false, session: first.id)
+        _ = window("dialogA", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t\(project)")
+        store.closeOverlay(first.id)
+        open(first, project: otherProject)
+        _ = window("frameB", number: 8)
+        host.handle(event: "frameOpened", payload: "\(otherProject)\t8")
+        XCTAssertEqual(frames.log.last, "adopt frameB in host1")
+        XCTAssertFalse(frames.log.contains("attach dialogA to host1"))
+    }
 }

@@ -59,6 +59,7 @@ final class RebasedHost {
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
     private var saving = false
+    // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
@@ -319,7 +320,7 @@ final class RebasedHost {
             frames.attach(dialog, to: hostWindow(session))
         } else {
             frames.orderOut(dialog)
-            pendingDialogs[session, default: []].append(dialog)
+            if let id = overlayID(for: session) { pendingDialogs[id, default: []].append(dialog) }
         }
     }
 
@@ -337,7 +338,8 @@ final class RebasedHost {
         if isVisible {
             visibleSlots.insert(session)
             show(session: session)
-            for dialog in pendingDialogs.removeValue(forKey: session) ?? [] where isShown(in: session) {
+            let queued = overlayID(for: session).flatMap { pendingDialogs.removeValue(forKey: $0) } ?? []
+            for dialog in queued where isShown(in: session) {
                 frames.attach(dialog, to: hostWindow(session))
                 dialog.orderFront(nil)
             }
@@ -379,12 +381,17 @@ final class RebasedHost {
 
     private func release(_ overlayID: UUID) {
         armed.remove(overlayID)
+        pendingDialogs[overlayID] = nil
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
         if lastShownByProject[entry.project] == entry.session { lastShownByProject[entry.project] = nil }
     }
 
     // MARK: - Helpers
+
+    private func overlayID(for session: UUID) -> UUID? {
+        entries.filter { $0.value.session == session }.max { $0.value.order < $1.value.order }?.key
+    }
 
     private func entry(for session: UUID) -> Entry? {
         entries.values.filter { $0.session == session }.max { $0.order < $1.order }
