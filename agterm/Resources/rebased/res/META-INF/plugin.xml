@@ -3,6 +3,7 @@
   <name>agterm Rebased bridge</name>
   <vendor>agterm</vendor>
   <depends>com.intellij.modules.platform</depends>
+  <depends>Git4Idea</depends>
   <applicationListeners>
     <listener class="agterm.rebased.Startup" topic="com.intellij.ide.AppLifecycleListener"/>
   </applicationListeners>

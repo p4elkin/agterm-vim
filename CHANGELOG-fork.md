@@ -43,6 +43,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- `session overlay open --rebased --diff RANGE` opens the changes of a commit range in Rebased: `A..B`,
+  `A...B` from the merge base, or `A` for `A..HEAD`. With Rebased already open on that repository, the
+  range goes to it. `tree` reports the range as `rebasedOverlay.diff`.
 - Rebased, the IntelliJ-platform git client, opens in a session's overlay slot for that session's
   repository: `agtermctl session overlay open --rebased`, the `rebased_toggle` keymap action, or Toggle
   Rebased in the action palette. The IDE runs inside agterm and stays docked to the window; switching

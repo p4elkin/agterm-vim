@@ -35,11 +35,12 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let persistent: Bool
     public let browse: Bool
     public let rebased: Bool
+    public let rebasedDiff: RebasedDiff?
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
                 navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false,
-                persistent: Bool = false, browse: Bool = false, rebased: Bool = false) {
+                persistent: Bool = false, browse: Bool = false, rebased: Bool = false, rebasedDiff: RebasedDiff? = nil) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
@@ -55,6 +56,7 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
         self.persistent = persistent
         self.browse = browse
         self.rebased = rebased
+        self.rebasedDiff = rebasedDiff
     }
 }
 

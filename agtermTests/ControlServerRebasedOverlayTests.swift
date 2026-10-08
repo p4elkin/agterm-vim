@@ -81,6 +81,19 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(server.buildTree(in: store).rebased?.jvm, "running")
     }
 
+    func testADiffReachesTheBridgeAndTheTree() throws {
+        let (store, session) = try addSession()
+        let diff = RebasedDiff(base: "main", head: "topic", mergeBase: false)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil,
+                                                 options: ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil,
+                                                                                          backgroundColor: nil, rebased: true, rebasedDiff: diff))
+        XCTAssertTrue(response.ok, response.error ?? "")
+        frameOpened(session)
+        XCTAssertEqual(runtime.calls.last, "diff main\ttopic\t0\t\(RebasedHost.canonical(stateDir.path))")
+        let node = try XCTUnwrap(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString })
+        XCTAssertEqual(node.rebasedOverlay?.diff, "main..topic")
+    }
+
     func testCloseHidesTheFrame() throws {
         let (_, session) = try addSession()
         XCTAssertTrue(openRebased(session).ok)

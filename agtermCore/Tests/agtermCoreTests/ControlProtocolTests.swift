@@ -4,10 +4,11 @@ import Testing
 
 struct ControlProtocolTests {
     @Test func rebasedRoundTripsAndOlderRequestsDecode() throws {
-        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(cwd: "/repo", sizePercent: 60, rebased: true))
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(cwd: "/repo", sizePercent: 60, rebased: true, diff: "main...HEAD"))
         #expect(try roundTrip(request) == request)
         let data = Data(#"{"cmd":"session.overlay.open","args":{"command":"cat"}}"#.utf8)
         #expect(try JSONDecoder().decode(ControlRequest.self, from: data).args?.rebased == nil)
+        #expect(try JSONDecoder().decode(ControlRequest.self, from: data).args?.diff == nil)
     }
 
     @Test func askWidthRoundTripsAndNullMeansAuto() throws {

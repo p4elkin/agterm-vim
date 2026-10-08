@@ -17,6 +17,21 @@ struct OverlayCommandsTests {
         #expect(try request(["session", "overlay", "open", "cat"]).args?.rebased == nil)
     }
 
+    @Test func rebasedDiffSendsTheRangeAsTyped() throws {
+        let req = try request(["session", "overlay", "open", "--rebased", "--diff", "main...", "--target", "s"])
+        #expect(req.args?.rebased == true)
+        #expect(req.args?.diff == "main...")
+        #expect(try request(["session", "overlay", "open", "--rebased"]).args?.diff == nil)
+    }
+
+    @Test(arguments: [
+        ["session", "overlay", "open", "cat", "--diff", "a..b"],
+        ["session", "overlay", "open", "--rebased", "--diff", "-p"],
+    ])
+    func rebasedDiffRefusesAMisuse(_ argv: [String]) {
+        #expect(rejects(argv))
+    }
+
     @Test(arguments: [
         ["cat"], ["--html", "/tmp/r.html"], ["--url", "http://localhost:5173/"], ["--pane", "left"],
         ["--wait"], ["--block"], ["--js"], ["--navigation"], ["--chromeless"], ["--persistent"], ["--browse"],

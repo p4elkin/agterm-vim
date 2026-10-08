@@ -61,6 +61,8 @@ final class RebasedHost {
     private var saving = false
     // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
+    // keyed by overlay id like the dialogs; sent once the frame is shown in its own session
+    private var pendingDiffs: [UUID: RebasedDiff] = [:]
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -118,11 +120,18 @@ final class RebasedHost {
 
     /// Opens a Rebased overlay on `cwd`'s repository (the session's cwd without one): the shared path of
     /// `session.overlay.open --rebased` and `rebased_toggle`. Returns the refusal, nil when it opened.
-    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?) -> String? {
+    /// A `diff` for the project already open in the session goes to that overlay instead of a new one.
+    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, diff: RebasedDiff? = nil) -> String? {
         guard let session = store.session(withID: id) else { return RebasedOverlayOpenFailure.unknownSession.message }
         if session.remoteHost != nil { return Self.remoteRefusal }
         let project = Self.projectDirectory(for: cwd ?? session.focusedCwd)
-        if let failure = store.openRebasedOverlay(id, overlay: RebasedOverlay(project: project), sizePercent: sizePercent) {
+        if let diff, let open = session.rebasedOverlay, Self.canonical(open.project) == Self.canonical(project) {
+            session.rebasedOverlay?.diff = diff
+            pendingDiffs[open.id] = diff
+            sendDiff(session: id)
+            return nil
+        }
+        if let failure = store.openRebasedOverlay(id, overlay: RebasedOverlay(project: project, diff: diff), sizePercent: sizePercent) {
             return failure.message
         }
         open(session: id)
@@ -137,6 +146,7 @@ final class RebasedHost {
         opens += 1
         let project = Self.canonical(overlay.project)
         entries[overlay.id] = Entry(session: session, project: project, order: opens)
+        if let diff = overlay.diff { pendingDiffs[overlay.id] = diff }
         switch jvm {
         case .running:
             if frameNumbers[project] != nil { show(session: session) } else { _ = runtime.call("open", project) }
@@ -315,6 +325,15 @@ final class RebasedHost {
         setState(.shown, session: session)
         _ = runtime.call("show", entry.project)
         frames.adopt(frame, in: hostWindow(session))
+        sendDiff(session: session)
+    }
+
+    // The bridge shows the diff as a dialog of the project frame, so it waits until that frame is on screen
+    // here; sent while hidden, the dialog would come up over another session or queue behind the slot.
+    private func sendDiff(session: UUID) {
+        guard let id = overlayID(for: session), let entry = entries[id], visible[entry.project] == session,
+              let diff = pendingDiffs.removeValue(forKey: id) else { return }
+        _ = runtime.call("diff", diff.bridgeArgument(project: entry.project))
     }
 
     func hide(session: UUID) {
@@ -403,6 +422,7 @@ final class RebasedHost {
     // never dropped: it comes up over the session now, rather than over whatever that session opens next.
     private func release(_ overlayID: UUID) {
         armed.remove(overlayID)
+        pendingDiffs[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)

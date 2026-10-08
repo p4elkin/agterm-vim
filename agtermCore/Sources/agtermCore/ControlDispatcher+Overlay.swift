@@ -14,6 +14,14 @@ extension ControlDispatcher {
             case .page(let source): page = source; rebased = false
             case .rebased: page = nil; rebased = true
             }
+            var rebasedDiff: RebasedDiff?
+            if let spec = request.args?.diff {
+                guard rebased else { return ControlResponse(ok: false, error: "session.overlay.open: --diff requires --rebased") }
+                guard let parsed = RebasedDiff(spec: spec) else {
+                    return ControlResponse(ok: false, error: "session.overlay.open: invalid --diff range")
+                }
+                rebasedDiff = parsed
+            }
             if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
                 return ControlResponse(ok: false, error: "invalid color: \(color) (#rrggbb)")
             }
@@ -44,7 +52,8 @@ extension ControlDispatcher {
                                                 chromeless: request.args?.chromeless ?? false,
                                                 persistent: request.args?.persistent ?? false,
                                                 browse: request.args?.browse ?? false,
-                                                rebased: rebased
+                                                rebased: rebased,
+                                                rebasedDiff: rebasedDiff
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
