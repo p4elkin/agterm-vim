@@ -17,8 +17,13 @@ import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.WindowEvent;
 import java.nio.file.Path;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
@@ -31,6 +36,17 @@ public final class Bridge implements BiFunction<String, String, String> {
   private static final Object lock = new Object();
   private static final List<String[]> pending = new ArrayList<>();
   private static volatile boolean hostAttached;
+  private static final Map<Window, String> frameProjects = new IdentityHashMap<>();
+
+  static void openedProject(Window window, String project, long number) {
+    frameProjects.put(window, project);
+    emit("frameOpened", project + "\t" + number);
+  }
+
+  static void closedProject(Window window) {
+    String project = frameProjects.remove(window);
+    if (project != null) emit("frameClosed", project);
+  }
 
   static void log(String s) { System.err.println("[agterm-bridge] " + s); }
 
@@ -73,14 +89,15 @@ public final class Bridge implements BiFunction<String, String, String> {
         emit("windowOpened", n + "\t" + (w instanceof Dialog ? "dialog" : "popup"));
       }
     } else if (e.getID() == WindowEvent.WINDOW_CLOSED && w instanceof Frame) {
-      emit("frameClosed", String.valueOf(windowNumber(w)));
+      closedProject(w);
     }
   }
 
   private static void reportFrame(Window w, long n, int attempt) {
+    if (!w.isDisplayable()) return;
     Project p = projectOf(w);
-    if (p != null) { emit("frameOpened", p.getBasePath() + "\t" + n); return; }
-    if (attempt >= 50) { emit("windowOpened", n + "\tframe " + w.getClass().getName()); return; }
+    if (p != null && p.getBasePath() != null) { openedProject(w, p.getBasePath(), n); return; }
+    if (attempt >= 50) { emit("windowOpened", n + "\tpopup"); return; }
     var t = new javax.swing.Timer(100, e -> reportFrame(w, n, attempt + 1));
     t.setRepeats(false);
     t.start();
@@ -104,10 +121,24 @@ public final class Bridge implements BiFunction<String, String, String> {
     later(() -> ApplicationManager.getApplication().invokeLater(r, ModalityState.current()));
   }
 
-  private static boolean onDisk(String path, String text) {
-    try { return java.nio.file.Files.readString(Path.of(path)).equals(text); }
+  static byte[] savedBytes(String text, String separator, Charset charset, byte[] bom) {
+    if (charset.equals(StandardCharsets.UTF_16) && bom != null && bom.length == 2) {
+      charset = bom[0] == (byte)0xff && bom[1] == (byte)0xfe ? StandardCharsets.UTF_16LE : StandardCharsets.UTF_16BE;
+    }
+    byte[] body = text.replace("\n", separator == null ? "\n" : separator).getBytes(charset);
+    if (bom == null || bom.length == 0) return body;
+    if (body.length >= bom.length && Arrays.equals(body, 0, bom.length, bom, 0, bom.length)) return body;
+    byte[] bytes = Arrays.copyOf(bom, bom.length + body.length);
+    System.arraycopy(body, 0, bytes, bom.length, body.length);
+    return bytes;
+  }
+
+  static boolean onDisk(String path, byte[] expected) {
+    try { return Arrays.equals(java.nio.file.Files.readAllBytes(Path.of(path)), expected); }
     catch (java.io.IOException e) { return false; }
   }
+
+  private record SavedFile(String path, byte[] bytes) {}
 
   @Override public String apply(String cmd, String arg) {
     switch (cmd) {
@@ -123,24 +154,27 @@ public final class Bridge implements BiFunction<String, String, String> {
       case "saveAll" -> {
         // saveAllDocuments returns before the bytes are on disk, so the answer waits for the files themselves.
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        var pending = new java.util.concurrent.atomic.AtomicReference<List<String[]>>();
+        var pending = new java.util.concurrent.atomic.AtomicReference<List<SavedFile>>();
         var done = new CountDownLatch(1);
         writeSafe(() -> {
           var fdm = FileDocumentManager.getInstance();
-          List<String[]> want = new ArrayList<>();
+          List<SavedFile> want = new ArrayList<>();
           for (var doc : fdm.getUnsavedDocuments()) {
             var vf = fdm.getFile(doc);
-            if (vf != null && vf.isInLocalFileSystem()) want.add(new String[]{vf.getPath(), doc.getText()});
+            if (vf != null && vf.isInLocalFileSystem()) {
+              want.add(new SavedFile(vf.getPath(), savedBytes(doc.getText(), vf.getDetectedLineSeparator(), vf.getCharset(), vf.getBOM())));
+            }
           }
           fdm.saveAllDocuments();
           pending.set(want);
           done.countDown();
         });
         try {
-          if (!done.await(2, TimeUnit.SECONDS)) return "timeout before save";
-          for (String[] f : pending.get()) {
-            while (!onDisk(f[0], f[1])) {
-              if (System.nanoTime() > deadline) return "timeout writing " + f[0];
+          long remaining = deadline - System.nanoTime();
+          if (remaining <= 0 || !done.await(remaining, TimeUnit.NANOSECONDS)) return "timeout before save";
+          for (SavedFile f : pending.get()) {
+            while (!onDisk(f.path(), f.bytes())) {
+              if (System.nanoTime() > deadline) return "timeout writing " + f.path();
               Thread.sleep(20);
             }
           }

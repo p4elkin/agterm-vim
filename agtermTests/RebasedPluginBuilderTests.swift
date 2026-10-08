@@ -3,6 +3,85 @@ import XCTest
 @testable import agterm
 
 final class RebasedPluginBuilderTests: XCTestCase {
+    func testBridgeRetainsClosedProjectsAndComparesSavedFileBytes() throws {
+        let app = try installedApp()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-bridge-contracts-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let built = try RebasedPluginBuilder(appBundle: app, stateDirectory: root).build(buildNumber: "fixture-contracts")
+        let source = root.appendingPathComponent("BridgeContracts.java")
+        try """
+        package agterm.rebased;
+        import java.nio.charset.StandardCharsets;
+        import java.nio.file.Files;
+        import java.nio.file.Path;
+        import java.util.Arrays;
+        import java.util.List;
+
+        public final class BridgeContracts {
+          @SuppressWarnings("unchecked")
+          public static void main(String[] args) throws Exception {
+            Bridge.openedProject(null, "/repo", 42);
+            Bridge.closedProject(null);
+            Bridge.closedProject(null);
+            var field = Bridge.class.getDeclaredField("pending");
+            field.setAccessible(true);
+            var events = (List<String[]>) field.get(null);
+            assert events.size() == 2 : "unadopted frames must not report a close";
+            assert Arrays.equals(events.get(0), new String[]{"frameOpened", "/repo\\t42"});
+            assert Arrays.equals(events.get(1), new String[]{"frameClosed", "/repo"});
+
+            byte[] utf8 = new byte[]{(byte)0xef, (byte)0xbb, (byte)0xbf, 97, 10};
+            byte[] little = new byte[]{(byte)0xff, (byte)0xfe, 97, 0, 13, 0, 10, 0};
+            byte[] big = new byte[]{(byte)0xfe, (byte)0xff, 0, 97, 0, 10};
+            byte[] latin = new byte[]{(byte)0xe9, 10};
+            assert Arrays.equals(Bridge.savedBytes("a\\n", "\\n", StandardCharsets.UTF_8,
+                               new byte[]{(byte)0xef, (byte)0xbb, (byte)0xbf}), utf8);
+            assert Arrays.equals(Bridge.savedBytes("a\\n", "\\r\\n", StandardCharsets.UTF_16LE,
+                               new byte[]{(byte)0xff, (byte)0xfe}), little);
+            assert Arrays.equals(Bridge.savedBytes("a\\n", "\\n", StandardCharsets.UTF_16,
+                               new byte[]{(byte)0xfe, (byte)0xff}), big) : "BOM must not be doubled";
+            assert Arrays.equals(Bridge.savedBytes("é\\n", null, StandardCharsets.ISO_8859_1, null), latin);
+            var file = Path.of(args[0]);
+            Files.write(file, little);
+            assert Bridge.onDisk(file.toString(), little);
+            assert !Bridge.onDisk(file.toString(), utf8);
+            Files.delete(file);
+            assert !Bridge.onDisk(file.toString(), little);
+            System.out.println("bridge contracts passed");
+          }
+        }
+        """.write(to: source, atomically: true, encoding: .utf8)
+        let classes = root.appendingPathComponent("contract-classes")
+        try FileManager.default.createDirectory(at: classes, withIntermediateDirectories: true)
+        let classpath = built.jar.path + ":" + app.appendingPathComponent("Contents/lib/*").path
+        let home = app.appendingPathComponent("Contents/jbr/Contents/Home/bin")
+        _ = try runJavaTool(home.appendingPathComponent("javac"), arguments: ["--release", "21", "-cp", classpath, "-d", classes.path, source.path], root: root)
+        let output = try runJavaTool(home.appendingPathComponent("java"),
+                                    arguments: ["-ea", "-Djava.awt.headless=true", "-cp", classes.path + ":" + classpath,
+                                                "agterm.rebased.BridgeContracts", root.appendingPathComponent("saved.txt").path], root: root)
+        XCTAssertTrue(output.contains("bridge contracts passed"), output)
+    }
+
+    private func runJavaTool(_ executable: URL, arguments: [String], root: URL) throws -> String {
+        let log = root.appendingPathComponent("\(executable.lastPathComponent)-contracts.log")
+        XCTAssertTrue(FileManager.default.createFile(atPath: log.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: log)
+        defer { try? handle.close() }
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = handle
+        process.standardError = handle
+        try process.run()
+        process.waitUntilExit()
+        let output = try String(contentsOf: log, encoding: .utf8)
+        guard process.terminationStatus == 0 else {
+            throw NSError(domain: "RebasedBridgeContracts", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: output])
+        }
+        return output
+    }
+
     private func installedApp() throws -> URL {
         let app = URL(fileURLWithPath: "/Applications/Rebased.app")
         guard FileManager.default.fileExists(atPath: app.path) else { throw XCTSkip("Rebased is not installed") }
