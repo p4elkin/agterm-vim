@@ -106,7 +106,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 ### Remote rows
 
 - The IDE reads only this Mac's disk, so a remote row (`Session.remoteHost`) opens a `RebasedMirror` (core):
-  a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, tags and HEAD,
+  a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, remote-tracking branches, tags and HEAD,
   detached. Uncommitted work on the host is not in it, and edits made in the IDE never reach the host.
 - `--cwd` (or the row's cwd) is the host's path. `RebasedMirrorRefresh` asks the host for its repository top
   over ssh (`git upload-pack` does not look upward), then `git fetch`es over ssh with `BatchMode`, off the

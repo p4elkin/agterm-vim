@@ -32,12 +32,13 @@ struct RebasedMirrorTests {
         #expect(directory != other.directory(top: "/home/s/repo", stateDirectory: state))
     }
 
-    @Test func theRefreshTakesTheHostsBranchesTagsAndHead() throws {
+    @Test func theRefreshTakesTheHostsBranchesRemoteBranchesTagsAndHead() throws {
         let mirror = try #require(RebasedMirror(host: "p4linux", path: "/home/s/repo"))
         #expect(mirror.refreshCommands(top: "/home/s/repo", directory: "/m/repo") == [
             ["/usr/bin/git", "init", "-q", "/m/repo"],
             ["/usr/bin/git", "-C", "/m/repo", "fetch", "-q", "--prune", "--force", "--update-head-ok", "p4linux:/home/s/repo",
-             "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*", "+HEAD:refs/agterm/head"],
+             "+refs/heads/*:refs/heads/*", "+refs/remotes/*:refs/remotes/*", "+refs/tags/*:refs/tags/*",
+             "+HEAD:refs/agterm/head"],
             ["/usr/bin/git", "-C", "/m/repo", "checkout", "-q", "--force", "--detach", "refs/agterm/head"],
         ])
         #expect(RebasedMirror.environment["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes -o ConnectTimeout=10")
