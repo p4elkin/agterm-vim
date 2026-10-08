@@ -315,4 +315,18 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "windowOpened", payload: "9\tdialog\t")
         XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
+
+    func testADialogOfAClosedProjectDoesNotRestoreTheSessionsNewProject() {
+        startAndShow(first)
+        store.closeOverlay(first.id)
+        open(first, project: otherProject)
+        _ = window("frameB", number: 8)
+        host.handle(event: "frameOpened", payload: "\(otherProject)\t8")
+        host.hide(session: first.id)
+        let before = frames.log.count
+        _ = window("dialogA", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t\(project)")
+        XCTAssertEqual(Array(frames.log.dropFirst(before)), ["orderOut dialogA"])
+        XCTAssertFalse(host.isShown(in: first.id))
+    }
 }

@@ -268,7 +268,8 @@ final class RebasedHost {
         } else if kind == "dialog", let waiting = waitingOnScreen(owner) {
             // IntelliJ can ask before any frame exists ("Trust project?"); it belongs to the slot being opened
             frames.attach(window, to: hostWindow(waiting.session))
-        } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown, entry(for: last) != nil {
+        } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown,
+                  let current = entry(for: last), owner == nil || current.project == owner {
             show(session: last)
             frames.attach(window, to: hostWindow(last))
         } else {
@@ -338,6 +339,7 @@ final class RebasedHost {
         armed.remove(overlayID)
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
+        if lastShownByProject[entry.project] == entry.session { lastShownByProject[entry.project] = nil }
     }
 
     // MARK: - Helpers
