@@ -1,0 +1,9 @@
+<idea-plugin>
+  <id>agterm.rebased.bridge</id>
+  <name>agterm Rebased bridge</name>
+  <vendor>agterm</vendor>
+  <depends>com.intellij.modules.platform</depends>
+  <applicationListeners>
+    <listener class="agterm.rebased.Startup" topic="com.intellij.ide.AppLifecycleListener"/>
+  </applicationListeners>
+</idea-plugin>
