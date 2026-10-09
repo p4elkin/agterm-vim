@@ -103,6 +103,13 @@ private final class RebasedSlotNSView: NSView {
         }
         guard onScreen != shown else { return }
         shown = onScreen
-        RebasedHost.shared.setSlotVisible(onScreen, overlay: overlay, reporter: reporter)
+        guard !onScreen else { RebasedHost.shared.setSlotVisible(true, overlay: overlay, reporter: reporter); return }
+        // A swap takes the old pane's slot out of the window before the new one is in it. Reported at once,
+        // that hides the frame and shows it again in one turn, and AWT's asynchronous setVisible can leave it
+        // hidden; a turn later the new slot has reported, so the frame just moves.
+        DispatchQueue.main.async { [weak self, overlay, reporter] in
+            guard self?.shown != true else { return }
+            RebasedHost.shared.setSlotVisible(false, overlay: overlay, reporter: reporter)
+        }
     }
 }
