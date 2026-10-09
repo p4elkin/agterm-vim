@@ -76,6 +76,14 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.prune"))
     }
 
+    func listRebasedMirrors() async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("rebased.mirror.list"))
+    }
+
+    func pruneRebasedMirrors(olderThanDays _: Int?, dryRun _: Bool) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("rebased.mirror.prune"))
+    }
+
     func readZmxScreen(name _: String, fullBuffer _: Bool, lines _: Int?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.screen"))
     }

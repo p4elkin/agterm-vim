@@ -47,7 +47,8 @@ public enum ForwardPolicy {
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
-             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks:
+             .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
+             .rebasedMirrorList, .rebasedMirrorPrune:
             return .refused("a Mac feature")
         }
     }

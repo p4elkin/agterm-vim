@@ -218,6 +218,11 @@ public protocol ControlActions {
     func listZmxDaemons() -> ControlResponse
     /// Kill the daemons no pane claims and nothing is attached to.
     func pruneZmxDaemons() -> ControlResponse
+    /// The Rebased mirrors on disk. Async because the host walks the mirror directories off the main actor.
+    func listRebasedMirrors() async -> ControlResponse
+    /// Remove the mirrors not opened for `olderThanDays` (nil: the setting's age) and not in use. Async because
+    /// the host waits for the mirror queue, a running fetch included.
+    func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse
     /// readZmxScreen returns a daemon's own screen by daemon name, which reaches a pane no open window
     /// shows. `fullBuffer` adds the retained scrollback; `lines` keeps the last N of it.
     func readZmxScreen(name: String, fullBuffer: Bool, lines: Int?) -> ControlResponse
@@ -309,6 +314,8 @@ public struct ControlDispatcher {
             return await dispatchZmxCommand(request)
         case .hooksReload, .hooksList:
             return dispatchHooksCommand(request)
+        case .rebasedMirrorList, .rebasedMirrorPrune:
+            return await dispatchRebasedMirrorCommand(request)
         case .browserClear, .browserLinks:
             return await dispatchBrowserCommand(request)
         case .quickType, .quickText:

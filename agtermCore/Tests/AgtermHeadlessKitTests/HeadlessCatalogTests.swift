@@ -42,6 +42,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
         "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.screen", "browser.clear",
+        "rebased.mirror.list", "rebased.mirror.prune",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")

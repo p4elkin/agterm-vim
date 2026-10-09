@@ -97,7 +97,7 @@ public struct Agtermctl: ParsableCommand {
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Hooks.self, Browser.self,
                       Config.self, Theme.self, Pick.self, Ask.self, Restore.self, Zmx.self, Terminfo.self,
-                      OverlayRedirect.self, Version.self]
+                      OverlayRedirect.self, Rebased.self, Version.self]
     )
 
     public init() {}

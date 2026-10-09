@@ -20,6 +20,11 @@ final class ControlServerOverlayRedirectTests: XCTestCase {
             work()
             done()
         }
+        host.onMirrorQueue = { work, done in
+            work()
+            done()
+        }
+        host.stateDirectory = stateDir
         RebasedHost.shared = host
         defer { RebasedHost.shared = previous }
         let (_, session) = try makeSession()
@@ -39,6 +44,8 @@ final class ControlServerOverlayRedirectTests: XCTestCase {
         host.runtime = FakeRebasedRuntime()
         host.store = { [library] in library?.store(forSession: $0) }
         host.offMain = { _, _ in }
+        host.onMirrorQueue = { _, _ in }
+        host.stateDirectory = stateDir
         RebasedHost.shared = host
         defer { RebasedHost.shared = previous }
         let store = try XCTUnwrap(library.activeStore)

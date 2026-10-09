@@ -26,6 +26,52 @@ public struct ControlRebasedNode: Codable, Sendable, Equatable {
     }
 }
 
+/// One mirror as `rebased.mirror.list` and `rebased.mirror.prune` report it.
+public struct ControlRebasedMirrorNode: Codable, Sendable, Equatable {
+    public let host: String
+    public let source: String?
+    /// The clone, or its `<hash>` directory when that holds no clone.
+    public let directory: String
+    /// Seconds since the Unix epoch.
+    public let lastOpened: Double
+    public let bytes: Int?
+    public let inUse: Bool
+    /// The IDE's per-project entries removed with the mirror, or that a dry run would remove; prune only.
+    public let ideData: [String]?
+    /// Why a prune kept a mirror it meant to remove.
+    public let error: String?
+
+    public init(host: String, source: String? = nil, directory: String, lastOpened: Double, bytes: Int? = nil,
+                inUse: Bool, ideData: [String]? = nil, error: String? = nil) {
+        self.host = host
+        self.source = source
+        self.directory = directory
+        self.lastOpened = lastOpened
+        self.bytes = bytes
+        self.inUse = inUse
+        self.ideData = ideData
+        self.error = error
+    }
+}
+
+/// list fills `mirrors`; prune fills the rest, `olderThanDays` being the age it actually used.
+public struct ControlRebasedMirrors: Codable, Sendable, Equatable {
+    public let mirrors: [ControlRebasedMirrorNode]?
+    public let removed: [ControlRebasedMirrorNode]?
+    public let kept: [ControlRebasedMirrorNode]?
+    public let dryRun: Bool?
+    public let olderThanDays: Int?
+
+    public init(mirrors: [ControlRebasedMirrorNode]? = nil, removed: [ControlRebasedMirrorNode]? = nil,
+                kept: [ControlRebasedMirrorNode]? = nil, dryRun: Bool? = nil, olderThanDays: Int? = nil) {
+        self.mirrors = mirrors
+        self.removed = removed
+        self.kept = kept
+        self.dryRun = dryRun
+        self.olderThanDays = olderThanDays
+    }
+}
+
 extension RebasedOverlay {
     var controlNode: ControlRebasedOverlayNode {
         switch state {

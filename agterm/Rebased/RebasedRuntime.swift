@@ -79,15 +79,56 @@ struct JNIRebasedRuntime: RebasedRuntime {
 }
 
 /// One embedded IDE per state directory: in a second process IntelliJ's own directory lock calls
-/// `System.exit`, and that process is agterm. Held for the process's life once taken.
+/// `System.exit`, and that process is agterm. Held for the process's life once the IDE takes it.
 enum RebasedStateLock {
     static let message = "Rebased is already running in another agterm instance on this state directory"
-    private static let held = OSAllocatedUnfairLock<Int32?>(initialState: nil)
 
-    static func acquire(_ directory: URL) throws {
-        try held.withLock { descriptor in
-            if descriptor == nil { descriptor = try lock(directory) }
+    /// The process's hold on the lock. Tests use their own, so none touches the shared one.
+    final class Holder: Sendable {
+        static let shared = Holder()
+
+        private struct State {
+            var descriptor: Int32?
+            var permanent = false
         }
+        private let state = OSAllocatedUnfairLock(initialState: State())
+
+        func acquire(_ directory: URL) throws {
+            try state.withLock { state in
+                if state.descriptor == nil { state.descriptor = try RebasedStateLock.lock(directory) }
+                state.permanent = true
+            }
+        }
+
+        /// Runs `body` while holding the lock, taking it only for the call when nobody holds it. An `acquire`
+        /// during `body` keeps it. `body` runs outside the unfair lock, which a long prune must never hold.
+        func withLockIfFree<T>(_ directory: URL, _ body: () throws -> T) throws -> T {
+            let took = try state.withLock { state -> Bool in
+                guard state.descriptor == nil else { return false }
+                state.descriptor = try RebasedStateLock.lock(directory)
+                return true
+            }
+            defer {
+                if took {
+                    state.withLock { state in
+                        guard !state.permanent, let descriptor = state.descriptor else { return }
+                        close(descriptor)
+                        state.descriptor = nil
+                    }
+                }
+            }
+            return try body()
+        }
+
+        deinit {
+            if let descriptor = state.withLock({ $0.descriptor }) { close(descriptor) }
+        }
+    }
+
+    static func acquire(_ directory: URL) throws { try Holder.shared.acquire(directory) }
+
+    static func withLockIfFree<T>(_ directory: URL, _ body: () throws -> T) throws -> T {
+        try Holder.shared.withLockIfFree(directory, body)
     }
 
     static func lock(_ directory: URL) throws -> Int32 {

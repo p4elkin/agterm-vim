@@ -109,7 +109,7 @@ struct agtermApp: App {
                                           zmxOutdatedBefore: restored.zmxOutdatedBefore)
         _controlServer = State(initialValue: controlServer)
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
-        RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
+        RebasedHost.shared.configure(library: library, settings: { settingsModel.settings },
                                      stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
                                      toggle: { actions.toggleRebasedOverlay(session: $0) })
         LinkOpener.shared.overlay = { [weak controlServer] url, session in

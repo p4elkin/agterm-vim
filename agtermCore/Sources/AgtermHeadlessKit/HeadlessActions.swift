@@ -788,6 +788,8 @@ public final class HeadlessActions: ControlActions {
         withSession(target, window: window) { store, session in headless.killPane(pane, of: session, in: store) }
     }
     public func resetLiveSessions() -> ControlResponse { refuse(.zmxReset) }
+    public func listRebasedMirrors() async -> ControlResponse { refuse(.rebasedMirrorList) }
+    public func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse { refuse(.rebasedMirrorPrune) }
     public func attachRemoteSession(host: String, session: String) async -> ControlResponse { refuse(.zmxAttach) }
 
     public func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {

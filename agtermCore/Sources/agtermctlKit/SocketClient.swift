@@ -278,6 +278,9 @@ struct SocketClient {
         if let zmx = response.result?.zmx {
             return formatZmx(zmx)
         }
+        if let mirrors = response.result?.rebasedMirrors {
+            return formatRebasedMirrors(mirrors)
+        }
         if let restore = response.result?.restore {
             return formatRestoreStatus(restore)
         }

@@ -97,7 +97,8 @@ program, which is how to show the user an artifact you generated. The same sessi
 whole session or one pane as its placement bounds. The session keeps focus and stays typable
 under it.
 In this fork, Rebased occupies the session-wide slot for the session's repository; `--diff RANGE` shows a commit
-range, and a remote row's repository is mirrored to the Mac first (its commits only).
+range, and a remote row's repository is mirrored to the Mac first (its commits only); `rebased mirror list|prune`
+lists and removes those mirrors.
 Read `rebasedOverlay: {project, state, error?, diff?, source?}` on the session and `rebased` (`{jvm, error?, projects}`)
 at the tree top level. Both fields are omitted until their occupant or JVM exists.
 One slot, so a session shows either a HUD or a program overlay, never both. Separately, the app has one
@@ -737,6 +738,11 @@ open stays where it is when the lead changes. The overlay's program still runs o
 ([details](reference.md#restore)). Both run ssh non-interactively, so key-based auth must already work, and
 the far side needs `agtermctl` installed by the cask or the Help action: a machine merely running agterm
 has no CLI an ssh command can find. Every zmx command needs a running agterm.
+
+**rebased** (fork only) - `rebased mirror list` - the Mac's mirrors of remote rows' repositories, with age, size
+and `in use` · `rebased mirror prune [--older-than DAYS] [--dry-run]` - remove the ones not opened for DAYS days
+(default `rebasedMirrorMaxAgeDays`, 14) with the IDE's data for them, never one in use; it waits for a running
+fetch. Read back with `list`, not `tree`. [Details](reference.md).
 
 **terminfo** — `terminfo install DESTINATION [-p PORT] [-i FILE ...] [-J HOST] [-F FILE]` — install the
 bundled `xterm-ghostty` terminfo entry into a remote account's `~/.terminfo` over one interactive ssh

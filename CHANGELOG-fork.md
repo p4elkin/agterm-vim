@@ -43,6 +43,12 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- Rebased removes the mirrors of remote repositories that nobody has used for 14 days, with the IDE's data for
+  them, when the IDE starts. A mirror counts as used whenever its overlay is shown, not only when it is opened,
+  and one in use is never removed. `rebasedMirrorMaxAgeDays` in `settings.json` sets the days, 0 for never; a
+  hand edit applies at the next launch. `agtermctl rebased mirror list` shows each mirror's age and size, and
+  `agtermctl rebased mirror prune [--older-than DAYS] [--dry-run]` removes them on demand. Mirror fetches now
+  run one at a time, so a second remote row's open, or a prune, waits behind a running fetch, minutes at worst.
 - Rebased opens on a remote row too, from a p4linux shell or the Mac: the Mac fetches the host's commits,
   branches and `origin/*` branches over ssh into a local mirror, then shows it, so `--diff main...HEAD` or
   `--diff origin/main...origin/feature` works on a repository that

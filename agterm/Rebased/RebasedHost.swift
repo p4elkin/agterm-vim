@@ -51,15 +51,38 @@ final class RebasedHost {
             await done()
         }
     }
-    var isIDEKeyWindowOverride: Bool?
-    var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = {
-        RebasedMirrorRefresh.run($0, stateDirectory: $1)
+    /// Every job that writes under `mirrors/` runs here, one at a time. Nothing on the main actor may wait on it:
+    /// a prune job reads its `mirrorsInUse` snapshot from main.
+    var onMirrorQueue: (@escaping @Sendable () -> Void, @escaping @MainActor @Sendable () -> Void) -> Void = { work, done in
+        let body: @Sendable () -> Void = {
+            work()
+            Task { @MainActor in done() }
+        }
+        RebasedHost.mirrorQueue.async(execute: body)
     }
+    var isIDEKeyWindowOverride: Bool?
+    var clock: () -> Date = { Date() }
+    var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> =
+        RebasedHost.makeMirrorRefresh(withLock: { try RebasedStateLock.withLockIfFree($0, $1) })
+    // The defaults touch no disk; only `configure` installs the real ones, so a test's host never prunes.
+    var mirrorMaxAgeDays: () -> Int = { 0 }
+    var mirrorPrune: @Sendable (RebasedMirrorCleanup.Request) throws -> RebasedMirrorCleanup.Report = { request in
+        RebasedMirrorCleanup.Report(removed: [], kept: [], dryRun: request.dryRun, olderThanDays: request.maxAgeDays)
+    }
+    var mirrorList: @Sendable (URL, Set<String>) -> [RebasedMirrorRecord] = { _, _ in [] }
+    private nonisolated static let mirrorQueue = DispatchQueue(label: "com.umputun.agterm.rebased.mirrors")
+    private static let touchInterval: TimeInterval = 3600
     private static let logger = Logger(subsystem: "com.umputun.agterm", category: "RebasedHost")
 
     private(set) var jvm = JVM.notStarted
     private var entries: [UUID: Entry] = [:]
+    // overlays whose local open on a mirror's clone waits for the mirror queue
+    private var pendingMirrorOpens: [UUID: String] = [:]
     private var frameNumbers: [String: Int] = [:]
+    // a project closed in the IDE can still have state this JVM run writes back under `system/`
+    private var openedThisRun: Set<String> = []
+    // in memory only, keyed by canonical project: the first show after a relaunch touches again
+    private var lastTouched: [String: Date] = [:]
     private(set) var visible: [String: UUID] = [:]
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
@@ -82,12 +105,15 @@ final class RebasedHost {
     private var keyMonitor: Any?
     private var seenWindows: Set<Int> = []
 
-    func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
+    func configure(library: WindowLibrary, settings: @escaping () -> AppSettings, stateDirectory: URL,
                    keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void) {
-        self.appPath = appPath
+        appPath = { settings().effectiveRebasedAppPath }
         self.keymap = keymap
         self.toggle = toggle
         self.stateDirectory = stateDirectory
+        mirrorMaxAgeDays = { settings().effectiveRebasedMirrorMaxAgeDays }
+        mirrorPrune = Self.makeMirrorPrune(withLock: RebasedStateLock.withLockIfFree)
+        mirrorList = Self.makeMirrorList()
         store = { [weak library] in library?.store(forSession: $0) }
         hostWindow = { [weak library] session in
             library?.windowID(forSession: session).flatMap { WindowRegistry.shared.window(for: $0) }
@@ -138,11 +164,36 @@ final class RebasedHost {
             deliver(diff, to: session)
             return nil
         }
-        if let failure = store.openRebasedOverlay(id, overlay: RebasedOverlay(project: project, diff: diff), sizePercent: sizePercent) {
+        let overlay = RebasedOverlay(project: project, diff: diff)
+        if let failure = store.openRebasedOverlay(id, overlay: overlay, sizePercent: sizePercent) {
             return failure.message
         }
-        open(session: id)
+        if Self.isMirror(project, stateDirectory: stateDirectory) {
+            openAfterMirrorJobs(session: id, overlay: overlay.id, project: project)
+        } else {
+            open(session: id)
+        }
         return nil
+    }
+
+    /// A local overlay on a mirror's clone waits for any prune queued ahead of it, and a prune queued after it keeps
+    /// the clone through `pendingMirrorOpens`; a clone that prune removed fails the overlay rather than opening nothing.
+    private func openAfterMirrorJobs(session id: UUID, overlay overlayID: UUID, project: String) {
+        pendingMirrorOpens[overlayID] = Self.canonical(project)
+        onMirrorQueue({}, { [weak self] in
+            guard let self, pendingMirrorOpens.removeValue(forKey: overlayID) != nil,
+                  store(id)?.session(withID: id)?.rebasedOverlay?.id == overlayID else { return }
+            if FileManager.default.fileExists(atPath: project) {
+                open(session: id)
+            } else {
+                setState(.failed("Rebased mirror \(project) was removed by a prune"), session: id)
+            }
+        })
+    }
+
+    private static func isMirror(_ project: String, stateDirectory: URL) -> Bool {
+        let mirrors = canonical(stateDirectory.appendingPathComponent("rebased/mirrors", isDirectory: true).path)
+        return canonical(project).hasPrefix(mirrors + "/")
     }
 
     private func deliver(_ diff: RebasedDiff, to session: Session) {
@@ -176,7 +227,7 @@ final class RebasedHost {
         fetching.insert(session.id)
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
-        offMain({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
+        onMirrorQueue({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
             self?.mirrored(result.value, session: sessionID, overlay: overlayID, diff: diff)
         })
         return nil
@@ -238,14 +289,38 @@ final class RebasedHost {
             guard let self else { return }
             switch result.value {
             case .success(let launch):
-                prepared = true
-                for (id, entry) in entries where overlayState(entry) == .starting { armDeadline(id) }
-                self.launch(launch)
+                pruneThenLaunch(launch)
             case .failure(let error):
                 fail(error.localizedDescription)
             case nil:
                 break
             }
+        })
+    }
+
+    // The prune runs before `launch`, so no project an old IDE config reopens can be a mirror being deleted, and
+    // before the deadline is armed, so the 30 s never count it. Behind another row's fetch it would hold the start.
+    private func pruneThenLaunch(_ launch: RebasedLaunch) {
+        let ready: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self else { return }
+            prepared = true
+            for (id, entry) in entries where overlayState(entry) == .starting { armDeadline(id) }
+            self.launch(launch)
+        }
+        let days = mirrorMaxAgeDays()
+        guard days > 0, fetching.isEmpty else { return ready() }
+        let prune = mirrorPrune, directory = stateDirectory
+        let result = ResultBox<RebasedMirrorCleanup.Report>()
+        onMirrorQueue({ [self] in
+            let inUse = Self.inUseSnapshot(self)
+            result.set { try prune(.init(stateDirectory: directory, inUse: inUse, maxAgeDays: days, dryRun: false)) }
+        }, {
+            switch result.value {
+            case .success(let report)?: Self.logger.info("Rebased start prune removed \(report.removed.count) mirrors")
+            case .failure(let error)?: Self.logger.error("Rebased start prune failed: \(error.localizedDescription, privacy: .public)")
+            case nil: break
+            }
+            ready()
         })
     }
 
@@ -320,6 +395,7 @@ final class RebasedHost {
     // A frame that arrives after its overlays failed stays hidden for the next open instead of reviving them.
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
+        openedThisRun.insert(project)
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
         for entry in waiting { setState(.shown, session: entry.session) }
         let onScreen = waiting.filter { visibleSlots.contains($0.session) }
@@ -389,6 +465,19 @@ final class RebasedHost {
         _ = runtime.call("show", entry.project)
         frames.adopt(frame, in: hostWindow(session))
         sendDiff(session: session)
+        touchMirror(project: entry.project, session: session)
+    }
+
+    // An overlay only shown and hidden for weeks would otherwise keep a marker as old as its last refresh, and the
+    // first prune after it closes would delete a mirror in daily use. Cheapest checks first.
+    private func touchMirror(project: String, session: UUID) {
+        guard let source = store(session)?.session(withID: session)?.rebasedOverlay?.source else { return }
+        let now = clock()
+        if let last = lastTouched[project], now.timeIntervalSince(last) < Self.touchInterval { return }
+        guard let hash = RebasedMirrorCleanup.hashDirectory(ofClone: URL(fileURLWithPath: project), stateDirectory: stateDirectory)
+        else { return }
+        lastTouched[project] = now
+        onMirrorQueue({ RebasedMirrorMarker.touch(hashDirectory: hash, source: source, now: now) }, {})
     }
 
     // The bridge shows the diff as a dialog of the project frame, so it waits until that frame is on screen
@@ -486,6 +575,7 @@ final class RebasedHost {
     private func release(_ overlayID: UUID) {
         armed.remove(overlayID)
         pendingDiffs[overlayID] = nil
+        pendingMirrorOpens[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
         guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
@@ -496,6 +586,79 @@ final class RebasedHost {
     private func surface(_ dialog: NSWindow, session: UUID) {
         frames.attach(dialog, to: hostWindow(session))
         dialog.orderFront(nil)
+    }
+
+    // MARK: - Mirrors
+
+    typealias MirrorLock = @Sendable (URL, () throws -> RebasedMirrorCleanup.Report) throws -> RebasedMirrorCleanup.Report
+
+    /// Projects a prune must keep: open overlays (the pending open included), frames open now, and every frame
+    /// this JVM run has opened.
+    var mirrorsInUse: Set<String> {
+        Set(entries.values.map(\.project)).union(frameNumbers.keys).union(openedThisRun).union(pendingMirrorOpens.values)
+    }
+
+    // Read when a prune job starts. The synchronous test seams run the job on main, where `main.sync` would deadlock.
+    private nonisolated static func inUseSnapshot(_ host: RebasedHost) -> Set<String> {
+        Thread.isMainThread
+            ? MainActor.assumeIsolated { host.mirrorsInUse }
+            : DispatchQueue.main.sync { MainActor.assumeIsolated { host.mirrorsInUse } }
+    }
+
+    /// Not on the mirror queue: a list only reads, and must not wait behind a fetch.
+    func listMirrors() async -> [RebasedMirrorRecord] {
+        let list = mirrorList, directory = stateDirectory, inUse = mirrorsInUse
+        let result = ResultBox<[RebasedMirrorRecord]>()
+        await withCheckedContinuation { continuation in
+            offMain({ result.set { list(directory, inUse) } }, { continuation.resume() })
+        }
+        return (try? result.value?.get()) ?? []
+    }
+
+    /// A refusal of the state lock comes back as the thrown error.
+    func pruneMirrors(olderThanDays days: Int, dryRun: Bool) async throws -> RebasedMirrorCleanup.Report {
+        let prune = mirrorPrune, directory = stateDirectory
+        let result = ResultBox<RebasedMirrorCleanup.Report>()
+        await withCheckedContinuation { continuation in
+            onMirrorQueue({ [self] in
+                let inUse = Self.inUseSnapshot(self)
+                result.set { try prune(.init(stateDirectory: directory, inUse: inUse, maxAgeDays: days, dryRun: dryRun)) }
+            }, { continuation.resume() })
+        }
+        return try (result.value ?? .failure(CancellationError())).get()
+    }
+
+    /// Only a real prune takes the lock: a second instance's mirrors are invisible here.
+    nonisolated static func makeMirrorPrune(withLock lock: @escaping MirrorLock)
+        -> @Sendable (RebasedMirrorCleanup.Request) throws -> RebasedMirrorCleanup.Report {
+        { request in
+            if request.dryRun { return RebasedMirrorCleanup.prune(request) }
+            return try lock(request.stateDirectory.appendingPathComponent("rebased")) { RebasedMirrorCleanup.prune(request) }
+        }
+    }
+
+    typealias RefreshLock = @Sendable (URL, () -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure>) throws
+        -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure>
+
+    /// A refresh holds the state lock as a prune does, so another agterm instance's prune cannot delete the clone
+    /// mid-fetch. Held by another instance, the refresh fails.
+    nonisolated static func makeMirrorRefresh(
+        withLock lock: @escaping RefreshLock,
+        run: @escaping @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = {
+            RebasedMirrorRefresh.run($0, stateDirectory: $1)
+        }
+    ) -> @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> {
+        { mirror, directory in
+            do {
+                return try lock(directory.appendingPathComponent("rebased")) { run(mirror, directory) }
+            } catch {
+                return .failure(.init(message: error.localizedDescription))
+            }
+        }
+    }
+
+    nonisolated static func makeMirrorList() -> @Sendable (URL, Set<String>) -> [RebasedMirrorRecord] {
+        { RebasedMirrorCleanup.scan(stateDirectory: $0, inUse: $1, measure: true) }
     }
 
     // MARK: - Helpers
@@ -516,8 +679,9 @@ final class RebasedHost {
         store(session)?.session(withID: session)?.rebasedOverlay?.state = state
     }
 
+    // The prune compares and hashes this same form, so `/private/tmp` against `/tmp` cannot split them.
     static func canonical(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        RebasedMirrorCleanup.projectPath(URL(fileURLWithPath: path))
     }
 
     /// The nearest directory at or above `cwd` holding `.git`, or `cwd` itself outside a repository. Read from

@@ -20,7 +20,7 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
   `window`, `workspace`, `sidebar`, `theme`, `font`, `keymap`, `config`, `quick`, `dashboard`, `mode` and
   `session go|move|duplicate|park|resize` (no windows or UI); `surface zoom|cursor`, `session scratch` and
   `session lead` (no terminal surface); `session pairing`, `overlay-redirect`, `hooks`, `restore` and
-  `zmx prune|reset|attach` (a Mac feature); `session type --select`; `--html` pages.
+  `zmx prune|reset|attach` and `rebased mirror` (a Mac feature); `session type --select`; `--html` pages.
 - **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch
   close/move prints the affected session count, and `tree`/`window list` print a human listing. Use
   `--json` when you need to read ids or values back.
@@ -30,7 +30,7 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
   `zmx` (the daemon inventory), `remote` (another Mac's attachable sessions, for `zmx tree`),
   `affected` (things actually changed: sessions
   for a batch close/move, daemons killed for `zmx prune`), `tree` (the tree), `windows` (window list), `app` (the serving app's identity, for
-  `version`). The process exit code is non-zero when
+  `version`), `rebasedMirrors` (fork only, for `rebased mirror list|prune`). The process exit code is non-zero when
   `ok` is false.
 - **Options go after the subcommand**: `agtermctl session type "ls" --target active`, never before it.
 
@@ -860,6 +860,19 @@ error keeps those names for compatibility.
   (from their merge base) or `A` (`A..HEAD`); an empty side is `HEAD`, and a side starting with `-` or `.`
   is refused. When the session already shows Rebased for that repository, the range goes to it instead
   of being refused. A bad ref shows IntelliJ's error dialog, not a command error.
+- `rebased mirror list` (fork only) — every remote row's mirror on this Mac, one line each: host, source
+  (`host:path`), days since last opened, size, and the clone's directory, with `in use` before it when an
+  overlay shows the mirror or the IDE has opened it in this run. A mirror counts as opened whenever its
+  overlay is shown. JSON: `result.rebasedMirrors.mirrors[]` of `{host, source?, directory, lastOpened,
+  bytes?, inUse}`, `lastOpened` in epoch seconds. It does not wait for a running fetch.
+- `rebased mirror prune [--older-than DAYS] [--dry-run]` (fork only) — remove the mirrors last opened at
+  least DAYS days ago (1 or more), with the IDE's data for them; a mirror in use is always kept.
+  Without `--older-than` it uses `rebasedMirrorMaxAgeDays` from `settings.json` (14 by default) and is
+  refused when that is 0. `--dry-run` reports and removes nothing. It waits for a running fetch first,
+  minutes at worst. Prints `removed` or `would remove`, `kept: in use` or `kept: <error>` per mirror, or
+  `no mirrors older than N days`. JSON: `result.rebasedMirrors` with `removed[]` and `kept[]` (the same
+  nodes plus `ideData` and, for a failed removal, `error`), `dryRun`, and `olderThanDays`, the age used.
+  The IDE start runs the same prune by the setting.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no

@@ -267,8 +267,9 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
     three `HudTests` markdown bodies (the markdown fallback), `OverlayRedirectSshTests`' abandoned-directory
-    sweep (its fixture sets a creation date, which Linux cannot), and `SocketClientTests`' two
-    held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere).
+    sweep (its fixture sets a creation date, which Linux cannot), `SocketClientTests`' two
+    held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere), and the two
+    `RebasedMirrorCleanupTests` that spell a path through `/private` (a Darwin symlink).
 - Sockets on Linux: Glibc has no `SO_NOSIGPIPE`, so every write to the app's socket goes through
   `send(..., MSG_NOSIGNAL)` (`SocketClient.writeAll`, `StreamBridge.sendAll`). A plain `write` there kills
   the CLI with SIGPIPE when the app closes first.

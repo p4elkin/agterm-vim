@@ -112,6 +112,8 @@ enum HeadlessRequests {
         request(.zmxAttach, target: target) { $0.host = "h" },
         request(.browserClear),
         request(.browserLinks),
+        request(.rebasedMirrorList),
+        request(.rebasedMirrorPrune),
         request(.sessionRestart, target: target) { $0.pane = "left" },
 
         request(.sessionClose, target: target),

@@ -11,6 +11,19 @@ struct AppSettingsTests {
         #expect(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)).effectiveRebasedAppPath == "/Applications/Rebased.app")
     }
 
+    @Test func rebasedMirrorMaxAgeDaysRoundTrips() throws {
+        let settings = AppSettings(rebasedMirrorMaxAgeDays: 30)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.rebasedMirrorMaxAgeDays == 30)
+        #expect(decoded.effectiveRebasedMirrorMaxAgeDays == 30)
+    }
+
+    @Test(arguments: [("{}", 14), (#"{"rebasedMirrorMaxAgeDays":-3}"#, 14), (#"{"rebasedMirrorMaxAgeDays":0}"#, 0),
+                      (#"{"rebasedMirrorMaxAgeDays":1}"#, 1)])
+    func rebasedMirrorMaxAgeDaysDefaultsTo14AndKeepsZeroAsNever(_ json: String, _ days: Int) throws {
+        #expect(try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).effectiveRebasedMirrorMaxAgeDays == days)
+    }
+
     @Test func jsonRoundTrips() throws {
         let original = AppSettings(fontFamily: "SF Mono", fontSize: 14, theme: "Adwaita Dark")
         let data = try JSONEncoder().encode(original)

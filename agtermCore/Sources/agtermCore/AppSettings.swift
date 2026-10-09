@@ -385,8 +385,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The persisted half of `OverlayRedirectController` — unlike normal mode, this survives a restart.
     public var overlayRedirectEnabled: Bool?
     public var rebasedAppPath: String?
+    /// Days a Rebased mirror may go unused before the IDE start removes it; 0 = never. See `RebasedMirrorCleanup`.
+    public var rebasedMirrorMaxAgeDays: Int?
 
     public var effectiveRebasedAppPath: String { rebasedAppPath ?? "/Applications/Rebased.app" }
+    public var effectiveRebasedMirrorMaxAgeDays: Int {
+        guard let days = rebasedMirrorMaxAgeDays, days >= 0 else { return 14 }
+        return days
+    }
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -415,7 +421,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 autoHideSidebarInactiveWindows: Bool? = nil, flaggedViewLayout: String? = nil,
                 linkOpenMode: String? = nil,
                 htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil,
-                rebasedAppPath: String? = nil) {
+                rebasedAppPath: String? = nil, rebasedMirrorMaxAgeDays: Int? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -470,6 +476,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.welcomeShown = welcomeShown
         self.overlayRedirectEnabled = overlayRedirectEnabled
         self.rebasedAppPath = rebasedAppPath
+        self.rebasedMirrorMaxAgeDays = rebasedMirrorMaxAgeDays
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.

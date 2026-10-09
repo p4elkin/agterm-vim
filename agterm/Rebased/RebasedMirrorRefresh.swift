@@ -16,8 +16,9 @@ enum RebasedMirrorRefresh {
     static let fetchTimeout: TimeInterval = 300
     static let queryTimeout: TimeInterval = 30
 
-    static func run(_ mirror: RebasedMirror, stateDirectory: URL) -> Result<Copy, Failure> {
-        let query = execute(mirror.toplevelCommand, timeout: queryTimeout)
+    static func run(_ mirror: RebasedMirror, stateDirectory: URL,
+                    execute: (_ argv: [String], _ timeout: TimeInterval) -> Outcome = runProcess) -> Result<Copy, Failure> {
+        let query = execute(mirror.toplevelCommand, queryTimeout)
         guard query.status == 0, let top = RebasedMirror.toplevel(fromOutput: query.stdout) else {
             return .failure(Failure(message: "\(mirror.host) found no repository at \(mirror.path): \(query.reason)"))
         }
@@ -27,22 +28,28 @@ enum RebasedMirrorRefresh {
         } catch {
             return .failure(Failure(message: "cannot create \(directory.path): \(error.localizedDescription)"))
         }
+        // written before the fetch too, so a refresh that fails mid-way still counts as opening the mirror
+        func writeMarker() {
+            try? RebasedMirrorMarker(source: mirror.source(top: top), lastOpened: Date()).write(to: directory.deletingLastPathComponent())
+        }
+        writeMarker()
         for command in mirror.refreshCommands(top: top, directory: directory.path) {
-            let step = execute(command, timeout: fetchTimeout)
+            let step = execute(command, fetchTimeout)
             guard step.status == 0 else {
                 return .failure(Failure(message: "mirroring \(mirror.source(top: top)) failed: \(step.reason)"))
             }
         }
+        writeMarker()
         return .success(Copy(directory: directory.path, source: mirror.source(top: top)))
     }
 
-    private struct Outcome {
+    struct Outcome {
         let status: Int32
         let stdout: String
         let reason: String
     }
 
-    private static func execute(_ argv: [String], timeout: TimeInterval) -> Outcome {
+    private static func runProcess(_ argv: [String], timeout: TimeInterval) -> Outcome {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: argv[0])
         process.arguments = Array(argv.dropFirst())

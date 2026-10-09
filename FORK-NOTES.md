@@ -35,6 +35,7 @@ is the `.claude/rules` file that owns the design.
 - **Rebased in an overlay** — the IntelliJ-platform git client runs inside agterm and shows a session's
   repository in its overlay slot, docked to the window, and the changes of a commit range with `--diff`.
   A remote row's repository opens from an ssh-fetched mirror on the Mac.
+  Unused remote mirrors are removed after `rebasedMirrorMaxAgeDays`, also on demand (`rebased mirror prune`).
   `.claude/rules/rebased-overlay.md`.
 - **"+" creates on a remote host** — Settings ▸ Sessions names a host, and the "+" new-session controls
   create the session there through `zmx new HOST`, in the clicked workspace, dimmed while it runs.

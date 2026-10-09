@@ -505,11 +505,13 @@ final class ControlServer {
         }
     }
 
-    /// Commands whose dispatch awaits an ssh round trip. `zmx.attach` re-resolves the remote first, so it
-    /// carries the same wait; local `zmx.list` blocks too, but bounded, and stays inline to keep cache order.
+    /// Commands whose dispatch awaits an ssh round trip, walks the disk, or waits on the mirror queue.
+    /// `zmx.attach` re-resolves the remote first, so it carries the same wait; local `zmx.list` blocks too,
+    /// but bounded, and stays inline to keep cache order.
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
-    nonisolated private static func waitsOnNetwork(_ cmd: Command) -> Bool {
+    nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
         cmd == .zmxTree || cmd == .zmxAttach || cmd == .zmxNew || cmd == .sessionRestart
+            || cmd == .rebasedMirrorList || cmd == .rebasedMirrorPrune
     }
 
     /// Read bytes from `conn` up to (and excluding) the first newline. Returns nil on EOF-before-newline, a
@@ -609,7 +611,8 @@ final class ControlServer {
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version:
+                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version,
+                .rebasedMirrorList, .rebasedMirrorPrune:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)

@@ -5,13 +5,17 @@ import agtermCore
 
 final class FakeRebasedRuntime: RebasedRuntime, @unchecked Sendable {
     var startError: (any Error)?
+    var prepareError: (any Error)?
     var binds: [RebasedRuntimeError?] = [nil]
     var created = false
+    private(set) var prepares = 0
     private(set) var starts = 0
     private(set) var calls: [String] = []
 
     func prepare(appPath: String, stateDirectory: URL) throws -> RebasedLaunch {
-        RebasedLaunch(libjvm: "", options: [], mainClass: "")
+        prepares += 1
+        if let prepareError { throw prepareError }
+        return RebasedLaunch(libjvm: "", options: [], mainClass: "")
     }
 
     func launch(_ launch: RebasedLaunch) throws {
@@ -55,6 +59,7 @@ final class RebasedHostTests: XCTestCase {
     private var first: Session!
     private var second: Session!
     private var host: RebasedHost!
+    private var prunes: Recorder<RebasedMirrorCleanup.Request>!
     private var runtime: FakeRebasedRuntime!
     private var frames: FakeRebasedFrames!
     private var timers: [(delay: TimeInterval, work: @MainActor () -> Void)] = []
@@ -81,6 +86,18 @@ final class RebasedHostTests: XCTestCase {
         host.offMain = { work, done in
             work()
             done()
+        }
+        host.onMirrorQueue = { work, done in
+            work()
+            done()
+        }
+        host.stateDirectory = directory
+        let prunes = Recorder<RebasedMirrorCleanup.Request>()
+        self.prunes = prunes
+        host.mirrorPrune = { request in
+            prunes.append(request)
+            return RebasedMirrorCleanup.prune(.init(stateDirectory: request.stateDirectory, inUse: request.inUse,
+                                                    maxAgeDays: request.maxAgeDays, dryRun: true))
         }
         host.install()
         hostWindows[first.id] = window("host1")
@@ -199,7 +216,7 @@ final class RebasedHostTests: XCTestCase {
     func testARemoteRowFetchesThenOpensTheMirror() throws {
         let (remote, calls) = try remoteRow(refresh: .success(mirrored))
         var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
-        host.offMain = { work, done in pending.append((work, done)) }
+        host.onMirrorQueue = { work, done in pending.append((work, done)) }
         XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo/sub", sizePercent: nil, diff: range))
         XCTAssertEqual(remote.rebasedOverlay?.state, .fetching)
         XCTAssertEqual(remote.rebasedOverlay?.source, "p4linux:/home/s/repo/sub")
@@ -252,7 +269,7 @@ final class RebasedHostTests: XCTestCase {
     func testAnOverlayClosedWhileFetchingStaysClosed() throws {
         let (remote, _) = try remoteRow(refresh: .success(mirrored))
         var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
-        host.offMain = { work, done in pending.append((work, done)) }
+        host.onMirrorQueue = { work, done in pending.append((work, done)) }
         XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
         store.closeOverlay(remote.id)
         let (work, done) = try XCTUnwrap(pending.first)
@@ -261,6 +278,354 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertNil(remote.rebasedOverlay)
         XCTAssertEqual(runtime.starts, 0)
         XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+    }
+
+    // MARK: Mirror queue
+
+    private typealias Job = (work: @Sendable () -> Void, done: @MainActor @Sendable () -> Void)
+
+    private func capturedJobs() -> () -> [Job] {
+        let jobs = Recorder<Job>()
+        host.onMirrorQueue = { work, done in jobs.append((work, done)) }
+        return { jobs.items }
+    }
+
+    @discardableResult
+    private func seedStaleMirror() throws -> URL {
+        let hash = directory.appendingPathComponent("rebased/mirrors/p4linux/0a1b2c3d", isDirectory: true)
+        let clone = hash.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: clone.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        let old = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 - 30 * 86_400).rounded(.down))
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: hash.path)
+        return clone
+    }
+
+    private func offQueue<T: Sendable>(_ work: @escaping @Sendable () -> T) async throws -> T {
+        let result = Recorder<T>()
+        let finished = expectation(description: "ran off the main queue")
+        let body: @Sendable () -> Void = {
+            result.append(work())
+            finished.fulfill()
+        }
+        DispatchQueue.global().async(execute: body)
+        await fulfillment(of: [finished], timeout: 10)
+        return try XCTUnwrap(result.items.first)
+    }
+
+    func testTheIDEStartPrunesAfterPrepareAndBeforeLaunch() {
+        host.mirrorMaxAgeDays = { 14 }
+        let runtime = runtime!
+        let seen = Recorder<String>()
+        let record = host.mirrorPrune
+        host.mirrorPrune = { request in
+            seen.append("prepares \(runtime.prepares) starts \(runtime.starts)")
+            return try record(request)
+        }
+        open(first)
+        XCTAssertEqual(seen.items, ["prepares 1 starts 0"])
+        XCTAssertEqual(runtime.starts, 1)
+        let request = prunes.items.first
+        XCTAssertEqual(request?.inUse, [RebasedHost.canonical(project)])
+        XCTAssertEqual(request?.maxAgeDays, 14)
+        XCTAssertEqual(request?.dryRun, false)
+        XCTAssertEqual(request?.stateDirectory, directory)
+    }
+
+    func testTheStartDeadlineIsArmedAfterThePrune() throws {
+        host.mirrorMaxAgeDays = { 14 }
+        let jobs = capturedJobs()
+        open(first)
+        XCTAssertEqual(runtime.prepares, 1)
+        XCTAssertTrue(timers.isEmpty)
+        XCTAssertEqual(runtime.starts, 0)
+        let job = try XCTUnwrap(jobs().first)
+        job.work()
+        XCTAssertTrue(timers.isEmpty)
+        job.done()
+        XCTAssertEqual(timers.map(\.delay), [RebasedHost.readyDeadline])
+        XCTAssertEqual(runtime.starts, 1)
+    }
+
+    func testAFailedPrepareDoesNotPrune() {
+        host.mirrorMaxAgeDays = { 14 }
+        runtime.prepareError = RebasedRuntimeError.failed(RebasedStateLock.message)
+        open(first)
+        XCTAssertEqual(state(first), .failed(RebasedStateLock.message))
+        XCTAssertTrue(prunes.items.isEmpty)
+        XCTAssertEqual(runtime.starts, 0)
+    }
+
+    func testAZeroMaxAgeSkipsTheStartPruneAndLaunches() {
+        open(first)
+        XCTAssertTrue(prunes.items.isEmpty)
+        XCTAssertEqual(runtime.starts, 1)
+        XCTAssertEqual(timers.map(\.delay), [RebasedHost.readyDeadline])
+    }
+
+    func testTheStartPruneIsSkippedWhileAnotherRowFetches() throws {
+        host.mirrorMaxAgeDays = { 14 }
+        let (remote, calls) = try remoteRow(refresh: .success(mirrored))
+        let jobs = capturedJobs()
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        open(first)
+        XCTAssertEqual(jobs().count, 1)
+        try XCTUnwrap(jobs().first).work()
+        XCTAssertEqual(calls.paths, ["/home/s/repo"])
+        XCTAssertTrue(prunes.items.isEmpty)
+        XCTAssertEqual(runtime.starts, 1)
+    }
+
+    func testARefreshAndAPruneRunOneAfterTheOther() throws {
+        host.mirrorMaxAgeDays = { 14 }
+        let events = Recorder<String>()
+        let (remote, _) = try remoteRow(refresh: .success(mirrored))
+        host.mirrorRefresh = { [mirrored] _, _ in
+            events.append("refresh")
+            return .success(mirrored)
+        }
+        let record = host.mirrorPrune
+        host.mirrorPrune = { request in
+            events.append("prune")
+            return try record(request)
+        }
+        host.offMain = { work, done in
+            events.append("offMain start")
+            work()
+            events.append("offMain end")
+            done()
+        }
+        let jobs = capturedJobs()
+        open(first)
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        XCTAssertEqual(jobs().count, 2)
+        XCTAssertEqual(events.items, ["offMain start", "offMain end"])
+        for job in jobs() {
+            job.work()
+            job.done()
+        }
+        XCTAssertEqual(events.items, ["offMain start", "offMain end", "prune", "offMain start", "offMain end", "refresh"])
+    }
+
+    private func showFrame(of session: Session, project: String) {
+        host.setSlotVisible(true, session: session.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+    }
+
+    private func reshow(_ session: Session) {
+        host.setSlotVisible(false, session: session.id)
+        host.setSlotVisible(true, session: session.id)
+    }
+
+    func testShowingAMirrorOverlayTouchesItsMarkerAtMostHourly() throws {
+        let hash = directory.appendingPathComponent("rebased/mirrors/p4linux/0a1b2c3d", isDirectory: true)
+        let clone = hash.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: clone, withIntermediateDirectories: true)
+        let (remote, _) = try remoteRow(refresh: .success(.init(directory: clone.path, source: "p4linux:/home/s/repo")))
+        var now = Date(timeIntervalSince1970: 1_791_000_000)
+        host.clock = { now }
+        let jobs = capturedJobs()
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        let refresh = try XCTUnwrap(jobs().first)
+        refresh.work()
+        refresh.done()
+        showFrame(of: remote, project: clone.path)
+        XCTAssertTrue(host.isShown(in: remote.id))
+        XCTAssertEqual(jobs().count, 2)
+        try XCTUnwrap(jobs().dropFirst().first).work()
+        XCTAssertEqual(RebasedMirrorMarker.read(from: hash), RebasedMirrorMarker(source: "p4linux:/home/s/repo", lastOpened: now))
+        now += 59 * 60
+        reshow(remote)
+        XCTAssertEqual(jobs().count, 2)
+        now += 2 * 60
+        reshow(remote)
+        XCTAssertEqual(jobs().count, 3)
+        try XCTUnwrap(jobs().dropFirst(2).first).work()
+        XCTAssertEqual(RebasedMirrorMarker.read(from: hash)?.lastOpened, now)
+    }
+
+    func testARemoteRowOutsideTheMirrorsDirectoryNeverTouchesAMarker() throws {
+        let (remote, _) = try remoteRow(refresh: .success(mirrored))
+        let jobs = capturedJobs()
+        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        let refresh = try XCTUnwrap(jobs().first)
+        refresh.work()
+        refresh.done()
+        XCTAssertNotNil(remote.rebasedOverlay?.source)
+        showFrame(of: remote, project: project)
+        XCTAssertTrue(host.isShown(in: remote.id))
+        XCTAssertEqual(jobs().count, 1)
+    }
+
+    func testALocalOverlayNeverTouchesAMarker() {
+        let jobs = capturedJobs()
+        startAndShow(first)
+        XCTAssertTrue(host.isShown(in: first.id))
+        XCTAssertTrue(jobs().isEmpty)
+    }
+
+    func testTheDefaultMirrorQueueRunsWorkOffMainAndDoneOnMainOneAtATime() async {
+        let queue = RebasedHost()
+        let events = Recorder<String>()
+        let threads = Recorder<String>()
+        let firstDone = expectation(description: "first done")
+        let secondDone = expectation(description: "second done")
+        queue.onMirrorQueue({
+            threads.append("work 1 main \(Thread.isMainThread)")
+            events.append("1 start")
+            usleep(100_000)
+            events.append("1 end")
+        }, {
+            threads.append("done 1 main \(Thread.isMainThread)")
+            firstDone.fulfill()
+        })
+        queue.onMirrorQueue({
+            threads.append("work 2 main \(Thread.isMainThread)")
+            events.append("2 start")
+        }, {
+            threads.append("done 2 main \(Thread.isMainThread)")
+            secondDone.fulfill()
+        })
+        await fulfillment(of: [firstDone, secondDone], timeout: 10)
+        XCTAssertEqual(events.items, ["1 start", "1 end", "2 start"])
+        XCTAssertEqual(Set(threads.items), ["work 1 main false", "work 2 main false", "done 1 main true", "done 2 main true"])
+    }
+
+    func testAnUnconfiguredHostNeverPrunes() async throws {
+        let clone = try seedStaleMirror()
+        let unconfigured = RebasedHost()
+        unconfigured.stateDirectory = directory
+        let report = try await unconfigured.pruneMirrors(olderThanDays: 1, dryRun: false)
+        XCTAssertTrue(report.removed.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: clone.path))
+        let listed = await unconfigured.listMirrors()
+        XCTAssertTrue(listed.isEmpty)
+    }
+
+    func testAFrameOpenedProjectWithNoOverlayIsInUse() {
+        startAndShow(first)
+        store.closeOverlay(first.id)
+        host.handle(event: "frameClosed", payload: project)
+        XCTAssertEqual(host.mirrorsInUse, [RebasedHost.canonical(project)])
+    }
+
+    private func localMirrorClone() throws -> String {
+        let clone = directory.appendingPathComponent("rebased/mirrors/p4linux/40eee01ce47c7996/repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: clone.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        return clone.path
+    }
+
+    func testALocalOpenOfAMirrorWaitsForTheMirrorQueueAndCountsAsInUse() throws {
+        let clone = try localMirrorClone()
+        var jobs: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.onMirrorQueue = { work, done in jobs.append((work, done)) }
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: clone, sizePercent: nil))
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(runtime.prepares, 0)
+        XCTAssertTrue(host.mirrorsInUse.contains(RebasedHost.canonical(clone)))
+
+        jobs[0].0()
+        jobs[0].1()
+        XCTAssertEqual(runtime.prepares, 1)
+    }
+
+    func testALocalOpenOfAMirrorAPruneRemovedFails() throws {
+        let clone = try localMirrorClone()
+        var jobs: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.onMirrorQueue = { work, done in jobs.append((work, done)) }
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: clone, sizePercent: nil))
+        try FileManager.default.removeItem(atPath: clone)
+
+        jobs[0].0()
+        jobs[0].1()
+        XCTAssertEqual(runtime.prepares, 0)
+        XCTAssertEqual(state(first), .failed("Rebased mirror \(clone) was removed by a prune"))
+        XCTAssertFalse(host.mirrorsInUse.contains(RebasedHost.canonical(clone)))
+    }
+
+    func testADeferredMirrorOpenLeavesTheSessionsNextOverlayAlone() throws {
+        let clone = try localMirrorClone()
+        var jobs: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.onMirrorQueue = { work, done in jobs.append((work, done)) }
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: clone, sizePercent: nil))
+        store.closeOverlay(first.id)
+        XCTAssertFalse(host.mirrorsInUse.contains(RebasedHost.canonical(clone)))
+        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil))
+        try FileManager.default.removeItem(atPath: clone)
+
+        jobs[0].0()
+        jobs[0].1()
+        XCTAssertEqual(runtime.prepares, 1)
+        XCTAssertNotEqual(state(first), .failed("Rebased mirror \(clone) was removed by a prune"))
+    }
+
+    func testTheMirrorRefreshHoldsTheStateLock() {
+        let directory = directory!
+        let mirror = RebasedMirror(host: "p4linux", path: "/home/s/repo")!
+        let copy = RebasedMirrorRefresh.Copy(directory: "/tmp", source: "p4linux:/home/s/repo")
+        let runs = Recorder<String>()
+        let run: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = { _, _ in
+            runs.append("run")
+            return .success(copy)
+        }
+        let locks = Recorder<String>()
+        let held = RebasedHost.makeMirrorRefresh(withLock: { url, body in
+            locks.append(url.path)
+            return body()
+        }, run: run)
+        XCTAssertEqual(held(mirror, directory), .success(copy))
+        XCTAssertEqual(locks.items, [directory.appendingPathComponent("rebased").path])
+
+        let refused = RebasedHost.makeMirrorRefresh(withLock: { _, _ in throw RebasedRuntimeError.failed(RebasedStateLock.message) },
+                                                     run: run)
+        XCTAssertEqual(refused(mirror, directory), .failure(.init(message: RebasedStateLock.message)))
+        XCTAssertEqual(runs.items, ["run"])
+    }
+
+    func testTheMirrorPruneFactoryLocksOnlyARealPrune() async throws {
+        let clone = try seedStaleMirror()
+        let directory = try XCTUnwrap(directory)
+        let locks = Recorder<String>()
+        let recording: RebasedHost.MirrorLock = { url, body in
+            locks.append(url.path)
+            return try body()
+        }
+        let refusing: RebasedHost.MirrorLock = { _, _ in throw RebasedRuntimeError.failed(RebasedStateLock.message) }
+        let request: @Sendable (Bool) -> RebasedMirrorCleanup.Request = {
+            .init(stateDirectory: directory, inUse: [], maxAgeDays: 1, dryRun: $0)
+        }
+
+        let dryRun = RebasedHost.makeMirrorPrune(withLock: recording)
+        let dry = try await offQueue { Result { try dryRun(request(true)) } }.get()
+        XCTAssertEqual(dry.removed.count, 1)
+        XCTAssertTrue(locks.items.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: clone.path))
+
+        let refused = RebasedHost.makeMirrorPrune(withLock: refusing)
+        let failure = try await offQueue { Result { try refused(request(false)) } }
+        XCTAssertThrowsError(try failure.get()) { error in
+            XCTAssertEqual(error as? RebasedRuntimeError, .failed(RebasedStateLock.message))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: clone.path))
+
+        let real = RebasedHost.makeMirrorPrune(withLock: recording)
+        let pruned = try await offQueue { Result { try real(request(false)) } }.get()
+        XCTAssertEqual(pruned.removed.count, 1)
+        XCTAssertEqual(locks.items, [directory.appendingPathComponent("rebased").path])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: clone.path))
+    }
+
+    func testTheMirrorListFactoryMeasuresAndMarksInUse() async throws {
+        let clone = try seedStaleMirror()
+        let directory = try XCTUnwrap(directory)
+        let list = RebasedHost.makeMirrorList()
+        let held = try await offQueue { list(directory, [RebasedMirrorCleanup.projectPath(clone)]) }
+        XCTAssertEqual(held.count, 1)
+        XCTAssertNotNil(held.first?.bytes)
+        XCTAssertEqual(held.first?.inUse, true)
+        let free = try await offQueue { list(directory, []) }
+        XCTAssertEqual(free.first?.inUse, false)
     }
 
     func testFailedStartFailsTheOverlayAndARetryStartsAgain() {
@@ -375,6 +740,7 @@ final class RebasedHostTests: XCTestCase {
     }
 
     func testTheDeadlineRunsWhileLaunchIsStillPendingAndALateLaunchServesTheRetry() {
+        host.mirrorMaxAgeDays = { 14 }
         var pending: [(work: @Sendable () -> Void, done: @MainActor @Sendable () -> Void)] = []
         host.offMain = { work, done in pending.append((work, done)) }
         func runNext() {
@@ -656,6 +1022,15 @@ final class RebasedHostTests: XCTestCase {
         host.setSlotVisible(true, session: first.id)
         XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
+}
+
+final class Recorder<Item>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [Item] = []
+
+    func append(_ item: Item) { lock.withLock { stored.append(item) } }
+
+    var items: [Item] { lock.withLock { stored } }
 }
 
 final class MirrorCalls: @unchecked Sendable {

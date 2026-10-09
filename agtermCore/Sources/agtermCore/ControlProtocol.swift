@@ -136,6 +136,8 @@ public enum Command: String, Codable, Sendable {
     case zmxAttach = "zmx.attach"
     case zmxPresent = "zmx.present"
     case zmxScreen = "zmx.screen"
+    case rebasedMirrorList = "rebased.mirror.list"
+    case rebasedMirrorPrune = "rebased.mirror.prune"
     /// A viewer's helper claiming a remote overlay job; after an ok reply the connection carries job frames.
     case sessionOverlayJobRun = "session.overlay.job.run"
     /// UI-TEST-ONLY: forces the app-level appearance (`light`|`dark` via `args.name`) so an XCUITest can
@@ -458,6 +460,10 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var page: String?
     /// attach is the origin session `zmx.attach --beside` asks the presenting Mac to attach right after `target` (fork only).
     public var attach: String?
+    /// olderThanDays is the age `rebased.mirror.prune --older-than` removes from; nil leaves it to the setting.
+    public var olderThanDays: Int?
+    /// dryRun makes `rebased.mirror.prune` report what it would remove and remove nothing.
+    public var dryRun: Bool?
 
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
@@ -491,7 +497,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil,
+                olderThanDays: Int? = nil, dryRun: Bool? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -585,6 +592,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.browse = browse
         self.rebased = rebased
         self.diff = diff
+        self.olderThanDays = olderThanDays
+        self.dryRun = dryRun
     }
 }
 
@@ -687,6 +696,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var pageOutcome: ControlHtmlPageOutcome?
     /// restart is what `session.restart` replaced: the pane's stable id and its shell before and after.
     public var restart: ControlRestartReceipt?
+    /// The mirrors `rebased.mirror.list` found or `rebased.mirror.prune` removed and kept (fork only).
+    public var rebasedMirrors: ControlRebasedMirrors?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -703,8 +714,9 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
-                restart: ControlRestartReceipt? = nil) {
+                restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil) {
         self.overlayRedirect = overlayRedirect
+        self.rebasedMirrors = rebasedMirrors
         self.bookmarks = bookmarks
         self.restart = restart
         self.width = width

@@ -39,6 +39,11 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             work()
             done()
         }
+        host.onMirrorQueue = { work, done in
+            work()
+            done()
+        }
+        host.stateDirectory = stateDir
         host.install()
         RebasedHost.shared = host
     }

@@ -77,6 +77,8 @@ class MockControlActionsBase {
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
         case zmxPresent(session: String)
+        case rebasedMirrorList
+        case rebasedMirrorPrune(olderThanDays: Int?, dryRun: Bool)
         case claimOverlayJob(String)
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
@@ -919,6 +921,16 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
                              transport: RemoteTransport) async -> ControlResponse {
         calls.append(.zmxAttach(host: host, session: session, window: window, transport: transport))
         return nextRemoteAttachResponse
+    }
+
+    func listRebasedMirrors() async -> ControlResponse {
+        calls.append(.rebasedMirrorList)
+        return ControlResponse(ok: true)
+    }
+
+    func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse {
+        calls.append(.rebasedMirrorPrune(olderThanDays: olderThanDays, dryRun: dryRun))
+        return ControlResponse(ok: true)
     }
 }
 

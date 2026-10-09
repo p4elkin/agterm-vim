@@ -177,11 +177,14 @@ renumbering. Do not reintroduce a count anywhere.
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
+- `rebased.mirror.list`, `.prune` (fork only, see "Rebased mirrors" below and [[rebased-overlay]])
 
 `session.pairing`, `overlay-redirect.toggle`, `session.mark` and the `session.bookmark` family exist
 only on this fork and are listed here alone — see "Left out on purpose" in [[overlay-redirect]] for why
-the bundled skill, `site/commands.html` and `README.md` leave them out. The synchronization contract
-below applies to upstream commands.
+the bundled skill, `site/commands.html` and `README.md` leave them out.
+The `rebased.mirror` family is the exception: it is in the bundled skill, as `--rebased` already is, and
+stays out of `site/commands.html` and `README.md`.
+The synchronization contract below applies to upstream commands.
 
 `terminfo install` is a CLI-only command with no protocol counterpart, the one exemption from the
 protocol/dispatcher contract: it runs `infocmp` and `ssh` locally and never opens the socket, so there is
@@ -1936,6 +1939,19 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   shares the single overlay slot, so it may be refused, and that never fails the add.
 - Read back `turn` (the latest mark's number, ephemeral) and `bookmarks` (the count, persisted) on the
   session node, both omitted when zero/unset.
+
+## Rebased mirrors (fork only)
+
+- `rebased.mirror.list` takes nothing. `rebased.mirror.prune` takes `args.olderThanDays` and `args.dryRun`;
+  an age below 1 is refused by the CLI and the dispatcher alike.
+  Without one the server uses `effectiveRebasedMirrorMaxAgeDays`, and refuses when that is 0 rather than
+  falling back to 14.
+- Both answer `result.rebasedMirrors`, a `ControlRebasedMirrors`: list fills `mirrors`, prune fills `removed`,
+  `kept`, `dryRun` and `olderThanDays`, the age it used. `RebasedMirrorCleanup.swift` owns the mapping.
+- Both are in `ControlServer.waitsOnNetwork`, so they never hold the accept thread: list walks the disk, and
+  prune waits behind any job on the mirror queue, a fetch included ([[rebased-overlay]]).
+- Read-back is `rebased.mirror.list`, a deliberate exemption from the tree rule: a `tree` read must not walk
+  the disk. No event.
 
 ## Documentation mirrors
 
