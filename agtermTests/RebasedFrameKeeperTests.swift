@@ -37,6 +37,25 @@ final class RebasedFrameKeeperTests: XCTestCase {
         due.forEach { $0() }
     }
 
+    func testEachFrameUsesItsOwnSlotAndRefitsAfterTheHostMoves() {
+        let sibling = window(NSRect(x: 0, y: 0, width: 100, height: 100), style: [.titled])
+        defer { keeper.detach(sibling); sibling.orderOut(nil) }
+        var rectangles = [ObjectIdentifier(frame!): NSRect(x: 0, y: 0, width: 400, height: 300),
+                          ObjectIdentifier(sibling): NSRect(x: 400, y: 0, width: 400, height: 300)]
+        keeper.slotRect = { [unowned self] target in host.convertToScreen(rectangles[ObjectIdentifier(target)]!) }
+        keeper.adopt(frame, in: host)
+        keeper.adopt(sibling, in: host)
+        XCTAssertEqual(frame.frame, host.convertToScreen(rectangles[ObjectIdentifier(frame)]!))
+        XCTAssertEqual(sibling.frame, host.convertToScreen(rectangles[ObjectIdentifier(sibling)]!))
+        rectangles[ObjectIdentifier(frame)] = NSRect(x: 0, y: 0, width: 350, height: 300)
+        keeper.refit(host: host)
+        XCTAssertEqual(frame.frame.width, 350)
+        host.setFrameOrigin(NSPoint(x: 300, y: 300))
+        NotificationCenter.default.post(name: NSWindow.didMoveNotification, object: host)
+        XCTAssertEqual(frame.frame, host.convertToScreen(rectangles[ObjectIdentifier(frame)]!))
+        XCTAssertEqual(sibling.frame, host.convertToScreen(rectangles[ObjectIdentifier(sibling)]!))
+    }
+
     func testAdoptAttachesFitsAndStaysInvisibleUntilQuiet() {
         keeper.adopt(frame, in: host)
         XCTAssertTrue(frame.parent === host)

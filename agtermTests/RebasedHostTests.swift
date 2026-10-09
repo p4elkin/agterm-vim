@@ -106,6 +106,11 @@ final class RebasedHostTests: XCTestCase {
         host.open(session: session.id)
     }
 
+    private func refusal(_ result: Result<RebasedOpened, RebasedOpenRefusal>) -> String? {
+        if case .failure(let failure) = result { return failure.message }
+        return nil
+    }
+
     private func state(_ session: Session) -> RebasedOverlay.State? { session.rebasedOverlay?.state }
 
     private func fire(_ delay: TimeInterval) {
@@ -119,6 +124,88 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "ready", payload: "")
         _ = window("frame", number: 7)
         host.handle(event: "frameOpened", payload: "\(project)\t7")
+    }
+
+    func testAPaneHolderReceivesStateAndFrameCloseReleasesThatPane() throws {
+        store.toggleSplit(first.id)
+        let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, pane: .left).get()
+        XCTAssertEqual(first.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertNil(first.rebasedOverlay)
+        host.setSlotVisible(true, session: first.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertEqual(first.leftOverlay?.rebased?.state, .shown)
+        XCTAssertTrue(host.isShown(in: first.id))
+        XCTAssertEqual(frames.log.last, "adopt frame in host1")
+        host.handle(event: "frameClosed", payload: project)
+        XCTAssertNil(first.leftOverlay)
+        XCTAssertNotNil(store.session(withID: first.id))
+    }
+
+    func testRemotePanePlaceholderKeepsItsQueuedViewAcrossTheFetch() throws {
+        let (remote, _) = try remoteRow(refresh: .success(mirrored))
+        store.toggleSplit(remote.id)
+        var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        host.offMain = { work, done in pending.append((work, done)) }
+        let opened = try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, pane: .left).get()
+        let view = RebasedViewRequest(view: .file(path: "/repo/a", line: 1))
+        XCTAssertTrue(remote.updateRebasedOverlay(opened.overlay) { $0.view = view })
+        let (work, done) = try XCTUnwrap(pending.first)
+        work()
+        done()
+        XCTAssertNil(remote.rebasedOverlay)
+        XCTAssertEqual(remote.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertEqual(remote.leftOverlay?.rebased?.project, mirrored.directory)
+        XCTAssertEqual(remote.leftOverlay?.rebased?.source, mirrored.source)
+        XCTAssertEqual(remote.leftOverlay?.rebased?.view, view)
+        XCTAssertEqual(remote.leftOverlay?.rebased?.state, .starting)
+    }
+
+    func testExplicitProjectBypassesGitDiscoveryAndReuseChecksThePane() throws {
+        let nested = directory.appendingPathComponent("repo/sub")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("repo/.git"), withIntermediateDirectories: true)
+        store.toggleSplit(first.id)
+        let opened = try host.openOverlay(in: store, session: first.id, cwd: "/elsewhere", sizePercent: nil,
+                                          pane: .left, project: nested.path).get()
+        XCTAssertEqual(first.leftOverlay?.rebased?.project, RebasedHost.canonical(nested.path))
+        let implicitPane = try host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, project: nested.path).get()
+        let samePane = try host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, pane: .left, project: nested.path).get()
+        XCTAssertEqual(implicitPane.overlay, opened.overlay)
+        XCTAssertEqual(samePane.overlay, opened.overlay)
+        XCTAssertNotNil(refusal(host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, pane: .right, project: nested.path)))
+        XCTAssertEqual(first.leftOverlay?.rebased?.id, opened.overlay)
+    }
+
+    func testTheFrameFitsItsCurrentHolderAmongTwoSlotsOnOneWindow() throws {
+        let keeper = RebasedFrameKeeper()
+        keeper.after = { _, _ in }
+        host.frames = keeper
+        host.install()
+        let parent = try XCTUnwrap(hostWindows[first.id])
+        hostWindows[second.id] = parent
+        store.toggleSplit(first.id)
+        store.toggleSplit(second.id)
+        let firstID = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, pane: .left).get().overlay
+        let left = NSRect(x: 100, y: 100, width: 400, height: 300)
+        host.setSlot(left, overlay: firstID, in: parent)
+        host.setSlotVisible(true, session: first.id)
+        host.handle(event: "ready", payload: "")
+        let frame = window("frame", number: 7)
+        defer { keeper.detach(frame); frame.orderOut(nil) }
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        XCTAssertEqual(frame.frame, left)
+        let secondID = try host.openOverlay(in: store, session: second.id, cwd: project, sizePercent: nil, pane: .right).get().overlay
+        let right = NSRect(x: 500, y: 100, width: 350, height: 300)
+        host.setSlot(right, overlay: secondID, in: parent)
+        host.setSlotVisible(true, session: second.id)
+        XCTAssertEqual(frame.frame, right)
+        let resized = NSRect(x: 450, y: 100, width: 400, height: 300)
+        host.setSlot(resized, overlay: secondID, in: parent)
+        XCTAssertEqual(frame.frame, resized)
+        host.setSlotVisible(false, session: second.id)
+        XCTAssertEqual(frame.frame, left)
     }
 
     func testOpenStartsBindsOpensAndShowsTheFrame() {
@@ -158,7 +245,7 @@ final class RebasedHostTests: XCTestCase {
 
     func testADiffOnTheOpenOverlayIsSentAtOnceAndRecorded() {
         startAndShow(first)
-        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range).get())
         XCTAssertEqual(runtime.calls.last, diffCall)
         XCTAssertEqual(first.rebasedOverlay?.diff, range)
         XCTAssertEqual(state(first), .shown)
@@ -167,7 +254,7 @@ final class RebasedHostTests: XCTestCase {
     func testADiffWaitsWhileTheSlotIsHidden() {
         startAndShow(first)
         host.setSlotVisible(false, session: first.id)
-        XCTAssertNil(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, diff: range).get())
         XCTAssertFalse(runtime.calls.contains(diffCall))
         host.setSlotVisible(true, session: first.id)
         XCTAssertEqual(runtime.calls.last, diffCall)
@@ -175,7 +262,7 @@ final class RebasedHostTests: XCTestCase {
 
     func testADiffOnAnotherProjectIsRefusedLikeAnyOpen() {
         startAndShow(first)
-        XCTAssertEqual(host.openOverlay(in: store, session: first.id, cwd: otherProject, sizePercent: nil, diff: range),
+        XCTAssertEqual(refusal(host.openOverlay(in: store, session: first.id, cwd: otherProject, sizePercent: nil, diff: range)),
                        RebasedOverlayOpenFailure.alreadyOpen.message)
         XCTAssertNil(first.rebasedOverlay?.diff)
     }
@@ -200,10 +287,10 @@ final class RebasedHostTests: XCTestCase {
         let (remote, calls) = try remoteRow(refresh: .success(mirrored))
         var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
         host.offMain = { work, done in pending.append((work, done)) }
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo/sub", sizePercent: nil, diff: range))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo/sub", sizePercent: nil, diff: range).get())
         XCTAssertEqual(remote.rebasedOverlay?.state, .fetching)
         XCTAssertEqual(remote.rebasedOverlay?.source, "p4linux:/home/s/repo/sub")
-        XCTAssertEqual(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range),
+        XCTAssertEqual(refusal(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range)),
                        "Rebased is still fetching from p4linux")
         let id = remote.rebasedOverlay?.id
         let (work, done) = try XCTUnwrap(pending.first)
@@ -216,35 +303,35 @@ final class RebasedHostTests: XCTestCase {
 
     func testAFailedFetchFailsTheOverlayWithoutStartingTheIDE() throws {
         let (remote, _) = try remoteRow(refresh: .failure(.init(message: "p4linux found no repository at /home/s: exit 128")))
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s", sizePercent: nil))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s", sizePercent: nil).get())
         XCTAssertEqual(remote.rebasedOverlay?.state, .failed("p4linux found no repository at /home/s: exit 128"))
         XCTAssertEqual(runtime.starts, 0)
     }
 
     func testARangeOnAnOpenRemoteOverlayRefreshesTheMirrorFirst() throws {
         let (remote, calls) = try remoteRow(refresh: .success(mirrored))
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil).get())
         host.setSlotVisible(true, session: remote.id)
         host.handle(event: "ready", payload: "")
         _ = window("frame", number: 7)
         host.handle(event: "frameOpened", payload: "\(project)\t7")
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range).get())
         XCTAssertEqual(calls.paths, ["/home/s/repo", "/home/s/repo"])
         XCTAssertEqual(runtime.calls.last, diffCall)
-        XCTAssertEqual(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/other", sizePercent: nil, diff: range),
+        XCTAssertEqual(refusal(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/other", sizePercent: nil, diff: range)),
                        RebasedOverlayOpenFailure.alreadyOpen.message)
         XCTAssertEqual(calls.paths.count, 2)
     }
 
     func testAFailedRefreshUnderAnOpenIDESendsNoRange() throws {
         let (remote, _) = try remoteRow(refresh: .success(mirrored))
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil).get())
         host.setSlotVisible(true, session: remote.id)
         host.handle(event: "ready", payload: "")
         _ = window("frame", number: 7)
         host.handle(event: "frameOpened", payload: "\(project)\t7")
         host.mirrorRefresh = { _, _ in .failure(.init(message: "offline")) }
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, diff: range).get())
         XCTAssertFalse(runtime.calls.contains(diffCall))
         XCTAssertEqual(remote.rebasedOverlay?.state, .shown)
     }
@@ -253,14 +340,14 @@ final class RebasedHostTests: XCTestCase {
         let (remote, _) = try remoteRow(refresh: .success(mirrored))
         var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
         host.offMain = { work, done in pending.append((work, done)) }
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil).get())
         store.closeOverlay(remote.id)
         let (work, done) = try XCTUnwrap(pending.first)
         work()
         done()
         XCTAssertNil(remote.rebasedOverlay)
         XCTAssertEqual(runtime.starts, 0)
-        XCTAssertNil(host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil).get())
     }
 
     func testFailedStartFailsTheOverlayAndARetryStartsAgain() {

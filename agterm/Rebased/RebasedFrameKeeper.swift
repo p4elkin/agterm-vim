@@ -17,7 +17,9 @@ final class RebasedFrameKeeper: RebasedFrames {
         var generation = 0
     }
 
-    var slotRect: (NSWindow) -> NSRect = { $0.convertToScreen($0.contentLayoutRect) }
+    var slotRect: (NSWindow) -> NSRect = { frame in
+        frame.parent.map { $0.convertToScreen($0.contentLayoutRect) } ?? frame.frame
+    }
     var after: (TimeInterval, @escaping @MainActor () -> Void) -> Void = { delay, work in
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
@@ -113,8 +115,8 @@ final class RebasedFrameKeeper: RebasedFrames {
     func isRevealed(_ frame: NSWindow) -> Bool { kept[ObjectIdentifier(frame)]?.revealed ?? false }
 
     private func fit(_ frame: NSWindow) {
-        guard let host = kept[ObjectIdentifier(frame)]?.host else { return }
-        let target = slotRect(host)
+        guard kept[ObjectIdentifier(frame)]?.host != nil else { return }
+        let target = slotRect(frame)
         guard frame.frame != target else { return }
         fitting = true
         frame.setFrame(target, display: true)
@@ -156,6 +158,12 @@ final class RebasedFrameKeeper: RebasedFrames {
         let center = NotificationCenter.default
         hostObservers[id] = [
             center.addObserver(forName: NSWindow.didResizeNotification, object: host, queue: nil) { [weak self, weak host] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let host else { return }
+                    self.refit(host: host)
+                }
+            },
+            center.addObserver(forName: NSWindow.didMoveNotification, object: host, queue: nil) { [weak self, weak host] _ in
                 MainActor.assumeIsolated {
                     guard let self, let host else { return }
                     self.refit(host: host)

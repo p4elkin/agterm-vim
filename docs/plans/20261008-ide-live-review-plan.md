@@ -634,7 +634,7 @@ Size: M. Driven by the host's session-keyed maps and the keeper's rect source.
 - Files: `agterm/Rebased/{RebasedHost,RebasedFrameKeeper}.swift`, `agterm/Rebased/AppActions+Rebased.swift`
   (session lookups), `agterm/Control/ControlServer+SessionActions.swift` (the `openOverlay` call site);
   tests `RebasedHostTests`, `RebasedFrameKeeperTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedFrameKeeperTests`: two holders on one window with different rects; the frame fits its current
     holder's rect, refits when that rect changes (split ratio), and follows a window move.
   - `RebasedHostTests` (fake runtime, fake frames): a left-pane holder adopts the frame with the pane's
@@ -646,12 +646,12 @@ Size: M. Driven by the host's session-keyed maps and the keeper's rect source.
   - `openOverlay(project:)` opens exactly that directory with no `.git` walk; a same-project open with no
     `--pane`, or the holder's own pane, reuses the holder; one naming the other pane is refused; the result
     carries the overlay id.
-- [ ] `RebasedHost.setSlot` keys rects by overlay id; `RebasedFrameKeeper.slotRect` asks for the current holder
+- [x] `RebasedHost.setSlot` keys rects by overlay id; `RebasedFrameKeeper.slotRect` asks for the current holder
   of a frame. `setState` and every other session lookup go through the overlay id and `updateRebasedOverlay`.
   That includes `mirrored`, which today calls `RebasedOverlay(project:diff:source:id:)` and from now on changes
   `project`, `source` and `state` in place, and `openRemote`'s `store.openRebasedOverlay` call, which takes
   `pane:`.
-- [ ] `RebasedHost.openOverlay` gains `pane:` and `project:`, the reuse rule, and returns
+- [x] `RebasedHost.openOverlay` gains `pane:` and `project:`, the reuse rule, and returns
   `Result<RebasedOpened, RebasedOpenRefusal>`; its callers (`ControlServer+SessionActions`,
   `AppActions+Rebased`) adapt without changing behaviour yet.
 

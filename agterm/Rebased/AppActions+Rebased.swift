@@ -7,9 +7,9 @@ extension AppActions {
     func toggleRebasedOverlay(session target: UUID? = nil) {
         guard let store = target.flatMap({ library.store(forSession: $0) }) ?? store,
               let session = target.flatMap({ store.session(withID: $0) }) ?? store.activeSession else { return }
-        if session.rebasedOverlayActive {
-            store.closeOverlay(session.id)
-        } else if RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil) != nil {
+        if let placement = session.rebasedPlacement {
+            store.closeRebasedOverlay(session.id, id: placement.overlay.id)
+        } else if case .failure = RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil) {
             NSSound.beep()
         }
     }
