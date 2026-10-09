@@ -9,7 +9,6 @@ import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer;
 import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain;
-import com.intellij.openapi.vcs.history.VcsDiffUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import git4idea.GitRevisionNumber;
 import git4idea.changes.GitChangeUtils;
@@ -41,22 +40,17 @@ final class RangeDiff {
         Bridge.writeSafe(() -> {
           if (Bridge.superseded(dir, request) || projectClosed(project, request)) return;
           try {
-            if (pane) {
-              List<ChangeDiffRequestChain.Producer> producers = new ArrayList<>();
-              for (Change change : changes) {
-                var producer = ChangeDiffRequestProducer.create(project, change);
-                if (producer != null) producers.add(producer);
-              }
-              if (producers.isEmpty()) throw new IllegalStateException("cannot show any changed file in the diff editor");
-              // A newer request can arrive while the producers are built; its own runnable opens after this one.
-              if (Bridge.superseded(dir, request)) return;
-              var file = new ChainDiffVirtualFile(new ChangeDiffRequestChain(producers, 0), title);
-              if (FileEditorManager.getInstance(project).openFile(file, true).length == 0) {
-                throw new IllegalStateException("diff editor did not open");
-              }
-            } else {
-              if (Bridge.superseded(dir, request)) return;
-              VcsDiffUtil.showChangesDialog(project, title, changes);
+            List<ChangeDiffRequestChain.Producer> producers = new ArrayList<>();
+            for (Change change : changes) {
+              var producer = ChangeDiffRequestProducer.create(project, change);
+              if (producer != null) producers.add(producer);
+            }
+            if (producers.isEmpty()) throw new IllegalStateException("cannot show any changed file in the diff editor");
+            // A newer request can arrive while the producers are built; its own runnable opens after this one.
+            if (Bridge.superseded(dir, request)) return;
+            var file = new ChainDiffVirtualFile(new ChangeDiffRequestChain(producers, 0), title);
+            if (FileEditorManager.getInstance(project).openFile(file, true).length == 0) {
+              throw new IllegalStateException("diff editor did not open");
             }
             Bridge.emit("viewOpened", request + "\t" + changes.size());
           } catch (RuntimeException e) {

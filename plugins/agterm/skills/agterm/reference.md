@@ -860,7 +860,7 @@ error keeps those names for compatibility.
   `--diff` accepts `A..B`, `A...B` from the merge base, or `A` for `A..HEAD`; omitted sides mean `HEAD`.
   `--working-tree` shows tracked working-copy changes and requires an omitted two-dot head or a merge-base range.
   `--file PATH[:LINE]` opens an editor at a positive 1-based line, or preserves normal editor positioning without a suffix.
-  File targets reject tabs and newlines. Pane diffs use editor tabs; session-wide diffs use a changes dialog.
+  File targets reject tabs and newlines. Diffs open as an editor tab, session-wide and in a pane.
   Empty diffs open nothing and report `opened`, detail `0`; pane git errors report `failed` without a dialog.
   Open answers `{id, overlay, request?}`; use `--json` and save both ids for readiness and safe rollback.
   `rebasedOverlay.view.state: opened` confirms the requested view, independently of the IDE's startup state.

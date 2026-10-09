@@ -47,8 +47,7 @@ extension RebasedHost {
         return request.id
     }
 
-    // A session-wide diff is a dialog of the frame: sent before the frame is in this slot, it comes up over
-    // another session.
+    // A view changes the project's one frame: sent before the frame is in this slot, it lands in another session.
     func sendView(overlay id: UUID) {
         guard let entry = entries[id], visible[entry.project] == id, !fetching.contains(entry.session),
               let held = overlay(entry), !held.hidden, let request = held.view, request.state == .queued,

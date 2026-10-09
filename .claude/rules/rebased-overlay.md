@@ -110,7 +110,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   runs git on a pooled thread.
   `GitChangeUtils.getDiffWithWorkingDir` supplies tracked working-copy changes; merge-base ranges
   resolve the base first.
-  Session holders use `VcsDiffUtil.showChangesDialog`; pane holders use a `ChainDiffVirtualFile` editor tab.
+  Session and pane holders both open a `ChainDiffVirtualFile` editor tab in the project frame.
   Empty results open nothing and report `viewOpened` with detail `0`.
   Git failures report `viewFailed`; only session holders also show an error dialog.
   `RangeDiff` keeps Git plugin classes out of Bridge's startup; the plugin compiles against
