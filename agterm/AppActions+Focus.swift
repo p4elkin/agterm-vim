@@ -240,6 +240,10 @@ extension AppActions {
         // the quick-terminal panel owns focus above EVERY window, not just this session's; its own hide
         // restores the session.
         if quickTerminal.holdsKey { return }
+        let pane: OverlayPane = wantSplit ? .right : .left
+        if session.paneRebasedOverlayActive(pane), let review = session.paneOverlay(pane)?.rebased,
+           RebasedHost.shared.focus(overlay: review.id) { return }
+        RebasedHost.shared.releaseKey(from: session.id)
         let pageMayCover = session.coverOverlayActive || session.paneOverlayIsHtml(wantSplit ? .right : .left)
         let pageCovers = pageMayCover && HtmlOverlayRegistry.shared.focusCover(of: session)
         if !pageCovers, let view = session.focusTarget(wantSplit: wantSplit) as? GhosttySurfaceView, let window = view.window {

@@ -29,7 +29,8 @@ public enum ForwardPolicy {
              .pickOpen, .pickResult, .pickCancel,
              .sessionFlag, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
-             .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
+             .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
+             .sessionRebasedShow, .sessionRebasedToggle:
             return .forwarded
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed
@@ -63,6 +64,8 @@ public enum ForwardPolicy {
         case .refused(let reason): return .refused(reason)
         case .routed:
             switch request.cmd {
+            case .sessionOverlayOpen where request.args?.rebased == true && request.args?.onClose != nil:
+                return .refused("--on-close works on a local row only")
             // the page is a file the Mac would read from its own disk
             case .sessionOverlayOpen where request.args?.html != nil:
                 return .refused("an --html page is a file on the origin; use --url")
@@ -71,6 +74,7 @@ public enum ForwardPolicy {
             case .sessionOverlayOpen: return request.args?.url == nil ? .job : .forwarded
             // the Mac would answer a program poll with its ssh helper's status
             case .sessionOverlayResult: return request.args?.page == nil ? .served : .forwarded
+            case .sessionOverlayClose where request.args?.overlay != nil: return .forwarded
             case .sessionOverlayClose, .sessionOverlayResize: return holdsJob ? .served : .forwarded
             // `--beside`: the Mac presenting the target row attaches the session after it; no Mac call from the origin
             case .zmxAttach: return request.args?.attach == nil ? .refused("a Mac feature") : .forwarded

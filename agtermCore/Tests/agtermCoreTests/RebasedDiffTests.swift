@@ -32,6 +32,6 @@ struct RebasedDiffTests {
         var overlay = RebasedOverlay(project: "/repo", state: .shown)
         #expect(overlay.controlNode.diff == nil)
         overlay.diff = RebasedDiff(spec: "main...HEAD")
-        #expect(overlay.controlNode == ControlRebasedOverlayNode(project: "/repo", state: "shown", diff: "main...HEAD"))
+        #expect(overlay.controlNode == ControlRebasedOverlayNode(project: "/repo", state: "shown", diff: "main...HEAD", hidden: false))
     }
 }

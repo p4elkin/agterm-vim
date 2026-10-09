@@ -3,6 +3,11 @@ import agtermCore
 import AgtermHeadlessKit
 
 struct HeadlessCatalogTests {
+    @Test(arguments: [Command.sessionRebasedShow, .sessionRebasedToggle])
+    func rebasedCommandsUseThePresentingMac(command: Command) {
+        #expect(HeadlessCatalog.support(for: command) == .forwarded)
+    }
+
     @Test(arguments: [
         "tree", "events.read", "version", "window.list", "zmx.new", "zmx.tree", "zmx.present", "zmx.list",
         "notify", "session.status", "session.context", "session.seen", "session.new", "session.mark",

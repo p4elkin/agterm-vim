@@ -70,12 +70,18 @@ public struct PaneOverlay: Equatable, Sendable {
     public var replica: OverlayReplica?
     /// html is the page this overlay shows instead of running `command`, which is then empty and never read.
     public var html: HtmlOverlay?
+    public var rebased: RebasedOverlay?
 
     public init(command: String, cwd: String? = nil, backgroundColor: String? = nil, wait: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.backgroundColor = backgroundColor
         self.wait = wait
+    }
+
+    public init(rebased: RebasedOverlay) {
+        self.init(command: "")
+        self.rebased = rebased
     }
 
     public init(html: HtmlOverlay, backgroundColor: String? = nil) {
@@ -554,7 +560,7 @@ public final class Session: Identifiable {
     /// fullOverlayActive says a program or page covers the whole session, with no size percent. It hides the
     /// panes and a shown scratch, since under window translucency anything left visible would bleed through.
     /// A HUD never counts, whatever its size.
-    public var fullOverlayActive: Bool { overlayActive && !hudActive && overlaySizePercent == nil }
+    public var fullOverlayActive: Bool { coverOverlayActive && overlaySizePercent == nil }
 
     /// The left pane's overlay, covering that pane only and leaving the sibling live; nil means none is up,
     /// so the slot itself IS the "active" signal. Observed, ephemeral, control-channel only.
@@ -773,7 +779,7 @@ public final class Session: Identifiable {
     /// The focused pane's overlay pane, nil when that pane's slot is empty.
     public var focusedOverlayPane: OverlayPane? {
         let pane = focusedPane
-        return paneOverlay(pane) == nil ? nil : pane
+        return paneOverlayCovers(pane) ? pane : nil
     }
 
     /// Whether a caller's program or page is taking this session's keystrokes: the session-wide cover, or
@@ -822,7 +828,7 @@ public final class Session: Identifiable {
     /// RETIRED overlay's command, cwd, and colors.
     public func dropUnrealizedPaneOverlays() {
         for pane in OverlayPane.allCases
-        where paneOverlay(pane) != nil && !paneOverlayIsHtml(pane) && paneOverlaySurface(pane)?.isRealized != true
+        where paneOverlayIsProgram(pane) && paneOverlaySurface(pane)?.isRealized != true
             && !paneOverlayHosted(pane) {
             teardownPaneOverlay(pane)
         }
@@ -844,6 +850,7 @@ public final class Session: Identifiable {
     public func teardownPaneOverlay(_ pane: OverlayPane) {
         let replica = paneOverlay(pane)?.replica
         HtmlOverlayReleases.shared.release(paneOverlay(pane)?.html)
+        RebasedOverlayReleases.shared.release(paneOverlay(pane)?.rebased)
         paneOverlaySurface(pane)?.teardown()
         setPaneOverlay(nil, pane: pane)
         setPaneOverlaySurface(nil, pane: pane)
@@ -1007,7 +1014,7 @@ public final class Session: Identifiable {
     public func focusTarget(wantSplit: Bool) -> (any TerminalSurface)? {
         if coverOverlayActive || scratchActive { return topmostSurface }
         let pane: OverlayPane = wantSplit ? .right : .left
-        if paneOverlay(pane) != nil { return paneOverlaySurface(pane) }
+        if paneOverlayCovers(pane) { return paneOverlaySurface(pane) }
         return wantSplit ? splitSurface : surface
     }
 

@@ -93,7 +93,7 @@ extension AppActions {
         case .closeSplit: closeSplit()
         case .swapPanes: swapActiveSessionPanes()
         case .toggleScratch: toggleScratch()
-        case .toggleRebased: toggleRebasedOverlay()
+        case .toggleRebased: performRebasedToggle()
         case .toggleTerminalZoom: toggleTerminalZoom()
         case .toggleSidebar: toggleSidebar()
         case .toggleFlag: toggleFlagActiveSession()

@@ -3,6 +3,20 @@ import Testing
 @testable import agtermCore
 
 struct ForwardPolicyTests {
+    @Test(arguments: [Command.sessionRebasedShow, .sessionRebasedToggle])
+    func rebasedCommandsAreForwarded(command: Command) {
+        #expect(ForwardPolicy.kind(of: command) == .forwarded)
+        #expect(ForwardPolicy.route(ControlRequest(cmd: command), holdsJob: true) == .forwarded)
+    }
+
+    @Test(arguments: [false, true])
+    func aForwardedRebasedOpenCannotRunAnOriginChosenCallback(holdsJob: Bool) {
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true, onClose: "/bin/flush"))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .refused("--on-close works on a local row only"))
+        let close = ControlRequest(cmd: .sessionOverlayClose, args: ControlArgs(overlay: UUID().uuidString))
+        #expect(ForwardPolicy.route(close, holdsJob: holdsJob) == .forwarded)
+    }
+
     @Test(arguments: [false, true])
     func rebasedIsForwardedBeforeTheProgramJobRoute(_ holdsJob: Bool) {
         #expect(ForwardPolicy.kind(of: .sessionOverlayOpen) == .routed)
@@ -21,7 +35,7 @@ struct ForwardPolicyTests {
     ]
     static let forwarded: Set<String> = [
         "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit", "session.overlay.copy",
-        "session.overlay.text", "pick.open", "pick.result", "pick.cancel",
+        "session.overlay.text", "session.rebased.show", "session.rebased.toggle", "pick.open", "pick.result", "pick.cancel",
         "session.flag", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",

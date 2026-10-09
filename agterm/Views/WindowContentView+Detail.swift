@@ -245,7 +245,7 @@ extension WindowContentView {
         let publishesAskAnchor = store.selectedSessionID == session.id
         // a pane hidden under its OWN overlay is not on screen: it registers no drag types and sets no mouse
         // cursor (the `deckVisible` note in libghostty.md, issue #225 class), and never takes first responder.
-        let covered = session.paneOverlay(pane) != nil
+        let covered = session.paneOverlayCovers(pane)
         let slot: ReferenceWritableKeyPath<Session, (any TerminalSurface)?> =
             pane == .left ? \.surface : \.splitSurface
         // the primary carries `primarySurfaceHostRevision`, which a swap bumps and lazy creation deliberately
@@ -321,8 +321,8 @@ extension WindowContentView {
                     // too — a passive panel registers no drag types and tracks no pointer, so a file drop
                     // keeps reaching the pane behind it. Its one cursor write is `HudLinkClick`'s, over a link.
                     Group {
-                        if session.rebasedOverlayActive {
-                            RebasedSlot(session: session, visible: live && onScreen && !rebasedCovered,
+                        if session.rebasedOverlay != nil {
+                            RebasedSlot(session: session, pane: nil, visible: live && onScreen && !rebasedCovered,
                                         foreground: chromeText)
                         } else if let page = session.htmlOverlay, session.htmlOverlayActive {
                             HtmlOverlayView(store: store, session: session, overlay: page,
@@ -364,7 +364,8 @@ extension WindowContentView {
         }
         // with no overlay up this is an empty full-frame GeometryReader; keep it inert so it never
         // intercepts clicks meant for the pane(s).
-        .allowsHitTesting(live && session.overlayActive && deckHostsSurface(session: session, surface: .overlay))
+        .allowsHitTesting(OverlayPanelStyle.sessionHitTesting(session, live: live,
+                                                              hostsSurface: deckHostsSurface(session: session, surface: .overlay)))
     }
 
     /// backdropWash paints `Session.backdropWashRegions` opaque and fades the flattened group once, so a pane
@@ -407,7 +408,12 @@ extension WindowContentView {
             && deckHostsSurface(session: session, surface: pane.zoomSurface)
         GeometryReader { geo in
             ZStack {
-                if active, let page = session.paneOverlay(pane)?.html {
+                if active, session.paneOverlay(pane)?.rebased != nil {
+                    RebasedSlot(session: session, pane: pane,
+                                visible: RebasedSlot.isVisible(deckVisible, session: session, pane: pane,
+                                                               overlaid: gates.overlaid, covered: rebasedCovered),
+                                foreground: chromeText)
+                } else if active, let page = session.paneOverlay(pane)?.html {
                     // keyed on the page, so a swap or promotion moves its web view instead of reusing a host
                     HtmlOverlayView(store: store, session: session, overlay: page,
                                     backgroundColor: session.paneOverlay(pane)?.backgroundColor, isActive: isActive,
@@ -429,7 +435,7 @@ extension WindowContentView {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         // inert while empty, like `overlayPanel`.
-        .allowsHitTesting(deckVisible && active)
+        .allowsHitTesting(OverlayPanelStyle.paneHitTesting(session, pane: pane, visible: deckVisible, active: active))
     }
 
     /// Mutes the inactive split pane — or the overlay covering it — by fading its TEXT without darkening the
@@ -519,7 +525,19 @@ struct OverlayPanelStyle: Equatable {
     private static let hudCornerRadius: CGFloat = 8
     private static let hudBorderOpacity = 0.30
 
+    @MainActor static func sessionHitTesting(_ session: Session, live: Bool, hostsSurface: Bool) -> Bool {
+        live && session.visibleOverlayActive && hostsSurface
+    }
+
+    @MainActor static func paneHitTesting(_ session: Session, pane: OverlayPane, visible: Bool, active: Bool) -> Bool {
+        visible && active && session.paneOverlayCovers(pane)
+    }
+
     @MainActor static func resolve(_ session: Session) -> OverlayPanelStyle {
+        if session.overlayActive && !session.visibleOverlayActive {
+            return OverlayPanelStyle(widthFraction: 1, heightFraction: 1, framed: false, cornerRadius: 0,
+                                     borderOpacity: 0, shadowRadius: 0, backdrop: false, interactive: false, position: .center)
+        }
         let fraction = session.overlaySizePercent.map { CGFloat($0) / 100 } ?? 1
         guard session.hudActive else {
             // the full overlay is chromeless: no radius, no border, no shadow.

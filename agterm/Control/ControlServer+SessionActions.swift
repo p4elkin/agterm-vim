@@ -37,14 +37,7 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
-            if options.rebased {
-                if let refusal = RebasedHost.shared.openOverlay(in: store, session: id, cwd: options.cwd,
-                                                                 sizePercent: options.sizePercent, diff: options.rebasedDiff) {
-                    return ControlResponse(ok: false, error: refusal)
-                }
-                if options.follow { store.selectSession(id) }
-                return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
-            }
+            if options.rebased { return openRebasedOverlay(in: store, sessionID: id, options: options) }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }
@@ -278,7 +271,7 @@ extension ControlServer: ControlActions {
             if session.htmlCovers(pane) {
                 return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
             }
-            let (running, exitCode) = pane.map { (session.paneOverlay($0) != nil, session.paneOverlayExitCode($0)) }
+            let (running, exitCode) = pane.map { (session.paneOverlayIsProgram($0), session.paneOverlayExitCode($0)) }
                 ?? (session.programOverlayActive, session.overlayExitCode)
             if running {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)

@@ -4,11 +4,53 @@ extension Session {
     /// htmlOverlayActive means a page covers the session: it owns input like a program but has no terminal
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
-    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil }
+    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil && rebasedOverlay?.hidden != true }
+    /// The slot holds something on screen: anything but a hidden Rebased IDE, a HUD included.
+    public var visibleOverlayActive: Bool { overlayActive && rebasedOverlay?.hidden != true }
 
     /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
     /// `programOverlayActive` instead.
     public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
+
+    public var rebasedPlacement: (overlay: RebasedOverlay, pane: OverlayPane?)? {
+        if let overlay = rebasedOverlay { return (overlay, nil) }
+        for pane in OverlayPane.allCases {
+            if let overlay = paneOverlay(pane)?.rebased { return (overlay, pane) }
+        }
+        return nil
+    }
+
+    @discardableResult
+    public func updateRebasedOverlay(_ id: UUID, _ change: (inout RebasedOverlay) -> Void) -> Bool {
+        if var overlay = rebasedOverlay, overlay.id == id {
+            change(&overlay)
+            rebasedOverlay = overlay
+            return true
+        }
+        for pane in OverlayPane.allCases {
+            guard var slot = paneOverlay(pane), var overlay = slot.rebased, overlay.id == id else { continue }
+            change(&overlay)
+            slot.rebased = overlay
+            setPaneOverlay(slot, pane: pane)
+            return true
+        }
+        return false
+    }
+
+    public func paneOverlayCovers(_ pane: OverlayPane) -> Bool {
+        guard let overlay = paneOverlay(pane) else { return false }
+        return overlay.rebased?.hidden != true
+    }
+
+    public func paneRebasedOverlayActive(_ pane: OverlayPane) -> Bool {
+        guard let review = paneOverlay(pane)?.rebased else { return false }
+        return !review.hidden
+    }
+
+    public func paneOverlayIsProgram(_ pane: OverlayPane) -> Bool {
+        guard let overlay = paneOverlay(pane) else { return false }
+        return overlay.html == nil && overlay.rebased == nil
+    }
 
     public func paneOverlayIsHtml(_ pane: OverlayPane) -> Bool { paneOverlay(pane)?.html != nil }
 
@@ -16,6 +58,17 @@ extension Session {
     public func htmlCovers(_ pane: OverlayPane?) -> Bool {
         guard let pane else { return htmlOverlayActive }
         return paneOverlayIsHtml(pane)
+    }
+
+    /// rebasedHidesTerminal says whether a shown IDE covers the terminal a `--pane` font command addresses:
+    /// the session-wide IDE covers every pane, a pane IDE only its own pane.
+    public func rebasedHidesTerminal(_ pane: StatusPane?) -> Bool {
+        if rebasedOverlayActive { return true }
+        switch pane {
+        case .scratch: return false
+        case nil, .left: return paneRebasedOverlayActive(.left)
+        case .right: return paneRebasedOverlayActive(.right)
+        }
     }
 
     /// htmlHidesTerminal says whether a page covers the terminal a `--pane` font command addresses: the

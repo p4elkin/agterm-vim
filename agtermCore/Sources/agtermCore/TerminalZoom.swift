@@ -60,9 +60,9 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
             // "surface not available" through `isTargetValid`.
             return session.programOverlayActive
         case .overlayLeft:
-            return session.paneOverlay(.left) != nil && !session.paneOverlayIsHtml(.left)
+            return session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return session.paneOverlay(.right) != nil && !session.paneOverlayIsHtml(.right)
+            return session.paneOverlayIsProgram(.right)
         }
     }
 
@@ -73,17 +73,17 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
         let uncovered = !session.coverOverlayActive && !session.scratchActive
         switch self {
         case .primary:
-            return uncovered && session.focusedPane == .left && session.leftOverlay == nil
+            return uncovered && session.focusedPane == .left && !session.paneOverlayCovers(.left)
         case .split:
-            return uncovered && session.focusedPane == .right && session.rightOverlay == nil
+            return uncovered && session.focusedPane == .right && !session.paneOverlayCovers(.right)
         case .scratch:
             return !session.coverOverlayActive && session.scratchActive
         case .overlay:
             return session.programOverlayActive
         case .overlayLeft:
-            return uncovered && session.focusedPane == .left && session.leftOverlay != nil && !session.paneOverlayIsHtml(.left)
+            return uncovered && session.focusedPane == .left && session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return uncovered && session.focusedPane == .right && session.rightOverlay != nil && !session.paneOverlayIsHtml(.right)
+            return uncovered && session.focusedPane == .right && session.paneOverlayIsProgram(.right)
         }
     }
 
@@ -91,17 +91,17 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
         switch self {
         case .primary:
             // a pane renders at opacity 0 under its OWN overlay, so the overlay case takes the visibility.
-            return Self.paneVisible(.left, in: session) && session.leftOverlay == nil
+            return Self.paneVisible(.left, in: session) && !session.paneOverlayCovers(.left)
         case .split:
-            return Self.paneVisible(.right, in: session) && session.rightOverlay == nil
+            return Self.paneVisible(.right, in: session) && !session.paneOverlayCovers(.right)
         case .scratch:
             return !session.coverOverlayActive && session.scratchActive
         case .overlay:
             return session.programOverlayActive
         case .overlayLeft:
-            return Self.paneVisible(.left, in: session) && session.leftOverlay != nil && !session.paneOverlayIsHtml(.left)
+            return Self.paneVisible(.left, in: session) && session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return Self.paneVisible(.right, in: session) && session.rightOverlay != nil && !session.paneOverlayIsHtml(.right)
+            return Self.paneVisible(.right, in: session) && session.paneOverlayIsProgram(.right)
         }
     }
 

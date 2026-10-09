@@ -96,6 +96,8 @@ enum HeadlessRequests {
             $0.host = ""
         },
         request(.overlayRedirectToggle),
+        request(.sessionRebasedShow, target: target) { $0.diff = "HEAD.." },
+        request(.sessionRebasedToggle, target: target),
         request(.sessionBookmarkAdd, target: target),
         request(.sessionBookmarkList, target: target),
         request(.sessionBookmarkGo, target: target) { $0.turn = 1 },

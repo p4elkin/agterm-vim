@@ -145,9 +145,12 @@ public protocol ControlActions {
     func selectAllSession(_ target: String?, window: String?) -> ControlResponse
     func searchSession(_ target: String?, window: String?,
                        text: String?, to: String?) async -> ControlResponse
+    func showRebasedView(_ target: String?, window: String?, view: RebasedView) -> ControlResponse
+    func toggleRebasedOverlay(_ target: String?, window: String?) -> ControlResponse
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse
     func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
+    func closeSessionOverlay(_ target: String?, window: String?, overlay: UUID) -> ControlResponse
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
@@ -290,6 +293,8 @@ public struct ControlDispatcher {
             return await dispatchSessionCommand(request)
         case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
             return await dispatchSessionBookmark(request)
+        case .sessionRebasedShow, .sessionRebasedToggle:
+            return dispatchSessionRebased(request)
         case .sessionRestart:
             return await dispatchSessionRestart(request)
         case .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionScratch, .sessionFocus,

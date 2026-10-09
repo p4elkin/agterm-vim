@@ -595,7 +595,7 @@ final class ControlServer {
                 .sessionResize, .surfaceZoom,
                 .surfaceCursor,
                 .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
-                .sessionMark,
+                .sessionMark, .sessionRebasedShow, .sessionRebasedToggle,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
                 .browserClear, .browserLinks,

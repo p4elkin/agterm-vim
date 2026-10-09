@@ -67,9 +67,27 @@ final class RebasedPluginBuilderTests: XCTestCase {
             assert Arrays.equals(Bridge.savedBytes("é\\n", null, StandardCharsets.ISO_8859_1, null), latin);
             var file = Path.of(args[0]);
             Files.write(file, little);
-            assert Arrays.equals(Bridge.diffFields("main\\tHEAD\\t1\\t/repo\\twith tab"),
-                                 new String[]{"main", "HEAD", "1", "/repo\\twith tab"});
+            assert Arrays.equals(Bridge.diffFields("req\\tmain\\tHEAD\\t1\\t1\\tpane\\t/repo\\twith tab"),
+                                 new String[]{"req", "main", "HEAD", "1", "1", "pane", "/repo\\twith tab"});
             assert Bridge.diffFields("main\\tHEAD") == null;
+            assert Arrays.equals(Bridge.fileFields("req\\t3\\t/repo/a.kt\\t/repo\\twith tab"),
+                                 new String[]{"req", "3", "/repo/a.kt", "/repo\\twith tab"});
+            assert Bridge.fileFields("req\\t-1\\t/repo/a.kt\\t/repo") == null;
+            assert Bridge.fileFields("req\\tNaN\\t/repo/a.kt\\t/repo") == null;
+            assert RangeDiff.title("main", "HEAD", false, false).equals("main..HEAD");
+            assert RangeDiff.title("main", "HEAD", true, false).equals("main...HEAD");
+            assert RangeDiff.title("main", "HEAD", false, true).equals("main (working tree)");
+            assert RangeDiff.title("main", "HEAD", true, true).equals("main...HEAD + working tree");
+            var closedProject = (com.intellij.openapi.project.Project) java.lang.reflect.Proxy.newProxyInstance(
+                BridgeContracts.class.getClassLoader(), new Class<?>[]{com.intellij.openapi.project.Project.class},
+                (proxy, method, arguments) -> method.getName().equals("isDisposed") ? true : null);
+            assert RangeDiff.projectClosed(closedProject, "closed-request");
+            assert Arrays.equals(events.get(events.size() - 1), new String[]{"viewFailed", "closed-request\\tproject closed"});
+            Bridge.beginView("/repo", "older");
+            Bridge.beginView("/repo", "newer");
+            assert Bridge.superseded("/repo", "older");
+            assert !Bridge.superseded("/repo", "newer");
+            assert Bridge.superseded("/other", "newer");
             assert Bridge.onDisk(file.toString(), little);
             assert !Bridge.onDisk(file.toString(), utf8);
             Files.delete(file);
@@ -130,6 +148,17 @@ final class RebasedPluginBuilderTests: XCTestCase {
         XCTAssertEqual(built.jar, ideRoot.appendingPathComponent("plugins/agterm-bridge/lib/agterm-bridge.jar"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: built.jar.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: state.appendingPathComponent("rebased/plugins").path))
+    }
+
+    func testBuiltPluginContainsEveryRebasedViewVerb() throws {
+        let app = try installedApp()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-views-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let built = try RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("rebased")).build(buildNumber: "fixture-views")
+        let listing = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-Z1", built.jar.path], root: root)
+        for name in ["Bridge", "RangeDiff", "OpenFile"] {
+            XCTAssertTrue(listing.contains("agterm/rebased/\(name).class"), listing)
+        }
     }
 
     func testBuildsAPluginReusesItAndRebuildsForAChangedKey() throws {

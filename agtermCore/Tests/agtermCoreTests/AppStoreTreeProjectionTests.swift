@@ -6,6 +6,46 @@ import Testing
 // reports. Split out of `AppStoreTests.swift` for the file size limit.
 @MainActor
 struct AppStoreTreeProjectionTests {
+    @Test(arguments: ["session", "left", "right"])
+    func testRebasedNodeProjectsPaneHiddenViewAndOnClose(slot: String) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        store.toggleSplit(session.id)
+        let pane = OverlayPane(rawValue: slot)
+        var view = RebasedViewRequest(view: .file(path: "/repo/a.kt", line: 3))
+        view.sent()
+        _ = view.apply(event: .opened("/repo/a.kt"), request: view.id)
+        let overlay = RebasedOverlay(project: "/repo", view: view, onClose: RebasedOnClose(command: "/bin/flush", cwd: "/repo", environment: [:]))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        let shown = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(shown.rebasedOverlay?.pane == pane?.rawValue)
+        #expect(shown.rebasedOverlay?.hidden == false)
+        #expect(shown.paneOverlays == pane.map { [$0.rawValue] })
+        #expect(shown.rebasedOverlay?.view == ControlRebasedViewNode(request: view.id, kind: "file", target: "/repo/a.kt", state: "opened", detail: "/repo/a.kt"))
+        #expect(shown.rebasedOverlay?.onClose == true)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        let hidden = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(hidden.rebasedOverlay?.hidden == true)
+        #expect(hidden.rebasedOverlay?.pane == pane?.rawValue)
+        #expect(hidden.rebasedOverlay?.view == shown.rebasedOverlay?.view)
+        #expect(hidden.rebasedOverlay?.onClose == true)
+        #expect(!hidden.overlay)
+    }
+
+    @Test func unsetRebasedReadbackFieldsAreOmitted() throws {
+        let overlay = RebasedOverlay(project: "/repo")
+        let node = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(overlay.controlNode)) as? [String: Any])
+        #expect(node["hidden"] as? Bool == false)
+        for field in ["pane", "view", "onClose", "error", "diff", "source"] { #expect(node[field] == nil) }
+        let unknownPort = ControlRebasedNode(jvm: "running")
+        let status = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(unknownPort)) as? [String: Any])
+        #expect(status["port"] == nil)
+        let knownPort = ControlRebasedNode(jvm: "running", port: 63342)
+        #expect(try JSONDecoder().decode(ControlRebasedNode.self, from: JSONEncoder().encode(knownPort)).port == 63342)
+        #expect(makeStore().controlTree(paneForeground: { _ in nil }, rebased: knownPort).rebased?.port == 63342)
+    }
+
     @Test(arguments: [RebasedOverlay.State.fetching, .starting, .shown, .failed("missing Rebased app")])
     func rebasedOverlayProjectsItsStateAndError(_ state: RebasedOverlay.State) throws {
         let store = makeStore()

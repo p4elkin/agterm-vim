@@ -669,6 +669,16 @@ final class CustomCommandRunner {
         return spawn(command, context: context, cwd: cwd)
     }
 
+    func environment(for session: Session, in store: AppStore) -> [String: String] {
+        let pane: CommandContext.Pane = session.scratchActive ? .scratch : (session.focusedPane == .right ? .right : .left)
+        let context = context(for: session, in: store, selectionSurface: nil, pane: pane)
+        var environment = ProcessInfo.processInfo.environment.merging(context.environment()) { _, new in new }
+        environment["AGTERM_SOCKET"] = socketProvider()
+        environment["PATH"] = CommandPath.widened(environment["PATH"],
+                                                  bundledCLIDirectory: CLIInstaller.bundledTool?.deletingLastPathComponent().path)
+        return environment
+    }
+
     /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names
     /// from the owning workspace/window, the selection from `selectionSurface`, the fired-from pane from the
     /// caller (`left`|`right`|`scratch`) with the token of the surface in that slot, the socket from the

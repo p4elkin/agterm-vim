@@ -10,6 +10,16 @@ protocol RebasedFrames: AnyObject {
     func detach(_ window: NSWindow)
     func orderOut(_ window: NSWindow)
     func refit(host: NSWindow)
+    func makeKey(_ frame: NSWindow)
+}
+
+struct RebasedOpened: Equatable {
+    let overlay: UUID
+    var request: String?
+}
+
+struct RebasedOpenRefusal: Error, Equatable {
+    let message: String
 }
 
 /// Owns the embedded Rebased JVM and maps its project frames onto session overlays; the single owner, like
@@ -24,10 +34,19 @@ final class RebasedHost {
         case notStarted, starting, running, failed(String)
     }
 
-    private struct Entry {
+    struct Entry {
+        let id: UUID
         let session: UUID
         let project: String
         let order: Int
+        let onClose: RebasedOnClose?
+    }
+
+    struct RemoteOpenRequest {
+        let path: String
+        let sizePercent: Int?
+        let view: RebasedView?
+        let pane: OverlayPane?
     }
 
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
@@ -61,6 +80,7 @@ final class RebasedHost {
         RebasedHost.mirrorQueue.async(execute: body)
     }
     var isIDEKeyWindowOverride: Bool?
+    var isFocusedPane: (UUID, OverlayPane) -> Bool = { _, _ in false }
     var clock: () -> Date = { Date() }
     var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> =
         RebasedHost.makeMirrorRefresh(withLock: { try RebasedStateLock.withLockIfFree($0, $1) })
@@ -75,7 +95,7 @@ final class RebasedHost {
     private static let logger = Logger(subsystem: "com.umputun.agterm", category: "RebasedHost")
 
     private(set) var jvm = JVM.notStarted
-    private var entries: [UUID: Entry] = [:]
+    var entries: [UUID: Entry] = [:]
     // overlays whose local open on a mirror's clone waits for the mirror queue
     private var pendingMirrorOpens: [UUID: String] = [:]
     private var frameNumbers: [String: Int] = [:]
@@ -86,14 +106,19 @@ final class RebasedHost {
     private(set) var visible: [String: UUID] = [:]
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
+    private var visibilityReports: [UUID: Set<UUID>] = [:]
+    private var needsInitialFocus: Set<UUID> = []
     private var saving = false
+    var environment: (Session, AppStore) -> [String: String] = { _, _ in ProcessInfo.processInfo.environment }
+    var runOnClose: (RebasedOnClose) -> Void = { RebasedOnCloseRunner.run($0) }
+    var now: () -> Date = Date.init
+    var idePort: Int?
+    var portLookup: UUID?
     // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
-    // keyed by overlay id like the dialogs; sent once the frame is shown in its own session
-    private var pendingDiffs: [UUID: RebasedDiff] = [:]
     // sessions whose mirror is being refreshed; a second open would race the same git directory
-    private var fetching: Set<UUID> = []
-    private var slots: [ObjectIdentifier: NSRect] = [:]
+    var fetching: Set<UUID> = []
+    private var slots: [UUID: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
     // each overlay's running start deadline; a pre-frame dialog drops it and its close arms a new one
@@ -103,7 +128,10 @@ final class RebasedHost {
     private var bound = false
     private var deadlinePassed = false
     private var opens = 0
-    private var bornObserver: CFRunLoopObserver?
+    // One per process: it serves `RebasedHost.shared`, and a test host per case would otherwise stack one
+    // observer each, every one scanning every window on every run-loop pass.
+    private static var bornObserver: CFRunLoopObserver?
+    private static var keyObserver: NSObjectProtocol?
     private var keyMonitor: Any?
     private var seenWindows: Set<Int> = []
 
@@ -116,17 +144,21 @@ final class RebasedHost {
         mirrorMaxAgeDays = { settings().effectiveRebasedMirrorMaxAgeDays }
         mirrorPrune = Self.makeMirrorPrune(withLock: RebasedStateLock.withLockIfFree)
         mirrorList = Self.makeMirrorList()
+        isFocusedPane = { [weak library] id, pane in
+            guard let store = library?.activeStore else { return false }
+            return store.selectedSessionID == id && store.session(withID: id)?.focusedPane == pane
+        }
         store = { [weak library] in library?.store(forSession: $0) }
         hostWindow = { [weak library] session in
             library?.windowID(forSession: session).flatMap { WindowRegistry.shared.window(for: $0) }
-        }
-        (frames as? RebasedFrameKeeper)?.slotRect = { [weak self] window in
-            self?.slots[ObjectIdentifier(window)] ?? window.convertToScreen(window.contentLayoutRect)
         }
         install()
     }
 
     func install() {
+        (frames as? RebasedFrameKeeper)?.slotRect = { [weak self] frame in
+            self?.slotRect(for: frame) ?? frame.frame
+        }
         RebasedOverlayReleases.shared.onRelease = { [weak self] in self?.release($0) }
     }
 
@@ -141,41 +173,51 @@ final class RebasedHost {
         switch jvm {
         case .notStarted: return .init(jvm: "notStarted")
         case .starting: return .init(jvm: "starting", projects: projects)
-        case .running: return .init(jvm: "running", projects: projects)
+        case .running: return .init(jvm: "running", projects: projects, port: idePort)
         case .failed(let error): return .init(jvm: "failed", error: error, projects: projects)
         }
     }
 
     /// The overlay's frame is shown in this session, as opposed to waiting or shown in another session.
     func isShown(in session: UUID) -> Bool {
-        visible.values.contains(session)
+        visible.values.contains { entries[$0]?.session == session }
     }
 
     // MARK: - Opening
 
-    /// Opens a Rebased overlay on `cwd`'s repository (the session's cwd without one): the shared path of
-    /// `session.overlay.open --rebased` and `rebased_toggle`. Returns the refusal, nil when it opened.
-    /// A `diff` for the project already open in the session goes to that overlay instead of a new one.
-    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, diff: RebasedDiff? = nil) -> String? {
-        guard let session = store.session(withID: id) else { return RebasedOverlayOpenFailure.unknownSession.message }
+    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, view: RebasedView? = nil,
+                     pane: OverlayPane? = nil, project: String? = nil, onClose: String? = nil) -> Result<RebasedOpened, RebasedOpenRefusal> {
+        guard let session = store.session(withID: id) else {
+            return .failure(.init(message: RebasedOverlayOpenFailure.unknownSession.message))
+        }
+        if onClose != nil, session.rebasedPlacement != nil {
+            return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
+        }
+        if session.remoteHost != nil, onClose != nil { return .failure(.init(message: "--on-close works on a local row only")) }
+        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? onCloseDirectory(for: session), environment: environment(session, store)) }
         if session.remoteHost != nil {
-            return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, diff: diff)
+            return openRemote(in: store, session: session,
+                              request: .init(path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane))
         }
-        let project = Self.projectDirectory(for: cwd ?? session.focusedCwd)
-        if let diff, let open = session.rebasedOverlay, Self.canonical(open.project) == Self.canonical(project) {
-            deliver(diff, to: session)
-            return nil
+        let project = project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd)
+        if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == Self.canonical(project) {
+            guard pane == nil || placement.pane == pane else {
+                return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
+            }
+            let request = view.map { requestView(overlay: placement.overlay.id, view: $0) }
+            return .success(.init(overlay: placement.overlay.id, request: request))
         }
-        let overlay = RebasedOverlay(project: project, diff: diff)
-        if let failure = store.openRebasedOverlay(id, overlay: overlay, sizePercent: sizePercent) {
-            return failure.message
+        var overlay = RebasedOverlay(project: project, view: view.map(RebasedViewRequest.init(view:)), onClose: captured)
+        if case .diff(let diff, _) = view { overlay.diff = diff }
+        if let failure = store.openRebasedOverlay(id, overlay: overlay, sizePercent: sizePercent, pane: pane) {
+            return .failure(.init(message: failure.message(pane: pane)))
         }
         if Self.isMirror(project, stateDirectory: stateDirectory) {
             openAfterMirrorJobs(session: id, overlay: overlay.id, project: project)
         } else {
             open(session: id)
         }
-        return nil
+        return .success(.init(overlay: overlay.id, request: overlay.view?.id))
     }
 
     /// A local overlay on a mirror's clone waits for any prune queued ahead of it, and a prune queued after it keeps
@@ -184,11 +226,12 @@ final class RebasedHost {
         pendingMirrorOpens[overlayID] = Self.canonical(project)
         onMirrorQueue({}, { [weak self] in
             guard let self, pendingMirrorOpens.removeValue(forKey: overlayID) != nil,
-                  store(id)?.session(withID: id)?.rebasedOverlay?.id == overlayID else { return }
+                  let session = store(id)?.session(withID: id), session.rebasedPlacement?.overlay.id == overlayID else { return }
             if FileManager.default.fileExists(atPath: project) {
                 open(session: id)
             } else {
-                setState(.failed("Rebased mirror \(project) was removed by a prune"), session: id)
+                // no entry exists before `open`, so `setState` would find nothing to fail
+                session.updateRebasedOverlay(overlayID) { $0.state = .failed("Rebased mirror \(project) was removed by a prune") }
             }
         })
     }
@@ -198,81 +241,85 @@ final class RebasedHost {
         return canonical(project).hasPrefix(mirrors + "/")
     }
 
-    private func deliver(_ diff: RebasedDiff, to session: Session) {
-        guard let open = session.rebasedOverlay else { return }
-        session.rebasedOverlay?.diff = diff
-        pendingDiffs[open.id] = diff
-        sendDiff(session: session.id)
-    }
-
     // MARK: - Remote rows
 
-    /// A remote row opens a `RebasedMirror` of its host's repository, refreshed on every open so a range names the
-    /// host's newest commits. The slot shows `fetching` until the first refresh lands.
-    private func openRemote(in store: AppStore, session: Session, path: String, sizePercent: Int?, diff: RebasedDiff?) -> String? {
+    func openRemote(in store: AppStore, session: Session, request: RemoteOpenRequest) -> Result<RebasedOpened, RebasedOpenRefusal> {
+        let path = request.path, sizePercent = request.sizePercent, view = request.view, pane = request.pane
         let host = session.remoteHost ?? ""
-        guard let mirror = RebasedMirror(host: host, path: path) else { return "Rebased cannot mirror \(host):\(path)" }
-        if fetching.contains(session.id) { return "Rebased is still fetching from \(host)" }
+        guard let mirror = RebasedMirror(host: host, path: path) else {
+            return .failure(.init(message: "Rebased cannot mirror \(host):\(path)"))
+        }
+        if let refusal = fetchRefusal(session: session) { return .failure(.init(message: refusal)) }
         let overlayID: UUID
-        if let open = session.rebasedOverlay {
-            guard let source = open.source, RebasedMirror.covers(source: source, host: host, path: path) else {
-                return RebasedOverlayOpenFailure.alreadyOpen.message
+        let request: String?
+        if let placement = session.rebasedPlacement {
+            guard pane == nil || placement.pane == pane, let source = placement.overlay.source,
+                  RebasedMirror.covers(source: source, host: host, path: path) else {
+                return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
             }
-            overlayID = open.id
+            overlayID = placement.overlay.id
+            request = view.map { issueView(overlay: overlayID, view: $0) }
         } else {
-            let placeholder = RebasedOverlay(project: path, state: .fetching, diff: diff, source: mirror.source(top: path))
-            if let failure = store.openRebasedOverlay(session.id, overlay: placeholder, sizePercent: sizePercent) {
-                return failure.message
+            var placeholder = RebasedOverlay(project: path, state: .fetching, source: mirror.source(top: path),
+                                             view: view.map(RebasedViewRequest.init(view:)))
+            if case .diff(let diff, _) = view { placeholder.diff = diff }
+            if let failure = store.openRebasedOverlay(session.id, overlay: placeholder, sizePercent: sizePercent, pane: pane) {
+                return .failure(.init(message: failure.message(pane: pane)))
             }
             overlayID = placeholder.id
+            request = placeholder.view?.id
+            opens += 1
+            entries[overlayID] = Entry(id: overlayID, session: session.id, project: Self.canonical(path), order: opens, onClose: placeholder.onClose)
         }
         fetching.insert(session.id)
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
         onMirrorQueue({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
-            self?.mirrored(result.value, session: sessionID, overlay: overlayID, diff: diff)
+            self?.mirrored(result.value, session: sessionID, overlay: overlayID, request: request)
         })
-        return nil
+        return .success(.init(overlay: overlayID, request: request))
     }
 
-    // A failed refresh under an open IDE sends no range: the mirror would answer with the host's older commits.
     private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, session sessionID: UUID, overlay overlayID: UUID,
-                          diff: RebasedDiff?) {
+                          request: String?) {
         fetching.remove(sessionID)
-        guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedOverlay,
+        guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedPlacement?.overlay,
               current.id == overlayID else { return }
         switch (result, current.state == .fetching) {
         case (.success(let copy)?, true):
-            session.rebasedOverlay = RebasedOverlay(project: copy.directory, diff: current.diff, source: copy.source, id: overlayID)
+            session.updateRebasedOverlay(overlayID) {
+                $0.project = copy.directory
+                $0.source = copy.source
+                $0.state = .starting
+            }
             open(session: sessionID)
         case (.success?, false):
-            if let diff { deliver(diff, to: session) }
+            if request == current.view?.id { sendView(overlay: overlayID) }
         case (.failure(let error)?, let placeholder):
             let message = (error as? RebasedMirrorRefresh.Failure)?.message ?? error.localizedDescription
-            if placeholder { setState(.failed(message), session: sessionID) }
+            if placeholder { session.updateRebasedOverlay(overlayID) { $0.state = .failed(message) } }
+            if let request { failView(overlay: overlayID, request: request, reason: message) }
             Self.logger.error("\(message, privacy: .public)")
-        case (nil, _):
-            break
+        case (nil, _): break
         }
     }
 
-    /// Takes over a Rebased overlay the store has just opened in `session`.
     func open(session: UUID) {
-        guard let overlay = store(session)?.session(withID: session)?.rebasedOverlay else { return }
+        guard let model = store(session)?.session(withID: session), let overlay = model.rebasedPlacement?.overlay else { return }
         opens += 1
         let project = Self.canonical(overlay.project)
-        entries[overlay.id] = Entry(session: session, project: project, order: opens)
-        if let diff = overlay.diff { pendingDiffs[overlay.id] = diff }
+        entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens, onClose: overlay.onClose)
+        if let pane = model.rebasedPlacement?.pane, isFocusedPane(session, pane) { needsInitialFocus.insert(overlay.id) }
         switch jvm {
         case .running:
-            if frameNumbers[project] != nil { show(session: session) } else { _ = runtime.call("open", project) }
+            if frameNumbers[project] != nil { show(overlay: overlay.id) } else { _ = runtime.call("open", project) }
             armDeadline(overlay.id)
         case .starting:
             if prepared { armDeadline(overlay.id) }
         case .notStarted:
             start()
         case .failed(let error):
-            if runtime.jvmCreated { setState(.failed(error), session: session) } else { start() }
+            if runtime.jvmCreated { setState(.failed(error), overlay: overlay.id) } else { start() }
         }
     }
 
@@ -285,6 +332,7 @@ final class RebasedHost {
         deadlinePassed = false
         installBornObserver()
         installKeyRouter()
+        installKeyObserver()
         let runtime = runtime, path = appPath(), directory = stateDirectory
         let result = ResultBox<RebasedLaunch>()
         offMain({ result.set { try runtime.prepare(appPath: path, stateDirectory: directory) } }, { [weak self] in
@@ -356,7 +404,7 @@ final class RebasedHost {
             deadlines[id] = nil
             if jvm == .starting { deadlinePassed = true }
             guard let entry = entries[id], overlayState(entry) == .starting else { return }
-            setState(.failed(Self.deadlineMessage), session: entry.session)
+            setState(.failed(Self.deadlineMessage), overlay: entry.id)
         }
     }
 
@@ -376,7 +424,7 @@ final class RebasedHost {
     private func fail(_ message: String) {
         jvm = .failed(message)
         for entry in entries.values where overlayState(entry) == .starting {
-            setState(.failed(message), session: entry.session)
+            setState(.failed(message), overlay: entry.id)
         }
     }
 
@@ -402,6 +450,8 @@ final class RebasedHost {
             guard fields.count >= 2, let number = Int(fields[0]), let window = window(number) else { return }
             let owner = fields.count > 2 && !fields[2].isEmpty ? Self.canonical(fields[2]) : nil
             windowOpened(window, kind: fields[1], owner: owner)
+        case "viewOpened", "viewFailed":
+            handleViewEvent(kind: kind, payload: payload)
         case "failed":
             fail(payload)
         default:
@@ -413,44 +463,45 @@ final class RebasedHost {
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
         openedThisRun.insert(project)
+        beginPortLookup()
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
-        for entry in waiting { setState(.shown, session: entry.session) }
-        let onScreen = waiting.filter { visibleSlots.contains($0.session) }
+        for entry in waiting { setState(.shown, overlay: entry.id) }
+        let onScreen = waiting.filter { visibleSlots.contains($0.id) }
         guard let latest = onScreen.max(by: { $0.order < $1.order }) else {
             if visible[project] == nil { _ = runtime.call("hide", project) }
             return
         }
-        show(session: latest.session)
+        show(overlay: latest.id)
     }
 
     private func frameClosed(project: String) {
         frameNumbers[project] = nil
         visible[project] = nil
-        for entry in entries.values where entry.project == project {
-            _ = store(entry.session)?.closeOverlay(entry.session)
-        }
+        let closing = entries.values.filter { $0.project == project }
+        for entry in closing { _ = store(entry.session)?.closeRebasedOverlay(entry.session, id: entry.id) }
     }
 
     private func windowOpened(_ window: NSWindow, kind: String, owner: String?) {
         if kind == "welcome" { return frames.orderOut(window) }
         // the born observer hid it as a possible project frame; only the keeper reveals those
         window.alphaValue = 1
-        if let owner, let session = visible[owner] {
-            frames.attach(window, to: hostWindow(session))
+        if let owner, let id = visible[owner], let entry = entries[id] {
+            frames.attach(window, to: hostWindow(entry.session))
         } else if kind == "dialog", let (id, waiting) = waiting(owner) {
             // IntelliJ can ask before any frame exists ("Trust project?"); it belongs to the slot being opened
             pauseDeadline(id, until: window)
-            if visibleSlots.contains(waiting.session) {
+            if visibleSlots.contains(waiting.id) {
                 frames.attach(window, to: hostWindow(waiting.session))
             } else {
                 frames.orderOut(window)
                 pendingDialogs[id, default: []].append(window)
             }
-        } else if owner == nil, let session = lastShown.flatMap({ isShown(in: $0) ? $0 : nil }) ?? visible.values.first {
-            frames.attach(window, to: hostWindow(session))
+        } else if owner == nil, let id = lastShown.flatMap({ visible.values.contains($0) ? $0 : nil }) ?? visible.values.first,
+                  let entry = entries[id] {
+            frames.attach(window, to: hostWindow(entry.session))
         } else if kind == "dialog", let last = owner.map({ lastShownByProject[$0] }) ?? lastShown,
-                  let current = entry(for: last), owner == nil || current.project == owner {
-            reveal(session: last, dialog: window)
+                  let current = entries[last], owner == nil || current.project == owner {
+            reveal(session: current.session, dialog: window)
         } else {
             frames.orderOut(window)
         }
@@ -460,7 +511,7 @@ final class RebasedHost {
     private func waiting(_ project: String?) -> (UUID, Entry)? {
         entries.filter { (project == nil || $0.value.project == project) && overlayState($0.value) == .starting }
             .max { lhs, rhs in
-                let left = visibleSlots.contains(lhs.value.session), right = visibleSlots.contains(rhs.value.session)
+                let left = visibleSlots.contains(lhs.key), right = visibleSlots.contains(rhs.key)
                 return left == right ? lhs.value.order < rhs.value.order : !left
             }
             .map { ($0.key, $0.value) }
@@ -471,25 +522,36 @@ final class RebasedHost {
     /// A ready frame marks the overlay shown at once; the frame itself moves onto the slot only while the
     /// slot's view reports it on screen.
     func show(session: UUID) {
-        guard let entry = entry(for: session), let number = frameNumbers[entry.project],
-              let frame = window(number) else { return }
+        guard let id = overlayID(for: session) else { return }
+        show(overlay: id)
+    }
+
+    func show(overlay id: UUID, focusIfFocusedPane: Bool = false) {
+        guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
-        setState(.shown, session: session)
-        guard visibleSlots.contains(session) else { return }
-        visible[entry.project] = session
-        lastShown = session
-        lastShownByProject[entry.project] = session
-        setState(.shown, session: session)
+        guard overlay(entry)?.hidden != true, overlayState(entry) != .fetching else { return }
+        // Armed only while the pane has the keyboard, so a later switch back to the session never takes it.
+        if focusIfFocusedPane, visible[entry.project] != id,
+           let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
+           isFocusedPane(entry.session, pane) { needsInitialFocus.insert(id) }
+        setState(.shown, overlay: id)
+        guard visibleSlots.contains(id) else { return }
+        visible[entry.project] = id
+        lastShown = id
+        lastShownByProject[entry.project] = id
         _ = runtime.call("show", entry.project)
-        frames.adopt(frame, in: hostWindow(session))
-        sendDiff(session: session)
-        touchMirror(project: entry.project, session: session)
+        frames.adopt(frame, in: hostWindow(entry.session))
+        sendView(overlay: id)
+        touchMirror(project: entry.project, session: entry.session)
+        if needsInitialFocus.remove(id) != nil,
+           let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
+           isFocusedPane(entry.session, pane) { focus(overlay: id) }
     }
 
     // An overlay only shown and hidden for weeks would otherwise keep a marker as old as its last refresh, and the
     // first prune after it closes would delete a mirror in daily use. Cheapest checks first.
     private func touchMirror(project: String, session: UUID) {
-        guard let source = store(session)?.session(withID: session)?.rebasedOverlay?.source else { return }
+        guard let source = store(session)?.session(withID: session)?.rebasedPlacement?.overlay.source else { return }
         let now = clock()
         if let last = lastTouched[project], now.timeIntervalSince(last) < Self.touchInterval { return }
         guard let hash = RebasedMirrorCleanup.hashDirectory(ofClone: URL(fileURLWithPath: project), stateDirectory: stateDirectory)
@@ -498,12 +560,32 @@ final class RebasedHost {
         onMirrorQueue({ RebasedMirrorMarker.touch(hashDirectory: hash, source: source, now: now) }, {})
     }
 
-    // The bridge shows the diff as a dialog of the project frame, so it waits until that frame is on screen
-    // here; sent while hidden, the dialog would come up over another session or queue behind the slot.
-    private func sendDiff(session: UUID) {
-        guard let id = overlayID(for: session), let entry = entries[id], visible[entry.project] == session,
-              let diff = pendingDiffs.removeValue(forKey: id) else { return }
-        _ = runtime.call("diff", diff.bridgeArgument(project: entry.project))
+    // A click into a pane IDE makes it key without passing through the deck, which is what moves pane focus.
+    func ideBecameKey(_ window: NSWindow) {
+        guard let id = owner(of: window), let session = store(id)?.session(withID: id),
+              let pane = session.rebasedPlacement?.pane else { return }
+        session.splitFocused = pane == .right
+    }
+
+    // First responder alone leaves the keyboard with the IDE, a child window of the session's.
+    func releaseKey(from session: UUID) {
+        guard isIDEKeyWindow, let key = keyWindow(), owner(of: key) == session,
+              store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil,
+              let host = hostWindow(session) else { return }
+        frames.makeKey(host)
+    }
+
+    @discardableResult
+    func focus(overlay id: UUID) -> Bool {
+        guard let entry = entries[id], visible[entry.project] == id, overlay(entry)?.hidden != true,
+              let number = frameNumbers[entry.project], let frame = window(number) else { return false }
+        frames.makeKey(frame)
+        return true
+    }
+
+    func hide(overlay id: UUID) {
+        guard let entry = entries[id] else { return }
+        hide(entry)
     }
 
     func hide(session: UUID) {
@@ -516,7 +598,7 @@ final class RebasedHost {
     private func reveal(session: UUID, dialog: NSWindow) {
         store(session)?.selectSession(session)
         hostWindow(session)?.makeKeyAndOrderFront(nil)
-        if visibleSlots.contains(session) {
+        if let id = overlayID(for: session), visibleSlots.contains(id) {
             show(session: session)
             frames.attach(dialog, to: hostWindow(session))
         } else {
@@ -527,30 +609,53 @@ final class RebasedHost {
 
     /// The session whose shown frame, or a window attached over it, is `window`.
     func owner(of window: NSWindow) -> UUID? {
-        visible.first { project, session in
-            frameNumbers[project].flatMap(self.window) === window
-                || (window.parent != nil && window.parent === hostWindow(session))
-        }?.value
+        visible.first { project, id in
+            guard let entry = entries[id] else { return false }
+            return frameNumbers[project].flatMap(self.window) === window
+                || (window.parent != nil && window.parent === hostWindow(entry.session))
+        }.flatMap { entries[$0.value]?.session }
     }
 
-    /// The slot view's report: whether its session's slot is on screen and uncovered. Hiding the frame on
-    /// a session switch, a closed or minimized window and an agterm palette over the slot all come here.
+    func isShownElsewhere(overlay id: UUID) -> Bool {
+        guard let entry = entries[id], let holder = visible[entry.project] else { return false }
+        return holder != id
+    }
+
     func setSlotVisible(_ isVisible: Bool, session: UUID) {
-        if isVisible {
-            visibleSlots.insert(session)
-            show(session: session)
-            let queued = overlayID(for: session).flatMap { pendingDialogs.removeValue(forKey: $0) } ?? []
-            for dialog in queued { surface(dialog, session: session) }
+        guard let id = overlayID(for: session) else { return }
+        setSlotVisible(isVisible, overlay: id, reporter: session)
+    }
+
+    func setSlotVisible(_ isVisible: Bool, overlay id: UUID, reporter: UUID) {
+        let wasVisible = visibleSlots.contains(id)
+        if isVisible { visibilityReports[id, default: []].insert(reporter) } else { visibilityReports[id]?.remove(reporter) }
+        let nowVisible = visibilityReports[id]?.isEmpty == false
+        if nowVisible {
+            visibleSlots.insert(id)
         } else {
-            visibleSlots.remove(session)
-            hide(session: session)
+            visibilityReports[id] = nil
+            visibleSlots.remove(id)
+        }
+        guard nowVisible != wasVisible, let entry = entries[id] else { return }
+        if nowVisible {
+            show(overlay: id)
+            let queued = pendingDialogs.removeValue(forKey: id) ?? []
+            for dialog in queued { surface(dialog, session: entry.session) }
+        } else {
+            hide(entry)
         }
     }
 
-    func setSlot(_ rect: NSRect, in window: NSWindow) {
-        guard slots[ObjectIdentifier(window)] != rect else { return }
-        slots[ObjectIdentifier(window)] = rect
+    func setSlot(_ rect: NSRect, overlay id: UUID, in window: NSWindow) {
+        guard slots[id] != rect else { return }
+        slots[id] = rect
         frames.refit(host: window)
+    }
+
+    private func slotRect(for frame: NSWindow) -> NSRect {
+        if let project = frameNumbers.first(where: { window($0.value) === frame })?.key,
+           let id = visible[project], let rect = slots[id] { return rect }
+        return frame.parent.map { $0.convertToScreen($0.contentLayoutRect) } ?? frame.frame
     }
 
     /// Saves the IDE's unsaved documents before agterm exits, waiting at most `timeout`: the bridge bounds its
@@ -571,7 +676,7 @@ final class RebasedHost {
     }
 
     private func hide(_ entry: Entry) {
-        guard visible[entry.project] == entry.session else { return }
+        guard visible[entry.project] == entry.id else { return }
         visible[entry.project] = nil
         _ = runtime.call("hide", entry.project)
         if let number = frameNumbers[entry.project], let frame = window(number) { frames.detach(frame) }
@@ -582,24 +687,33 @@ final class RebasedHost {
     // nothing until its own visibility changed.
     private func handBack(_ previous: Entry) {
         let next = entries.values.filter {
-            $0.project == previous.project && $0.session != previous.session && visibleSlots.contains($0.session)
-                && overlayState($0) == .shown
+            $0.project == previous.project && $0.id != previous.id && visibleSlots.contains($0.id)
+                && overlayState($0) == .shown && overlay($0)?.hidden != true
         }.max { $0.order < $1.order }
-        if let next { show(session: next.session) }
+        if let next { show(overlay: next.id) }
     }
 
-    // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
-    // never dropped: it comes up over the session now, rather than over whatever that session opens next.
-    private func release(_ overlayID: UUID) {
+    // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so short of
+    // quit it is never dropped: it comes up over the session now, rather than over whatever that session opens next.
+    func removeEntry(_ overlayID: UUID, endingProcess: Bool = false) -> Entry? {
         deadlines[overlayID] = nil
         if let token = dialogCloses.removeValue(forKey: overlayID) { NotificationCenter.default.removeObserver(token) }
-        pendingDiffs[overlayID] = nil
+        // a mirror open still waiting on the queue has no entry yet
         pendingMirrorOpens[overlayID] = nil
+        guard let entry = entries.removeValue(forKey: overlayID) else { return nil }
+        visibleSlots.remove(overlayID)
+        visibilityReports[overlayID] = nil
+        needsInitialFocus.remove(overlayID)
+        slots[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
-        guard let entry = entries.removeValue(forKey: overlayID) else { return }
-        hide(entry)
-        if lastShownByProject[entry.project] == entry.session { lastShownByProject[entry.project] = nil }
-        for dialog in queued { surface(dialog, session: entry.session) }
+        if endingProcess {
+            if visible[entry.project] == entry.id { visible[entry.project] = nil }
+        } else {
+            hide(entry)
+            for dialog in queued { surface(dialog, session: entry.session) }
+        }
+        if lastShownByProject[entry.project] == entry.id { lastShownByProject[entry.project] = nil }
+        return entry
     }
 
     private func surface(_ dialog: NSWindow, session: UUID) {
@@ -682,20 +796,34 @@ final class RebasedHost {
 
     // MARK: - Helpers
 
+    private func onCloseDirectory(for session: Session) -> String {
+        let home = NSHomeDirectory()
+        let path = session.localWorkingDirectory(reported: session.focusedCwd, homeDirectory: home)
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue ? path : home
+    }
+
     private func overlayID(for session: UUID) -> UUID? {
-        entries.filter { $0.value.session == session }.max { $0.value.order < $1.value.order }?.key
+        store(session)?.session(withID: session)?.rebasedPlacement?.overlay.id
+            ?? entries.filter { $0.value.session == session }.max { $0.value.order < $1.value.order }?.key
     }
 
     private func entry(for session: UUID) -> Entry? {
         entries.values.filter { $0.session == session }.max { $0.order < $1.order }
     }
 
-    private func overlayState(_ entry: Entry) -> RebasedOverlay.State? {
-        store(entry.session)?.session(withID: entry.session)?.rebasedOverlay?.state
+    func overlay(_ entry: Entry) -> RebasedOverlay? {
+        guard let overlay = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.overlay,
+              overlay.id == entry.id else { return nil }
+        return overlay
     }
 
-    private func setState(_ state: RebasedOverlay.State, session: UUID) {
-        store(session)?.session(withID: session)?.rebasedOverlay?.state = state
+    private func overlayState(_ entry: Entry) -> RebasedOverlay.State? { overlay(entry)?.state }
+
+    private func setState(_ state: RebasedOverlay.State, overlay id: UUID) {
+        guard let entry = entries[id] else { return }
+        store(entry.session)?.session(withID: entry.session)?.updateRebasedOverlay(id) { $0.state = state }
     }
 
     // The prune compares and hashes this same form, so `/private/tmp` against `/tmp` cannot split them.
@@ -718,14 +846,26 @@ final class RebasedHost {
     // An IDE frame is visible from the turn AWT orders it in; hide it there, before Core Animation commits,
     // until the frames keeper adopts it. Dialogs and popups are not miniaturizable and stay as they are.
     private func installBornObserver() {
-        guard bornObserver == nil else { return }
+        guard Self.bornObserver == nil else { return }
         let activities = CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.afterWaiting.rawValue
             | CFRunLoopActivity.beforeSources.rawValue
         let observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, -1) { _, _ in
             MainActor.assumeIsolated { RebasedHost.shared.hideNewFrames() }
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        bornObserver = observer
+        Self.bornObserver = observer
+    }
+
+    private func installKeyObserver() {
+        guard Self.keyObserver == nil else { return }
+        Self.keyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                guard Self.isIDEWindow(window) else { return }
+                RebasedHost.shared.ideBecameKey(window)
+            }
+        }
     }
 
     // agterm's menu stays installed while the IDE is key, so without this a chord both menus bind (⌘F) would
@@ -770,7 +910,7 @@ final class RebasedHost {
 }
 
 // Carries one off-main result back to the main actor; written once before the hop, read once after it.
-private final class ResultBox<Value>: @unchecked Sendable {
+final class ResultBox<Value>: @unchecked Sendable {
     private(set) var value: Result<Value, any Error>?
     func set(_ work: () throws -> Value) { value = Result(catching: work) }
 }

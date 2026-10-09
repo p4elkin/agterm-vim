@@ -407,7 +407,7 @@ public final class AppStore {
                                               presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                               remoteOverlays: remoteOverlayNodes(of: session),
                                               htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom),
-                                              rebasedOverlay: session.rebasedOverlayActive ? session.rebasedOverlay?.controlNode : nil)
+                                              rebasedOverlay: session.rebasedPlacement.map { $0.overlay.controlNode(pane: $0.pane) })
                 if session.remoteHost != nil {
                     node.remoteState = session.remotePresentation?.rowState.rawValue
                     node.remoteSession = session.remotePresentation?.binding.remoteSessionID

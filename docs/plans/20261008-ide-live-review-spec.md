@@ -44,7 +44,7 @@ Settled with Sasha on 2026-10-08, one question at a time.
 | Code view | A **range diff**: every tracked file changed between the merge base with `--base` and the working copy. |
 | Viewer choice | Per mode. `AGTERM_ANNOTATE_VIEWER` keeps choosing for plans. New `AGTERM_ANNOTATE_CODE_VIEWER` chooses for `--code`. |
 | How a review ends | `--on-close <command>` on the Rebased overlay. agterm runs it once when that overlay is released. |
-| Toggle chord | **Hides** the overlay and keeps it, its view and its `--on-close`. The next toggle shows it again. This applies to every Rebased overlay. |
+| Toggle chord | **Hides** the overlay and keeps it, its view and its `--on-close`. The next toggle shows it again. This applies to every Rebased overlay, except one that failed to start: toggle closes it (running `--on-close`), so the next press retries. |
 | Edited note | claude-remarks resets an edited READ remark to PENDING, so the next Publish Unread sends it. This applies everywhere. |
 
 Why no Markdown plugin: Rebased's JBR ships no JCEF (`/Applications/Rebased.app/Contents/jbr` has no CEF
@@ -123,6 +123,7 @@ All of this is fork-only, like the rest of `--rebased`.
 - Today `toggleRebasedOverlay` in `AppActions+Rebased.swift` calls `store.closeOverlay`. It changes to
   hide: the overlay, its id, view and `onClose` stay; the frame is hidden through the existing `hide`
   verb. The next toggle shows the same holder.
+- A failed holder is closed instead, answering `closed`; hiding it would keep the slot with no way back but ⌘W.
 - Read-back: `rebasedOverlay.hidden: true` while hidden.
 - The palette row and the `rebased_toggle` keymap action share this path.
 

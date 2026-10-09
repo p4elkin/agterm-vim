@@ -96,12 +96,17 @@ program, which is how to show the user an artifact you generated. The same sessi
 (`session hud`), a small passive panel carrying a message instead of a program. A HUD can use the
 whole session or one pane as its placement bounds. The session keeps focus and stays typable
 under it.
-In this fork, Rebased occupies the session-wide slot for the session's repository; `--diff RANGE` shows a commit
-range, and a remote row's repository is mirrored to the Mac first (its commits only); `rebased mirror list|prune`
+In this fork, Rebased can cover the session or one pane (`--rebased --pane left|right`) for a live review.
+`--diff RANGE [--working-tree]` or `--file PATH[:LINE]` chooses the view; `--project DIR` opens exactly that folder.
+`--on-close COMMAND` runs once when a fresh holder is released. The toggle hides and shows the same holder.
+`session rebased show` updates its view; `session rebased toggle` controls visibility (all fork only).
+Save the open's `result.overlay` and `result.request`; close with `session overlay close --overlay ID` to avoid closing another holder.
+Read `rebasedOverlay`'s `pane`, `hidden`, `view` and armed `onClose`, and top-level `rebased` (including `rebased.port` once known).
+A view is ready at `view.state: opened`; a hidden view stays `queued`. Remote rows support commit diffs and panes,
+but refuse `--working-tree`, `--file`, `--project` and `--on-close`. Details are in [reference.md](reference.md).
+A remote row's repository is mirrored to the Mac first (its commits only); `rebased mirror list|prune`
 lists and removes those mirrors.
-Read `rebasedOverlay: {project, state, error?, diff?, source?}` on the session and `rebased` (`{jvm, error?, projects}`)
-at the tree top level. Both fields are omitted until their occupant or JVM exists.
-One slot, so a session shows either a HUD or a program overlay, never both. Separately, the app has one
+The session-wide slot holds either a HUD or a program overlay. Separately, the app has one
 **quick terminal** (a scratch shell in a floating panel at 90% of the focused screen capped at 1100x700,
 or whatever share Settings sets instead; not part of the tree and not owned by a window).
 
@@ -462,7 +467,8 @@ omitted when expanded).
   and `clear --pane` returns the pane to the default. `--opacity` 0.0–1.0. (An image/text watermark
   renders the pane opaque, overriding window translucency, so it shows; a `color` takes no opacity and
   honors the Settings window translucency instead.)
-- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation] [--js] | --rebased [--cwd DIR] [--diff RANGE]) [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
+- `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE])` · `session rebased toggle` (fork only).
+- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation] [--js] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
   `session overlay resize (--size-percent N | --full)` ·
   `session overlay close [--pane left|right]` ·
   `session overlay reload [--current] [--pane left|right]` ·

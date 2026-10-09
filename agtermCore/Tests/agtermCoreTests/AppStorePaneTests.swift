@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct AppStorePaneTests {
+    @Test func rebasedPlacementTracksThePaneSlot() {
+        let session = Session(initialCwd: "/tmp")
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        session.leftOverlay = PaneOverlay(rebased: overlay)
+        #expect(session.rebasedPlacement?.overlay == overlay)
+        #expect(session.rebasedPlacement?.pane == .left)
+    }
+
     @Test(arguments: OverlayPane.allCases, ["session", "left", "right"])
     func paneCloseCancelsOnlyItsOwnAnchoredAsk(closingPane: OverlayPane, scope: String) throws {
         let store = makeStore()

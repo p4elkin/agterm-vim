@@ -72,7 +72,7 @@ final class ControlServerRebasedMirrorTests: XCTestCase {
         let other = try seedMirror(host: "p4air", hash: "4e5f6a7b", name: "oak", ageDays: 20)
         let store = try XCTUnwrap(library.activeStore)
         let session = try XCTUnwrap(store.addSession(toWorkspace: try XCTUnwrap(store.currentWorkspaceID), cwd: held.path))
-        XCTAssertNil(RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil))
+        XCTAssertNoThrow(try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil).get())
 
         let answer = try await mirrors(.rebasedMirrorList)
 

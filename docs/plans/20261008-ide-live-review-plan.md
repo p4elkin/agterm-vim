@@ -235,10 +235,10 @@ pane occupant. The explicit placement accessor costs more edits and keeps "sessi
   local term hides the frame, the slot shows nothing.
 - Focus: `AppActions.focusSplitPane` asks `RebasedHost.focus(overlay:)` when the target pane holds a shown
   IDE, instead of retrying `focusTarget`, which is nil there. `RebasedFrames` gains `makeKey(_ frame:)`.
-- An open over the focused pane makes the IDE key once: the host marks the overlay at open, and on its FIRST
-  show it calls `RebasedHost.focus(overlay:)` only if the holder's pane is still the focused pane of the
-  selected session in the key window. The mark clears at that first show either way. `show` never calls
-  `focus` otherwise, so closing a palette or switching back never pulls the keyboard into the IDE.
+- An open or explicit toggle-show over the focused pane makes the IDE key once: the host marks the overlay,
+  and on its first visible show calls `RebasedHost.focus(overlay:)` only if the holder's pane is still the
+  focused pane of the selected session. The mark clears at that show either way. Visibility reports alone
+  never arm focus, so closing a palette or switching back never pulls the keyboard into the IDE.
 - That question goes through a seam, `RebasedHost.isFocusedPane: (UUID, OverlayPane) -> Bool`, set in
   `RebasedHost.configure`: true when the session id is `library.activeStore`'s `selectedSessionID` and that
   session's `focusedPane` is the pane. The host never reads `NSApp.keyWindow` for it. The hosted test wires the
@@ -290,7 +290,7 @@ flowchart TD
 ```
 
 - `--on-close <command>` is captured at open as `RebasedOnClose` (core): the command, the cwd (the open's
-  `--cwd`, else the session's local working directory), and the environment. The environment is built on
+  `--cwd`, else the session's local working directory, falling back to home if it no longer exists), and the environment. The environment is built on
   the Mac: the app's environment, the session's `CommandContext.environment()`, `AGTERM_SOCKET`, and `PATH`
   widened by `CommandPath.widened`, as `CustomCommandRunner.spawn` builds it.
 - It is stored on `RebasedOverlay.onClose` (the read-back says `onClose: true`) and copied into the host's
@@ -298,13 +298,13 @@ flowchart TD
 - `RebasedHost.release` is the release-once operation: `entries.removeValue` succeeds once, and only then is
   the command started. `RebasedOnCloseRunner` (app) starts it detached, stdio on `nullDevice`, and logs a spawn
   failure. The host calls it through a seam so hosted tests record calls instead of running a shell.
-- The environment comes through a seam set in `RebasedHost.configure`, filled by a new internal
+- The environment comes through a seam set beside `RebasedHost.configure` in `agtermApp.init`, filled by a new internal
   `CustomCommandRunner.environment(for:in:)` that wraps the private `context(for:in:…)` with no selection.
 - TCC: `RebasedOnCloseRunner` spawns exactly as `CustomCommandRunner.spawn` does, a child of the app process,
   so its attribution is the same and no service sees a new subject.
 - Quit: `RebasedHost.releaseAllBeforeQuit()` in `applicationWillTerminate`, beside and outside
   `saveBeforeQuit`'s `jvm == .running` guard, releases every entry: starting and failed ones too. A cancelled
-  quit never reaches `applicationWillTerminate`.
+  quit never reaches `applicationWillTerminate`. Quit skips JNI and window hand-back while draining entries.
 - A soft-closed session releases at finalize, not at the soft close, so undo brings the overlay back with its
   callback still armed. A quit finalizes pending closes, and the entry guard keeps the two paths from running
   the command twice.
@@ -443,7 +443,7 @@ Size: M. Driven by 30 read sites, the core half of them with tests here.
 - Files: `agtermCore/Sources/agtermCore/{RebasedOverlay,Session,Session+HtmlOverlay,AppStore+Panes,AppStore+RemoteOverlay,TerminalZoom,DashboardCover}.swift`;
   tests `HtmlOverlayTests`, `AppStorePaneTests`, `AppStorePaneSwapTests`, `TerminalZoomTests`,
   `DashboardCoverTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `openRebasedOverlay(pane: .left)` puts the overlay in `leftOverlay.rebased`; `rebasedPlacement` answers
     `.left`; a second open anywhere in the session is refused, session slot or other pane; an occupied pane
     answers `.alreadyOpen` with the pane wording; a pane the deck does not lay out answers `.paneNotVisible`.
@@ -455,11 +455,11 @@ Size: M. Driven by 30 read sites, the core half of them with tests here.
     `closeRebasedOverlay(session, id:)` closes it in either slot and refuses a stale id.
   - `TerminalZoom` offers no `overlay-left` target over it; `dashboardCover(for: .left)` answers `.rebased`.
   - `updateRebasedOverlay(id:)` changes the value in whichever slot holds it, `project` included.
-- [ ] Add `PaneOverlay.rebased` with `init(rebased:)`, `Session.rebasedPlacement`,
+- [x] Add `PaneOverlay.rebased` with `init(rebased:)`, `Session.rebasedPlacement`,
   `Session.updateRebasedOverlay`, `Session.paneOverlayIsProgram`, `AppStore.closeRebasedOverlay`, the `pane`
   parameter of `openRebasedOverlay`, `RebasedOverlayOpenFailure.paneNotVisible` and `message(pane:)`.
   `RebasedOverlay.project` and `RebasedOverlay.source` become `var`s.
-- [ ] Walk every site of
+- [x] Walk every site of
   `grep -rn 'paneOverlayIsHtml\|paneOverlay(.*) [!=]= nil\|leftOverlay [!=]= nil\|rightOverlay [!=]= nil\|focusedOverlayPane\|openPaneOverlays\|rebasedOverlay\b' agterm agtermCore/Sources`
   and apply the decision in row 1 of [New fields and their consumers](#new-fields-and-their-consumers) for
   every core site. Core sites get a test. App sites are built by the task named in row 1's "Task" column;
@@ -473,7 +473,7 @@ Size: M. Driven by the parsers and the request ledger's transitions.
 
 - Files: `agtermCore/Sources/agtermCore/RebasedOverlay.swift`, new `agtermCore/Sources/agtermCore/RebasedView.swift`;
   tests `RebasedDiffTests`, new `RebasedViewTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedFileTarget(spec:)`: `a/b.kt` (line 0), `a/b.kt:42`, `a:b.kt:7` (path `a:b.kt`), `a/b.kt:` and
     `a/b.kt:0` refused, a tab or a newline refused.
   - `RebasedView.diff` with `workingTree`: `A..` and `A...B` accepted, `A..B` refused.
@@ -483,7 +483,7 @@ Size: M. Driven by the parsers and the request ledger's transitions.
     sets `opened` and the detail; `apply(viewFailed)` sets `failed` with the reason as `detail`; an event for
     an earlier id changes nothing; `timedOut` fails only a current `sent` request; a `queued` request never
     times out.
-- [ ] Add `RebasedFileTarget`, `RebasedView`, `RebasedViewRequest`, `RebasedOverlay.view`, and the value types
+- [x] Add `RebasedFileTarget`, `RebasedView`, `RebasedViewRequest`, `RebasedOverlay.view`, and the value types
   `RebasedOnClose` (command, cwd, environment) and `RebasedOverlay.onClose`, so every core field exists before
   Tasks 4 and 7. Extend `RebasedDiff.bridgeArgument` without changing what an existing caller gets until
   Task 12 moves it.
@@ -499,7 +499,7 @@ Size: M. Driven by the cover predicates of both slots and a hidden-pane test for
 - Files: `agtermCore/Sources/agtermCore/{RebasedOverlay,Session,Session+HtmlOverlay,TerminalZoom,DashboardCover,AppStore+RemoteOverlay}.swift`;
   tests `HtmlOverlayTests`, `AppStorePaneTests`, `TerminalZoomTests`, `DashboardCoverTests`,
   `AppStoreRemoteOverlayTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `AppStore.setRebasedHidden(session, id:, true)` keeps the overlay, its id, `view` and `onClose`;
     `overlayActive` stays true; opening a program, a page or a second Rebased overlay is still refused.
   - Hidden session-wide holder: `rebasedOverlayActive`, `coverOverlayActive` and `fullOverlayActive` are
@@ -511,11 +511,11 @@ Size: M. Driven by the cover predicates of both slots and a hidden-pane test for
   - A hidden session-wide holder still holds the slot for a remote job: `openRemoteOverlay` answers
     `.slotTaken`.
   - Showing again restores every predicate. Hide, show and close fire the release once, at the close.
-- [ ] Add `RebasedOverlay.hidden`, `AppStore.setRebasedHidden`, `Session.paneOverlayCovers`, and the hidden
+- [x] Add `RebasedOverlay.hidden`, `AppStore.setRebasedHidden`, `Session.paneOverlayCovers`, and the hidden
   term in `rebasedOverlayActive`, `fullOverlayActive`, `focusedOverlayPane`, `focusTarget`, the `TerminalZoom`
   arms and `dashboardCover(for:)`. `AppStore+RemoteOverlay.localOverlayHolds(nil)` asks "held"
   (`overlayActive && !hudActive`) instead of `coverOverlayActive`.
-- [ ] Sweep core for any other read of `coverOverlayActive` that means "the slot is occupied" rather than "a
+- [x] Sweep core for any other read of `coverOverlayActive` that means "the slot is occupied" rather than "a
   cover takes input" (`grep -rn coverOverlayActive agtermCore/Sources`), and switch each such read to "held".
 
 Check: `grep -q 'setRebasedHidden' agtermCore/Tests/agtermCoreTests/HtmlOverlayTests.swift && grep -q 'setRebasedHidden' agtermCore/Tests/agtermCoreTests/AppStoreRemoteOverlayTests.swift && cd agtermCore && swift test --filter 'HtmlOverlayTests|AppStorePaneTests|TerminalZoomTests|DashboardCoverTests|AppStoreRemoteOverlayTests'`
@@ -529,7 +529,7 @@ Size: M. Driven by the conflict matrix across CLI, dispatcher and protocol.
 - Files: `agtermCore/Sources/agtermCore/{ControlProtocol,ControlDispatcher+Overlay,ControlDispatcherOptions,ControlDispatcher,ControlActionsDefaults}.swift`
   (`ControlActions` is declared in `ControlDispatcher.swift`), `agtermCore/Sources/agtermctlKit/SessionCommands.swift`;
   tests `OverlayCommandsTests`, `ControlProtocolTests`, `ControlDispatcherOverlayTests`, `MockControlActions`.
-- [ ] Tests first:
+- [x] Tests first:
   - CLI (`OverlayCommandsTests`): `--rebased --pane left|right` parses; `--working-tree` without `--diff`,
     `--file` with `--diff`, `--pane` with `--size-percent`, and each of `--working-tree`, `--file`,
     `--project`, `--on-close` without `--rebased` are usage errors; a relative `--file` and `--project` become
@@ -541,7 +541,7 @@ Size: M. Driven by the conflict matrix across CLI, dispatcher and protocol.
     Rebased-only flag without `--rebased` answers the same error shape as `--diff` today; a bad `--file`
     answers before any action runs; `--project` and `--cwd` both reach the options; `close --overlay` with a
     non-UUID is refused before the host.
-- [ ] Add `ControlArgs.workingTree`, `.file`, `.project`, `.onClose`, `.overlay`; `ControlResult.overlay`,
+- [x] Add `ControlArgs.workingTree`, `.file`, `.project`, `.onClose`, `.overlay`; `ControlResult.overlay`,
   `.request`; the options fields beside `rebasedDiff`; a shared `parseRebasedView(args)` in the dispatcher;
   the `closeSessionOverlay` overload taking an overlay id, defaulted in `ControlActionsDefaults` to refuse.
   CLI flags and help text in `Overlay.Open` and `Overlay.Close`.
@@ -563,7 +563,7 @@ switch.
   good, beside `.sessionMark` and the `.sessionBookmark*` cases);
   tests new `ControlDispatcherRebasedTests`, `OverlayCommandsTests`, `ForwardPolicyTests`,
   `HeadlessCatalogTests`, `HeadlessActionsTests`, `MockControlActions`.
-- [ ] Tests first:
+- [x] Tests first:
   - `ControlDispatcherRebasedTests`: `show` takes exactly one of `--diff` and `--file`; `--working-tree` rules
     as for open; the parsed `RebasedView` reaches `actions.showRebasedView`; `toggle` reaches
     `actions.toggleRebasedOverlay` with the target and window.
@@ -574,7 +574,7 @@ switch.
     `.forwarded`; `sessionOverlayClose` with `overlay` is `.forwarded` even with `holdsJob` true.
   - `HeadlessCatalogTests` and `HeadlessActionsTests`: both commands are classified, and the origin's answer
     to a forwarded `--on-close` open is the refusal text.
-- [ ] Add the commands, their dispatcher file (the bookmark family's shape), `ControlActions.showRebasedView`
+- [x] Add the commands, their dispatcher file (the bookmark family's shape), `ControlActions.showRebasedView`
   and `ControlActions.toggleRebasedOverlay` with refusing defaults, the CLI file, the `ForwardPolicy` changes,
   and the fallback-switch row in `ControlServer.swift`.
 
@@ -590,7 +590,7 @@ Size: S. Driven by two node types and their omission tests.
   `AppStoreTreeProjectionTests`, `ControlProtocolTests`, `RebasedDiffTests`, `RebasedMirrorTests`, and the
   expected node in
   `ControlServerRebasedOverlayTests.testOpenRoutesToTheHostAndShowsInTheTree`.
-- [ ] Tests first, in a new `testRebasedNodeProjectsPaneHiddenViewAndOnClose`: a session-wide holder projects
+- [x] Tests first, in a new `testRebasedNodeProjectsPaneHiddenViewAndOnClose`: a session-wide holder projects
   no `pane` and `hidden: false`; a left holder projects
   `pane: "left"` and still appears in `paneOverlays`; a hidden holder projects `hidden: true` and is still
   present; a view projects `{request, kind, target, state, detail?}`; `onClose: true` only when armed; every
@@ -598,7 +598,7 @@ Size: S. Driven by two node types and their omission tests.
   `ControlProtocolTests`: a node JSON without `hidden` still decodes. The expected nodes that compare a whole
   `controlNode` gain `hidden: false`: the hosted test, `RebasedDiffTests.theOverlayNodeReportsTheRequestedRange`
   and `RebasedMirrorTests.theOverlayNodeReportsFetchingAndTheSource`.
-- [ ] Add `pane`, `hidden` (`Bool?`, always set by `controlNode`), `view`, `onClose` to `ControlRebasedOverlayNode`, a `ControlRebasedViewNode`, and
+- [x] Add `pane`, `hidden` (`Bool?`, always set by `controlNode`), `view`, `onClose` to `ControlRebasedOverlayNode`, a `ControlRebasedViewNode`, and
   `port` to `ControlRebasedNode`, all defaulted. `AppStore.controlTree` projects the node while the overlay is
   held anywhere, not only while `rebasedOverlayActive`.
 
@@ -613,15 +613,15 @@ Size: M. Driven by three verbs, two events and the empty and error cases in Java
 - Files: `agterm/Resources/rebased/src/agterm/rebased/{Bridge,RangeDiff}.java`, a new `OpenFile.java` if
   `Bridge` grows; `agterm/Rebased/RebasedPluginBuilder.swift` only if the classpath changes; test
   `RebasedPluginBuilderTests`.
-- [ ] Test first: `RebasedPluginBuilderTests` gains a case that the built jar holds the classes of every new
+- [x] Test first: `RebasedPluginBuilderTests` gains a case that the built jar holds the classes of every new
   verb, which proves the sources compile against build `262.10968`.
-- [ ] `Bridge.apply`: `diff` with the new fields (`diffFields` splits into 7), `openFile`, `port`.
+- [x] `Bridge.apply`: `diff` with the new fields (`diffFields` splits into 7), `openFile`, `port`.
   `RangeDiff`: the working-tree path; `session` shows the changes dialog, `pane` the editor tab Task 1 confirmed;
   `viewOpened` with the count; no window and `viewOpened <request>\t0` for an empty result; `viewFailed` with
   git's message, beside the error dialog for `session` and with no dialog for `pane`.
   `openFile`: `OpenFileDescriptor` on the EDT, `viewOpened` with the path, `viewFailed` for a missing file.
   `port`: the built-in server's port once started, empty before.
-- [ ] The behaviour itself is checked live in Task 16; this task's automated check is the compile.
+- [x] The behaviour itself is checked live in Task 16; this task's automated check is the compile.
 
 Check: `test -d /Applications/Rebased.app && /usr/bin/lockf /tmp/agterm-vim-xcode.lock scripts/test-app.sh -only-testing:agtermTests/RebasedPluginBuilderTests`
 
@@ -634,7 +634,7 @@ Size: M. Driven by the host's session-keyed maps and the keeper's rect source.
 - Files: `agterm/Rebased/{RebasedHost,RebasedFrameKeeper}.swift`, `agterm/Rebased/AppActions+Rebased.swift`
   (session lookups), `agterm/Control/ControlServer+SessionActions.swift` (the `openOverlay` call site);
   tests `RebasedHostTests`, `RebasedFrameKeeperTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedFrameKeeperTests`: two holders on one window with different rects; the frame fits its current
     holder's rect, refits when that rect changes (split ratio), and follows a window move.
   - `RebasedHostTests` (fake runtime, fake frames): a left-pane holder adopts the frame with the pane's
@@ -646,12 +646,12 @@ Size: M. Driven by the host's session-keyed maps and the keeper's rect source.
   - `openOverlay(project:)` opens exactly that directory with no `.git` walk; a same-project open with no
     `--pane`, or the holder's own pane, reuses the holder; one naming the other pane is refused; the result
     carries the overlay id.
-- [ ] `RebasedHost.setSlot` keys rects by overlay id; `RebasedFrameKeeper.slotRect` asks for the current holder
+- [x] `RebasedHost.setSlot` keys rects by overlay id; `RebasedFrameKeeper.slotRect` asks for the current holder
   of a frame. `setState` and every other session lookup go through the overlay id and `updateRebasedOverlay`.
   That includes `mirrored`, which today calls `RebasedOverlay(project:diff:source:id:)` and from now on changes
   `project`, `source` and `state` in place, and `openRemote`'s `store.openRebasedOverlay` call, which takes
   `pane:`.
-- [ ] `RebasedHost.openOverlay` gains `pane:` and `project:`, the reuse rule, and returns
+- [x] `RebasedHost.openOverlay` gains `pane:` and `project:`, the reuse rule, and returns
   `Result<RebasedOpened, RebasedOpenRefusal>`; its callers (`ControlServer+SessionActions`,
   `AppActions+Rebased`) adapt without changing behaviour yet.
 
@@ -666,7 +666,7 @@ Size: M. Driven by the reporter token, the pane panel branch and the visibility 
 - Files: `agterm/Rebased/{RebasedSlotView,RebasedHost}.swift`, `agterm/Views/WindowContentView+Detail.swift`
   (`paneOverlayPanel`), `agterm/Views/WindowContentView.swift` (`rebasedCovered` passed to the pane branch);
   tests `RebasedHostTests`, `ControlServerRebasedOverlayTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedHostTests`: a new reporter visible, then the old reporter hidden, keeps the frame shown; the
     reverse order too; the last reporter hidden hides it.
   - Promotion and swap: the overlay keeps its entry, and the frame is shown on the new pane's rect.
@@ -677,9 +677,9 @@ Size: M. Driven by the reporter token, the pane panel branch and the visibility 
     `shownElsewhere` true; nil when a local term hides the frame; `RebasedHost.isShownElsewhere` true only
     while `visible[project]` names another overlay.
   - The deck-to-host link is not visible to hosted tests; `live-floating-over` in Task 16 proves it.
-- [ ] `RebasedSlotNSView` reports visibility and rect with its overlay id and its own reporter token;
+- [x] `RebasedSlotNSView` reports visibility and rect with its overlay id and its own reporter token;
   `setSlotVisible` counts the overlay visible while any reporter says so.
-- [ ] `paneOverlayPanel` gets a `RebasedSlot` branch ahead of the page branch, keyed on the pane holding
+- [x] `paneOverlayPanel` gets a `RebasedSlot` branch ahead of the page branch, keyed on the pane holding
   Rebased, whose `visible` is `RebasedSlot.isVisible` over `gates.visible`, `gates.overlaid`,
   `rebasedCovered` and the asks. `RebasedSlot.message` becomes that static function.
 
@@ -698,7 +698,7 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   (`overlayPanel`, `OverlayPanelStyle`, `deckPane`, `paneOverlayPanel`), `RebasedHost.swift` (`show` respects
   `hidden`), and whichever raw slot reads the walks below change (`WindowContentView.swift`,
   `ControlServer+Mark.swift`, `ControlServer+SurfaceIO.swift`); tests `ControlServerRebasedOverlayTests`.
-- [ ] Tests first: replace `testToggleOpensClosesAndRefusesOverAProgram` and
+- [x] Tests first: replace `testToggleOpensClosesAndRefusesOverAProgram` and
   `testToggleForAGivenSessionClosesThatSessionsOverlay` with `testToggleHidesAndShowsTheSameHolder` and
   siblings:
   - toggle on a held overlay hides it (the outcome is `hidden`, the bridge gets `hide` through the direct host
@@ -726,17 +726,17 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   - the static predicates: a hidden `--size-percent` overlay resolves `OverlayPanelStyle` chromeless with no
     backdrop, the session panel's hit-test gate is false, `RebasedSlot.message` is nil, `deckPane`'s `covered`
     is false for a hidden pane holder, and `paneOverlayPanel`'s gate is false.
-- [ ] `toggleRebasedOverlay` flips `hidden` through `setRebasedHidden`; `RebasedSlot` gets `visible` false
+- [x] `toggleRebasedOverlay` flips `hidden` through `setRebasedHidden`; `RebasedSlot` gets `visible` false
   while hidden; `RebasedHost.show` returns early for a hidden overlay; both deck branches test "held";
   `deckPane`'s `covered` reads `paneOverlayCovers`; the toggle returns `RebasedToggleOutcome` and calls
   `RebasedHost.hide(overlay:)` or `show(overlay:)`.
-- [ ] The ⌘W rung for `focusedOverlayPane` skips a Rebased occupant. `confirmCloseSession` gains the Rebased
+- [x] The ⌘W rung for `focusedOverlayPane` skips a Rebased occupant. `confirmCloseSession` gains the Rebased
   branch and the `closeConfirmer` seam ([Hide](#hide)). `focusSplitPane` calls `RebasedHost.focus(overlay:)`
   for a shown pane IDE. The open path marks the overlay, and the first show calls `focus` under the one-shot
-  rule in [Visibility](#visibility), asking the `isFocusedPane` seam set in `RebasedHost.configure`; `show`
-  never calls it otherwise. The `session.overlayActive` rung asks the `closeConfirmer` first when it holds a
+  rule in [Visibility](#visibility), asking the `isFocusedPane` seam set in `RebasedHost.configure`;
+  explicit toggle-show arms the same rule. The `visibleOverlayActive` rung asks the `closeConfirmer` first when it holds a
   shown Rebased overlay. `RebasedFrames` gains `makeKey(_:)`.
-- [ ] Walk the raw session-slot reads,
+- [x] Walk the raw session-slot reads,
   `grep -rn 'overlayActive' agterm --include='*.swift' | grep -v 'coverOverlayActive\|programOverlayActive\|htmlOverlayActive\|rebasedOverlayActive\|fullOverlayActive'`,
   and the raw pane-slot reads, `grep -rn 'paneOverlay(.*) [!=]= nil\|leftOverlay [!=]= nil\|rightOverlay [!=]= nil' agterm`,
   and decide each for a hidden holder. Known today: `overlayPanel`'s outer condition and its
@@ -744,7 +744,7 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   session.id : nil` read in `WindowContentView.swift`, the guard in `ControlServer+Mark.swift`, `occupied`
   in `ControlServer+SurfaceIO.swift`, `deckPane`'s `covered`, and `paneOverlayPanel`'s hit test. List the
   decisions in the commit message.
-- [ ] Key-monitor audit: for a pane IDE, decide per early return (`SessionSwitcher`, `PaneShortcuts`,
+- [x] Key-monitor audit: for a pane IDE, decide per early return (`SessionSwitcher`, `PaneShortcuts`,
   `UndoCloseShortcut`) and per `RebasedMenuPolicy` route whether it changes. Record the result in the commit
   message and in `rebased-overlay.md` (Task 15); add a `live-` line to Task 16 if anything changes.
 
@@ -758,7 +758,7 @@ Size: M. Driven by the queue, the deadline, the event match, the remote refresh 
 
 - Files: new `agterm/Rebased/RebasedHost+Views.swift`, `RebasedHost.swift` (`handle(event:payload:)`,
   `pendingDiffs` and `sendDiff` replaced, `openRemote`); tests `RebasedHostTests`.
-- [ ] Tests first, with the fake runtime and test clock:
+- [x] Tests first, with the fake runtime and test clock:
   - A view asked while the JVM starts is sent after `frameOpened` and the slot report, never before, and its
     deadline is armed at the send.
   - A view on a hidden overlay stays `queued` with no deadline, and is sent when the toggle shows it.
@@ -771,7 +771,7 @@ Size: M. Driven by the queue, the deadline, the event match, the remote refresh 
   - `port` is asked after `frameOpened`, off the main actor, at 0.5 s doubling to 4 s; it stops when a number
     comes back (`status.port` reports it) or 30 s after that `frameOpened`; a later `frameOpened` starts it
     again.
-- [ ] `requestView(overlay:view:) -> String` returns the request id. `openOverlay` takes `view: RebasedView?`
+- [x] `requestView(overlay:view:) -> String` returns the request id. `openOverlay` takes `view: RebasedView?`
   in place of the `RebasedDiff?` and puts the request id into `RebasedOpened`; `rebasedOverlay.diff` keeps
   its last-range meaning. The remote path reuses
   `openRemote`'s refresh-then-deliver.
@@ -787,8 +787,8 @@ Size: M. Driven by the release-once guard across six release paths and quit.
 - Files: new `agterm/Rebased/{RebasedOnCloseRunner,RebasedHost+Release}.swift`, `RebasedHost.swift`
   (`Entry`, `release`, `openOverlay`, `configure`), `agterm/AppDelegate.swift` (`applicationWillTerminate`),
   `agterm/Commands/CustomCommandRunner.swift` (a new internal `environment(for:in:)`, nothing else),
-  `agterm/agtermApp.swift` (passes it to `configure`); tests `RebasedHostTests`, new `RebasedOnCloseRunnerTests`.
-- [ ] Tests first:
+  `agterm/agtermApp.swift` (sets it beside `configure`); tests `RebasedHostTests`, new `RebasedOnCloseRunnerTests`.
+- [x] Tests first:
   - `RebasedHostTests`, with a recording runner seam: the command runs once for each of `closeOverlay`,
     session teardown, `closePaneOverlay`, `teardownPaneOverlay`, `frameClosed` and
     `releaseAllBeforeQuit`; once across two overlapping paths (`frameClosed` then session close); once for a
@@ -799,8 +799,8 @@ Size: M. Driven by the release-once guard across six release paths and quit.
     unchanged.
   - `RebasedOnCloseRunnerTests`: a real `/bin/sh -c` writes a marker file in the captured cwd with a
     captured variable; a missing cwd is a logged failure, not a crash.
-- [ ] `openOverlay` gains `onClose:`. Capture `RebasedOnClose` there, with the environment from the seam
-  `configure` sets (as in [On close](#on-close));
+- [x] `openOverlay` gains `onClose:`. Capture `RebasedOnClose` there, with the environment from the seam
+  `agtermApp.init` sets (as in [On close](#on-close));
   `Entry.onClose`; the runner call inside `release` after `entries.removeValue`; `releaseAllBeforeQuit`
   called in `applicationWillTerminate` next to `saveBeforeQuit`.
 
@@ -818,7 +818,7 @@ Size: M. Driven by the end-to-end wiring of five command shapes and their refusa
   commands reach the app through the two `ControlActions` methods `ControlServer+Rebased` implements),
   `agterm/Rebased/RebasedHost.swift` (the open's result reaches the answer);
   tests `ControlServerRebasedOverlayTests`.
-- [ ] Tests first, with the fake bridge:
+- [x] Tests first, with the fake bridge:
   - `testPaneOpenWithOnClose`: open with `--pane left --diff A.. --working-tree --on-close` answers
     `{id, overlay, request}`, and the tree shows `pane`, `hidden: false`, `view`, `onClose`.
   - `--project` opens exactly that directory; a `--file` view opens that file.
@@ -832,7 +832,7 @@ Size: M. Driven by the end-to-end wiring of five command shapes and their refusa
     and shows `--diff`.
   - `overlay result --pane left` over a pane IDE answers no result, not "overlay still running".
   - `font inc --pane left` over a pane IDE is refused; `font inc --pane right` works.
-- [ ] Wire `openSessionOverlay`, the close overload, `showRebasedView`, `toggleRebasedOverlay` (the outcome
+- [x] Wire `openSessionOverlay`, the close overload, `showRebasedView`, `toggleRebasedOverlay` (the outcome
   becomes `text`), and `rebased.port` in the status. `sessionOverlayResult`'s `running` excludes a Rebased
   pane occupant; the font refusal also covers a pane IDE on its own pane.
 
@@ -844,22 +844,22 @@ depends: 14
 
 Size: S. Driven by six files and one question to Sasha.
 
-- [ ] `.claude/rules/rebased-overlay.md`: the pane slot, hide and its control twin, views and their verbs
+- [x] `.claude/rules/rebased-overlay.md`: the pane slot, hide and its control twin, views and their verbs
   and events, `--on-close`, the new flags, `session rebased show` and `toggle`, the read-back, the remote-row
   refusals, and both [Accepted limits](#accepted-limits) (the HUD under a pane IDE, the key-monitor audit's
   result, the search bar under a right-pane IDE), and the ⌘W confirmation rule. Rewrite the bridge bullet for
   the new `diff` fields and `openFile`.
-- [ ] `.claude/rules/control-api.md`: `session.rebased.show` and `session.rebased.toggle` in the public catalog
+- [x] `.claude/rules/control-api.md`: `session.rebased.show` and `session.rebased.toggle` in the public catalog
   as fork only; the pane Rebased occupant in the occupant paragraph and `paneOverlayIsProgram` and
   `paneOverlayCovers` among the predicates.
-- [ ] Skill: the `SKILL.md` `description` is at its 1024-unit cap (`SkillInstallTests`), so the new commands
+- [x] Skill: the `SKILL.md` `description` is at its 1024-unit cap (`SkillInstallTests`), so the new commands
   go in the body only (see [Review notes](#review-notes)): the Rebased paragraph names `session rebased show`,
   `session rebased toggle`, `--pane` and `--on-close`. `reference.md` gets the flags, both commands, the
   read-back fields and `rebased.port`. Both say "fork only".
-- [ ] `FORK-NOTES.md`: the Rebased line names the pane slot and the live review. `CHANGELOG-fork.md`: an entry
+- [x] `FORK-NOTES.md`: the Rebased line names the pane slot and the live review. `CHANGELOG-fork.md`: an entry
   under `## Unreleased` for the pane overlay, the hiding toggle (a behaviour change: the chord no longer
   closes the IDE), views, `session rebased toggle` and `--on-close`.
-- [ ] `.claude/rules/fork-merge.md`: add to the Rebased hooks paragraph the new one- or two-line hooks into
+- [x] `.claude/rules/fork-merge.md`: add to the Rebased hooks paragraph the new one- or two-line hooks into
   upstream files: `Session.swift` (`PaneOverlay.rebased`, `teardownPaneOverlay`, `dropUnrealizedPaneOverlays`,
   `focusTarget`), `AppStore+Panes.swift` (`closePaneOverlay`), `TerminalZoom.swift`, `DashboardCover.swift`,
   `AppActions.swift` (the ⌘W rung and the Rebased branch of `confirmCloseSession`), `AppActions+Focus.swift` (`pageMayCover`), `AppStore.swift` (the
@@ -868,9 +868,9 @@ Size: S. Driven by six files and one question to Sasha.
   `AppStore+RemoteOverlay.swift` (`localOverlayHolds`), `AppDelegate.swift` (`releaseAllBeforeQuit` in
   `applicationWillTerminate`), and `AppActions+Focus.swift` (`focusSplitPane`'s call to
   `RebasedHost.focus`).
-- [ ] ⚠️ Ask Sasha which of those files join `flagged` in `fork-merge.md`'s frontmatter, as `release.md`
+- [x] ⚠️ Ask Sasha which of those files join `flagged` in `fork-merge.md`'s frontmatter, as `release.md`
   requires. Write `flagged` or `declined` only from Sasha's answer, never from silence.
-- [ ] `site/commands.html` is not changed.
+- [x] `site/commands.html` is not changed.
 
 Check: `grep -q 'session rebased show' .claude/rules/rebased-overlay.md && grep -q 'session.rebased.toggle' .claude/rules/control-api.md && grep -q 'on-close' plugins/agterm/skills/agterm/SKILL.md && grep -q 'rebased toggle' plugins/agterm/skills/agterm/reference.md && grep -qi 'live review' FORK-NOTES.md && sed -n '/^## Unreleased/,/^## [0-9v]/p' CHANGELOG-fork.md | grep -q -- '--on-close' && grep -q 'releaseAllBeforeQuit' .claude/rules/fork-merge.md && git diff --quiet main -- site/commands.html && cd agtermCore && swift test --filter SkillInstallTests`
 
@@ -896,6 +896,8 @@ Size: M. Driven by one live session of checks by eye and one UI test case.
   - `live-view-opened`: `tree --json` shows the open's `request` with `view.state: opened` and the detail
     equal to the changed-file count; `rebased.port` is a number.
   - `live-diff-inside`: open a file diff from the list; every window stays inside the left pane.
+  - `live-working-tree-direction`: on `--diff main.. --working-tree`, a file added in the working tree
+    is listed as added; its file diff shows the base on the left and the working copy on the right.
   - `live-empty-range`: `session rebased show --diff HEAD..HEAD` opens nothing and reads `opened`, detail
     `0`.
   - `live-file`: `session rebased show --file <repo>/a.txt:3` puts the caret on line 3.
@@ -913,7 +915,9 @@ Size: M. Driven by one live session of checks by eye and one UI test case.
     it at that line.
   - `live-swap`: `session swap` and back keep the IDE shown on its pane.
   - `live-focus-pane`: click the right shell, then ⌃1 (and once `session focus left --socket …`): the IDE
-    window becomes key and takes typing. Click the right shell again and press ⌘W: a dialog naming the review
+    window becomes key and takes typing. Hide and toggle-show the IDE with its pane focused: it takes keys
+    once. Toggle-show with the other pane or another session selected: it keeps focus there.
+    Click the right shell again and press ⌘W: a dialog naming the review
     appears; Cancel leaves the session, the IDE and the reader as they were, and no marker file appears.
     Hide the IDE and repeat with ⌘W: the same dialog.
   - `live-scratch-over`: ⌘J over the session with the pane IDE shown hides the IDE and shows the scratch;
@@ -954,7 +958,7 @@ Check: `cd agtermCore && swift test && cd .. && /usr/bin/lockf /tmp/agterm-vim-x
 
 ## New fields and their consumers
 
-Counted on `main` at `76677df5` plus this plan. The recount in Task 17 uses the grep in each row.
+Counted on `main` at `76677df5` plus this plan; recounted in Task 17 at `5bce6e5c`, with the grep in each row.
 
 Row 1 in full, with the decision per site, because it is the row a merge or a review gets wrong:
 
@@ -966,7 +970,7 @@ Row 1 in full, with the decision per site, because it is the row a merge or a re
 | `Session.teardownPaneOverlay` | fires the release | 2 |
 | `Session.promotePaneOverlay`, `AppStore.swapPanes` | move it unchanged (test only) | 2 |
 | `Session.dropUnrealizedPaneOverlays` | skips it (`paneOverlayIsProgram`) | 2 |
-| `TerminalZoom` (six `paneOverlayIsHtml` arms) | no overlay zoom target over it | 2, 4 |
+| `TerminalZoom` (six `paneOverlayIsProgram` arms, four `paneOverlayCovers` arms) | no overlay zoom target over it; the pane terminal is not active or visible under it | 2, 4 |
 | `Session.dashboardCover(for:)` | `.rebased`; nil while hidden | 2, 4 |
 | `AppStore+RemoteOverlay.localOverlayHolds` | true while held, hidden included | 4 |
 | `AppStore.htmlOverlay(_:pane:)` `occupied` | page commands answer `notHtml`; no code | 2 |
@@ -976,7 +980,7 @@ Row 1 in full, with the decision per site, because it is the row a merge or a re
 | `Session.programOverlayOwnsKeyboard` (normal-mode handover) | true while shown and its pane is focused | 2 |
 | `Session.openPaneOverlays` (tree `paneOverlays`) | lists the pane | 2 |
 | `AppStore.controlTree` | `rebasedOverlay` with `pane` | 7 |
-| `RebasedHost` (state writes, lookups) | by overlay id | 9 |
+| `RebasedHost` (state writes, lookups), `RebasedHost+Views.sendView` | by overlay id; the pane is read only for initial focus, the bridge's `pane` argument, and refusing reuse from another pane | 9 |
 | `RebasedHost.mirrored`, `openRemote` | in place, with `pane:` | 9 |
 | `RebasedFrameKeeper` | the holder's rect | 9 |
 | `WindowContentView+Detail.paneOverlayPanel` | `RebasedSlot` branch, not hit-testable while hidden | 10, 11 |
@@ -990,20 +994,22 @@ Row 1 in full, with the decision per site, because it is the row a merge or a re
 | `ControlServer.overlayReadSurface` | already `overlay not realized`; no code | 14 |
 | `overlay.result --pane` `running` in `ControlServer+SessionActions` | not running: no exit status | 14 |
 | font refusal in `ControlServer+SurfaceIO` | refused for its pane; the other pane works | 14 |
+| `AppStore.openPaneOverlay`, `AppStore.openHtmlOverlay` (`--pane`) | answer `alreadyOpen` over it; no code | 2 |
+| `ControlServer+Rebased` `showRebasedView`, `toggleRebasedOverlay` | find it in either slot through `rebasedPlacement` | 14 |
 
 | New thing | Consumers | Count |
 |---|---|---|
-| A Rebased overlay in a pane slot (`PaneOverlay.rebased`, `Session.rebasedPlacement`, `paneOverlayIsProgram`) | the 30 sites above. Grep: Task 2's walk grep plus `paneOverlayIsProgram\|\.rebased\b\|rebasedPlacement` | 30 |
-| `RebasedOverlay.hidden` | `rebasedOverlayActive` (and through `coverOverlayActive` every cover site), `fullOverlayActive`, `paneOverlayCovers` (`deckPane`'s `covered`, `focusedOverlayPane`), `focusTarget`, `TerminalZoom` arms, `dashboardCover(for:)`, `overlayPanel` (outer condition, hit test, `OverlayPanelStyle`), `paneOverlayPanel` hit test, `RebasedSlot` (message, visible), `AppActions.closeActiveSession`, `AppActions.toggleRebasedOverlay` (chord, palette and `session rebased toggle`), `RebasedHost.show`, `RebasedHost+Views` (queued view), `AppStore.setRebasedHidden`, `localOverlayHolds` (still held), `focusSplitPane` (terminal while hidden), the toggle's refocus, the projection, the skill; plus each raw slot read Task 11 decides for. Grep: `\.hidden\b\|setRebasedHidden\|paneOverlayCovers` | 20 |
-| `RebasedViewRequest` on `RebasedOverlay.view` | `RebasedHost+Views` (issue, send, deadline, event match), `RebasedHost.mirrored` (keeps it), `RebasedProjection`, `ControlServer+Rebased` (`request` in the answer), the skill; outside this repo `agterm-review-live` readiness. Grep: `RebasedViewRequest\|\.view\b` | 5 here |
-| Bridge verbs `diff` (new fields), `openFile`, `port` | `RebasedHost+Views` (caller), `RebasedView` bridge arguments, `Bridge.apply`, `RangeDiff.show`. Grep: `"openFile"\|"port"\|bridgeArgument` | 4 |
+| A Rebased overlay in a pane slot (`PaneOverlay.rebased`, `Session.rebasedPlacement`, `paneOverlayIsProgram`) | the 33 sites above. Grep: Task 2's walk grep plus `paneOverlayIsProgram\|\.rebased\b\|rebasedPlacement`, Swift files only | 33 |
+| `RebasedOverlay.hidden` | `rebasedOverlayActive` (and through `coverOverlayActive` every cover site), `fullOverlayActive`, `paneOverlayCovers` (`deckPane`'s `covered`, `focusedOverlayPane`), `focusTarget`, `TerminalZoom` arms, `dashboardCover(for:)`, `overlayPanel` (outer condition, hit test, `OverlayPanelStyle`), `paneOverlayPanel` hit test, `RebasedSlot` (message, visible), `AppActions.closeActiveSession`, `AppActions.toggleRebasedOverlay` (chord, palette and `session rebased toggle`), `RebasedHost.show`, `RebasedHost.focus(overlay:)`, `RebasedHost.handBack`, `RebasedHost+Views` (queued view), the font refusal (`rebasedHidesTerminal`), `AppStore.setRebasedHidden`, `localOverlayHolds` (still held), `focusSplitPane` (terminal while hidden), the toggle's refocus, the projection, the skill; plus each raw slot read Task 11 decides for. `closeActiveSession`, the `overlayPanel` hit test and `OverlayPanelStyle` read it through `visibleOverlayActive`, `focusSplitPane` through `paneRebasedOverlayActive`. Grep, Swift only: `\.hidden\b\|setRebasedHidden\|paneOverlayCovers\|visibleOverlayActive\|paneRebasedOverlayActive\|rebasedHidesTerminal` | 23 |
+| `RebasedViewRequest` on `RebasedOverlay.view` | `RebasedHost+Views` (issue, send, deadline, event match), `RebasedHost.mirrored` (keeps it), `RebasedProjection`, `ControlServer+Rebased` (`request` in the answer), the skill; outside this repo `agterm-review-live` readiness. Grep: `RebasedViewRequest\|\.view?\.\|held\.view\|request\.view\|requestView\|opened\.request` in `agterm/Rebased`, `ControlServer+Rebased.swift`, `agtermCore/Sources/agtermCore/Rebased*.swift` | 5 here |
+| Bridge verbs `diff` (new fields), `openFile`, `port` | `RebasedHost+Views` (caller), `RebasedView` bridge arguments, `Bridge.apply`, `RangeDiff.show`, `OpenFile.show`. Grep: `"openFile"\|"port"\|bridgeArgument` | 5 |
 | Events `viewOpened`, `viewFailed` | `RebasedHost.handle(event:payload:)`. Producers: `RangeDiff`, `openFile`. Grep: `viewOpened\|viewFailed` in `agterm/` | 1 |
 | `rebased.port` (`ControlRebasedNode.port`) | `RebasedHost.status`, `RebasedStatusProvider.readback`, the skill reference; outside, `agterm-review-live`. Grep: `port` in `RebasedProjection.swift`, `RebasedHost*.swift` | 3 here |
-| `RebasedOnClose` (`RebasedOverlay.onClose`, `Entry.onClose`) | `RebasedHost.openOverlay` (capture, fresh-holder refusal), `RebasedHost.release`, `RebasedHost.releaseAllBeforeQuit`, `AppDelegate.applicationWillTerminate`, `RebasedOnCloseRunner`, the projection `onClose`, `ForwardPolicy.route` (refusal), the remote-row refusal in `ControlServer+Rebased`. Grep: `onClose\|OnClose` | 8 |
+| `RebasedOnClose` (`RebasedOverlay.onClose`, `Entry.onClose`) | `RebasedHost.openOverlay` (capture, fresh-holder refusal), `RebasedHost.open(session:)` (copies it into `Entry`), `RebasedHost.release`, `RebasedHost.releaseAllBeforeQuit`, `AppDelegate.applicationWillTerminate`, `RebasedOnCloseRunner`, the projection `onClose`, `ForwardPolicy.route` (refusal), the remote-row refusal in `ControlServer+Rebased`. Grep: `\.onClose\b\|onClose:\|OnClose\b\|RebasedOnClose` | 9 |
 | Flags `--pane` (for `--rebased`), `--working-tree`, `--file`, `--project`, `--on-close` (`ControlArgs` fields) | `ControlDispatcher.overlayContent`, `parseRebasedView` (open and show), `ControlSessionOverlayOpenOptions`, `ControlServer+Rebased` (including the remote-row refusals), `agtermctl` `Overlay.Open` and `rebased show` (parser and help), `ForwardPolicy.route` (`onClose`), the skill; outside, `agterm-review-live`. Grep: `workingTree\|\.file\b\|\.project\b\|\.onClose` in `agtermCore/Sources` | 7 here |
-| `ControlResult.overlay`, `.request` | `ControlServer+Rebased` (open, show, toggle), `agtermctl --json` (prints the raw line, no code), the skill; outside, `agterm-review-live` readiness and rollback. Grep: `overlay:\|request:` in `ControlServer+Rebased.swift` | 3 here |
-| `session overlay close --overlay <id>` (`ControlArgs.overlay`) | `ControlDispatcher+Overlay` (close arm), the `closeSessionOverlay` overload and its default, `ControlServer+Rebased`, `agtermctl` `Overlay.Close`, `ForwardPolicy.route` (forwarded ahead of `holdsJob`), the skill; outside, `agterm-review-live` rollback. Grep: `args?.overlay\|overlay:` | 6 here |
-| Command `session.rebased.show` | `Command` catalog, `ControlDispatcher.dispatch` arm, `ControlDispatcher+Rebased`, `ControlActions.showRebasedView` and its default, `ControlServer` (dispatcher-handled row) and `ControlServer+Rebased`, `agtermctl session rebased show`, `ForwardPolicy.kind`, `HeadlessCatalog` (through `kind`, its test), the skill, `control-api.md`'s catalog; outside, the live-review skill. Grep: `sessionRebasedShow\|session.rebased.show\|rebased show` | 10 here |
-| Command `session.rebased.toggle` | `Command` catalog, `ControlDispatcher.dispatch` arm, `ControlDispatcher+Rebased`, `ControlActions.toggleRebasedOverlay` and its default, `ControlServer` (dispatcher-handled row) and `ControlServer+Rebased`, `AppActions.toggleRebasedOverlay` (the shared action), `agtermctl session rebased toggle`, `ForwardPolicy.kind`, `HeadlessCatalog` (its test), the skill, `control-api.md`'s catalog. Grep: `sessionRebasedToggle\|session.rebased.toggle\|rebased toggle` | 11 |
+| `ControlResult.overlay`, `.request` | `ControlServer+Rebased` (open, close, show, toggle), `agtermctl --json` (prints the raw line, no code), the skill; outside, `agterm-review-live` readiness and rollback. Grep: `overlay:\|request:` in `ControlServer+Rebased.swift` | 3 here |
+| `session overlay close --overlay <id>` (`ControlArgs.overlay`) | `ControlDispatcher+Overlay` (close arm), the `closeSessionOverlay` overload and its default, `ControlServer+Rebased`, `agtermctl` `Overlay.Close`, `ForwardPolicy.route` (forwarded ahead of `holdsJob`), the skill; outside, `agterm-review-live` rollback. Grep: `args?\.overlay\|closeSessionOverlay(.*overlay\|var overlay: String?` | 6 here |
+| Command `session.rebased.show` | `Command` catalog, `ControlDispatcher.dispatch` arm, `ControlDispatcher+Rebased`, `ControlActions.showRebasedView` and its default, `ControlServer` (dispatcher-handled row) and `ControlServer+Rebased`, `agtermctl session rebased show`, `ForwardPolicy.kind`, `HeadlessCatalog` (through `kind`, its test), the skill, `control-api.md`'s catalog, `rebased-overlay.md`; outside, the live-review skill. Grep: `sessionRebasedShow\|session.rebased.show\|rebased show` | 11 here |
+| Command `session.rebased.toggle` | `Command` catalog, `ControlDispatcher.dispatch` arm, `ControlDispatcher+Rebased`, `ControlActions.toggleRebasedOverlay` and its default, `ControlServer` (dispatcher-handled row) and `ControlServer+Rebased`, `AppActions.toggleRebasedOverlay` (the shared action), `agtermctl session rebased toggle`, `ForwardPolicy.kind`, `HeadlessCatalog` (its test), the skill, `control-api.md`'s catalog, `rebased-overlay.md`. Grep: `sessionRebasedToggle\|session.rebased.toggle\|rebased toggle\|toggleRebasedOverlay` | 12 |
 
 <!-- plan-review: planning:plan-review 2026-10-09 findings=49 resolved -->

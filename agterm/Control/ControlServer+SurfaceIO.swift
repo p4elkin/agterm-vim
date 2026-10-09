@@ -77,7 +77,7 @@ extension ControlServer {
             }
             // after the pane checks, so a missing pane keeps its error, and before the realized one, since a
             // page zooms without its terminal
-            if session.rebasedOverlayActive {
+            if session.rebasedHidesTerminal(pane) {
                 return ControlResponse(ok: false, error: "Rebased overlay has no terminal font size")
             }
             if session.htmlHidesTerminal(pane) {
