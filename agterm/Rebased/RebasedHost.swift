@@ -108,12 +108,10 @@ final class RebasedHost {
     private var seenWindows: Set<Int> = []
 
     func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
-                   keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void,
-                   environment: @escaping (Session, AppStore) -> [String: String] = { _, _ in ProcessInfo.processInfo.environment }) {
+                   keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void) {
         self.appPath = appPath
         self.keymap = keymap
         self.toggle = toggle
-        self.environment = environment
         self.stateDirectory = stateDirectory
         isFocusedPane = { [weak library] id, pane in
             guard let store = library?.activeStore else { return false }
@@ -165,7 +163,7 @@ final class RebasedHost {
             return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
         }
         if session.remoteHost != nil, onClose != nil { return .failure(.init(message: "--on-close works on a local row only")) }
-        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? session.focusedCwd, environment: environment(session, store)) }
+        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? onCloseDirectory(for: session), environment: environment(session, store)) }
         if session.remoteHost != nil {
             return openRemote(in: store, session: session,
                               request: .init(path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane))
@@ -572,7 +570,7 @@ final class RebasedHost {
 
     // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
     // never dropped: it comes up over the session now, rather than over whatever that session opens next.
-    func removeEntry(_ overlayID: UUID) -> Entry? {
+    func removeEntry(_ overlayID: UUID, endingProcess: Bool = false) -> Entry? {
         guard let entry = entries.removeValue(forKey: overlayID) else { return nil }
         armed.remove(overlayID)
         visibleSlots.remove(overlayID)
@@ -580,9 +578,13 @@ final class RebasedHost {
         needsInitialFocus.remove(overlayID)
         slots[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
-        hide(entry)
+        if endingProcess {
+            if visible[entry.project] == entry.id { visible[entry.project] = nil }
+        } else {
+            hide(entry)
+            for dialog in queued { surface(dialog, session: entry.session) }
+        }
         if lastShownByProject[entry.project] == entry.id { lastShownByProject[entry.project] = nil }
-        for dialog in queued { surface(dialog, session: entry.session) }
         return entry
     }
 
@@ -592,6 +594,14 @@ final class RebasedHost {
     }
 
     // MARK: - Helpers
+
+    private func onCloseDirectory(for session: Session) -> String {
+        let home = NSHomeDirectory()
+        let path = session.localWorkingDirectory(reported: session.focusedCwd, homeDirectory: home)
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue ? path : home
+    }
 
     private func overlayID(for session: UUID) -> UUID? {
         store(session)?.session(withID: session)?.rebasedPlacement?.overlay.id

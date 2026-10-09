@@ -290,7 +290,7 @@ flowchart TD
 ```
 
 - `--on-close <command>` is captured at open as `RebasedOnClose` (core): the command, the cwd (the open's
-  `--cwd`, else the session's local working directory), and the environment. The environment is built on
+  `--cwd`, else the session's local working directory, falling back to home if it no longer exists), and the environment. The environment is built on
   the Mac: the app's environment, the session's `CommandContext.environment()`, `AGTERM_SOCKET`, and `PATH`
   widened by `CommandPath.widened`, as `CustomCommandRunner.spawn` builds it.
 - It is stored on `RebasedOverlay.onClose` (the read-back says `onClose: true`) and copied into the host's
@@ -298,13 +298,13 @@ flowchart TD
 - `RebasedHost.release` is the release-once operation: `entries.removeValue` succeeds once, and only then is
   the command started. `RebasedOnCloseRunner` (app) starts it detached, stdio on `nullDevice`, and logs a spawn
   failure. The host calls it through a seam so hosted tests record calls instead of running a shell.
-- The environment comes through a seam set in `RebasedHost.configure`, filled by a new internal
+- The environment comes through a seam set beside `RebasedHost.configure` in `agtermApp.init`, filled by a new internal
   `CustomCommandRunner.environment(for:in:)` that wraps the private `context(for:in:…)` with no selection.
 - TCC: `RebasedOnCloseRunner` spawns exactly as `CustomCommandRunner.spawn` does, a child of the app process,
   so its attribution is the same and no service sees a new subject.
 - Quit: `RebasedHost.releaseAllBeforeQuit()` in `applicationWillTerminate`, beside and outside
   `saveBeforeQuit`'s `jvm == .running` guard, releases every entry: starting and failed ones too. A cancelled
-  quit never reaches `applicationWillTerminate`.
+  quit never reaches `applicationWillTerminate`. Quit skips JNI and window hand-back while draining entries.
 - A soft-closed session releases at finalize, not at the soft close, so undo brings the overlay back with its
   callback still armed. A quit finalizes pending closes, and the entry guard keeps the two paths from running
   the command twice.
@@ -787,7 +787,7 @@ Size: M. Driven by the release-once guard across six release paths and quit.
 - Files: new `agterm/Rebased/{RebasedOnCloseRunner,RebasedHost+Release}.swift`, `RebasedHost.swift`
   (`Entry`, `release`, `openOverlay`, `configure`), `agterm/AppDelegate.swift` (`applicationWillTerminate`),
   `agterm/Commands/CustomCommandRunner.swift` (a new internal `environment(for:in:)`, nothing else),
-  `agterm/agtermApp.swift` (passes it to `configure`); tests `RebasedHostTests`, new `RebasedOnCloseRunnerTests`.
+  `agterm/agtermApp.swift` (sets it beside `configure`); tests `RebasedHostTests`, new `RebasedOnCloseRunnerTests`.
 - [x] Tests first:
   - `RebasedHostTests`, with a recording runner seam: the command runs once for each of `closeOverlay`,
     session teardown, `closePaneOverlay`, `teardownPaneOverlay`, `frameClosed` and
@@ -800,7 +800,7 @@ Size: M. Driven by the release-once guard across six release paths and quit.
   - `RebasedOnCloseRunnerTests`: a real `/bin/sh -c` writes a marker file in the captured cwd with a
     captured variable; a missing cwd is a logged failure, not a crash.
 - [x] `openOverlay` gains `onClose:`. Capture `RebasedOnClose` there, with the environment from the seam
-  `configure` sets (as in [On close](#on-close));
+  `agtermApp.init` sets (as in [On close](#on-close));
   `Entry.onClose`; the runner call inside `release` after `entries.removeValue`; `releaseAllBeforeQuit`
   called in `applicationWillTerminate` next to `saveBeforeQuit`.
 

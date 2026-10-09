@@ -133,12 +133,12 @@ struct agtermApp: App {
                     return response.ok ? nil : response.error ?? "refused without a reason"
                 }))
         _customCommandRunner = State(initialValue: customCommandRunner)
+        RebasedHost.shared.environment = { [weak customCommandRunner] session, store in
+            customCommandRunner?.environment(for: session, in: store) ?? [:]
+        }
         RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
                                      stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
-                                     toggle: { actions.performRebasedToggle(session: $0) },
-                                     environment: { [weak customCommandRunner] session, store in
-                                         customCommandRunner?.environment(for: session, in: store) ?? [:]
-                                     })
+                                     toggle: { actions.performRebasedToggle(session: $0) })
         // hooks.conf scripts: fed by the library's post-append observer, applied from the settings model.
         let hookController = HookController(library: library, settings: settingsModel,
                                             socketProvider: { controlServer.resolvedSocketPath })

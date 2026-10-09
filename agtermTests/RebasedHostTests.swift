@@ -138,7 +138,7 @@ final class RebasedHostTests: XCTestCase {
     func testOnCloseRunsOnceAcrossEveryReleasePath() throws {
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
         _ = window("frame", number: 7)
-        for path in ["overlay", "session", "pane", "paneTeardown", "sessionTeardown", "frameThenSession", "quit"] {
+        for path in ["overlay", "session", "pane", "paneTeardown", "sessionTeardown", "frameClosed", "frameThenSession", "quit"] {
             let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp"))
             let pane: OverlayPane? = path.hasPrefix("pane") ? .left : nil
             if pane != nil { store.toggleSplit(session.id) }
@@ -158,11 +158,13 @@ final class RebasedHostTests: XCTestCase {
             case "pane": store.closePaneOverlay(session.id, pane: .left)
             case "paneTeardown": session.teardownPaneOverlay(.left)
             case "sessionTeardown": session.teardownOverlaySlot()
+            case "frameClosed": host.handle(event: "frameClosed", payload: project)
             case "frameThenSession":
                 host.handle(event: "frameClosed", payload: project)
                 store.closeSession(session.id)
             default: host.releaseAllBeforeQuit()
             }
+            XCTAssertEqual(commands.count, 1, path)
             host.releaseAllBeforeQuit()
             XCTAssertEqual(commands.count, 1, path)
             XCTAssertEqual(commands.first?.command, "/bin/flush --final")
@@ -171,6 +173,46 @@ final class RebasedHostTests: XCTestCase {
             if path != "quit" { XCTAssertNil(session.rebasedPlacement, path) }
             _ = opened
         }
+    }
+
+    func testOnCloseWithoutCwdCapturesALocalDirectoryOrHome() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-cwd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("file")
+        try Data().write(to: file)
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        for path in [root.path, root.appendingPathComponent("missing").path, file.path] {
+            first.currentCwd = path
+            let opened = try host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, onClose: "true").get()
+            first.currentCwd = "/changed"
+            XCTAssertTrue(store.closeRebasedOverlay(first.id, id: opened.overlay))
+            XCTAssertEqual(commands.last?.cwd, path == root.path ? root.path : NSHomeDirectory())
+        }
+        XCTAssertEqual(commands.count, 3)
+    }
+
+    func testQuitRunsCallbacksWithoutCallingTheIDE() throws {
+        _ = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, onClose: "first").get()
+        _ = try host.openOverlay(in: store, session: second.id, cwd: project, sizePercent: nil, onClose: "second").get()
+        host.setSlotVisible(true, session: first.id)
+        host.setSlotVisible(true, session: second.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        let calls = runtime.calls, frameChanges = frames.log
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { command in
+            XCTAssertEqual(self.runtime.calls, calls)
+            commands.append(command)
+        }
+        host.releaseAllBeforeQuit()
+        host.releaseAllBeforeQuit()
+        XCTAssertEqual(runtime.calls, calls)
+        XCTAssertEqual(frames.log, frameChanges)
+        XCTAssertEqual(Set(commands.map(\.command)), ["first", "second"])
+        XCTAssertEqual(commands.count, 2)
     }
 
     func testARefusedOnCloseOpenPreservesTheViewAndCapturedCallback() throws {
