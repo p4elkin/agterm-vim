@@ -175,7 +175,8 @@ renumbering. Do not reintroduce a count anywhere.
 - `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
   like the other fork-only commands)
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
-- `session.rebased.show`, `session.rebased.toggle` (fork only, see [[rebased-overlay]]; documented in the bundled skill)
+- `session.rebased.show`, `session.rebased.toggle` (fork only, see [[rebased-overlay]]; documented
+  in the bundled skill)
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
 
@@ -507,13 +508,19 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `suppressAutoFocus`, `searchTarget`'s scratch rung, `DeckPaneGates.coverActive`, the tree `overlay` field,
   the remote overlay's local-hold check, and zoom's `uncovered`/`paneVisible`. Program-only sites:
   `TerminalView.viewOnly`, zoom's `.overlay` and pane-overlay arms, and `overlay.result`'s running check.
-  A Rebased overlay (fork only, [[rebased-overlay]]) occupies the session slot or one `PaneOverlay.rebased` slot.
-  `rebasedPlacement` locates the single holder by id; `paneOverlayIsProgram` excludes pages and Rebased from terminal-surface paths.
+  A Rebased overlay (fork only, [[rebased-overlay]]) occupies the session slot or one
+  `PaneOverlay.rebased` slot.
+  `rebasedPlacement` locates the single holder by id; `paneOverlayIsProgram` excludes pages and
+  Rebased from terminal-surface paths.
   `paneOverlayCovers` excludes a hidden pane IDE; `rebasedOverlayActive` excludes a hidden session-wide IDE.
-  `visibleOverlayActive` includes a HUD for `closeActiveSession`, `OverlayPanelStyle.sessionHitTesting` and `OverlayPanelStyle.resolve`.
+  `visibleOverlayActive` includes a HUD for `closeActiveSession`,
+  `OverlayPanelStyle.sessionHitTesting` and `OverlayPanelStyle.resolve`.
   `paneRebasedOverlayActive` routes `AppActions.focusSplitPane` to a shown IDE instead of its terminal.
-  Hidden holders still reserve their slots and appear in read-back, while focus, zoom and dashboard expose the terminal.
-  A shown IDE has no terminal focus target or font size; `htmlHidesTerminal` stays false because the IDE holds its keys.
+  Hidden holders still reserve their slots and appear in read-back, while focus, zoom and dashboard
+  expose the terminal.
+  A shown IDE has no terminal focus target or font size; `htmlHidesTerminal` stays false because the
+  IDE holds its keys.
+  `rebasedHidesTerminal` answers the font refusal in `ControlServer+SurfaceIO`.
   The Rebased commands, close-by-overlay-id, view ledger and callback contract live in [[rebased-overlay]].
   Under a page `topmostSurface` and `focusTarget` return nil, never the hidden pane, and zoom's
   `resolveTarget` returns nil. The font commands follow the page too: ⌘+/⌘−/⌘0 route to it when

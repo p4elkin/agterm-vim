@@ -136,18 +136,24 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   - `AppStore+Panes.swift`: pane close release; swap and promotion move the whole value.
   - `TerminalZoom.swift`, `DashboardCover.swift`: IDEs have no terminal target; hidden holders uncover panes.
   - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`.
-  - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to their terminal.
+  - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to
+    their terminal.
   - `AppStore.swift`: project a held overlay through `rebasedPlacement`, even hidden or in a pane.
-  - `ControlServer+SurfaceIO.swift`: font refusal on the IDE's own pane; overlay reads keep held-slot occupancy.
+  - `ControlServer+SurfaceIO.swift`: font refusal on the IDE's own pane; overlay reads keep
+    held-slot occupancy.
   - `ControlServer+SessionActions.swift`: the Rebased adapter route and program-only pane result predicate.
-  - `ControlServer.swift`: both Rebased commands stay in the dispatcher-handled switch row; status retains the port.
-  - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, callback refusal and id-targeted close routing.
-  - `WindowContentView+Detail.swift`: held-slot IDE branches, hidden panel gates and `paneOverlayCovers` in `deckPane`.
+  - `ControlServer.swift`: both Rebased commands stay in the dispatcher-handled switch row; status
+    retains the port.
+  - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, callback refusal and
+    id-targeted close routing.
+  - `WindowContentView+Detail.swift`: held-slot IDE branches, hidden panel gates and
+    `paneOverlayCovers` in `deckPane`.
   - `WindowContentView.swift`: `rebasedCovered` keeps in-window covers above the child frame.
   - `AppStore+RemoteOverlay.swift`: a hidden session-wide holder still reserves the local slot.
   - `AppDelegate.swift`: `saveBeforeQuit` and `releaseAllBeforeQuit` in `applicationWillTerminate`.
   - `agtermApp.swift`, `CustomCommandRunner.swift`: configure the Mac-built callback environment.
-  - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the IDE-key-window early return.
+  - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the
+    IDE-key-window early return.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].

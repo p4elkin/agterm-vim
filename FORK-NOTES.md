@@ -32,8 +32,8 @@ is the `.claude/rules` file that owns the design.
 
 **Panes and sessions**
 
-- **Rebased live review** — pane or session-wide IDE overlays with file and working-tree diffs, a hiding
-  toggle and an on-close callback. `.claude/rules/rebased-overlay.md`.
+- **Rebased live review** — docked pane or session-wide IDE with diffs, hide and on-close; remote rows use
+  an ssh-fetched mirror on the Mac. `.claude/rules/rebased-overlay.md`.
 - **"+" creates on a remote host** — Settings ▸ Sessions names a host, and the "+" new-session controls
   create the session there through `zmx new HOST`, in the clicked workspace, dimmed while it runs.
   `zmx new HOST --workspace` places a scripted one. `.claude/rules/settings.md`, `control-api.md`.
