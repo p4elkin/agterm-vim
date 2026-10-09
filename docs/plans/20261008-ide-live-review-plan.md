@@ -563,7 +563,7 @@ switch.
   good, beside `.sessionMark` and the `.sessionBookmark*` cases);
   tests new `ControlDispatcherRebasedTests`, `OverlayCommandsTests`, `ForwardPolicyTests`,
   `HeadlessCatalogTests`, `HeadlessActionsTests`, `MockControlActions`.
-- [ ] Tests first:
+- [x] Tests first:
   - `ControlDispatcherRebasedTests`: `show` takes exactly one of `--diff` and `--file`; `--working-tree` rules
     as for open; the parsed `RebasedView` reaches `actions.showRebasedView`; `toggle` reaches
     `actions.toggleRebasedOverlay` with the target and window.
@@ -574,7 +574,7 @@ switch.
     `.forwarded`; `sessionOverlayClose` with `overlay` is `.forwarded` even with `holdsJob` true.
   - `HeadlessCatalogTests` and `HeadlessActionsTests`: both commands are classified, and the origin's answer
     to a forwarded `--on-close` open is the refusal text.
-- [ ] Add the commands, their dispatcher file (the bookmark family's shape), `ControlActions.showRebasedView`
+- [x] Add the commands, their dispatcher file (the bookmark family's shape), `ControlActions.showRebasedView`
   and `ControlActions.toggleRebasedOverlay` with refusing defaults, the CLI file, the `ForwardPolicy` changes,
   and the fallback-switch row in `ControlServer.swift`.
 

@@ -99,6 +99,8 @@ class MockControlActionsBase {
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
         case overlayClose(target: String?, window: String?, pane: OverlayPane?)
         case overlayCloseID(target: String?, window: String?, overlay: UUID)
+        case rebasedShow(target: String?, window: String?, view: RebasedView)
+        case rebasedToggle(target: String?, window: String?)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
@@ -717,6 +719,16 @@ class MockControlActionsBase {
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse {
         calls.append(.overlayNavigate(target: target, window: window, pane: pane, navigation))
+        return ControlResponse(ok: true)
+    }
+
+    func showRebasedView(_ target: String?, window: String?, view: RebasedView) -> ControlResponse {
+        calls.append(.rebasedShow(target: target, window: window, view: view))
+        return ControlResponse(ok: true)
+    }
+
+    func toggleRebasedOverlay(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.rebasedToggle(target: target, window: window))
         return ControlResponse(ok: true)
     }
 

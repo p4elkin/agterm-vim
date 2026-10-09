@@ -58,6 +58,8 @@ public enum Command: String, Codable, Sendable {
     case sessionSelectAll = "session.selectall"
     case sessionText = "session.text"
     case sessionSearch = "session.search"
+    case sessionRebasedShow = "session.rebased.show"
+    case sessionRebasedToggle = "session.rebased.toggle"
     case sessionOverlayOpen = "session.overlay.open"
     case sessionOverlayClose = "session.overlay.close"
     case sessionOverlayResize = "session.overlay.resize"

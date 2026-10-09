@@ -5,6 +5,26 @@ import agtermCore
 @testable import agtermctlKit
 
 struct OverlayCommandsTests {
+    @Test func rebasedShowAndToggleBuildTheirRequests() throws {
+        let diff = try request(["session", "rebased", "show", "--diff", "HEAD..", "--working-tree", "--target", "s", "--window", "w"])
+        #expect(diff.cmd == .sessionRebasedShow)
+        #expect(diff.target == "s")
+        #expect(diff.args?.window == "w")
+        #expect(diff.args?.diff == "HEAD..")
+        #expect(diff.args?.workingTree == true)
+        let file = try request(["session", "rebased", "show", "--file", "src/a.kt:3"])
+        #expect(file.args?.file == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("src/a.kt").path + ":3")
+        let toggle = try request(["session", "rebased", "toggle", "--target", "s"])
+        #expect(toggle.cmd == .sessionRebasedToggle)
+        #expect(toggle.target == "s")
+        #expect(toggle.args == nil)
+    }
+
+    @Test(arguments: [[], ["--diff", "A..", "--file", "a.kt"], ["--working-tree"], ["--diff", "A..B", "--working-tree"], ["--file", "a.kt:0"]])
+    func rebasedShowRequiresExactlyOneValidView(extra: [String]) {
+        #expect(rejects(["session", "rebased", "show"] + extra))
+    }
+
     @Test(arguments: ["left", "right"])
     func rebasedPaneOpenCarriesTheNewFlags(pane: String) throws {
         let req = try request(["session", "overlay", "open", "--rebased", "--pane", pane, "--diff", "A..", "--working-tree",

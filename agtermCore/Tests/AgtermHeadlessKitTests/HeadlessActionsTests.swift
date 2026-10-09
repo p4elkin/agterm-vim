@@ -5,6 +5,16 @@ import agtermCore
 
 @MainActor
 struct HeadlessActionsTests {
+    @Test func theOriginRefusesARebasedOnCloseCommand() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let response = await fixture.actions.respond(to: ControlRequest(cmd: .sessionOverlayOpen,
+            target: fixture.session.id.uuidString, args: ControlArgs(rebased: true, onClose: "/bin/flush")))
+        #expect(!response.ok)
+        #expect(response.error?.contains("--on-close works on a local row only") == true)
+        #expect(fixture.session.rebasedPlacement == nil)
+    }
+
     @Test func treeAndWindowsExposeTheModel() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }
