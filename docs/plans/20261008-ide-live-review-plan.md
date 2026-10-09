@@ -818,7 +818,7 @@ Size: M. Driven by the end-to-end wiring of five command shapes and their refusa
   commands reach the app through the two `ControlActions` methods `ControlServer+Rebased` implements),
   `agterm/Rebased/RebasedHost.swift` (the open's result reaches the answer);
   tests `ControlServerRebasedOverlayTests`.
-- [ ] Tests first, with the fake bridge:
+- [x] Tests first, with the fake bridge:
   - `testPaneOpenWithOnClose`: open with `--pane left --diff A.. --working-tree --on-close` answers
     `{id, overlay, request}`, and the tree shows `pane`, `hidden: false`, `view`, `onClose`.
   - `--project` opens exactly that directory; a `--file` view opens that file.
@@ -832,7 +832,7 @@ Size: M. Driven by the end-to-end wiring of five command shapes and their refusa
     and shows `--diff`.
   - `overlay result --pane left` over a pane IDE answers no result, not "overlay still running".
   - `font inc --pane left` over a pane IDE is refused; `font inc --pane right` works.
-- [ ] Wire `openSessionOverlay`, the close overload, `showRebasedView`, `toggleRebasedOverlay` (the outcome
+- [x] Wire `openSessionOverlay`, the close overload, `showRebasedView`, `toggleRebasedOverlay` (the outcome
   becomes `text`), and `rebased.port` in the status. `sessionOverlayResult`'s `running` excludes a Rebased
   pane occupant; the font refusal also covers a pane IDE on its own pane.
 

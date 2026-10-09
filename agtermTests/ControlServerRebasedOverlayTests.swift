@@ -73,6 +73,149 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         RebasedHost.shared.handle(event: "frameOpened", payload: "\(stateDir.path)\t7")
     }
 
+    func testPaneOpenWithOnClose() throws {
+        let (store, session) = try addSession()
+        store.toggleSplit(session.id)
+        let view = RebasedView.diff(RebasedDiff(base: "A", head: "HEAD", mergeBase: false), workingTree: true)
+        var commands: [RebasedOnClose] = []
+        RebasedHost.shared.runOnClose = { commands.append($0) }
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil,
+            options: ControlSessionOverlayOpenOptions(command: "", cwd: stateDir.path, wait: false, sizePercent: nil,
+                backgroundColor: nil, pane: .left, rebased: true, rebasedView: view, rebasedOnClose: "/bin/flush"))
+        XCTAssertTrue(response.ok, response.error ?? "")
+        let overlay = try XCTUnwrap(response.result?.overlay)
+        let request = try XCTUnwrap(response.result?.request)
+        XCTAssertEqual(response.result?.id, session.id.uuidString)
+        XCTAssertEqual(session.leftOverlay?.rebased?.id.uuidString, overlay)
+        frameOpened(session)
+        let node = try XCTUnwrap(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay)
+        XCTAssertEqual(node.pane, "left")
+        XCTAssertEqual(node.hidden, false)
+        XCTAssertEqual(node.onClose, true)
+        XCTAssertEqual(node.view?.request, request)
+        XCTAssertEqual(node.view?.kind, "working-tree")
+        RebasedHost.shared.handle(event: "viewOpened", payload: request + "\t2")
+        XCTAssertEqual(session.leftOverlay?.rebased?.view?.state, .opened)
+        let stale = server.closeSessionOverlay(session.id.uuidString, window: nil, overlay: UUID())
+        XCTAssertFalse(stale.ok)
+        XCTAssertEqual(session.leftOverlay?.rebased?.id.uuidString, overlay)
+        XCTAssertTrue(commands.isEmpty)
+        let closed = server.closeSessionOverlay(session.id.uuidString, window: nil, overlay: try XCTUnwrap(UUID(uuidString: overlay)))
+        XCTAssertTrue(closed.ok, closed.error ?? "")
+        XCTAssertEqual(commands.map(\.command), ["/bin/flush"])
+        XCTAssertNil(session.leftOverlay)
+    }
+
+    func testProjectFileShowAndCloseUseTheHeldOverlayID() throws {
+        let (store, session) = try addSession()
+        store.toggleSplit(session.id)
+        let project = stateDir.appendingPathComponent("repo/sub")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: stateDir.appendingPathComponent("repo/.git"), withIntermediateDirectories: true)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil,
+            options: ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil,
+                pane: .left, rebased: true, rebasedView: .file(path: project.appendingPathComponent("a.kt").path, line: 3), rebasedProject: project.path))
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(session.leftOverlay?.rebased?.project, project.path)
+        let firstRequest = try XCTUnwrap(response.result?.request)
+        RebasedHost.shared.setSlotVisible(true, session: session.id)
+        RebasedHost.shared.handle(event: "ready", payload: "")
+        RebasedHost.shared.handle(event: "frameOpened", payload: "\(project.path)\t7")
+        XCTAssertEqual(runtime.calls.last, "openFile \(firstRequest)\t3\t\(project.appendingPathComponent("a.kt").path)\t\(RebasedHost.canonical(project.path))")
+        let shown = server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: project.appendingPathComponent("b.kt").path, line: 9))
+        XCTAssertTrue(shown.ok, shown.error ?? "")
+        XCTAssertNotEqual(shown.result?.request, firstRequest)
+        XCTAssertEqual(shown.result?.overlay, response.result?.overlay)
+        let refused = server.openSessionOverlay(session.id.uuidString, window: nil,
+            options: ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil,
+                                                     pane: .right, rebased: true, rebasedProject: project.path))
+        XCTAssertFalse(refused.ok)
+        let id = try XCTUnwrap(session.rebasedPlacement?.overlay.id)
+        XCTAssertTrue(server.closeSessionOverlay(session.id.uuidString, window: nil, overlay: id).ok)
+        XCTAssertEqual(server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/a", line: 0)).error,
+                       "no Rebased overlay in this session")
+        XCTAssertTrue(store.openOverlay(session.id, command: "reader"))
+        XCTAssertFalse(server.closeSessionOverlay(session.id.uuidString, window: nil, overlay: id).ok)
+        XCTAssertTrue(session.programOverlayActive)
+    }
+
+    func testControlToggleOpensHidesAndShowsWithReadback() throws {
+        let (store, session) = try addSession()
+        let opened = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
+        XCTAssertTrue(opened.ok)
+        XCTAssertEqual(opened.result?.text, "opened")
+        let id = try XCTUnwrap(opened.result?.overlay)
+        frameOpened(session)
+        let hidden = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
+        XCTAssertEqual(hidden.result?.text, "hidden")
+        XCTAssertEqual(hidden.result?.overlay, id)
+        XCTAssertEqual(session.rebasedOverlay?.hidden, true)
+        let queued = server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/a", line: 0))
+        XCTAssertTrue(queued.ok)
+        XCTAssertEqual(session.rebasedOverlay?.view?.state, .queued)
+        let shown = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
+        XCTAssertEqual(shown.result?.text, "shown")
+        XCTAssertEqual(shown.result?.overlay, id)
+        XCTAssertEqual(session.rebasedOverlay?.view?.state, .sent)
+        store.closeOverlay(session.id)
+        XCTAssertTrue(store.openOverlay(session.id, command: "reader"))
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).error, "overlay already open")
+    }
+
+    func testRemoteRowsRefuseLocalFlagsButStillOpenAndShowDiffs() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/repo", remoteHost: "remote"))
+        let diff = RebasedDiff(base: "A", head: "HEAD", mergeBase: false)
+        let options: [(String, ControlSessionOverlayOpenOptions)] = [
+            ("working-tree", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedView: .diff(diff, workingTree: true))),
+            ("file", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedView: .file(path: "/repo/a", line: 0))),
+            ("project", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedProject: "/repo")),
+            ("on-close", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedOnClose: "/bin/flush"))
+        ]
+        for (flag, options) in options {
+            XCTAssertEqual(server.openSessionOverlay(session.id.uuidString, window: nil, options: options).error,
+                           "--\(flag) works on a local row only")
+            XCTAssertNil(session.rebasedPlacement)
+        }
+        let directory = stateDir.path
+        RebasedHost.shared.mirrorRefresh = { _, _ in .success(.init(directory: directory, source: "remote:/repo")) }
+        let opened = server.openSessionOverlay(session.id.uuidString, window: nil,
+            options: .init(command: "", cwd: "/repo", wait: false, sizePercent: nil, backgroundColor: nil, rebased: true,
+                           rebasedView: .diff(diff, workingTree: false)))
+        XCTAssertTrue(opened.ok, opened.error ?? "")
+        frameOpened(session)
+        XCTAssertEqual(server.showRebasedView(session.id.uuidString, window: nil, view: .diff(diff, workingTree: true)).error,
+                       "--working-tree works on a local row only")
+        XCTAssertEqual(server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/repo/a", line: 0)).error,
+                       "--file works on a local row only")
+        let shown = server.showRebasedView(session.id.uuidString, window: nil, view: .diff(diff, workingTree: false))
+        XCTAssertTrue(shown.ok, shown.error ?? "")
+        XCTAssertNotEqual(shown.result?.request, opened.result?.request)
+    }
+
+    func testPaneIDEHasNoProgramResultOrFontAndLeavesItsSiblingAddressable() throws {
+        let (store, session) = try addSession()
+        store.toggleSplit(session.id)
+        let right = GhosttySurfaceView(workingDirectory: stateDir.path)
+        session.splitSurface = right
+        defer { right.teardown() }
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/repo"), sizePercent: nil, pane: .left))
+        XCTAssertEqual(server.sessionOverlayResult(session.id.uuidString, window: nil, pane: .left).error, OverlayResultError.noResult)
+        XCTAssertEqual(server.font(session.id.uuidString, window: nil, pane: .left, action: "increase_font_size:1").error,
+                       "Rebased overlay has no terminal font size")
+        XCTAssertEqual(server.font(session.id.uuidString, window: nil, pane: .right, action: "increase_font_size:1").error,
+                       "session not realized")
+    }
+
+    func testTheControlTreeIncludesTheKnownBuiltInPort() throws {
+        let (store, session) = try addSession()
+        XCTAssertTrue(openRebased(session).ok)
+        frameOpened(session)
+        RebasedHost.shared.idePort = 63342
+        XCTAssertEqual(server.buildTree(in: store).rebased?.port, 63342)
+    }
+
     func testPaneSlotVisibilityFollowsCoversAsksAndHiddenState() throws {
         let (store, session) = try addSession()
         store.toggleSplit(session.id)
