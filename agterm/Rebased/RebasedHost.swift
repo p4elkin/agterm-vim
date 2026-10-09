@@ -106,6 +106,7 @@ final class RebasedHost {
     // One per process: it serves `RebasedHost.shared`, and a test host per case would otherwise stack one
     // observer each, every one scanning every window on every run-loop pass.
     private static var bornObserver: CFRunLoopObserver?
+    private static var keyObserver: NSObjectProtocol?
     private var keyMonitor: Any?
     private var seenWindows: Set<Int> = []
 
@@ -278,6 +279,7 @@ final class RebasedHost {
         deadlinePassed = false
         installBornObserver()
         installKeyRouter()
+        installKeyObserver()
         let runtime = runtime, path = appPath(), directory = stateDirectory
         let result = ResultBox<RebasedLaunch>()
         offMain({ result.set { try runtime.prepare(appPath: path, stateDirectory: directory) } }, { [weak self] in
@@ -449,6 +451,21 @@ final class RebasedHost {
         if needsInitialFocus.remove(id) != nil,
            let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
            isFocusedPane(entry.session, pane) { focus(overlay: id) }
+    }
+
+    // A click into a pane IDE makes it key without passing through the deck, which is what moves pane focus.
+    func ideBecameKey(_ window: NSWindow) {
+        guard let id = owner(of: window), let session = store(id)?.session(withID: id),
+              let pane = session.rebasedPlacement?.pane else { return }
+        session.splitFocused = pane == .right
+    }
+
+    // First responder alone leaves the keyboard with the IDE, a child window of the session's.
+    func releaseKey(from session: UUID) {
+        guard isIDEKeyWindow, let key = keyWindow(), owner(of: key) == session,
+              store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil,
+              let host = hostWindow(session) else { return }
+        frames.makeKey(host)
     }
 
     @discardableResult
@@ -653,6 +670,18 @@ final class RebasedHost {
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
         Self.bornObserver = observer
+    }
+
+    private func installKeyObserver() {
+        guard Self.keyObserver == nil else { return }
+        Self.keyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { note in
+            guard let window = note.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                guard Self.isIDEWindow(window) else { return }
+                RebasedHost.shared.ideBecameKey(window)
+            }
+        }
     }
 
     // agterm's menu stays installed while the IDE is key, so without this a chord both menus bind (⌘F) would

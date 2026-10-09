@@ -46,6 +46,7 @@ extension ControlServer {
             case .hidden: text = "hidden"
             case .shown: text = "shown"
             case .opened: text = "opened"
+            case .closed: text = "closed"
             case .refused(let reason): return ControlResponse(ok: false, error: reason)
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, text: text,

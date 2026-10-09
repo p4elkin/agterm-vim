@@ -161,6 +161,8 @@ extension ControlDispatcher {
         if !requiresRebasedFlag {
             if args?.project != nil { return reject("--project is supported only by session.overlay.open --rebased") }
             if args?.onClose != nil { return reject("--on-close is supported only by session.overlay.open --rebased") }
+            if args?.pane != nil { return reject("--pane is supported only by session.overlay.open --rebased") }
+            if args?.rebased != nil { return reject("--rebased is supported only by session.overlay.open") }
         }
         if args?.file != nil && args?.diff != nil { return reject("--file cannot be combined with --diff") }
         if args?.workingTree == true && args?.diff == nil { return reject("--working-tree requires --diff") }

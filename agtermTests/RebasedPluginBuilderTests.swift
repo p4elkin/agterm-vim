@@ -83,6 +83,11 @@ final class RebasedPluginBuilderTests: XCTestCase {
                 (proxy, method, arguments) -> method.getName().equals("isDisposed") ? true : null);
             assert RangeDiff.projectClosed(closedProject, "closed-request");
             assert Arrays.equals(events.get(events.size() - 1), new String[]{"viewFailed", "closed-request\\tproject closed"});
+            Bridge.beginView("/repo", "older");
+            Bridge.beginView("/repo", "newer");
+            assert Bridge.superseded("/repo", "older");
+            assert !Bridge.superseded("/repo", "newer");
+            assert Bridge.superseded("/other", "newer");
             assert Bridge.onDisk(file.toString(), little);
             assert !Bridge.onDisk(file.toString(), utf8);
             Files.delete(file);

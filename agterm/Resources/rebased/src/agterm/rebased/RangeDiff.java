@@ -39,7 +39,7 @@ final class RangeDiff {
             : GitChangeUtils.getDiff(project, root, from, head, null));
         if (changes.isEmpty()) { Bridge.emit("viewOpened", request + "\t0"); return; }
         Bridge.writeSafe(() -> {
-          if (projectClosed(project, request)) return;
+          if (Bridge.superseded(dir, request) || projectClosed(project, request)) return;
           try {
             if (pane) {
               List<ChangeDiffRequestChain.Producer> producers = new ArrayList<>();
@@ -57,11 +57,11 @@ final class RangeDiff {
             }
             Bridge.emit("viewOpened", request + "\t" + changes.size());
           } catch (RuntimeException e) {
-            failed(project, request, title, pane, e);
+            failed(project, request, title, pane, dir, e);
           }
         });
       } catch (VcsException | RuntimeException e) {
-        Bridge.writeSafe(() -> failed(project, request, title, pane, e));
+        Bridge.writeSafe(() -> failed(project, request, title, pane, dir, e));
       }
     });
   }
@@ -77,8 +77,8 @@ final class RangeDiff {
     return true;
   }
 
-  private static void failed(Project project, String request, String title, boolean pane, Exception error) {
-    if (projectClosed(project, request)) return;
+  private static void failed(Project project, String request, String title, boolean pane, String dir, Exception error) {
+    if (Bridge.superseded(dir, request) || projectClosed(project, request)) return;
     String reason = error.getMessage() == null ? error.toString() : error.getMessage();
     Bridge.emit("viewFailed", request + "\t" + reason);
     if (!pane) Messages.showErrorDialog(project, reason, "Diff " + title);

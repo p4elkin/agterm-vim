@@ -30,6 +30,7 @@ publishes an empty body with only a warning on stderr.
 ### Changed
 
 - Toggle Rebased and `session rebased toggle` now hide and show the same IDE, keeping the view and callback.
+  On an IDE that failed to start, they close it, so the next press retries.
   Close the overlay explicitly to end the review. Command-W confirms before ending a held Rebased review.
 - Upstream's `Open links in` setting decides who opens a web link clicked in a pane. `Browser`, the default,
   keeps `agterm-open-link` and its Jira and merge request views; `Session overlay` shows every web link as a

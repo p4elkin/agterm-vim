@@ -33,8 +33,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   terminal for them.
   A hidden panel has no chrome, backdrop, text or hit testing.
 - `rebased_toggle`, the palette and `session rebased toggle` share `AppActions.toggleRebasedOverlay`.
-  A held overlay hides or shows; without one the action opens it.
-  The outcome is `hidden`, `shown`, `opened` or `refused`; UI callers beep on refusal.
+  A held overlay hides or shows, a failed one closes so the next press retries; without one the action opens it.
+  The outcome is `hidden`, `shown`, `opened`, `closed` or `refused`; UI callers beep on refusal.
 - Pane visibility requires the deck visible, no session-wide cover or scratch, no `rebasedCovered`,
   and no ask over that pane.
   A session-wide ask hides either slot; an ask on the sibling pane leaves a pane IDE shown.
@@ -155,7 +155,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   positive line suffix.
 - `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE])` updates the held overlay.
   A hidden holder stays hidden and queues the view; no holder answers `no Rebased overlay in this session`.
-- `session rebased toggle` is the chord's control twin; it returns `text` `hidden`, `shown` or `opened`.
+- `session rebased toggle` is the chord's control twin; it returns `text` `hidden`, `shown`, `opened` or `closed`.
 - Open and show return `{id, overlay, request?}`; the request identifies this view, not proof it opened.
   Same-project opens without `--on-close` reuse the holder when `--pane` is omitted or matches it.
   `session overlay close --overlay ID` closes only that holder, in either slot; it excludes `--pane`.

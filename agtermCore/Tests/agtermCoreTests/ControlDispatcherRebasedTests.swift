@@ -4,7 +4,8 @@ import Testing
 
 @MainActor
 struct ControlDispatcherRebasedTests {
-    @Test(arguments: [ControlArgs(file: "/repo/a", project: "/other"), ControlArgs(diff: "A..", onClose: "/bin/flush")])
+    @Test(arguments: [ControlArgs(file: "/repo/a", project: "/other"), ControlArgs(diff: "A..", onClose: "/bin/flush"),
+                      ControlArgs(pane: "left", diff: "A.."), ControlArgs(rebased: true, diff: "A..")])
     func showRefusesOpenOnlyFlags(args: ControlArgs) async {
         let actions = MockControlActions()
         let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(cmd: .sessionRebasedShow, args: args))

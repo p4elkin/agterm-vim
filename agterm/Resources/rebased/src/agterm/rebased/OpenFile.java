@@ -9,6 +9,7 @@ final class OpenFile {
 
   static void show(String request, int line, String path, String dir) {
     Bridge.writeSafe(() -> {
+      if (Bridge.superseded(dir, request)) return;
       var project = Bridge.openProject(dir);
       if (project == null) { Bridge.emit("viewFailed", request + "\tno open project at " + dir); return; }
       try {

@@ -162,6 +162,16 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).error, "overlay already open")
     }
 
+    func testToggleClosesAFailedOverlaySoTheNextPressRetries() throws {
+        let (_, session) = try addSession()
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "opened")
+        let id = try XCTUnwrap(session.rebasedPlacement?.overlay.id)
+        session.updateRebasedOverlay(id) { $0.state = .failed("Rebased did not start within 30 s") }
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "closed")
+        XCTAssertNil(session.rebasedPlacement)
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "opened")
+    }
+
     func testRemoteRowsRefuseLocalFlagsButStillOpenAndShowDiffs() throws {
         let store = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
@@ -435,6 +445,37 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         actions.focusSplitPane(session, wantSplit: false)
         XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before + 1)
         XCTAssertTrue(session.focusTarget(wantSplit: false) === surface)
+    }
+
+    func testAKeyPaneIDEMovesPaneFocusToItsPane() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        store.toggleSplit(session.id)
+        session.splitFocused = true
+        _ = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path, sizePercent: nil, pane: .left).get()
+        frameOpened(session)
+        RebasedHost.shared.ideBecameKey(frameWindow)
+        XCTAssertFalse(session.splitFocused)
+    }
+
+    func testFocusingTheSiblingPaneTakesTheKeyboardBackFromTheIDE() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        store.toggleSplit(session.id)
+        session.splitFocused = true
+        let hostWindow = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [], backing: .buffered, defer: true)
+        hostWindow.isReleasedWhenClosed = false
+        frames.names[ObjectIdentifier(hostWindow)] = "host"
+        RebasedHost.shared.hostWindow = { _ in hostWindow }
+        _ = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path, sizePercent: nil, pane: .left).get()
+        frameOpened(session)
+        RebasedHost.shared.keyWindow = { [frameWindow] in frameWindow }
+        RebasedHost.shared.isIDEKeyWindowOverride = true
+        actions.focusSplitPane(session, wantSplit: true)
+        XCTAssertEqual(frames.log.filter { $0 == "makeKey host" }.count, 1)
+        RebasedHost.shared.isIDEKeyWindowOverride = false
+        actions.focusSplitPane(session, wantSplit: true)
+        XCTAssertEqual(frames.log.filter { $0 == "makeKey host" }.count, 1)
     }
 
     func testAnOpenOverTheFocusedPaneMakesTheIDEKeyOnce() throws {

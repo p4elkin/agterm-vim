@@ -38,6 +38,12 @@ public final class Bridge implements BiFunction<String, String, String> {
   private static final List<String[]> pending = new ArrayList<>();
   private static volatile boolean hostAttached;
   private static final Map<Window, String> frameProjects = new IdentityHashMap<>();
+  // A view still in git or in the EDT queue when a newer one is asked for must not open over it.
+  private static final Map<String, String> currentViews = new java.util.concurrent.ConcurrentHashMap<>();
+
+  static void beginView(String dir, String request) { currentViews.put(dir, request); }
+
+  static boolean superseded(String dir, String request) { return !request.equals(currentViews.get(dir)); }
 
   static void openedProject(Window window, String project, long number) {
     frameProjects.put(window, project);
@@ -211,12 +217,14 @@ public final class Bridge implements BiFunction<String, String, String> {
       case "diff" -> {
         String[] fields = diffFields(arg);
         if (fields == null) return "malformed diff";
+        beginView(fields[6], fields[0]);
         RangeDiff.show(fields[0], fields[1], fields[2], fields[3].equals("1"), fields[4].equals("1"), fields[5].equals("pane"), fields[6]);
         return "ok";
       }
       case "openFile" -> {
         String[] fields = fileFields(arg);
         if (fields == null) return "malformed openFile";
+        beginView(fields[3], fields[0]);
         OpenFile.show(fields[0], Integer.parseInt(fields[1]), fields[2], fields[3]);
         return "ok";
       }

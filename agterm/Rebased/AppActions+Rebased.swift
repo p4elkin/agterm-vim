@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 enum RebasedToggleOutcome: Equatable {
-    case hidden, shown, opened, refused(String)
+    case hidden, shown, opened, closed, refused(String)
 }
 
 extension AppActions {
@@ -13,6 +13,12 @@ extension AppActions {
             return .refused("no active session")
         }
         if let placement = session.rebasedPlacement {
+            // Hiding a failed overlay would keep its slot with no way back but ⌘W; closing it makes the next
+            // press the retry.
+            if case .failed = placement.overlay.state {
+                guard store.closeRebasedOverlay(session.id, id: placement.overlay.id) else { return .refused("no Rebased overlay in this session") }
+                return .closed
+            }
             let hidden = !placement.overlay.hidden
             guard store.setRebasedHidden(session.id, id: placement.overlay.id, hidden) else { return .refused("no Rebased overlay in this session") }
             if hidden {
