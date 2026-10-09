@@ -197,10 +197,14 @@ to restore the exact size),
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
 `htmlOverlays` (the pages in the overlay slots, see `session overlay open --html` and `--url`; `overlay` and
 `paneOverlays` count them as covers too),
-`rebasedOverlay` (fork only: `{project, state, error?, diff?, source?}`, where `state` is `fetching`, `starting`,
-`shown`, or `failed`, `diff` the last `--diff` range, normalized to `A..B` or `A...B`, and `source` the
-`host:path` a remote row's `project` mirrors;
-omitted when the session has no Rebased overlay. Its size remains in `overlaySizePercent`),
+`rebasedOverlay` (fork only: `{project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`),
+where `state` is `fetching`, `starting`, `shown` or `failed`; `pane` is absent for a session-wide holder.
+It remains present while hidden, and a held pane remains in `paneOverlays`.
+A hidden session holder reads `overlay: false` but still reserves its slot.
+`view` is `{request, kind, target, state, detail?}`: kind `diff`, `working-tree` or `file`, state `queued`, `sent`, `opened` or `failed`.
+`diff` is the last normalized range asked for; `view.state: opened` confirms the view, with a file count or path in `detail`.
+`onClose: true` means a callback is armed; `source` is the remote `host:path` mirrored by `project`.
+The whole node is omitted without a holder; session-wide size stays in `overlaySizePercent`),
 `hud` (the message panel occupying the session-wide overlay slot — the read side of `session hud`; omitted
 when none is up. A
 `{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter,
@@ -351,8 +355,9 @@ reading the tree gets its version floor without a second round-trip; it is not d
 like `app`: `pending` until the quit that follows a confirmed `zmx reset`, `last` for the launch that consumed
 it; omitted when neither applies), and `indexUnsaved` (true while the last write of the window index failed,
 omitted otherwise; app-wide, and it clears on the next index write that lands).
-`rebased` is fork-only app status: `{jvm, error?, projects}`, with `jvm` `starting`, `running`, or `failed`
-and `projects` an array of project directories. It is omitted until Rebased first starts.
+`rebased` is fork-only app status: `{jvm, error?, projects, port?}`, with `jvm` `starting`, `running`, or `failed`
+and `projects` an array of project directories. `port` is the built-in server port once known.
+It is omitted until Rebased first starts.
 `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
@@ -848,18 +853,29 @@ error keeps those names for compatibility.
   scratch override ends with that scratch terminal. Errors `session has no split pane` / `session has no
   scratch terminal` when the pane does not exist, and `--pane must be left, right, or scratch` on a bad
   name. Read the default from `background` and pane overrides from `paneBackgrounds` in `tree --json`.
-- `session overlay open --rebased [--cwd DIR] [--diff RANGE] [--size-percent N] [--follow] [--target] [--window W]` (fork only)
-  — show Rebased, the IntelliJ-platform git client, for the git repository holding `--cwd` (default: the
-  session's working directory). The IDE runs inside agterm; the first open starts it and can take seconds,
-  read `rebasedOverlay.state` (`starting`, `shown`, `failed`). One repository's window is shown in one
-  session at a time. Combines with nothing but the options listed.
-  On a remote row `--cwd` is a path on that host, and from a headless origin's shell the command reaches the
-  Mac showing the row. The Mac fetches the host's commits and branches over ssh into a local mirror first
-  (`state` `fetching`), on every open, so uncommitted work on the host is not shown.
-  `--diff RANGE` also opens the changes of a commit range once the IDE is on screen: `A..B`, `A...B`
-  (from their merge base) or `A` (`A..HEAD`); an empty side is `HEAD`, and a side starting with `-` or `.`
-  is refused. When the session already shows Rebased for that repository, the range goes to it instead
-  of being refused. A bad ref shows IntelliJ's error dialog, not a command error.
+- `session overlay open --rebased [--pane left|right] [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND] [--size-percent N] [--follow] [--target] [--window W]` (fork only)
+  — open Rebased for the nearest repository above the session's cwd, or exactly `--project` without a git-root walk.
+  One session holds one IDE, session-wide or in a pane. Pane holders are full-pane and exclude `--size-percent`.
+  `--project` leaves `--cwd` as callback cwd; relative file/project paths resolve against the caller's directory.
+  `--diff` accepts `A..B`, `A...B` from the merge base, or `A` for `A..HEAD`; omitted sides mean `HEAD`.
+  `--working-tree` shows tracked working-copy changes and requires an omitted two-dot head or a merge-base range.
+  `--file PATH[:LINE]` opens an editor at a positive 1-based line, or preserves normal editor positioning without a suffix.
+  File targets reject tabs and newlines. Pane diffs use editor tabs; session-wide diffs use a changes dialog.
+  Empty diffs open nothing and report `opened`, detail `0`; pane git errors report `failed` without a dialog.
+  Open answers `{id, overlay, request?}`; use `--json` and save both ids for readiness and safe rollback.
+  `rebasedOverlay.view.state: opened` confirms the requested view, independently of the IDE's startup state.
+  An open with `--on-close` requires a fresh holder; other same-project opens reuse the holder when the pane is omitted or matches.
+  The callback runs once on release with the Mac-captured environment and cwd, including after failed startup or confirmed quit.
+  Hide, hand-back, swap, promotion and undo do not run it; soft close runs it at finalize.
+  Hard kill runs no callback; a detached quit callback may outlive the app and needs external delivery recovery.
+  On a remote row the Mac refreshes an ssh mirror of commits/branches on every open or diff show.
+  `--working-tree`, `--file`, `--project` and `--on-close` refuse there with `--<flag> works on a local row only`.
+- `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE]) [--target] [--window W]` (fork only)
+  — issue a fresh view request on the held IDE. The answer carries `{id, overlay, request}`.
+  A hidden holder stays hidden and reads `queued` until shown; no holder is refused.
+- `session rebased toggle [--target] [--window W]` (fork only)
+  — hide or show the same holder, or open one when none is held; another occupant is refused.
+  The answer carries `{id, overlay, text}` with `text` `hidden`, `shown` or `opened`; the tree's `hidden` follows.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no
@@ -1004,8 +1020,9 @@ error keeps those names for compatibility.
   The browser applies its own JavaScript settings, not `--js`. Errors `no page to go back to` /
   `no page to go forward to`, `html overlay not realized` for a page never shown yet, `no default web
   browser to open the page in`, `show in Finder requires a file page`, and the two `reload` errors.
-- `session overlay close [--pane left|right] [--target] [--window W]` — close (destroy) the overlay.
-  `--pane` closes that split pane's overlay; omit it for the session-wide one. It also takes a HUD down,
+- `session overlay close [--pane left|right | --overlay ID] [--target] [--window W]` — close (destroy) the overlay.
+  `--overlay ID` (fork only) closes only the Rebased holder with that id, in either slot; it excludes `--pane`.
+  A stale id refuses without touching another overlay. `--pane` closes that pane's overlay; omit both for the session-wide one. It also takes a HUD down,
   as a courtesy — the slot is the same one. For an overlay shown on another Mac (see Remote sessions) the
   reply means the cancel was REQUESTED, not that the program ended; `session overlay result` reports how
   it ended.
@@ -1776,7 +1793,7 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `keymap.conf` in `$EDITOR`, then `agtermctl keymap reload`.
 
 `rebased_toggle` (fork only) ships no default chord: bind it with a `map` line. It opens Rebased for the
-focused session's repository, or hides the overlay when it is shown. Over the Rebased window only that
+focused session's repository, or hides and shows its held IDE without ending the review. Over the Rebased window only that
 direct chord works, never a leader sequence, because ⌃Space is the IDE's completion.
 
 `new_session_in_workspace` ships no default chord and no menu item, so it only exists once you bind it —

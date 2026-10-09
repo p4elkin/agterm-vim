@@ -844,22 +844,22 @@ depends: 14
 
 Size: S. Driven by six files and one question to Sasha.
 
-- [ ] `.claude/rules/rebased-overlay.md`: the pane slot, hide and its control twin, views and their verbs
+- [x] `.claude/rules/rebased-overlay.md`: the pane slot, hide and its control twin, views and their verbs
   and events, `--on-close`, the new flags, `session rebased show` and `toggle`, the read-back, the remote-row
   refusals, and both [Accepted limits](#accepted-limits) (the HUD under a pane IDE, the key-monitor audit's
   result, the search bar under a right-pane IDE), and the ⌘W confirmation rule. Rewrite the bridge bullet for
   the new `diff` fields and `openFile`.
-- [ ] `.claude/rules/control-api.md`: `session.rebased.show` and `session.rebased.toggle` in the public catalog
+- [x] `.claude/rules/control-api.md`: `session.rebased.show` and `session.rebased.toggle` in the public catalog
   as fork only; the pane Rebased occupant in the occupant paragraph and `paneOverlayIsProgram` and
   `paneOverlayCovers` among the predicates.
-- [ ] Skill: the `SKILL.md` `description` is at its 1024-unit cap (`SkillInstallTests`), so the new commands
+- [x] Skill: the `SKILL.md` `description` is at its 1024-unit cap (`SkillInstallTests`), so the new commands
   go in the body only (see [Review notes](#review-notes)): the Rebased paragraph names `session rebased show`,
   `session rebased toggle`, `--pane` and `--on-close`. `reference.md` gets the flags, both commands, the
   read-back fields and `rebased.port`. Both say "fork only".
-- [ ] `FORK-NOTES.md`: the Rebased line names the pane slot and the live review. `CHANGELOG-fork.md`: an entry
+- [x] `FORK-NOTES.md`: the Rebased line names the pane slot and the live review. `CHANGELOG-fork.md`: an entry
   under `## Unreleased` for the pane overlay, the hiding toggle (a behaviour change: the chord no longer
   closes the IDE), views, `session rebased toggle` and `--on-close`.
-- [ ] `.claude/rules/fork-merge.md`: add to the Rebased hooks paragraph the new one- or two-line hooks into
+- [x] `.claude/rules/fork-merge.md`: add to the Rebased hooks paragraph the new one- or two-line hooks into
   upstream files: `Session.swift` (`PaneOverlay.rebased`, `teardownPaneOverlay`, `dropUnrealizedPaneOverlays`,
   `focusTarget`), `AppStore+Panes.swift` (`closePaneOverlay`), `TerminalZoom.swift`, `DashboardCover.swift`,
   `AppActions.swift` (the ⌘W rung and the Rebased branch of `confirmCloseSession`), `AppActions+Focus.swift` (`pageMayCover`), `AppStore.swift` (the
@@ -868,9 +868,9 @@ Size: S. Driven by six files and one question to Sasha.
   `AppStore+RemoteOverlay.swift` (`localOverlayHolds`), `AppDelegate.swift` (`releaseAllBeforeQuit` in
   `applicationWillTerminate`), and `AppActions+Focus.swift` (`focusSplitPane`'s call to
   `RebasedHost.focus`).
-- [ ] ⚠️ Ask Sasha which of those files join `flagged` in `fork-merge.md`'s frontmatter, as `release.md`
+- [x] ⚠️ Ask Sasha which of those files join `flagged` in `fork-merge.md`'s frontmatter, as `release.md`
   requires. Write `flagged` or `declined` only from Sasha's answer, never from silence.
-- [ ] `site/commands.html` is not changed.
+- [x] `site/commands.html` is not changed.
 
 Check: `grep -q 'session rebased show' .claude/rules/rebased-overlay.md && grep -q 'session.rebased.toggle' .claude/rules/control-api.md && grep -q 'on-close' plugins/agterm/skills/agterm/SKILL.md && grep -q 'rebased toggle' plugins/agterm/skills/agterm/reference.md && grep -qi 'live review' FORK-NOTES.md && sed -n '/^## Unreleased/,/^## [0-9v]/p' CHANGELOG-fork.md | grep -q -- '--on-close' && grep -q 'releaseAllBeforeQuit' .claude/rules/fork-merge.md && git diff --quiet main -- site/commands.html && cd agtermCore && swift test --filter SkillInstallTests`
 

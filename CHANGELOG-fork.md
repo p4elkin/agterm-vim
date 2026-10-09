@@ -20,8 +20,17 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Added
+
+- Rebased can cover one split pane for a live review, leaving the other terminal usable.
+  Open commit or tracked working-tree diffs, files at a line, or an exact project folder.
+  `session rebased show` updates the view; close-by-overlay-id protects another review from a stale close.
+  `--on-close COMMAND` runs once when the holder is released, including after a failed start or confirmed quit.
+
 ### Changed
 
+- Toggle Rebased and `session rebased toggle` now hide and show the same IDE, keeping the view and callback.
+  Close the overlay explicitly to end the review. Command-W confirms before ending a held Rebased review.
 - Upstream's `Open links in` setting decides who opens a web link clicked in a pane. `Browser`, the default,
   keeps `agterm-open-link` and its Jira and merge request views; `Session overlay` shows every web link as a
   page over the session instead. File paths, forge refs and xchat links work the same under both.
