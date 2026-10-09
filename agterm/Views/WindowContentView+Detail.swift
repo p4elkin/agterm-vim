@@ -322,7 +322,7 @@ extension WindowContentView {
                     // keeps reaching the pane behind it. Its one cursor write is `HudLinkClick`'s, over a link.
                     Group {
                         if session.rebasedOverlayActive {
-                            RebasedSlot(session: session, visible: live && onScreen && !rebasedCovered,
+                            RebasedSlot(session: session, pane: nil, visible: live && onScreen && !rebasedCovered,
                                         foreground: chromeText)
                         } else if let page = session.htmlOverlay, session.htmlOverlayActive {
                             HtmlOverlayView(store: store, session: session, overlay: page,
@@ -407,7 +407,13 @@ extension WindowContentView {
             && deckHostsSurface(session: session, surface: pane.zoomSurface)
         GeometryReader { geo in
             ZStack {
-                if active, let page = session.paneOverlay(pane)?.html {
+                if active, let overlay = session.paneOverlay(pane)?.rebased {
+                    RebasedSlot(session: session, pane: pane,
+                                visible: RebasedSlot.isVisible(deckVisible, session: session, pane: pane,
+                                                               overlaid: gates.overlaid, covered: rebasedCovered),
+                                foreground: chromeText)
+                        .id("\(session.id.uuidString)-rebased-\(overlay.id.uuidString)")
+                } else if active, let page = session.paneOverlay(pane)?.html {
                     // keyed on the page, so a swap or promotion moves its web view instead of reusing a host
                     HtmlOverlayView(store: store, session: session, overlay: page,
                                     backgroundColor: session.paneOverlay(pane)?.backgroundColor, isActive: isActive,
@@ -429,7 +435,7 @@ extension WindowContentView {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         // inert while empty, like `overlayPanel`.
-        .allowsHitTesting(deckVisible && active)
+        .allowsHitTesting(deckVisible && active && session.paneOverlay(pane)?.rebased?.hidden != true)
     }
 
     /// Mutes the inactive split pane — or the overlay covering it — by fading its TEXT without darkening the

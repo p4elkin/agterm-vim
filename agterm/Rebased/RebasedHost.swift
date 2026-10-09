@@ -73,6 +73,7 @@ final class RebasedHost {
     private(set) var visible: [String: UUID] = [:]
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
+    private var visibilityReports: [UUID: Set<UUID>] = [:]
     private var saving = false
     // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
@@ -143,8 +144,8 @@ final class RebasedHost {
         if session.remoteHost != nil {
             return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, diff: diff, pane: pane)
         }
-        let project = Self.canonical(project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd))
-        if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == project {
+        let project = project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd)
+        if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == Self.canonical(project) {
             guard pane == nil || placement.pane == pane else {
                 return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
             }
@@ -448,16 +449,33 @@ final class RebasedHost {
         }.flatMap { entries[$0.value]?.session }
     }
 
+    func isShownElsewhere(overlay id: UUID) -> Bool {
+        guard let entry = entries[id], let holder = visible[entry.project] else { return false }
+        return holder != id
+    }
+
     func setSlotVisible(_ isVisible: Bool, session: UUID) {
         guard let id = overlayID(for: session) else { return }
-        if isVisible {
-            visibleSlots.insert(id)
+        setSlotVisible(isVisible, overlay: id, reporter: session)
+    }
+
+    func setSlotVisible(_ isVisible: Bool, overlay id: UUID, reporter: UUID) {
+        let wasVisible = visibleSlots.contains(id)
+        if isVisible { visibilityReports[id, default: []].insert(reporter) }
+        else { visibilityReports[id]?.remove(reporter) }
+        let nowVisible = visibilityReports[id]?.isEmpty == false
+        if nowVisible { visibleSlots.insert(id) }
+        else {
+            visibilityReports[id] = nil
+            visibleSlots.remove(id)
+        }
+        guard nowVisible != wasVisible, let entry = entries[id] else { return }
+        if nowVisible {
             show(overlay: id)
             let queued = pendingDialogs.removeValue(forKey: id) ?? []
-            for dialog in queued { surface(dialog, session: session) }
+            for dialog in queued { surface(dialog, session: entry.session) }
         } else {
-            visibleSlots.remove(id)
-            hide(session: session)
+            hide(entry)
         }
     }
 
@@ -465,11 +483,6 @@ final class RebasedHost {
         guard slots[id] != rect else { return }
         slots[id] = rect
         frames.refit(host: window)
-    }
-
-    func setSlot(_ rect: NSRect, in window: NSWindow) {
-        let entry = entries.values.filter { hostWindow($0.session) === window }.max { $0.order < $1.order }
-        if let entry { setSlot(rect, overlay: entry.id, in: window) }
     }
 
     private func slotRect(for frame: NSWindow) -> NSRect {
@@ -519,6 +532,7 @@ final class RebasedHost {
         armed.remove(overlayID)
         pendingDiffs[overlayID] = nil
         visibleSlots.remove(overlayID)
+        visibilityReports[overlayID] = nil
         slots[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
         guard let entry = entries.removeValue(forKey: overlayID) else { return }

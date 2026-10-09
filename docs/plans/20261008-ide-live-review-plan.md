@@ -666,7 +666,7 @@ Size: M. Driven by the reporter token, the pane panel branch and the visibility 
 - Files: `agterm/Rebased/{RebasedSlotView,RebasedHost}.swift`, `agterm/Views/WindowContentView+Detail.swift`
   (`paneOverlayPanel`), `agterm/Views/WindowContentView.swift` (`rebasedCovered` passed to the pane branch);
   tests `RebasedHostTests`, `ControlServerRebasedOverlayTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedHostTests`: a new reporter visible, then the old reporter hidden, keeps the frame shown; the
     reverse order too; the last reporter hidden hides it.
   - Promotion and swap: the overlay keeps its entry, and the frame is shown on the new pane's rect.
@@ -677,9 +677,9 @@ Size: M. Driven by the reporter token, the pane panel branch and the visibility 
     `shownElsewhere` true; nil when a local term hides the frame; `RebasedHost.isShownElsewhere` true only
     while `visible[project]` names another overlay.
   - The deck-to-host link is not visible to hosted tests; `live-floating-over` in Task 16 proves it.
-- [ ] `RebasedSlotNSView` reports visibility and rect with its overlay id and its own reporter token;
+- [x] `RebasedSlotNSView` reports visibility and rect with its overlay id and its own reporter token;
   `setSlotVisible` counts the overlay visible while any reporter says so.
-- [ ] `paneOverlayPanel` gets a `RebasedSlot` branch ahead of the page branch, keyed on the pane holding
+- [x] `paneOverlayPanel` gets a `RebasedSlot` branch ahead of the page branch, keyed on the pane holding
   Rebased, whose `visible` is `RebasedSlot.isVisible` over `gates.visible`, `gates.overlaid`,
   `rebasedCovered` and the asks. `RebasedSlot.message` becomes that static function.
 

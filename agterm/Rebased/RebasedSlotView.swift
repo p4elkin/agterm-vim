@@ -2,44 +2,57 @@ import AppKit
 import SwiftUI
 import agtermCore
 
-/// The overlay slot a Rebased frame sits over. The frame is a child window of agterm's, not a view, so the
-/// slot only reports where it is and whether it is on screen; it never owns or dismantles the IDE window.
+/// Reports a held IDE's geometry and visibility; the child window stays owned by the host.
 struct RebasedSlot: View {
     let session: Session
+    let pane: OverlayPane?
     let visible: Bool
     let foreground: Color
 
-    // A pending ask is drawn inside the agterm window, under the frame, so the frame gives way to it.
-    static func isVisible(_ visible: Bool, session: Session) -> Bool { visible && session.askPending == nil }
+    static func isVisible(_ visible: Bool, session: Session, pane: OverlayPane? = nil,
+                          overlaid: Bool = false, covered: Bool = false) -> Bool {
+        guard visible, !overlaid, !covered, session.rebasedPlacement?.overlay.hidden != true else { return false }
+        if session.askPending != nil, pane == nil || session.askPaneIdentity == nil || session.askTargetPane == pane { return false }
+        return true
+    }
 
-    var body: some View {
-        ZStack {
-            RebasedSlotView(session: session.id, visible: Self.isVisible(visible, session: session))
-            if let message {
-                Text(message)
-                    .foregroundStyle(foreground.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .padding()
-            }
+    static func message(for overlay: RebasedOverlay, shownElsewhere: Bool, visible: Bool = true) -> String? {
+        guard visible, !overlay.hidden else { return nil }
+        switch overlay.state {
+        case .fetching: return "Fetching \(overlay.source ?? "the repository")…"
+        case .starting: return "Starting Rebased…"
+        case .failed(let error): return error
+        case .shown: return shownElsewhere ? "Rebased is shown in another session" : nil
         }
     }
 
-    private var message: String? {
-        switch session.rebasedOverlay?.state {
-        case .fetching?: "Fetching \(session.rebasedOverlay?.source ?? "the repository")…"
-        case .starting?: "Starting Rebased…"
-        case .failed(let error)?: error
-        case .shown? where !RebasedHost.shared.isShown(in: session.id): "Rebased is shown in another session"
-        default: nil
+    private var overlay: RebasedOverlay? {
+        if let pane { return session.paneOverlay(pane)?.rebased }
+        return session.rebasedOverlay
+    }
+
+    var body: some View {
+        let localVisible = Self.isVisible(visible, session: session, pane: pane)
+        ZStack {
+            if let overlay {
+                RebasedSlotView(overlay: overlay.id, visible: localVisible)
+                if let message = Self.message(for: overlay, shownElsewhere: RebasedHost.shared.isShownElsewhere(overlay: overlay.id),
+                                              visible: localVisible) {
+                    Text(message)
+                        .foregroundStyle(foreground.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+            }
         }
     }
 }
 
 private struct RebasedSlotView: NSViewRepresentable {
-    let session: UUID
+    let overlay: UUID
     let visible: Bool
 
-    func makeNSView(context: Context) -> RebasedSlotNSView { RebasedSlotNSView(session: session) }
+    func makeNSView(context: Context) -> RebasedSlotNSView { RebasedSlotNSView(overlay: overlay) }
 
     func updateNSView(_ view: RebasedSlotNSView, context: Context) { view.wanted = visible }
 
@@ -47,14 +60,14 @@ private struct RebasedSlotView: NSViewRepresentable {
 }
 
 private final class RebasedSlotNSView: NSView {
-    let session: UUID
+    let overlay: UUID
+    let reporter = UUID()
     var wanted = false { didSet { if wanted != oldValue { sync() } } }
     private var observers: [NSObjectProtocol] = []
-    // nil until the first report, which is always sent: the host treats an unreported slot as hidden
     private var shown: Bool?
 
-    init(session: UUID) {
-        self.session = session
+    init(overlay: UUID) {
+        self.overlay = overlay
         super.init(frame: .zero)
     }
 
@@ -85,10 +98,10 @@ private final class RebasedSlotNSView: NSView {
     private func sync() {
         let onScreen = wanted && window.map { !$0.isMiniaturized && $0.isVisible } == true
         if onScreen, let window {
-            RebasedHost.shared.setSlot(window.convertToScreen(convert(bounds, to: nil)), in: window)
+            RebasedHost.shared.setSlot(window.convertToScreen(convert(bounds, to: nil)), overlay: overlay, in: window)
         }
         guard onScreen != shown else { return }
         shown = onScreen
-        RebasedHost.shared.setSlotVisible(onScreen, session: session)
+        RebasedHost.shared.setSlotVisible(onScreen, overlay: overlay, reporter: reporter)
     }
 }

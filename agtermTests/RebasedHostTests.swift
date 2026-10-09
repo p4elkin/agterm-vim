@@ -126,6 +126,88 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "frameOpened", payload: "\(project)\t7")
     }
 
+    func testAReplacementReporterBeforeTheOldHideKeepsTheFrameShown() throws {
+        try checkReporterHandover(newFirst: true)
+    }
+
+    func testAReplacementReporterAfterTheOldHideShowsTheFrameAgain() throws {
+        try checkReporterHandover(newFirst: false)
+    }
+
+    private func checkReporterHandover(newFirst: Bool) throws {
+        let id = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil).get().overlay
+        let oldReporter = UUID(), newReporter = UUID()
+        host.setSlotVisible(true, overlay: id, reporter: oldReporter)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        let before = runtime.calls.filter { $0 == "hide \(project)" }.count
+        if newFirst {
+            host.setSlotVisible(true, overlay: id, reporter: newReporter)
+            host.setSlotVisible(false, overlay: id, reporter: oldReporter)
+            XCTAssertEqual(runtime.calls.filter { $0 == "hide \(project)" }.count, before)
+        } else {
+            host.setSlotVisible(false, overlay: id, reporter: oldReporter)
+            host.setSlotVisible(true, overlay: id, reporter: newReporter)
+        }
+        XCTAssertTrue(host.isShown(in: first.id))
+        host.setSlotVisible(false, overlay: id, reporter: newReporter)
+        XCTAssertFalse(host.isShown(in: first.id))
+    }
+
+    func testShownElsewhereRequiresAnotherVisibleHolder() throws {
+        startAndShow(first)
+        let firstID = try XCTUnwrap(first.rebasedPlacement?.overlay.id)
+        XCTAssertFalse(host.isShownElsewhere(overlay: firstID))
+        open(second)
+        let secondID = try XCTUnwrap(second.rebasedPlacement?.overlay.id)
+        XCTAssertTrue(host.isShownElsewhere(overlay: firstID))
+        XCTAssertFalse(host.isShownElsewhere(overlay: secondID))
+        host.setSlotVisible(false, session: second.id)
+        host.setSlotVisible(false, session: first.id)
+        XCTAssertFalse(host.isShownElsewhere(overlay: firstID))
+        XCTAssertFalse(host.isShownElsewhere(overlay: secondID))
+    }
+
+    private final class MovablePane: PaneRoleMutableSurface {
+        let isRealized = true
+        let paneToken = UUID().uuidString
+        func teardown() {}
+        func promoteToPrimaryPane() {}
+        func setPaneRole(_ role: SwappablePaneRole) {}
+    }
+
+    func testAReporterSwapKeepsTheIDEOnItsMovedPane() throws { try checkPaneMove(swap: true) }
+    func testAReporterPromotionKeepsTheIDEOnTheSurvivingPane() throws { try checkPaneMove(swap: false) }
+
+    private func checkPaneMove(swap: Bool) throws {
+        let keeper = RebasedFrameKeeper()
+        keeper.after = { _, _ in }
+        host.frames = keeper
+        host.install()
+        first.surface = MovablePane()
+        store.toggleSplit(first.id)
+        first.splitSurface = MovablePane()
+        let id = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, pane: .right).get().overlay
+        let parent = try XCTUnwrap(hostWindows[first.id])
+        let oldReporter = UUID(), newReporter = UUID()
+        host.setSlot(NSRect(x: 500, y: 100, width: 300, height: 400), overlay: id, in: parent)
+        host.setSlotVisible(true, overlay: id, reporter: oldReporter)
+        host.handle(event: "ready", payload: "")
+        let frame = window("frame", number: 7)
+        defer { keeper.detach(frame); frame.orderOut(nil) }
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        if swap { XCTAssertNil(store.swapPanes(first.id)) } else { store.closePrimaryPane(first.id) }
+        XCTAssertEqual(first.rebasedPlacement?.pane, .left)
+        let moved = NSRect(x: 100, y: 100, width: 400, height: 400)
+        host.setSlot(moved, overlay: id, in: parent)
+        host.setSlotVisible(true, overlay: id, reporter: newReporter)
+        host.setSlotVisible(false, overlay: id, reporter: oldReporter)
+        XCTAssertTrue(host.isShown(in: first.id))
+        XCTAssertEqual(first.rebasedPlacement?.overlay.id, id)
+        XCTAssertEqual(frame.frame, moved)
+    }
+
     func testAPaneHolderReceivesStateAndFrameCloseReleasesThatPane() throws {
         store.toggleSplit(first.id)
         let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, pane: .left).get()
@@ -169,7 +251,7 @@ final class RebasedHostTests: XCTestCase {
         store.toggleSplit(first.id)
         let opened = try host.openOverlay(in: store, session: first.id, cwd: "/elsewhere", sizePercent: nil,
                                           pane: .left, project: nested.path).get()
-        XCTAssertEqual(first.leftOverlay?.rebased?.project, RebasedHost.canonical(nested.path))
+        XCTAssertEqual(first.leftOverlay?.rebased?.project, nested.path)
         let implicitPane = try host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, project: nested.path).get()
         let samePane = try host.openOverlay(in: store, session: first.id, cwd: nil, sizePercent: nil, pane: .left, project: nested.path).get()
         XCTAssertEqual(implicitPane.overlay, opened.overlay)

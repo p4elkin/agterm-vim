@@ -69,6 +69,54 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         RebasedHost.shared.handle(event: "frameOpened", payload: "\(stateDir.path)\t7")
     }
 
+    func testPaneSlotVisibilityFollowsCoversAsksAndHiddenState() throws {
+        let (store, session) = try addSession()
+        store.toggleSplit(session.id)
+        let overlay = RebasedOverlay(project: "/repo", state: .shown)
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .left))
+        func visible(_ shown: Bool = true, covered: Bool = false) -> Bool {
+            RebasedSlot.isVisible(shown, session: session, pane: .left, overlaid: DeckPaneGates.coverActive(session), covered: covered)
+        }
+        XCTAssertTrue(visible())
+        XCTAssertFalse(visible(false))
+        XCTAssertFalse(visible(covered: true))
+        XCTAssertTrue(store.openOverlay(session.id, command: "floating", sizePercent: 60))
+        XCTAssertFalse(visible())
+        store.closeOverlay(session.id)
+        XCTAssertTrue(visible())
+        session.scratchActive = true
+        XCTAssertFalse(visible())
+        session.scratchActive = false
+        XCTAssertTrue(visible())
+        session.overlayActive = true
+        session.hudSpec = HudSpec(message: "notice")
+        XCTAssertTrue(visible())
+        store.closeHud(session.id)
+        let ask = PendingAsk(id: UUID().uuidString, title: "Continue?", buttons: [])
+        XCTAssertTrue(session.openAsk(ask, paneIdentity: session.splitPaneIdentity))
+        XCTAssertTrue(visible())
+        session.cancelPendingAsk()
+        XCTAssertTrue(session.openAsk(ask, paneIdentity: session.paneIdentity))
+        XCTAssertFalse(visible())
+        session.cancelPendingAsk()
+        XCTAssertTrue(session.openAsk(ask))
+        XCTAssertFalse(visible())
+        session.cancelPendingAsk()
+        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        XCTAssertFalse(visible())
+        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, false))
+        XCTAssertTrue(visible())
+    }
+
+    func testShownElsewhereMessageNeedsAnotherHolderAndLocalVisibility() {
+        var overlay = RebasedOverlay(project: "/repo", state: .shown)
+        XCTAssertEqual(RebasedSlot.message(for: overlay, shownElsewhere: true), "Rebased is shown in another session")
+        XCTAssertNil(RebasedSlot.message(for: overlay, shownElsewhere: false))
+        XCTAssertNil(RebasedSlot.message(for: overlay, shownElsewhere: true, visible: false))
+        overlay.hidden = true
+        XCTAssertNil(RebasedSlot.message(for: overlay, shownElsewhere: true))
+    }
+
     func testOpenRoutesToTheHostAndShowsInTheTree() throws {
         let (store, session) = try addSession()
         let response = openRebased(session, sizePercent: 70)
