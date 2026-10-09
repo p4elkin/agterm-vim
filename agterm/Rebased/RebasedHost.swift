@@ -103,7 +103,9 @@ final class RebasedHost {
     private var bound = false
     private var deadlinePassed = false
     private var opens = 0
-    private var bornObserver: CFRunLoopObserver?
+    // One per process: it serves `RebasedHost.shared`, and a test host per case would otherwise stack one
+    // observer each, every one scanning every window on every run-loop pass.
+    private static var bornObserver: CFRunLoopObserver?
     private var keyMonitor: Any?
     private var seenWindows: Set<Int> = []
 
@@ -643,14 +645,14 @@ final class RebasedHost {
     // An IDE frame is visible from the turn AWT orders it in; hide it there, before Core Animation commits,
     // until the frames keeper adopts it. Dialogs and popups are not miniaturizable and stay as they are.
     private func installBornObserver() {
-        guard bornObserver == nil else { return }
+        guard Self.bornObserver == nil else { return }
         let activities = CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.afterWaiting.rawValue
             | CFRunLoopActivity.beforeSources.rawValue
         let observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, -1) { _, _ in
             MainActor.assumeIsolated { RebasedHost.shared.hideNewFrames() }
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        bornObserver = observer
+        Self.bornObserver = observer
     }
 
     // agterm's menu stays installed while the IDE is key, so without this a chord both menus bind (⌘F) would
