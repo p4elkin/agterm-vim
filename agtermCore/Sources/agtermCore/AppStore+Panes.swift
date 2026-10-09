@@ -519,6 +519,7 @@ extension AppStore {
             return false
         }
         HtmlOverlayReleases.shared.release(overlay.html)
+        RebasedOverlayReleases.shared.release(overlay.rebased)
         session.setPaneOverlay(nil, pane: pane)
         session.paneOverlaySurface(pane)?.teardown()
         session.setPaneOverlaySurface(nil, pane: pane)

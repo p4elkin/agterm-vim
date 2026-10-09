@@ -7,12 +7,12 @@ public struct RebasedOverlay: Equatable, Sendable {
     }
 
     public let id: UUID
-    public let project: String
+    public var project: String
     public var state: State
     /// The range last asked for with `--diff`; the bridge shows it once the frame is on screen.
     public var diff: RebasedDiff?
     /// `host:path` of the repository a remote row's `project` mirrors, nil on a local row.
-    public let source: String?
+    public var source: String?
 
     public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, source: String? = nil,
                 id: UUID = UUID()) {
@@ -62,12 +62,15 @@ public struct RebasedDiff: Equatable, Sendable {
 }
 
 public enum RebasedOverlayOpenFailure: Equatable, Sendable {
-    case unknownSession, alreadyOpen, presenter
+    case unknownSession, alreadyOpen, paneNotVisible, presenter
 
-    public var message: String {
+    public var message: String { message(pane: nil) }
+
+    public func message(pane: OverlayPane?) -> String {
         switch self {
         case .unknownSession: "no such session"
-        case .alreadyOpen: "overlay already open"
+        case .alreadyOpen: pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen
+        case .paneNotVisible: PaneOverlayError.paneNotVisible
         case .presenter: "a viewer presents this session: a Rebased overlay would open where nobody sees it"
         }
     }
@@ -85,9 +88,29 @@ public final class RebasedOverlayReleases {
 }
 
 extension AppStore {
-    public func openRebasedOverlay(_ sessionID: UUID, overlay: RebasedOverlay, sizePercent: Int?) -> RebasedOverlayOpenFailure? {
+    @discardableResult
+    public func closeRebasedOverlay(_ sessionID: UUID, id: UUID) -> Bool {
+        guard let session = session(withID: sessionID), let placement = session.rebasedPlacement,
+              placement.overlay.id == id else { return false }
+        if let pane = placement.pane { return closePaneOverlay(sessionID, pane: pane) }
+        return closeOverlay(sessionID)
+    }
+
+    public func openRebasedOverlay(_ sessionID: UUID, overlay: RebasedOverlay, sizePercent: Int?,
+                                   pane: OverlayPane? = nil) -> RebasedOverlayOpenFailure? {
         guard let session = session(withID: sessionID) else { return .unknownSession }
         if presentationHub?.hasPresenter(session: sessionID) == true { return .presenter }
+        guard session.rebasedPlacement == nil else { return .alreadyOpen }
+        if let pane {
+            guard session.paneOverlay(pane) == nil else { return .alreadyOpen }
+            guard session.rendersPane(pane) else { return .paneNotVisible }
+            discardOrphanPaneOverlaySurface(session, pane: pane)
+            session.setPaneOverlayExitCode(nil, pane: pane)
+            session.remoteOverlays.clearFailure(pane)
+            session.mintPaneOverlayGeneration(pane)
+            session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane)
+            return nil
+        }
         if session.hudActive { closeOverlay(sessionID) }
         guard !session.overlayActive else { return .alreadyOpen }
         session.overlaySlotGeneration += 1

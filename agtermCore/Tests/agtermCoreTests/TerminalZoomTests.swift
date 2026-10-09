@@ -4,6 +4,25 @@ import Testing
 
 @MainActor
 struct TerminalZoomTests {
+    @Test(arguments: OverlayPane.allCases)
+    func rebasedPaneHasNoTerminalZoomTarget(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        session.splitFocused = pane == .right
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"),
+                                        sizePercent: nil, pane: pane) == nil)
+        #expect(!pane.zoomSurface.isAvailable(in: session))
+        #expect(!pane.zoomSurface.isActive(in: session))
+        #expect(!pane.zoomSurface.isVisible(in: session))
+        #expect(!pane.paneZoomSurface.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+        #expect(!TerminalZoomController.isTargetValid(.session(session.id, pane.zoomSurface), in: store))
+        session.splitFocused.toggle()
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, session.focusedPane.paneZoomSurface))
+    }
+
     @Test func controlAliasesPreserveCanonicalSurfaceRoles() {
         for alias in ["left", "top", "primary"] {
             #expect(TerminalZoomSurface(controlName: alias) == .primary)

@@ -10,6 +10,36 @@ extension Session {
     /// `programOverlayActive` instead.
     public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
 
+    public var rebasedPlacement: (overlay: RebasedOverlay, pane: OverlayPane?)? {
+        if let overlay = rebasedOverlay { return (overlay, nil) }
+        for pane in OverlayPane.allCases {
+            if let overlay = paneOverlay(pane)?.rebased { return (overlay, pane) }
+        }
+        return nil
+    }
+
+    @discardableResult
+    public func updateRebasedOverlay(_ id: UUID, _ change: (inout RebasedOverlay) -> Void) -> Bool {
+        if var overlay = rebasedOverlay, overlay.id == id {
+            change(&overlay)
+            rebasedOverlay = overlay
+            return true
+        }
+        for pane in OverlayPane.allCases {
+            guard var slot = paneOverlay(pane), var overlay = slot.rebased, overlay.id == id else { continue }
+            change(&overlay)
+            slot.rebased = overlay
+            setPaneOverlay(slot, pane: pane)
+            return true
+        }
+        return false
+    }
+
+    public func paneOverlayIsProgram(_ pane: OverlayPane) -> Bool {
+        guard let overlay = paneOverlay(pane) else { return false }
+        return overlay.html == nil && overlay.rebased == nil
+    }
+
     public func paneOverlayIsHtml(_ pane: OverlayPane) -> Bool { paneOverlay(pane)?.html != nil }
 
     /// htmlCovers checks the slot a `--pane` command addresses, the session-wide one for nil.

@@ -17,6 +17,14 @@ struct DashboardCoverTests {
         HtmlOverlay(source: .file(path: path, grantRoot: nil))
     }
 
+    @Test(arguments: OverlayPane.allCases)
+    func aPaneRebasedOverlayCoversOnlyItsPane(pane: OverlayPane) {
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"),
+                                        sizePercent: nil, pane: pane) == nil)
+        #expect(session.dashboardCover(for: pane) == .rebased(project: "/tmp/repo"))
+        #expect(session.dashboardCover(for: pane == .left ? .right : .left) == nil)
+    }
+
     @Test func anUncoveredPaneHasNoCover() {
         #expect(session.dashboardCover(for: .left) == nil)
         #expect(session.dashboardCover(for: .right) == nil)

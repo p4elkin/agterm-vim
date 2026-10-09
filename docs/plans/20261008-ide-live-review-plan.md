@@ -443,7 +443,7 @@ Size: M. Driven by 30 read sites, the core half of them with tests here.
 - Files: `agtermCore/Sources/agtermCore/{RebasedOverlay,Session,Session+HtmlOverlay,AppStore+Panes,AppStore+RemoteOverlay,TerminalZoom,DashboardCover}.swift`;
   tests `HtmlOverlayTests`, `AppStorePaneTests`, `AppStorePaneSwapTests`, `TerminalZoomTests`,
   `DashboardCoverTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `openRebasedOverlay(pane: .left)` puts the overlay in `leftOverlay.rebased`; `rebasedPlacement` answers
     `.left`; a second open anywhere in the session is refused, session slot or other pane; an occupied pane
     answers `.alreadyOpen` with the pane wording; a pane the deck does not lay out answers `.paneNotVisible`.
@@ -455,11 +455,11 @@ Size: M. Driven by 30 read sites, the core half of them with tests here.
     `closeRebasedOverlay(session, id:)` closes it in either slot and refuses a stale id.
   - `TerminalZoom` offers no `overlay-left` target over it; `dashboardCover(for: .left)` answers `.rebased`.
   - `updateRebasedOverlay(id:)` changes the value in whichever slot holds it, `project` included.
-- [ ] Add `PaneOverlay.rebased` with `init(rebased:)`, `Session.rebasedPlacement`,
+- [x] Add `PaneOverlay.rebased` with `init(rebased:)`, `Session.rebasedPlacement`,
   `Session.updateRebasedOverlay`, `Session.paneOverlayIsProgram`, `AppStore.closeRebasedOverlay`, the `pane`
   parameter of `openRebasedOverlay`, `RebasedOverlayOpenFailure.paneNotVisible` and `message(pane:)`.
   `RebasedOverlay.project` and `RebasedOverlay.source` become `var`s.
-- [ ] Walk every site of
+- [x] Walk every site of
   `grep -rn 'paneOverlayIsHtml\|paneOverlay(.*) [!=]= nil\|leftOverlay [!=]= nil\|rightOverlay [!=]= nil\|focusedOverlayPane\|openPaneOverlays\|rebasedOverlay\b' agterm agtermCore/Sources`
   and apply the decision in row 1 of [New fields and their consumers](#new-fields-and-their-consumers) for
   every core site. Core sites get a test. App sites are built by the task named in row 1's "Task" column;

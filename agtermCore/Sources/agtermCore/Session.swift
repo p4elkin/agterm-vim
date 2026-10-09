@@ -70,12 +70,18 @@ public struct PaneOverlay: Equatable, Sendable {
     public var replica: OverlayReplica?
     /// html is the page this overlay shows instead of running `command`, which is then empty and never read.
     public var html: HtmlOverlay?
+    public var rebased: RebasedOverlay?
 
     public init(command: String, cwd: String? = nil, backgroundColor: String? = nil, wait: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.backgroundColor = backgroundColor
         self.wait = wait
+    }
+
+    public init(rebased: RebasedOverlay) {
+        self.init(command: "")
+        self.rebased = rebased
     }
 
     public init(html: HtmlOverlay, backgroundColor: String? = nil) {
@@ -822,7 +828,7 @@ public final class Session: Identifiable {
     /// RETIRED overlay's command, cwd, and colors.
     public func dropUnrealizedPaneOverlays() {
         for pane in OverlayPane.allCases
-        where paneOverlay(pane) != nil && !paneOverlayIsHtml(pane) && paneOverlaySurface(pane)?.isRealized != true
+        where paneOverlayIsProgram(pane) && paneOverlaySurface(pane)?.isRealized != true
             && !paneOverlayHosted(pane) {
             teardownPaneOverlay(pane)
         }
@@ -844,6 +850,7 @@ public final class Session: Identifiable {
     public func teardownPaneOverlay(_ pane: OverlayPane) {
         let replica = paneOverlay(pane)?.replica
         HtmlOverlayReleases.shared.release(paneOverlay(pane)?.html)
+        RebasedOverlayReleases.shared.release(paneOverlay(pane)?.rebased)
         paneOverlaySurface(pane)?.teardown()
         setPaneOverlay(nil, pane: pane)
         setPaneOverlaySurface(nil, pane: pane)

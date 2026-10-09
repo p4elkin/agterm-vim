@@ -60,9 +60,9 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
             // "surface not available" through `isTargetValid`.
             return session.programOverlayActive
         case .overlayLeft:
-            return session.paneOverlay(.left) != nil && !session.paneOverlayIsHtml(.left)
+            return session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return session.paneOverlay(.right) != nil && !session.paneOverlayIsHtml(.right)
+            return session.paneOverlayIsProgram(.right)
         }
     }
 
@@ -81,9 +81,9 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
         case .overlay:
             return session.programOverlayActive
         case .overlayLeft:
-            return uncovered && session.focusedPane == .left && session.leftOverlay != nil && !session.paneOverlayIsHtml(.left)
+            return uncovered && session.focusedPane == .left && session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return uncovered && session.focusedPane == .right && session.rightOverlay != nil && !session.paneOverlayIsHtml(.right)
+            return uncovered && session.focusedPane == .right && session.paneOverlayIsProgram(.right)
         }
     }
 
@@ -99,9 +99,9 @@ public enum TerminalZoomSurface: String, CaseIterable, Codable, Equatable, Senda
         case .overlay:
             return session.programOverlayActive
         case .overlayLeft:
-            return Self.paneVisible(.left, in: session) && session.leftOverlay != nil && !session.paneOverlayIsHtml(.left)
+            return Self.paneVisible(.left, in: session) && session.paneOverlayIsProgram(.left)
         case .overlayRight:
-            return Self.paneVisible(.right, in: session) && session.rightOverlay != nil && !session.paneOverlayIsHtml(.right)
+            return Self.paneVisible(.right, in: session) && session.paneOverlayIsProgram(.right)
         }
     }
 

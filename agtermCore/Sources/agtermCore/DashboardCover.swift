@@ -20,6 +20,7 @@ extension Session {
             return .program(command: overlayReplica == nil ? overlayCommand : nil)
         }
         guard let overlay = paneOverlay(pane) else { return nil }
+        if let rebased = overlay.rebased { return .rebased(project: rebased.project) }
         if let page = overlay.html { return .page(identity: page.identity, title: page.current?.title) }
         return .program(command: overlay.replica == nil ? overlay.command : nil)
     }
