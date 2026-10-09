@@ -96,6 +96,8 @@ final class RebasedFrameKeeper: RebasedFrames {
 
     var keptCount: Int { kept.count }
 
+    func makeKey(_ frame: NSWindow) { frame.makeKeyAndOrderFront(nil) }
+
     func orderOut(_ window: NSWindow) {
         window.orderOut(nil)
     }

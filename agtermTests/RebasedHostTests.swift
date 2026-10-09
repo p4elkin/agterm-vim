@@ -46,6 +46,7 @@ final class FakeRebasedFrames: RebasedFrames {
     func detach(_ window: NSWindow) { log.append("detach \(name(window))") }
     func orderOut(_ window: NSWindow) { log.append("orderOut \(name(window))") }
     func refit(host: NSWindow) { log.append("refit \(name(host))") }
+    func makeKey(_ frame: NSWindow) { log.append("makeKey \(name(frame))") }
 }
 
 @MainActor

@@ -33,6 +33,10 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         host.runtime = runtime
         host.frames = frames
         host.store = { [library] in library?.store(forSession: $0) }
+        host.isFocusedPane = { [library] id, pane in
+            guard let store = library?.activeStore else { return false }
+            return store.selectedSessionID == id && store.session(withID: id)?.focusedPane == pane
+        }
         host.window = { [frameWindow] _ in frameWindow }
         host.after = { _, _ in }
         host.offMain = { work, done in
@@ -158,18 +162,165 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(session.overlaySizePercent, 55)
     }
 
-    func testToggleOpensClosesAndRefusesOverAProgram() throws {
+    func testToggleHidesAndShowsTheSameHolder() throws {
         let (store, session) = try addSession()
         store.selectSession(session.id)
-        actions.toggleRebasedOverlay()
-        XCTAssertTrue(session.rebasedOverlayActive)
-        actions.toggleRebasedOverlay()
-        XCTAssertFalse(session.overlayActive)
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .opened)
+        let id = try XCTUnwrap(session.rebasedPlacement?.overlay.id)
+        frameOpened(session)
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden)
+        XCTAssertTrue(session.overlayActive)
+        XCTAssertEqual(session.rebasedPlacement?.overlay.id, id)
+        XCTAssertEqual(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.hidden, true)
+        XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .shown)
+        XCTAssertEqual(session.rebasedPlacement?.overlay.id, id)
+        XCTAssertEqual(runtime.calls.last, "show \(RebasedHost.canonical(stateDir.path))")
+        XCTAssertTrue(store.closeRebasedOverlay(session.id, id: id))
         XCTAssertTrue(store.openOverlay(session.id, command: "htop"))
-        actions.toggleRebasedOverlay()
-        XCTAssertNil(session.rebasedOverlay)
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .refused("overlay already open"))
         XCTAssertTrue(session.programOverlayActive)
+    }
+
+    private final class FocusSurface: TerminalSurface {
+        let isRealized = true
+        let paneToken = UUID().uuidString
+        func teardown() {}
+        func promoteToPrimaryPane() {}
+    }
+
+    func testPaneToggleRefocusesTheUncoveredTerminalAndKeepsTheHolder() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        store.toggleSplit(session.id)
+        session.splitFocused = false
+        let surface = FocusSurface()
+        session.surface = surface
+        let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
+                                                       sizePercent: nil, pane: .left).get()
+        frameOpened(session)
+        var refocused = false
+        actions.rebasedRefocus = { current in refocused = current.topmostSurface === surface }
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden)
+        XCTAssertTrue(refocused)
+        XCTAssertEqual(session.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertEqual(actions.toggleRebasedOverlay(), .shown)
+        XCTAssertEqual(session.leftOverlay?.rebased?.id, opened.overlay)
+    }
+
+    func testCommandWOverAReviewAlwaysConfirms() throws {
+        let originalRelease = RebasedOverlayReleases.shared.onRelease
+        defer { RebasedOverlayReleases.shared.onRelease = originalRelease }
+        for scenario in ["left", "right", "hiddenPane", "hiddenSession", "shownSession"] {
+            let (store, session) = try addSession()
+            store.selectSession(session.id)
+            let pane: OverlayPane? = scenario.hasSuffix("Session") ? nil : .left
+            if pane != nil { store.toggleSplit(session.id) }
+            session.splitFocused = scenario == "right"
+            let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
+                                                           sizePercent: nil, pane: pane).get()
+            session.updateRebasedOverlay(opened.overlay) {
+                $0.onClose = RebasedOnClose(command: "/bin/flush --final", cwd: "/tmp", environment: [:])
+            }
+            frameOpened(session)
+            if scenario.hasPrefix("hidden") { XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden) }
+            var releases: [UUID] = []
+            RebasedOverlayReleases.shared.onRelease = { id in releases.append(id); originalRelease?(id) }
+            var messages: [String] = []
+            var accepted = false
+            actions.closeConfirmer = { message, detail in messages.append(message + " " + detail); return accepted }
+            XCTAssertTrue(actions.closeActiveSession())
+            XCTAssertEqual(messages.count, 1)
+            XCTAssertTrue(messages[0].contains(stateDir.path))
+            XCTAssertTrue(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
+            XCTAssertEqual(session.rebasedPlacement?.overlay.id, opened.overlay)
+            XCTAssertTrue(releases.isEmpty)
+            accepted = true
+            XCTAssertTrue(actions.closeActiveSession())
+            XCTAssertEqual(messages.count, 2)
+            if scenario == "shownSession" {
+                XCTAssertTrue(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
+                XCTAssertNil(session.rebasedOverlay)
+                XCTAssertFalse(store.undoPendingClose())
+                XCTAssertEqual(releases, [opened.overlay])
+            } else {
+                XCTAssertFalse(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
+                XCTAssertTrue(releases.isEmpty)
+                store.finalizeAllPendingCloses()
+                XCTAssertEqual(releases, [opened.overlay])
+            }
+        }
+    }
+
+    func testCommandWWithoutAReviewKeepsTheDefaultNoDialogBehavior() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        var confirmations = 0
+        actions.closeConfirmer = { _, _ in confirmations += 1; return false }
+        XCTAssertTrue(actions.closeActiveSession())
+        XCTAssertEqual(confirmations, 0)
+        XCTAssertFalse(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
+        store.finalizeAllPendingCloses()
+    }
+
+    func testFocusingAPaneIDEMakesItKey() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        store.toggleSplit(session.id)
+        session.splitFocused = false
+        let surface = FocusSurface()
+        session.surface = surface
+        let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
+                                                       sizePercent: nil, pane: .left).get()
+        frameOpened(session)
+        let before = frames.log.filter { $0 == "makeKey frame" }.count
+        actions.focusSplitPane(session, wantSplit: false)
+        XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before + 1)
+        XCTAssertTrue(store.setRebasedHidden(session.id, id: opened.overlay, true))
+        actions.focusSplitPane(session, wantSplit: false)
+        XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before + 1)
+        XCTAssertTrue(session.focusTarget(wantSplit: false) === surface)
+    }
+
+    func testAnOpenOverTheFocusedPaneMakesTheIDEKeyOnce() throws {
+        let (store, session) = try addSession()
+        store.selectSession(session.id)
+        store.toggleSplit(session.id)
+        for rightFocused in [false, true] {
+            session.splitFocused = false
+            let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
+                                                           sizePercent: nil, pane: .left).get()
+            session.splitFocused = rightFocused
+            let before = frames.log.filter { $0 == "makeKey frame" }.count
+            frameOpened(session)
+            let expected = before + (rightFocused ? 0 : 1)
+            XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
+            RebasedHost.shared.setSlotVisible(false, session: session.id)
+            RebasedHost.shared.setSlotVisible(true, session: session.id)
+            XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
+            store.closeRebasedOverlay(session.id, id: opened.overlay)
+        }
+    }
+
+    func testHiddenRebasedPanelsHaveNoChromeOrHitTesting() throws {
+        let (store, session) = try addSession()
+        let overlay = RebasedOverlay(project: "/repo")
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: 60))
+        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        let style = OverlayPanelStyle.resolve(session)
+        XCTAssertFalse(style.framed)
+        XCTAssertFalse(style.backdrop)
+        XCTAssertFalse(style.interactive)
+        XCTAssertEqual(style.borderOpacity, 0)
+        XCTAssertEqual(style.shadowRadius, 0)
+        XCTAssertFalse(OverlayPanelStyle.sessionHitTesting(session, live: true, hostsSurface: true))
+        XCTAssertNil(RebasedSlot.message(for: try XCTUnwrap(session.rebasedOverlay), shownElsewhere: true))
         store.closeOverlay(session.id)
+        store.toggleSplit(session.id)
+        XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .left))
+        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        XCTAssertFalse(session.paneOverlayCovers(.left))
+        XCTAssertFalse(OverlayPanelStyle.paneHitTesting(session, pane: .left, visible: true, active: true))
     }
 
     func testAHiddenSlotHidesTheFrameAndShowsItAgain() throws {
@@ -206,13 +357,13 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(runtime.calls.last, "saveAll ")
     }
 
-    func testToggleForAGivenSessionClosesThatSessionsOverlay() throws {
+    func testToggleForAGivenSessionHidesThatSessionsOverlay() throws {
         let (store, session) = try addSession()
         let (_, other) = try addSession()
         XCTAssertTrue(openRebased(session).ok)
         store.selectSession(other.id)
-        actions.toggleRebasedOverlay(session: session.id)
-        XCTAssertNil(session.rebasedOverlay)
+        XCTAssertEqual(actions.toggleRebasedOverlay(session: session.id), .hidden)
+        XCTAssertEqual(session.rebasedOverlay?.hidden, true)
         XCTAssertFalse(other.overlayActive)
     }
 }

@@ -10,6 +10,7 @@ protocol RebasedFrames: AnyObject {
     func detach(_ window: NSWindow)
     func orderOut(_ window: NSWindow)
     func refit(host: NSWindow)
+    func makeKey(_ frame: NSWindow)
 }
 
 struct RebasedOpened: Equatable {
@@ -62,6 +63,7 @@ final class RebasedHost {
         }
     }
     var isIDEKeyWindowOverride: Bool?
+    var isFocusedPane: (UUID, OverlayPane) -> Bool = { _, _ in false }
     var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = {
         RebasedMirrorRefresh.run($0, stateDirectory: $1)
     }
@@ -74,6 +76,7 @@ final class RebasedHost {
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
     private var visibleSlots: Set<UUID> = []
     private var visibilityReports: [UUID: Set<UUID>] = [:]
+    private var needsInitialFocus: Set<UUID> = []
     private var saving = false
     // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
@@ -99,6 +102,10 @@ final class RebasedHost {
         self.keymap = keymap
         self.toggle = toggle
         self.stateDirectory = stateDirectory
+        isFocusedPane = { [weak library] id, pane in
+            guard let store = library?.activeStore else { return false }
+            return store.selectedSessionID == id && store.session(withID: id)?.focusedPane == pane
+        }
         store = { [weak library] in library?.store(forSession: $0) }
         hostWindow = { [weak library] session in
             library?.windowID(forSession: session).flatMap { WindowRegistry.shared.window(for: $0) }
@@ -228,6 +235,7 @@ final class RebasedHost {
         opens += 1
         let project = Self.canonical(overlay.project)
         entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens)
+        if store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil { needsInitialFocus.insert(overlay.id) }
         if let diff = overlay.diff { pendingDiffs[overlay.id] = diff }
         switch jvm {
         case .running:
@@ -403,14 +411,31 @@ final class RebasedHost {
     func show(overlay id: UUID) {
         guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
+        guard overlay(entry)?.hidden != true else { return }
         setState(.shown, overlay: id)
-        guard visibleSlots.contains(id), overlay(entry)?.hidden != true else { return }
+        guard visibleSlots.contains(id) else { return }
         visible[entry.project] = id
         lastShown = id
         lastShownByProject[entry.project] = id
         _ = runtime.call("show", entry.project)
         frames.adopt(frame, in: hostWindow(entry.session))
         sendDiff(session: entry.session)
+        if needsInitialFocus.remove(id) != nil,
+           let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
+           isFocusedPane(entry.session, pane) { focus(overlay: id) }
+    }
+
+    @discardableResult
+    func focus(overlay id: UUID) -> Bool {
+        guard let entry = entries[id], visible[entry.project] == id, overlay(entry)?.hidden != true,
+              let number = frameNumbers[entry.project], let frame = window(number) else { return false }
+        frames.makeKey(frame)
+        return true
+    }
+
+    func hide(overlay id: UUID) {
+        guard let entry = entries[id] else { return }
+        hide(entry)
     }
 
     // The bridge shows the diff as a dialog of the project frame, so it waits until that frame is on screen
@@ -521,7 +546,7 @@ final class RebasedHost {
     private func handBack(_ previous: Entry) {
         let next = entries.values.filter {
             $0.project == previous.project && $0.id != previous.id && visibleSlots.contains($0.id)
-                && overlayState($0) == .shown
+                && overlayState($0) == .shown && overlay($0)?.hidden != true
         }.max { $0.order < $1.order }
         if let next { show(overlay: next.id) }
     }
@@ -533,6 +558,7 @@ final class RebasedHost {
         pendingDiffs[overlayID] = nil
         visibleSlots.remove(overlayID)
         visibilityReports[overlayID] = nil
+        needsInitialFocus.remove(overlayID)
         slots[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
         guard let entry = entries.removeValue(forKey: overlayID) else { return }

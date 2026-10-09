@@ -698,7 +698,7 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   (`overlayPanel`, `OverlayPanelStyle`, `deckPane`, `paneOverlayPanel`), `RebasedHost.swift` (`show` respects
   `hidden`), and whichever raw slot reads the walks below change (`WindowContentView.swift`,
   `ControlServer+Mark.swift`, `ControlServer+SurfaceIO.swift`); tests `ControlServerRebasedOverlayTests`.
-- [ ] Tests first: replace `testToggleOpensClosesAndRefusesOverAProgram` and
+- [x] Tests first: replace `testToggleOpensClosesAndRefusesOverAProgram` and
   `testToggleForAGivenSessionClosesThatSessionsOverlay` with `testToggleHidesAndShowsTheSameHolder` and
   siblings:
   - toggle on a held overlay hides it (the outcome is `hidden`, the bridge gets `hide` through the direct host
@@ -726,17 +726,17 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   - the static predicates: a hidden `--size-percent` overlay resolves `OverlayPanelStyle` chromeless with no
     backdrop, the session panel's hit-test gate is false, `RebasedSlot.message` is nil, `deckPane`'s `covered`
     is false for a hidden pane holder, and `paneOverlayPanel`'s gate is false.
-- [ ] `toggleRebasedOverlay` flips `hidden` through `setRebasedHidden`; `RebasedSlot` gets `visible` false
+- [x] `toggleRebasedOverlay` flips `hidden` through `setRebasedHidden`; `RebasedSlot` gets `visible` false
   while hidden; `RebasedHost.show` returns early for a hidden overlay; both deck branches test "held";
   `deckPane`'s `covered` reads `paneOverlayCovers`; the toggle returns `RebasedToggleOutcome` and calls
   `RebasedHost.hide(overlay:)` or `show(overlay:)`.
-- [ ] The ⌘W rung for `focusedOverlayPane` skips a Rebased occupant. `confirmCloseSession` gains the Rebased
+- [x] The ⌘W rung for `focusedOverlayPane` skips a Rebased occupant. `confirmCloseSession` gains the Rebased
   branch and the `closeConfirmer` seam ([Hide](#hide)). `focusSplitPane` calls `RebasedHost.focus(overlay:)`
   for a shown pane IDE. The open path marks the overlay, and the first show calls `focus` under the one-shot
   rule in [Visibility](#visibility), asking the `isFocusedPane` seam set in `RebasedHost.configure`; `show`
   never calls it otherwise. The `session.overlayActive` rung asks the `closeConfirmer` first when it holds a
   shown Rebased overlay. `RebasedFrames` gains `makeKey(_:)`.
-- [ ] Walk the raw session-slot reads,
+- [x] Walk the raw session-slot reads,
   `grep -rn 'overlayActive' agterm --include='*.swift' | grep -v 'coverOverlayActive\|programOverlayActive\|htmlOverlayActive\|rebasedOverlayActive\|fullOverlayActive'`,
   and the raw pane-slot reads, `grep -rn 'paneOverlay(.*) [!=]= nil\|leftOverlay [!=]= nil\|rightOverlay [!=]= nil' agterm`,
   and decide each for a hidden holder. Known today: `overlayPanel`'s outer condition and its
@@ -744,7 +744,7 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
   session.id : nil` read in `WindowContentView.swift`, the guard in `ControlServer+Mark.swift`, `occupied`
   in `ControlServer+SurfaceIO.swift`, `deckPane`'s `covered`, and `paneOverlayPanel`'s hit test. List the
   decisions in the commit message.
-- [ ] Key-monitor audit: for a pane IDE, decide per early return (`SessionSwitcher`, `PaneShortcuts`,
+- [x] Key-monitor audit: for a pane IDE, decide per early return (`SessionSwitcher`, `PaneShortcuts`,
   `UndoCloseShortcut`) and per `RebasedMenuPolicy` route whether it changes. Record the result in the commit
   message and in `rebased-overlay.md` (Task 15); add a `live-` line to Task 16 if anything changes.
 

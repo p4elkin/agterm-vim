@@ -10,6 +10,16 @@ final class AppActions {
     /// The window library. Resolves the frontmost window's store per call rather than holding a fixed one,
     /// so menu bar / palette / control channel all drive the window the user is looking at.
     let library: WindowLibrary
+    var rebasedRefocus: (Session) -> Void = { HtmlOverlayRegistry.shared.refocus($0) }
+    var closeConfirmer: (String, String) -> Bool = { message, detail in
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
 
     /// The frontmost open window's store, the target of every mutating action. Nil only with all windows
     /// closed (quitting), where callers no-op.
@@ -261,12 +271,20 @@ final class AppActions {
         if terminalZoomActive { frontmostTerminalZoom?.clear(); return true }
         if let dashboard = frontmostDashboard, dashboard.isOpen { dashboard.close(); focusActiveSession(); return true }
         guard let store, let session = store.activeSession else { return false }
-        if session.overlayActive { store.closeOverlay(session.id); return true }
+        if session.overlayActive, session.rebasedOverlay?.hidden != true {
+            if let review = session.rebasedOverlay, !ContentView.shouldBypassCloseConfirmation,
+               !closeConfirmer("End the Rebased review of \(review.project)?", "The session will stay open.") { return true }
+            store.closeOverlay(session.id)
+            return true
+        }
         if session.scratchActive { store.toggleScratch(session.id); return true }
         // the focused pane's own overlay is the last cover: without this rung ⌘W over one falls straight
         // through and closes the SESSION. An overlay on the other pane is not in front of the user, so it
         // does not intercept — that pane stays live and ⌘W keeps its ordinary meaning.
-        if let pane = session.focusedOverlayPane { store.closePaneOverlay(session.id, pane: pane); return true }
+        if let pane = session.focusedOverlayPane, session.paneOverlay(pane)?.rebased == nil {
+            store.closePaneOverlay(session.id, pane: pane)
+            return true
+        }
         // handled either way — returning true on cancel keeps the File menu from closing the whole window.
         guard confirmCloseSession(session) else { return true }
         closeSessionAfterConfirmation(session.id, in: store)
@@ -341,20 +359,16 @@ final class AppActions {
         library.clearRecentClosedItems()
     }
 
-    /// A native warning confirm before closing `session`, gated by `AppSettings.confirmCloseSession`. Returns
-    /// whether to proceed: true with no prompt when the setting is off or under XCUITest (a modal hangs it).
     private func confirmCloseSession(_ session: Session) -> Bool {
-        guard settingsModel?.settings.confirmCloseSession == true,
-              !ContentView.shouldBypassCloseConfirmation else { return true }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Close “\(session.displayName)”?"
-        alert.informativeText = closeGraceUndoEnabled
+        guard !ContentView.shouldBypassCloseConfirmation else { return true }
+        let detail = closeGraceUndoEnabled
             ? "The session will close after a short undo window."
             : "The session will close immediately and can be reopened from File > Open Recent."
-        alert.addButton(withTitle: "Close")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        if let review = session.rebasedPlacement?.overlay {
+            return closeConfirmer("Close “\(session.displayName)” and end the Rebased review of \(review.project)?", detail)
+        }
+        guard settingsModel?.settings.confirmCloseSession == true else { return true }
+        return closeConfirmer("Close “\(session.displayName)”?", detail)
     }
 
     var closeGraceUndoEnabled: Bool {
