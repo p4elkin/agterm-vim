@@ -473,7 +473,7 @@ Size: M. Driven by the parsers and the request ledger's transitions.
 
 - Files: `agtermCore/Sources/agtermCore/RebasedOverlay.swift`, new `agtermCore/Sources/agtermCore/RebasedView.swift`;
   tests `RebasedDiffTests`, new `RebasedViewTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedFileTarget(spec:)`: `a/b.kt` (line 0), `a/b.kt:42`, `a:b.kt:7` (path `a:b.kt`), `a/b.kt:` and
     `a/b.kt:0` refused, a tab or a newline refused.
   - `RebasedView.diff` with `workingTree`: `A..` and `A...B` accepted, `A..B` refused.
@@ -483,7 +483,7 @@ Size: M. Driven by the parsers and the request ledger's transitions.
     sets `opened` and the detail; `apply(viewFailed)` sets `failed` with the reason as `detail`; an event for
     an earlier id changes nothing; `timedOut` fails only a current `sent` request; a `queued` request never
     times out.
-- [ ] Add `RebasedFileTarget`, `RebasedView`, `RebasedViewRequest`, `RebasedOverlay.view`, and the value types
+- [x] Add `RebasedFileTarget`, `RebasedView`, `RebasedViewRequest`, `RebasedOverlay.view`, and the value types
   `RebasedOnClose` (command, cwd, environment) and `RebasedOverlay.onClose`, so every core field exists before
   Tasks 4 and 7. Extend `RebasedDiff.bridgeArgument` without changing what an existing caller gets until
   Task 12 moves it.

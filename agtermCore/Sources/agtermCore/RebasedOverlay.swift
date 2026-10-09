@@ -13,14 +13,18 @@ public struct RebasedOverlay: Equatable, Sendable {
     public var diff: RebasedDiff?
     /// `host:path` of the repository a remote row's `project` mirrors, nil on a local row.
     public var source: String?
+    public var view: RebasedViewRequest?
+    public var onClose: RebasedOnClose?
 
     public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, source: String? = nil,
-                id: UUID = UUID()) {
+                id: UUID = UUID(), view: RebasedViewRequest? = nil, onClose: RebasedOnClose? = nil) {
         self.id = id
         self.project = project
         self.state = state
         self.diff = diff
         self.source = source
+        self.view = view
+        self.onClose = onClose
     }
 }
 
@@ -56,6 +60,10 @@ public struct RebasedDiff: Equatable, Sendable {
     public var spec: String { base + (mergeBase ? "..." : "..") + head }
 
     /// The bridge's `diff` argument: tab-separated, the project last because a path may hold a tab.
+    public func bridgeArgument(request: String, workingTree: Bool, pane: Bool, project: String) -> String {
+        [request, base, head, mergeBase ? "1" : "0", workingTree ? "1" : "0", pane ? "pane" : "session", project].joined(separator: "\t")
+    }
+
     public func bridgeArgument(project: String) -> String {
         [base, head, mergeBase ? "1" : "0", project].joined(separator: "\t")
     }
