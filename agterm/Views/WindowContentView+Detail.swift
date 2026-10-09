@@ -408,12 +408,11 @@ extension WindowContentView {
             && deckHostsSurface(session: session, surface: pane.zoomSurface)
         GeometryReader { geo in
             ZStack {
-                if active, let overlay = session.paneOverlay(pane)?.rebased {
+                if active, session.paneOverlay(pane)?.rebased != nil {
                     RebasedSlot(session: session, pane: pane,
                                 visible: RebasedSlot.isVisible(deckVisible, session: session, pane: pane,
                                                                overlaid: gates.overlaid, covered: rebasedCovered),
                                 foreground: chromeText)
-                        .id("\(session.id.uuidString)-rebased-\(overlay.id.uuidString)")
                 } else if active, let page = session.paneOverlay(pane)?.html {
                     // keyed on the page, so a swap or promotion moves its web view instead of reusing a host
                     HtmlOverlayView(store: store, session: session, overlay: page,

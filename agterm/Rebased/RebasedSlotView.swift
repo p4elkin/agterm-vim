@@ -36,6 +36,7 @@ struct RebasedSlot: View {
         ZStack {
             if let overlay {
                 RebasedSlotView(overlay: overlay.id, visible: localVisible)
+                    .id(overlay.id)
                 if let message = Self.message(for: overlay, shownElsewhere: RebasedHost.shared.isShownElsewhere(overlay: overlay.id),
                                               visible: localVisible) {
                     Text(message)

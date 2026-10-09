@@ -231,6 +231,11 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertFalse(visible())
         store.closeOverlay(session.id)
         XCTAssertTrue(visible())
+        let page = HtmlOverlay(source: .file(path: "/tmp/review-cover.html", grantRoot: nil))
+        XCTAssertNil(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil))
+        XCTAssertFalse(visible())
+        store.closeOverlay(session.id)
+        XCTAssertTrue(visible())
         session.scratchActive = true
         XCTAssertFalse(visible())
         session.scratchActive = false
