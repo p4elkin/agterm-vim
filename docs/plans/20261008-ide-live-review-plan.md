@@ -896,6 +896,8 @@ Size: M. Driven by one live session of checks by eye and one UI test case.
   - `live-view-opened`: `tree --json` shows the open's `request` with `view.state: opened` and the detail
     equal to the changed-file count; `rebased.port` is a number.
   - `live-diff-inside`: open a file diff from the list; every window stays inside the left pane.
+  - `live-working-tree-direction`: on `--diff main.. --working-tree`, a file added in the working tree
+    is listed as added; its file diff shows the base on the left and the working copy on the right.
   - `live-empty-range`: `session rebased show --diff HEAD..HEAD` opens nothing and reads `opened`, detail
     `0`.
   - `live-file`: `session rebased show --file <repo>/a.txt:3` puts the caret on line 3.

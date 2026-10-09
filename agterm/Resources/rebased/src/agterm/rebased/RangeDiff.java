@@ -26,7 +26,7 @@ final class RangeDiff {
       Project project = Bridge.openProject(dir);
       var root = project == null ? null : LocalFileSystem.getInstance().refreshAndFindFileByPath(project.getBasePath());
       if (root == null) { Bridge.emit("viewFailed", request + "\tno open project at " + dir); return; }
-      String title = base + (mergeBase ? "..." : "..") + head;
+      String title = title(base, head, mergeBase, workingTree);
       try {
         String from = base;
         if (mergeBase) {
@@ -35,18 +35,19 @@ final class RangeDiff {
           from = found.asString();
         }
         List<Change> changes = new ArrayList<>(workingTree
-            ? GitChangeUtils.getDiffWithWorkingDir(project, root, from, null, true)
+            ? GitChangeUtils.getDiffWithWorkingDir(project, root, from, null, false)
             : GitChangeUtils.getDiff(project, root, from, head, null));
         if (changes.isEmpty()) { Bridge.emit("viewOpened", request + "\t0"); return; }
         Bridge.writeSafe(() -> {
+          if (projectClosed(project, request)) return;
           try {
             if (pane) {
               List<ChangeDiffRequestChain.Producer> producers = new ArrayList<>();
               for (Change change : changes) {
                 var producer = ChangeDiffRequestProducer.create(project, change);
-                if (producer == null) throw new IllegalStateException("cannot show a changed file in the diff editor");
-                producers.add(producer);
+                if (producer != null) producers.add(producer);
               }
+              if (producers.isEmpty()) throw new IllegalStateException("cannot show any changed file in the diff editor");
               var file = new ChainDiffVirtualFile(new ChangeDiffRequestChain(producers, 0), title);
               if (FileEditorManager.getInstance(project).openFile(file, true).length == 0) {
                 throw new IllegalStateException("diff editor did not open");
@@ -65,7 +66,19 @@ final class RangeDiff {
     });
   }
 
+  static String title(String base, String head, boolean mergeBase, boolean workingTree) {
+    if (workingTree && !mergeBase) return base + " (working tree)";
+    return base + (mergeBase ? "..." : "..") + head + (workingTree ? " + working tree" : "");
+  }
+
+  static boolean projectClosed(Project project, String request) {
+    if (!project.isDisposed()) return false;
+    Bridge.emit("viewFailed", request + "\tproject closed");
+    return true;
+  }
+
   private static void failed(Project project, String request, String title, boolean pane, Exception error) {
+    if (projectClosed(project, request)) return;
     String reason = error.getMessage() == null ? error.toString() : error.getMessage();
     Bridge.emit("viewFailed", request + "\t" + reason);
     if (!pane) Messages.showErrorDialog(project, reason, "Diff " + title);

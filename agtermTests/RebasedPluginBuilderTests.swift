@@ -74,6 +74,15 @@ final class RebasedPluginBuilderTests: XCTestCase {
                                  new String[]{"req", "3", "/repo/a.kt", "/repo\\twith tab"});
             assert Bridge.fileFields("req\\t-1\\t/repo/a.kt\\t/repo") == null;
             assert Bridge.fileFields("req\\tNaN\\t/repo/a.kt\\t/repo") == null;
+            assert RangeDiff.title("main", "HEAD", false, false).equals("main..HEAD");
+            assert RangeDiff.title("main", "HEAD", true, false).equals("main...HEAD");
+            assert RangeDiff.title("main", "HEAD", false, true).equals("main (working tree)");
+            assert RangeDiff.title("main", "HEAD", true, true).equals("main...HEAD + working tree");
+            var closedProject = (com.intellij.openapi.project.Project) java.lang.reflect.Proxy.newProxyInstance(
+                BridgeContracts.class.getClassLoader(), new Class<?>[]{com.intellij.openapi.project.Project.class},
+                (proxy, method, arguments) -> method.getName().equals("isDisposed") ? true : null);
+            assert RangeDiff.projectClosed(closedProject, "closed-request");
+            assert Arrays.equals(events.get(events.size() - 1), new String[]{"viewFailed", "closed-request\\tproject closed"});
             assert Bridge.onDisk(file.toString(), little);
             assert !Bridge.onDisk(file.toString(), utf8);
             Files.delete(file);
