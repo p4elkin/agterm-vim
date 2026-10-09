@@ -109,9 +109,6 @@ struct agtermApp: App {
                                           zmxOutdatedBefore: restored.zmxOutdatedBefore)
         _controlServer = State(initialValue: controlServer)
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
-        RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
-                                     stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
-                                     toggle: { actions.performRebasedToggle(session: $0) })
         LinkOpener.shared.overlay = { [weak controlServer] url, session in
             controlServer?.openLinkOverlay(url, session: session) ?? false
         }
@@ -125,7 +122,7 @@ struct agtermApp: App {
         _globalHotkey = State(initialValue: GlobalHotkey(settings: settingsModel))
         // built last: needs the keymap (settings), the action hub for built-in monitor binds, and the control
         // server's bound socket path for `{AGT_SOCKET}`.
-        _customCommandRunner = State(initialValue: CustomCommandRunner(
+        let customCommandRunner = CustomCommandRunner(
             library: library, settings: settingsModel, actions: actions,
             usage: CustomCommandUsageStore(directory: stateDirectory),
             socketProvider: { controlServer.resolvedSocketPath },
@@ -134,7 +131,14 @@ struct agtermApp: App {
                     guard let controlServer else { return "control server is gone" }
                     let response = controlServer.openCommandFailureHud(sessionID, spec: spec, pane: pane)
                     return response.ok ? nil : response.error ?? "refused without a reason"
-                })))
+                }))
+        _customCommandRunner = State(initialValue: customCommandRunner)
+        RebasedHost.shared.configure(library: library, appPath: { settingsModel.settings.effectiveRebasedAppPath },
+                                     stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
+                                     toggle: { actions.performRebasedToggle(session: $0) },
+                                     environment: { [weak customCommandRunner] session, store in
+                                         customCommandRunner?.environment(for: session, in: store) ?? [:]
+                                     })
         // hooks.conf scripts: fed by the library's post-append observer, applied from the settings model.
         let hookController = HookController(library: library, settings: settingsModel,
                                             socketProvider: { controlServer.resolvedSocketPath })

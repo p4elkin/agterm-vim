@@ -393,6 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // cancellation, but a later poll can still race socket teardown at process exit.
         actions?.cancelAllPendingModals()
         RebasedHost.shared.saveBeforeQuit()
+        RebasedHost.shared.releaseAllBeforeQuit()
         controlServer?.stop()
         customCommandRunner?.stop()
         // clear the OS-level Dock badge — it outlives the process while unseenCount is ephemeral, so a quit

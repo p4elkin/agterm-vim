@@ -135,6 +135,140 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "frameOpened", payload: "\(project)\t7")
     }
 
+    func testOnCloseRunsOnceAcrossEveryReleasePath() throws {
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        _ = window("frame", number: 7)
+        for path in ["overlay", "session", "pane", "paneTeardown", "sessionTeardown", "frameThenSession", "quit"] {
+            let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp"))
+            let pane: OverlayPane? = path.hasPrefix("pane") ? .left : nil
+            if pane != nil { store.toggleSplit(session.id) }
+            var commands: [RebasedOnClose] = []
+            host.runOnClose = { commands.append($0) }
+            host.environment = { _, _ in ["REVIEW_ENV": "before"] }
+            let opened = try host.openOverlay(in: store, session: session.id, cwd: "/tmp", sizePercent: nil,
+                                              pane: pane, onClose: "/bin/flush --final").get()
+            session.currentCwd = "/changed"
+            host.environment = { _, _ in ["REVIEW_ENV": "after"] }
+            host.setSlotVisible(true, session: session.id)
+            host.handle(event: "ready", payload: "")
+            host.handle(event: "frameOpened", payload: "\(project)\t7")
+            switch path {
+            case "overlay": store.closeOverlay(session.id)
+            case "session": store.closeSession(session.id)
+            case "pane": store.closePaneOverlay(session.id, pane: .left)
+            case "paneTeardown": session.teardownPaneOverlay(.left)
+            case "sessionTeardown": session.teardownOverlaySlot()
+            case "frameThenSession":
+                host.handle(event: "frameClosed", payload: project)
+                store.closeSession(session.id)
+            default: host.releaseAllBeforeQuit()
+            }
+            host.releaseAllBeforeQuit()
+            XCTAssertEqual(commands.count, 1, path)
+            XCTAssertEqual(commands.first?.command, "/bin/flush --final")
+            XCTAssertEqual(commands.first?.cwd, "/tmp")
+            XCTAssertEqual(commands.first?.environment, ["REVIEW_ENV": "before"])
+            if path != "quit" { XCTAssertNil(session.rebasedPlacement, path) }
+            _ = opened
+        }
+    }
+
+    func testARefusedOnCloseOpenPreservesTheViewAndCapturedCallback() throws {
+        var commands: [RebasedOnClose] = []
+        var captures = 0
+        host.runOnClose = { commands.append($0) }
+        host.environment = { _, _ in captures += 1; return ["REVIEW_ENV": "original"] }
+        let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil,
+                                          view: .file(path: "/tmp/original", line: 1), onClose: "/bin/original").get()
+        let before = first.rebasedOverlay
+        XCTAssertEqual(refusal(host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil,
+                                                view: .file(path: "/tmp/replacement", line: 9), onClose: "/bin/replacement")),
+                       "a Rebased overlay is already open in this session; --on-close needs a new one")
+        XCTAssertEqual(first.rebasedOverlay, before)
+        XCTAssertEqual(captures, 1)
+        XCTAssertTrue(commands.isEmpty)
+        store.closeRebasedOverlay(first.id, id: opened.overlay)
+        XCTAssertEqual(commands.map(\.command), ["/bin/original"])
+    }
+
+    func testHideHandBackPromotionAndSwapNeverRunOnClose() throws {
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        first.surface = MovablePane()
+        store.toggleSplit(first.id)
+        first.splitSurface = MovablePane()
+        let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil,
+                                          pane: .right, onClose: "/bin/flush").get()
+        host.setSlotVisible(true, session: first.id)
+        host.handle(event: "ready", payload: "")
+        _ = window("frame", number: 7)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
+        store.setRebasedHidden(first.id, id: opened.overlay, true)
+        host.hide(overlay: opened.overlay)
+        store.setRebasedHidden(first.id, id: opened.overlay, false)
+        host.show(overlay: opened.overlay)
+        open(second)
+        store.closeOverlay(second.id)
+        store.closePrimaryPane(first.id)
+        XCTAssertEqual(first.rebasedPlacement?.pane, .left)
+        store.toggleSplit(first.id)
+        first.splitSurface = MovablePane()
+        XCTAssertNil(store.swapPanes(first.id))
+        XCTAssertEqual(first.rebasedPlacement?.pane, .right)
+        XCTAssertTrue(commands.isEmpty)
+        store.closePaneOverlay(first.id, pane: .right)
+        XCTAssertEqual(commands.count, 1)
+    }
+
+    func testSoftCloseRunsOnCloseOnlyAtFinalizeAndUndoKeepsItArmed() throws {
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, onClose: "/bin/flush").get()
+        XCTAssertTrue(store.softCloseSession(first.id, grace: 60))
+        XCTAssertTrue(commands.isEmpty)
+        XCTAssertTrue(store.undoPendingClose())
+        store.finalizeAllPendingCloses()
+        XCTAssertTrue(commands.isEmpty)
+        XCTAssertEqual(first.rebasedOverlay?.id, opened.overlay)
+        XCTAssertTrue(store.softCloseSession(first.id, grace: 60))
+        store.finalizeAllPendingCloses()
+        host.releaseAllBeforeQuit()
+        XCTAssertEqual(commands.count, 1)
+    }
+
+    func testQuitDrainsStartingHoldersBeforeTheJVMIsReady() throws {
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        _ = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, onClose: "/bin/first").get()
+        _ = try host.openOverlay(in: store, session: second.id, cwd: otherProject, sizePercent: nil, onClose: "/bin/second").get()
+        XCTAssertEqual(host.jvm, .starting)
+        host.releaseAllBeforeQuit()
+        host.releaseAllBeforeQuit()
+        XCTAssertEqual(Set(commands.map(\.command)), ["/bin/first", "/bin/second"])
+        XCTAssertEqual(commands.count, 2)
+    }
+
+    func testAFailedStartStillRunsOnCloseExactlyOnce() throws {
+        runtime.startError = RebasedRuntimeError.failed("missing app")
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        _ = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, onClose: "/bin/flush").get()
+        XCTAssertEqual(first.rebasedOverlay?.state, .failed("missing app"))
+        store.closeOverlay(first.id)
+        host.releaseAllBeforeQuit()
+        XCTAssertEqual(commands.count, 1)
+    }
+
+    func testQuitDrainsAFailedHolderWithoutARunningJVM() throws {
+        runtime.startError = RebasedRuntimeError.failed("missing app")
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        _ = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil, onClose: "/bin/flush").get()
+        host.releaseAllBeforeQuit()
+        host.releaseAllBeforeQuit()
+        XCTAssertEqual(commands.count, 1)
+    }
+
     func testAStartingViewWaitsForItsVisibleFrameBeforeArmingTheDeadline() throws {
         let opened = try host.openOverlay(in: store, session: first.id, cwd: project, sizePercent: nil,
                                           view: .file(path: "/tmp/a.kt", line: 3)).get()

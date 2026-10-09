@@ -39,6 +39,7 @@ final class RebasedHost {
         let session: UUID
         let project: String
         let order: Int
+        let onClose: RebasedOnClose?
     }
 
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
@@ -78,6 +79,8 @@ final class RebasedHost {
     private var visibilityReports: [UUID: Set<UUID>] = [:]
     private var needsInitialFocus: Set<UUID> = []
     private var saving = false
+    var environment: (Session, AppStore) -> [String: String] = { _, _ in ProcessInfo.processInfo.environment }
+    var runOnClose: (RebasedOnClose) -> Void = { RebasedOnCloseRunner.run($0) }
     var now: () -> Date = Date.init
     var idePort: Int?
     var portLookup: UUID?
@@ -98,10 +101,12 @@ final class RebasedHost {
     private var seenWindows: Set<Int> = []
 
     func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
-                   keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void) {
+                   keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void,
+                   environment: @escaping (Session, AppStore) -> [String: String]) {
         self.appPath = appPath
         self.keymap = keymap
         self.toggle = toggle
+        self.environment = environment
         self.stateDirectory = stateDirectory
         isFocusedPane = { [weak library] id, pane in
             guard let store = library?.activeStore else { return false }
@@ -145,10 +150,15 @@ final class RebasedHost {
     // MARK: - Opening
 
     func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, view: RebasedView? = nil,
-                     pane: OverlayPane? = nil, project: String? = nil) -> Result<RebasedOpened, RebasedOpenRefusal> {
+                     pane: OverlayPane? = nil, project: String? = nil, onClose: String? = nil) -> Result<RebasedOpened, RebasedOpenRefusal> {
         guard let session = store.session(withID: id) else {
             return .failure(.init(message: RebasedOverlayOpenFailure.unknownSession.message))
         }
+        if onClose != nil, session.rebasedPlacement != nil {
+            return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
+        }
+        if session.remoteHost != nil, onClose != nil { return .failure(.init(message: "--on-close works on a local row only")) }
+        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? session.focusedCwd, environment: environment(session, store)) }
         if session.remoteHost != nil {
             return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane)
         }
@@ -160,7 +170,7 @@ final class RebasedHost {
             let request = view.map { requestView(overlay: placement.overlay.id, view: $0) }
             return .success(.init(overlay: placement.overlay.id, request: request))
         }
-        var overlay = RebasedOverlay(project: project, view: view.map(RebasedViewRequest.init(view:)))
+        var overlay = RebasedOverlay(project: project, view: view.map(RebasedViewRequest.init(view:)), onClose: captured)
         if case .diff(let diff, _) = view { overlay.diff = diff }
         if let failure = store.openRebasedOverlay(id, overlay: overlay, sizePercent: sizePercent, pane: pane) {
             return .failure(.init(message: failure.message(pane: pane)))
@@ -197,7 +207,7 @@ final class RebasedHost {
             overlayID = placeholder.id
             request = placeholder.view?.id
             opens += 1
-            entries[overlayID] = Entry(id: overlayID, session: session.id, project: Self.canonical(path), order: opens)
+            entries[overlayID] = Entry(id: overlayID, session: session.id, project: Self.canonical(path), order: opens, onClose: placeholder.onClose)
         }
         fetching.insert(session.id)
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
@@ -240,7 +250,7 @@ final class RebasedHost {
         }
         opens += 1
         let project = Self.canonical(overlay.project)
-        entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens)
+        entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens, onClose: overlay.onClose)
         if store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil { needsInitialFocus.insert(overlay.id) }
         switch jvm {
         case .running:
@@ -553,17 +563,18 @@ final class RebasedHost {
 
     // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
     // never dropped: it comes up over the session now, rather than over whatever that session opens next.
-    private func release(_ overlayID: UUID) {
+    func removeEntry(_ overlayID: UUID) -> Entry? {
+        guard let entry = entries.removeValue(forKey: overlayID) else { return nil }
         armed.remove(overlayID)
         visibleSlots.remove(overlayID)
         visibilityReports[overlayID] = nil
         needsInitialFocus.remove(overlayID)
         slots[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []
-        guard let entry = entries.removeValue(forKey: overlayID) else { return }
         hide(entry)
         if lastShownByProject[entry.project] == entry.id { lastShownByProject[entry.project] = nil }
         for dialog in queued { surface(dialog, session: entry.session) }
+        return entry
     }
 
     private func surface(_ dialog: NSWindow, session: UUID) {

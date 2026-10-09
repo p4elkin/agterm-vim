@@ -788,7 +788,7 @@ Size: M. Driven by the release-once guard across six release paths and quit.
   (`Entry`, `release`, `openOverlay`, `configure`), `agterm/AppDelegate.swift` (`applicationWillTerminate`),
   `agterm/Commands/CustomCommandRunner.swift` (a new internal `environment(for:in:)`, nothing else),
   `agterm/agtermApp.swift` (passes it to `configure`); tests `RebasedHostTests`, new `RebasedOnCloseRunnerTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `RebasedHostTests`, with a recording runner seam: the command runs once for each of `closeOverlay`,
     session teardown, `closePaneOverlay`, `teardownPaneOverlay`, `frameClosed` and
     `releaseAllBeforeQuit`; once across two overlapping paths (`frameClosed` then session close); once for a
@@ -799,7 +799,7 @@ Size: M. Driven by the release-once guard across six release paths and quit.
     unchanged.
   - `RebasedOnCloseRunnerTests`: a real `/bin/sh -c` writes a marker file in the captured cwd with a
     captured variable; a missing cwd is a logged failure, not a crash.
-- [ ] `openOverlay` gains `onClose:`. Capture `RebasedOnClose` there, with the environment from the seam
+- [x] `openOverlay` gains `onClose:`. Capture `RebasedOnClose` there, with the environment from the seam
   `configure` sets (as in [On close](#on-close));
   `Entry.onClose`; the runner call inside `release` after `entries.removeValue`; `releaseAllBeforeQuit`
   called in `applicationWillTerminate` next to `saveBeforeQuit`.

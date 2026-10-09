@@ -218,11 +218,10 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             let pane: OverlayPane? = scenario.hasSuffix("Session") ? nil : .left
             if pane != nil { store.toggleSplit(session.id) }
             session.splitFocused = scenario == "right"
+            var commands: [RebasedOnClose] = []
+            RebasedHost.shared.runOnClose = { commands.append($0) }
             let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
-                                                           sizePercent: nil, pane: pane).get()
-            session.updateRebasedOverlay(opened.overlay) {
-                $0.onClose = RebasedOnClose(command: "/bin/flush --final", cwd: "/tmp", environment: [:])
-            }
+                                                           sizePercent: nil, pane: pane, onClose: "/bin/flush --final").get()
             frameOpened(session)
             if scenario.hasPrefix("hidden") { XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden) }
             var releases: [UUID] = []
@@ -236,6 +235,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             XCTAssertTrue(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
             XCTAssertEqual(session.rebasedPlacement?.overlay.id, opened.overlay)
             XCTAssertTrue(releases.isEmpty)
+            XCTAssertTrue(commands.isEmpty)
             accepted = true
             XCTAssertTrue(actions.closeActiveSession())
             XCTAssertEqual(messages.count, 2)
@@ -244,11 +244,13 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
                 XCTAssertNil(session.rebasedOverlay)
                 XCTAssertFalse(store.undoPendingClose())
                 XCTAssertEqual(releases, [opened.overlay])
+                XCTAssertEqual(commands.map(\.command), ["/bin/flush --final"])
             } else {
                 XCTAssertFalse(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
                 XCTAssertTrue(releases.isEmpty)
                 store.finalizeAllPendingCloses()
                 XCTAssertEqual(releases, [opened.overlay])
+                XCTAssertEqual(commands.map(\.command), ["/bin/flush --final"])
             }
         }
     }
