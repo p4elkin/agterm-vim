@@ -66,6 +66,7 @@ public struct RebasedDiff: Equatable, Sendable {
         [request, base, head, mergeBase ? "1" : "0", workingTree ? "1" : "0", pane ? "pane" : "session", project].joined(separator: "\t")
     }
 
+    /// The pre-view four-field form, kept for `agtermCore`'s downstream consumers; the bridge refuses it.
     public func bridgeArgument(project: String) -> String {
         [base, head, mergeBase ? "1" : "0", project].joined(separator: "\t")
     }

@@ -5,8 +5,17 @@ extension RebasedHost {
     static let viewDeadline: TimeInterval = 60
     static let viewDeadlineMessage = "view did not open within 60 s"
 
+    func fetchRefusal(session: Session) -> String? {
+        guard fetching.contains(session.id) else { return nil }
+        return "Rebased is still fetching from \(session.remoteHost ?? "")"
+    }
+
+    // A view asked for during the first fetch would replace the open's own request, which the fetch then
+    // never sends; callers refuse through `fetchRefusal`, and the open's request stands.
     @discardableResult
     func requestView(overlay id: UUID, view: RebasedView) -> String {
+        if let entry = entries[id], let session = store(entry.session)?.session(withID: entry.session),
+           fetchRefusal(session: session) != nil, let current = overlay(entry)?.view?.id { return current }
         if let entry = entries[id], let session = store(entry.session)?.session(withID: entry.session),
            let host = session.remoteHost, case .diff = view {
             let prefix = host + ":"
@@ -38,6 +47,8 @@ extension RebasedHost {
         return request.id
     }
 
+    // A session-wide diff is a dialog of the frame: sent before the frame is in this slot, it comes up over
+    // another session.
     func sendView(overlay id: UUID) {
         guard let entry = entries[id], visible[entry.project] == id, !fetching.contains(entry.session),
               let held = overlay(entry), !held.hidden, let request = held.view, request.state == .queued,

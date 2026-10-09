@@ -193,7 +193,7 @@ final class RebasedHost {
         guard let mirror = RebasedMirror(host: host, path: path) else {
             return .failure(.init(message: "Rebased cannot mirror \(host):\(path)"))
         }
-        if fetching.contains(session.id) { return .failure(.init(message: "Rebased is still fetching from \(host)")) }
+        if let refusal = fetchRefusal(session: session) { return .failure(.init(message: refusal)) }
         let overlayID: UUID
         let request: String?
         if let placement = session.rebasedPlacement {
@@ -249,15 +249,11 @@ final class RebasedHost {
     }
 
     func open(session: UUID) {
-        guard let model = store(session)?.session(withID: session), var overlay = model.rebasedPlacement?.overlay else { return }
-        if overlay.view == nil, let diff = overlay.diff {
-            overlay.view = RebasedViewRequest(view: .diff(diff, workingTree: false))
-            model.updateRebasedOverlay(overlay.id) { $0.view = overlay.view }
-        }
+        guard let model = store(session)?.session(withID: session), let overlay = model.rebasedPlacement?.overlay else { return }
         opens += 1
         let project = Self.canonical(overlay.project)
         entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens, onClose: overlay.onClose)
-        if store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil { needsInitialFocus.insert(overlay.id) }
+        if let pane = model.rebasedPlacement?.pane, isFocusedPane(session, pane) { needsInitialFocus.insert(overlay.id) }
         switch jvm {
         case .running:
             if frameNumbers[project] != nil { show(overlay: overlay.id) } else { _ = runtime.call("open", project) }
@@ -436,7 +432,10 @@ final class RebasedHost {
         guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
         guard overlay(entry)?.hidden != true, overlayState(entry) != .fetching else { return }
-        if focusIfFocusedPane, visible[entry.project] != id { needsInitialFocus.insert(id) }
+        // Armed only while the pane has the keyboard, so a later switch back to the session never takes it.
+        if focusIfFocusedPane, visible[entry.project] != id,
+           let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
+           isFocusedPane(entry.session, pane) { needsInitialFocus.insert(id) }
         setState(.shown, overlay: id)
         guard visibleSlots.contains(id) else { return }
         visible[entry.project] = id
@@ -568,8 +567,8 @@ final class RebasedHost {
         if let next { show(overlay: next.id) }
     }
 
-    // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
-    // never dropped: it comes up over the session now, rather than over whatever that session opens next.
+    // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so short of
+    // quit it is never dropped: it comes up over the session now, rather than over whatever that session opens next.
     func removeEntry(_ overlayID: UUID, endingProcess: Bool = false) -> Entry? {
         guard let entry = entries.removeValue(forKey: overlayID) else { return nil }
         armed.remove(overlayID)

@@ -33,6 +33,7 @@ extension ControlServer {
             guard let held = session.rebasedPlacement else {
                 return ControlResponse(ok: false, error: "no Rebased overlay in this session")
             }
+            if let refusal = RebasedHost.shared.fetchRefusal(session: session) { return ControlResponse(ok: false, error: refusal) }
             let request = RebasedHost.shared.requestView(overlay: held.overlay.id, view: view)
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, overlay: held.overlay.id.uuidString, request: request))
         }

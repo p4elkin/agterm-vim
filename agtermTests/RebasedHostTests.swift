@@ -631,7 +631,8 @@ final class RebasedHostTests: XCTestCase {
     }
 
     func testADiffOpensOnceTheFrameIsShown() {
-        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: RebasedOverlay(project: project, diff: range), sizePercent: nil))
+        let overlay = RebasedOverlay(project: project, diff: range, view: RebasedViewRequest(view: .diff(range, workingTree: false)))
+        XCTAssertNil(store.openRebasedOverlay(first.id, overlay: overlay, sizePercent: nil))
         host.setSlotVisible(true, session: first.id)
         host.open(session: first.id)
         host.handle(event: "ready", payload: "")
@@ -695,6 +696,8 @@ final class RebasedHostTests: XCTestCase {
                        "Rebased is still fetching from p4linux")
         let id = remote.rebasedOverlay?.id
         let requestedView = remote.rebasedOverlay?.view
+        XCTAssertEqual(host.requestView(overlay: try XCTUnwrap(id), view: .file(path: "/tmp/a", line: 0)), requestedView?.id)
+        XCTAssertEqual(remote.rebasedOverlay?.view, requestedView)
         let (work, done) = try XCTUnwrap(pending.first)
         work()
         done()

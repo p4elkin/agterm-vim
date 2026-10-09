@@ -46,8 +46,8 @@ struct RebasedViewTests {
         var request = RebasedViewRequest(view: .file(path: "/repo/a", line: 0))
         let oldID = request.id
         request.sent()
-        let transitionAccepted1 = request.apply(event: .opened("/repo/a"), request: oldID)
-        #expect(transitionAccepted1)
+        let oldOpened = request.apply(event: .opened("/repo/a"), request: oldID)
+        #expect(oldOpened)
         #expect(request.state == .opened)
         #expect(request.detail == "/repo/a")
         let view = try #require(RebasedView(diff: "A.."))
@@ -58,12 +58,12 @@ struct RebasedViewTests {
         #expect(request.detail == nil)
         #expect(request.kind == .diff)
         #expect(request.target == "A..HEAD")
-        let transitionAccepted2 = !request.apply(event: .failed("old failure"), request: oldID)
-        #expect(transitionAccepted2)
+        let staleFailureAccepted = request.apply(event: .failed("old failure"), request: oldID)
+        #expect(!staleFailureAccepted)
         #expect(request.state == .queued)
         request.sent()
-        let transitionAccepted3 = request.apply(event: .opened("0"), request: currentID)
-        #expect(transitionAccepted3)
+        let currentOpened = request.apply(event: .opened("0"), request: currentID)
+        #expect(currentOpened)
         #expect(request.state == .opened)
         #expect(request.detail == "0")
     }
@@ -71,37 +71,48 @@ struct RebasedViewTests {
     @Test func aViewFailureStoresItsReason() {
         var request = RebasedViewRequest(view: .file(path: "/missing", line: 0))
         request.sent()
-        let transitionAccepted4 = request.apply(event: .failed("file not found"), request: request.id)
-        #expect(transitionAccepted4)
+        let failureAccepted = request.apply(event: .failed("file not found"), request: request.id)
+        #expect(failureAccepted)
         #expect(request.state == .failed)
         #expect(request.detail == "file not found")
     }
 
     @Test func onlyTheCurrentSentRequestCanTimeOut() {
         var request = RebasedViewRequest(view: .file(path: "/repo/a", line: 0))
-        let transitionAccepted5 = !request.timedOut(request: request.id)
-        #expect(transitionAccepted5)
+        let queuedTimedOut = request.timedOut(request: request.id)
+        #expect(!queuedTimedOut)
         #expect(request.state == .queued)
         request.sent()
         #expect(request.state == .sent)
-        let transitionAccepted6 = !request.timedOut(request: UUID().uuidString)
-        #expect(transitionAccepted6)
-        let transitionAccepted7 = request.timedOut(request: request.id)
-        #expect(transitionAccepted7)
+        let otherTimedOut = request.timedOut(request: UUID().uuidString)
+        #expect(!otherTimedOut)
+        let sentTimedOut = request.timedOut(request: request.id)
+        #expect(sentTimedOut)
         #expect(request.state == .failed)
         #expect(request.detail == "view request timed out")
-        let transitionAccepted8 = !request.timedOut(request: request.id)
-        #expect(transitionAccepted8)
+        let timedOutTwice = request.timedOut(request: request.id)
+        #expect(!timedOutTwice)
     }
 
     @Test func anOpenedRequestCannotTimeOut() {
         var request = RebasedViewRequest(view: .file(path: "/repo/a", line: 0))
         request.sent()
-        let transitionAccepted9 = request.apply(event: .opened("/repo/a"), request: request.id)
-        #expect(transitionAccepted9)
-        let transitionAccepted10 = !request.timedOut(request: request.id)
-        #expect(transitionAccepted10)
+        let opened = request.apply(event: .opened("/repo/a"), request: request.id)
+        #expect(opened)
+        let openedTimedOut = request.timedOut(request: request.id)
+        #expect(!openedTimedOut)
         #expect(request.state == .opened)
+    }
+
+    @Test func aQueuedRequestCanFailButNotOpen() {
+        var request = RebasedViewRequest(view: .file(path: "/repo/a", line: 0))
+        let opened = request.apply(event: .opened("/repo/a"), request: request.id)
+        #expect(!opened)
+        #expect(request.state == .queued)
+        let failed = request.apply(event: .failed("refresh failed"), request: request.id)
+        #expect(failed)
+        #expect(request.state == .failed)
+        #expect(request.detail == "refresh failed")
     }
 
     @Test func anOverlayKeepsItsViewAndCapturedOnCloseValue() {

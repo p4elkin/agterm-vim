@@ -323,8 +323,8 @@ final class AppActions {
     }
 
     /// Close session `id` in `store` from a GUI surface (the sidebar row's Close), honoring the "Confirm
-    /// before closing a session" setting and always confirming a Rebased review. `store` closes ITS
-    /// session; ⌘W/menu/palette use `closeActiveSession`, and the control `session.close` never prompts.
+    /// before closing a session" setting and always confirming a Rebased review. `store` is passed in
+    /// so a background window's sidebar closes ITS session; ⌘W/menu/palette use `closeActiveSession`, and the control `session.close` never prompts.
     func closeSession(_ id: UUID, in store: AppStore) {
         guard uiActionsEnabled else { return }
         guard let session = store.session(withID: id) else { return }

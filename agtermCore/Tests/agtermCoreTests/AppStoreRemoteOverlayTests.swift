@@ -9,8 +9,9 @@ struct AppStoreRemoteOverlayTests {
         let (session, _) = try origin(split: true)
         let pane = OverlayPane(rawValue: slot)
         let overlay = RebasedOverlay(project: "/tmp/repo")
-        if let pane { session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane) }
-        else {
+        if let pane {
+            session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane)
+        } else {
             session.rebasedOverlay = overlay
             session.overlayActive = true
         }

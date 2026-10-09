@@ -8,7 +8,7 @@ extension ControlDispatcher {
             case .rejected(let response): return response
             case .view(let view):
                 guard let view else {
-                    return ControlResponse(ok: false, error: "session.rebased.show requires exactly one of --diff and --file")
+                    return ControlResponse(ok: false, error: "session.rebased.show: provide exactly one of --diff and --file")
                 }
                 return actions.showRebasedView(request.target, window: request.args?.window, view: view)
             }

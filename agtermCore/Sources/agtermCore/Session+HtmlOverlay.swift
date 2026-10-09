@@ -5,6 +5,7 @@ extension Session {
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
     public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil && rebasedOverlay?.hidden != true }
+    /// The slot holds something on screen: anything but a hidden Rebased IDE, a HUD included.
     public var visibleOverlayActive: Bool { overlayActive && rebasedOverlay?.hidden != true }
 
     /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
@@ -57,6 +58,17 @@ extension Session {
     public func htmlCovers(_ pane: OverlayPane?) -> Bool {
         guard let pane else { return htmlOverlayActive }
         return paneOverlayIsHtml(pane)
+    }
+
+    /// rebasedHidesTerminal says whether a shown IDE covers the terminal a `--pane` font command addresses:
+    /// the session-wide IDE covers every pane, a pane IDE only its own pane.
+    public func rebasedHidesTerminal(_ pane: StatusPane?) -> Bool {
+        if rebasedOverlayActive { return true }
+        switch pane {
+        case .scratch: return false
+        case nil, .left: return paneRebasedOverlayActive(.left)
+        case .right: return paneRebasedOverlayActive(.right)
+        }
     }
 
     /// htmlHidesTerminal says whether a page covers the terminal a `--pane` font command addresses: the

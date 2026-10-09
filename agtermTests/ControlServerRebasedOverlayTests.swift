@@ -439,16 +439,18 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
 
     func testAnOpenOverTheFocusedPaneMakesTheIDEKeyOnce() throws {
         let (store, session) = try addSession()
-        store.selectSession(session.id)
+        let (_, other) = try addSession()
         store.toggleSplit(session.id)
-        for rightFocused in [false, true] {
+        for target in ["focused", "rightFocused", "otherSession"] {
+            store.selectSession(target == "otherSession" ? other.id : session.id)
             session.splitFocused = false
             let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
                                                            sizePercent: nil, pane: .left).get()
-            session.splitFocused = rightFocused
+            session.splitFocused = target == "rightFocused"
+            store.selectSession(session.id)
             let before = frames.log.filter { $0 == "makeKey frame" }.count
             frameOpened(session)
-            let expected = before + (rightFocused ? 0 : 1)
+            let expected = before + (target == "focused" ? 1 : 0)
             XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
             RebasedHost.shared.setSlotVisible(false, session: session.id)
             RebasedHost.shared.setSlotVisible(true, session: session.id)
@@ -474,6 +476,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             let before = frames.log.filter { $0 == "makeKey frame" }.count
             XCTAssertEqual(actions.toggleRebasedOverlay(session: session.id), .shown)
             XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before)
+            store.selectSession(session.id)
             RebasedHost.shared.setSlotVisible(true, session: session.id)
             let expected = before + (target == "focused" ? 1 : 0)
             XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)

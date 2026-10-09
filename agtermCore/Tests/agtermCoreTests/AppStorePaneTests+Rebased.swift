@@ -20,9 +20,13 @@ extension AppStorePaneTests {
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
         #expect(session.paneOverlayCovers(pane))
         #expect(session.paneRebasedOverlayActive(pane))
+        #expect(session.rebasedHidesTerminal(pane == .left ? .left : .right))
+        #expect(!session.rebasedHidesTerminal(pane == .left ? .right : .left))
+        #expect(!session.rebasedHidesTerminal(.scratch))
         #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
         #expect(!session.paneOverlayCovers(pane))
         #expect(!session.paneRebasedOverlayActive(pane))
+        #expect(!session.rebasedHidesTerminal(pane == .left ? .left : .right))
         #expect(session.focusedOverlayPane == nil)
         #expect(!session.programOverlayOwnsKeyboard)
         #expect(session.topmostSurface === session.activeSurface)
@@ -38,6 +42,19 @@ extension AppStorePaneTests {
         #expect(releases.isEmpty)
         #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
         #expect(releases == [overlay.id])
+    }
+
+    @Test func aHiddenSessionWideRebasedOverlayIsNotVisibleAndCoversNoTerminal() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(session.visibleOverlayActive)
+        #expect(([nil] + StatusPane.allCases.map(Optional.some)).allSatisfy { session.rebasedHidesTerminal($0) })
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(!session.visibleOverlayActive)
+        #expect(([nil] + StatusPane.allCases.map(Optional.some)).allSatisfy { !session.rebasedHidesTerminal($0) })
     }
 
     @Test(arguments: OverlayPane.allCases)
