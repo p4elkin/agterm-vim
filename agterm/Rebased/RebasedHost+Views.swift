@@ -13,7 +13,7 @@ extension RebasedHost {
             let source = overlay(entry)?.source
             let path = source.flatMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil } ?? session.focusedCwd
             if let store = store(entry.session) {
-                switch openRemote(in: store, session: session, path: path, sizePercent: nil, view: view, pane: nil) {
+                switch openRemote(in: store, session: session, request: .init(path: path, sizePercent: nil, view: view, pane: nil)) {
                 case .success(let opened): if let request = opened.request { return request }
                 case .failure(let failure):
                     let request = issueView(overlay: id, view: view)

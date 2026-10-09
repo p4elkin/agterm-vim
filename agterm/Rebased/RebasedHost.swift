@@ -42,6 +42,13 @@ final class RebasedHost {
         let onClose: RebasedOnClose?
     }
 
+    struct RemoteOpenRequest {
+        let path: String
+        let sizePercent: Int?
+        let view: RebasedView?
+        let pane: OverlayPane?
+    }
+
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
     var frames: any RebasedFrames = RebasedFrameKeeper()
     var keymap: () -> Keymap = { Keymap(builtinOverrides: [:], commands: []) }
@@ -102,7 +109,7 @@ final class RebasedHost {
 
     func configure(library: WindowLibrary, appPath: @escaping () -> String, stateDirectory: URL,
                    keymap: @escaping () -> Keymap, toggle: @escaping (UUID?) -> Void,
-                   environment: @escaping (Session, AppStore) -> [String: String]) {
+                   environment: @escaping (Session, AppStore) -> [String: String] = { _, _ in ProcessInfo.processInfo.environment }) {
         self.appPath = appPath
         self.keymap = keymap
         self.toggle = toggle
@@ -160,7 +167,8 @@ final class RebasedHost {
         if session.remoteHost != nil, onClose != nil { return .failure(.init(message: "--on-close works on a local row only")) }
         let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? session.focusedCwd, environment: environment(session, store)) }
         if session.remoteHost != nil {
-            return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane)
+            return openRemote(in: store, session: session,
+                              request: .init(path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane))
         }
         let project = project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd)
         if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == Self.canonical(project) {
@@ -181,8 +189,8 @@ final class RebasedHost {
 
     // MARK: - Remote rows
 
-    func openRemote(in store: AppStore, session: Session, path: String, sizePercent: Int?, view: RebasedView?,
-                    pane: OverlayPane?) -> Result<RebasedOpened, RebasedOpenRefusal> {
+    func openRemote(in store: AppStore, session: Session, request: RemoteOpenRequest) -> Result<RebasedOpened, RebasedOpenRefusal> {
+        let path = request.path, sizePercent = request.sizePercent, view = request.view, pane = request.pane
         let host = session.remoteHost ?? ""
         guard let mirror = RebasedMirror(host: host, path: path) else {
             return .failure(.init(message: "Rebased cannot mirror \(host):\(path)"))
@@ -496,11 +504,11 @@ final class RebasedHost {
 
     func setSlotVisible(_ isVisible: Bool, overlay id: UUID, reporter: UUID) {
         let wasVisible = visibleSlots.contains(id)
-        if isVisible { visibilityReports[id, default: []].insert(reporter) }
-        else { visibilityReports[id]?.remove(reporter) }
+        if isVisible { visibilityReports[id, default: []].insert(reporter) } else { visibilityReports[id]?.remove(reporter) }
         let nowVisible = visibilityReports[id]?.isEmpty == false
-        if nowVisible { visibleSlots.insert(id) }
-        else {
+        if nowVisible {
+            visibleSlots.insert(id)
+        } else {
             visibilityReports[id] = nil
             visibleSlots.remove(id)
         }
