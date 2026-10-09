@@ -613,15 +613,15 @@ Size: M. Driven by three verbs, two events and the empty and error cases in Java
 - Files: `agterm/Resources/rebased/src/agterm/rebased/{Bridge,RangeDiff}.java`, a new `OpenFile.java` if
   `Bridge` grows; `agterm/Rebased/RebasedPluginBuilder.swift` only if the classpath changes; test
   `RebasedPluginBuilderTests`.
-- [ ] Test first: `RebasedPluginBuilderTests` gains a case that the built jar holds the classes of every new
+- [x] Test first: `RebasedPluginBuilderTests` gains a case that the built jar holds the classes of every new
   verb, which proves the sources compile against build `262.10968`.
-- [ ] `Bridge.apply`: `diff` with the new fields (`diffFields` splits into 7), `openFile`, `port`.
+- [x] `Bridge.apply`: `diff` with the new fields (`diffFields` splits into 7), `openFile`, `port`.
   `RangeDiff`: the working-tree path; `session` shows the changes dialog, `pane` the editor tab Task 1 confirmed;
   `viewOpened` with the count; no window and `viewOpened <request>\t0` for an empty result; `viewFailed` with
   git's message, beside the error dialog for `session` and with no dialog for `pane`.
   `openFile`: `OpenFileDescriptor` on the EDT, `viewOpened` with the path, `viewFailed` for a missing file.
   `port`: the built-in server's port once started, empty before.
-- [ ] The behaviour itself is checked live in Task 16; this task's automated check is the compile.
+- [x] The behaviour itself is checked live in Task 16; this task's automated check is the compile.
 
 Check: `test -d /Applications/Rebased.app && /usr/bin/lockf /tmp/agterm-vim-xcode.lock scripts/test-app.sh -only-testing:agtermTests/RebasedPluginBuilderTests`
 

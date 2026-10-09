@@ -113,10 +113,10 @@ public final class Bridge implements BiFunction<String, String, String> {
     return null;
   }
 
-  // `<base>\t<head>\t<0|1>\t<project>`: the project is last because a path may hold a tab.
+  // The project is last in both view verbs because a directory may hold a tab.
   static String[] diffFields(String arg) {
-    String[] fields = arg.split("\t", 4);
-    return fields.length == 4 ? fields : null;
+    String[] fields = arg.split("\t", 7);
+    return fields.length == 7 ? fields : null;
   }
 
   private static boolean sameDirectory(String a, String b) {
@@ -167,8 +167,15 @@ public final class Bridge implements BiFunction<String, String, String> {
 
   // Model changes need a write-safe context, which `any()` is not. Hop to the EDT first, then queue the
   // change under the modality current there, so it also runs while a modal dialog is open.
-  private static void writeSafe(Runnable r) {
+  static void writeSafe(Runnable r) {
     later(() -> ApplicationManager.getApplication().invokeLater(r, ModalityState.current()));
+  }
+
+  static String[] fileFields(String arg) {
+    String[] fields = arg.split("\t", 4);
+    if (fields.length != 4) return null;
+    try { return Integer.parseInt(fields[1]) >= 0 ? fields : null; }
+    catch (NumberFormatException e) { return null; }
   }
 
   static byte[] savedBytes(String text, String separator, Charset charset, byte[] bom) {
@@ -204,8 +211,18 @@ public final class Bridge implements BiFunction<String, String, String> {
       case "diff" -> {
         String[] fields = diffFields(arg);
         if (fields == null) return "malformed diff";
-        RangeDiff.show(fields[0], fields[1], fields[2].equals("1"), fields[3]);
+        RangeDiff.show(fields[0], fields[1], fields[2], fields[3].equals("1"), fields[4].equals("1"), fields[5].equals("pane"), fields[6]);
         return "ok";
+      }
+      case "openFile" -> {
+        String[] fields = fileFields(arg);
+        if (fields == null) return "malformed openFile";
+        OpenFile.show(fields[0], Integer.parseInt(fields[1]), fields[2], fields[3]);
+        return "ok";
+      }
+      case "port" -> {
+        var server = org.jetbrains.ide.BuiltInServerManager.getInstance();
+        return server.getServerDisposable() == null ? "" : Integer.toString(server.getPort());
       }
       case "saveAll" -> {
         // saveAllDocuments returns before the bytes are on disk, so the answer waits for the files themselves.
