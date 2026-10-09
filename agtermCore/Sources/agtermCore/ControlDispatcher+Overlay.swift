@@ -148,14 +148,19 @@ extension ControlDispatcher {
         case rejected(ControlResponse)
     }
 
-    static func parseRebasedView(_ args: ControlArgs?, command: String = "session.overlay.open") -> RebasedViewParse {
+    static func parseRebasedView(_ args: ControlArgs?, command: String = "session.overlay.open",
+                                 requiresRebasedFlag: Bool = true) -> RebasedViewParse {
         let reject = { (detail: String) in RebasedViewParse.rejected(ControlResponse(ok: false, error: command + ": " + detail)) }
-        if args?.rebased != true && command == "session.overlay.open" {
+        if requiresRebasedFlag && args?.rebased != true {
             let flags: [(Bool, String)] = [
                 (args?.diff != nil, "--diff"), (args?.workingTree == true, "--working-tree"),
                 (args?.file != nil, "--file"), (args?.project != nil, "--project"), (args?.onClose != nil, "--on-close")
             ]
             if let flag = flags.first(where: { $0.0 }) { return reject(flag.1 + " requires --rebased") }
+        }
+        if !requiresRebasedFlag {
+            if args?.project != nil { return reject("--project is supported only by session.overlay.open --rebased") }
+            if args?.onClose != nil { return reject("--on-close is supported only by session.overlay.open --rebased") }
         }
         if args?.file != nil && args?.diff != nil { return reject("--file cannot be combined with --diff") }
         if args?.workingTree == true && args?.diff == nil { return reject("--working-tree requires --diff") }

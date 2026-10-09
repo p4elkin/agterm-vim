@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct ControlDispatcherRebasedTests {
+    @Test(arguments: [ControlArgs(file: "/repo/a", project: "/other"), ControlArgs(diff: "A..", onClose: "/bin/flush")])
+    func showRefusesOpenOnlyFlags(args: ControlArgs) async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(cmd: .sessionRebasedShow, args: args))
+        #expect(response?.ok == false)
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func showRoutesTheWorkingTreeViewToTheAddressedSession() async throws {
         let actions = MockControlActions()
         let request = ControlRequest(cmd: .sessionRebasedShow, target: "s", args: ControlArgs(window: "w", diff: "HEAD..", workingTree: true))

@@ -4,7 +4,7 @@ extension ControlDispatcher {
     func dispatchSessionRebased(_ request: ControlRequest) -> ControlResponse {
         switch request.cmd {
         case .sessionRebasedShow:
-            switch Self.parseRebasedView(request.args, command: request.cmd.rawValue) {
+            switch Self.parseRebasedView(request.args, command: request.cmd.rawValue, requiresRebasedFlag: false) {
             case .rejected(let response): return response
             case .view(let view):
                 guard let view else {

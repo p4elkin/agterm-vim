@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct ControlDispatcherOverlayTests {
+    @Test func rebasedFlagValidationDoesNotDependOnTheErrorPrefix() {
+        let parsed = ControlDispatcher.parseRebasedView(ControlArgs(command: "cat", project: "/repo"), command: "custom-prefix")
+        switch parsed {
+        case .rejected(let response): #expect(response.error == "custom-prefix: --project requires --rebased")
+        case .view: Issue.record("changing the error prefix must not bypass --rebased validation")
+        }
+    }
+
     @Test func aRebasedPaneOpenRoutesItsViewProjectAndCallbackCwd() async throws {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

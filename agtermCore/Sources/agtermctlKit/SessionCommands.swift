@@ -544,219 +544,6 @@ struct Session: ParsableCommand {
         }
     }
 
-    struct Overlay: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Result.self, Submit.self, Copy.self,
-                          Text.self, RunJob.self]
-        )
-
-        /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
-        /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and
-        /// reusing it would send `scratch` to the socket instead of failing as a usage error.
-        static func validatePane(_ pane: String?) throws {
-            if let pane, OverlayPane(controlName: pane) == nil {
-                throw ValidationError("--pane must be left or right")
-            }
-        }
-
-        struct Open: RequestCommand {
-            static let configuration = CommandConfiguration(
-                abstract: "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html or --url.")
-            @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html or --url.") var command: String?
-            @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
-            @Flag(name: .long, help: "Open Rebased for the local repository instead of running COMMAND.") var rebased = false
-            @Flag(name: .long, help: "With --rebased --diff, compare tracked working-tree changes against the base.") var workingTree = false
-            @Option(name: .long, help: "With --rebased, open FILE[:LINE] in the editor (excludes --diff).") var file: String?
-            @Option(name: .long, help: "With --rebased, open exactly this project directory without searching for a git root.") var project: String?
-            @Option(name: .long, help: "With --rebased, run this shell command once when the overlay is released; hiding does not release it.") var onClose: String?
-            @Option(name: .long, help: "With --rebased, show the changes of RANGE: A..B, A...B (from the merge base), or A (A..HEAD).") var diff: String?
-            @Option(name: .long, help: """
-                Show this http or https URL instead of running COMMAND; links to its own origin load in place. \
-                localhost means the Mac running agterm.
-                """)
-            var url: String?
-            @Flag(name: .long, help: "With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons.")
-            var navigation = false
-            @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
-            @Flag(name: .long, help: "With --html, show the page without agterm's strip naming it; ⌘W or session overlay close closes it.") var chromeless = false
-            @Flag(name: .long, help: Open.persistentHelp) var persistent = false
-            @Flag(name: .long, help: Open.browseHelp) var browse = false
-            @Option(name: .long, help: """
-                Working directory (default: the session's current directory). With --html, grants read access \
-                inside this directory; relative links resolve beside FILE. Without --cwd, the page has no file access.
-                """)
-            var cwd: String?
-            @Flag(name: .long, help: "Keep the overlay open after COMMAND exits (press any key to close).") var wait = false
-            @Flag(name: .long, help: Open.blockHelp) var block = false
-            @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
-            @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
-            @Option(name: .long, help: "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.") var backgroundColor: String?
-            @Option(name: .long, help: """
-                Scope the overlay to ONE split pane (primary/left/top or split/right/bottom), leaving the sibling pane live and \
-                visible; omit for the session-wide overlay. A pane overlay is always full-pane, so this \
-                cannot be combined with --size-percent.
-                """)
-            var pane: String?
-            /// Phase two of the overlay redirect: this open is already wrapped, so the app must NOT run the
-            /// decision again. Set by `agtermctl` itself on a local re-send, and carried over ssh to the
-            /// viewer's `agtermctl`, whose own row usually carries a pairing that would otherwise bounce the
-            /// overlay straight back. Hidden: nothing but the redirect has any business passing it.
-            @Flag(name: .long, help: .hidden) var resolved = false
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-
-            // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
-            // so it's a clean usage error and is unit-testable without a socket.
-            func validate() throws {
-                if rebased || diff != nil || workingTree || file != nil || project != nil || onClose != nil { return try validateRebased() }
-                if block && wait { throw ValidationError("--block cannot be combined with --wait") }
-                if [command, html, url].compactMap({ $0 }).count != 1 {
-                    throw ValidationError("provide exactly one of COMMAND, --html or --url")
-                }
-                if command == nil, wait || (url != nil && block) { throw ValidationError("a page takes no --wait, and a --url page no --block") }
-                if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
-                if javascript, command != nil { throw ValidationError("--js requires --html or --url") }
-                if chromeless, html == nil { throw ValidationError("--chromeless requires --html") }
-                if chromeless, navigation { throw ValidationError("--chromeless cannot be combined with --navigation") }
-                if persistent, url == nil { throw ValidationError("--persistent requires --url") }
-                if browse, url == nil { throw ValidationError("--browse requires --url") }
-                if url != nil, cwd != nil { throw ValidationError("--cwd cannot be combined with --url") }
-                if let backgroundColor, !WatermarkConfig.isValidColorHex(backgroundColor) {
-                    throw ValidationError("background-color must be a #rrggbb hex value")
-                }
-                try Overlay.validatePane(pane)
-                if pane != nil, sizePercent != nil {
-                    throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
-                }
-                try Session.validateSizePercent(sizePercent)
-            }
-
-            func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayOpen, target: target.target,
-                               args: options.withWindow(ControlArgs(cwd: html == nil && !rebased ? cwd : cwd.map(Overlay.absolutePath),
-                                                                     command: command, wait: wait ? true : nil,
-                                                                     sizePercent: sizePercent, follow: follow ? true : nil,
-                                                                     resolved: resolved ? true : nil,
-                                                                     pane: pane, color: backgroundColor,
-                                                                     html: html.map(Overlay.absolutePath),
-                                                                     navigation: navigation ? true : nil, url: url,
-                                                                     javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
-                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil, diff: diff,
-                                                                     workingTree: workingTree ? true : nil,
-                                                                     file: try file.map(Overlay.absoluteFileTarget), project: project.map(Overlay.absolutePath),
-                                                                     onClose: onClose)))
-            }
-
-            /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
-            /// `makeRequest()` as before, and what happens next depends on whether the app answers with a
-            /// redirect. In block mode `validate()` guarantees `!wait`, so its `wait` is nil there and the
-            /// floating `--size-percent` rides that single source instead of a duplicated ControlArgs.
-            func run() throws {
-                // a page has no command to wrap, so it never takes the redirect path
-                if block, html != nil {
-                    return try HtmlPageRunner(json: options.json, send: SocketClient(path: options.socketPath()).send)
-                        .block(makeRequest())
-                }
-                let client = SocketClient(path: options.socketPath())
-                try runRedirecting(environment: .live, send: client.send)
-            }
-        }
-
-        struct Close: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it; for one shown on another Mac, requests its cancel).")
-            @Option(name: .long, help: "Close that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
-            var pane: String?
-            @Option(name: .long, help: "Close only the Rebased overlay with this UUID, in whichever slot holds it; excludes --pane.") var overlay: String?
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-
-            func validate() throws {
-                try Overlay.validatePane(pane)
-                if let overlay {
-                    guard pane == nil else { throw ValidationError("--overlay cannot be combined with --pane") }
-                    guard UUID(uuidString: overlay) != nil else { throw ValidationError("invalid --overlay id") }
-                }
-            }
-
-            func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayClose, target: target.target,
-                               args: options.withWindow(pane != nil || overlay != nil ? ControlArgs(pane: pane, overlay: overlay) : nil))
-            }
-        }
-
-        struct Resize: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Resize an open overlay: floating at a percent, or back to full-pane.")
-            @Option(name: .long, help: "Resize to a floating, framed panel at PERCENT (1-100) of the pane.") var sizePercent: Int?
-            @Flag(name: .long, help: "Resize to full-pane (translucent, hides the session).") var full = false
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-
-            // require exactly one of --size-percent / --full at parse time (before any connection), so it is a
-            // clean usage error and unit-testable without a socket; the dispatcher re-checks the same rules.
-            func validate() throws {
-                if full && sizePercent != nil { throw ValidationError("--full cannot be combined with --size-percent") }
-                if !full && sizePercent == nil { throw ValidationError("provide --size-percent PERCENT or --full") }
-                try Session.validateSizePercent(sizePercent)
-            }
-
-            func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayResize, target: target.target,
-                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil)))
-            }
-        }
-
-        struct Result: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Print the overlay program's exit status, or with --page an HTML page's outcome.")
-            @Option(name: .long, help: "Read that split pane's overlay status (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
-            var pane: String?
-            @Option(name: .long, help: "Read the outcome of the HTML page with this id, as a --block open prints it.") var page: String?
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-        }
-
-        struct Copy: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Print the selection made INSIDE the overlay (session copy reads the pane underneath).")
-            @Option(name: .long, help: "Read that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
-            var pane: String?
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-
-            func validate() throws { try Overlay.validatePane(pane) }
-
-            func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayCopy, target: target.target,
-                               args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
-            }
-        }
-
-        struct Text: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Print the overlay's terminal buffer as plain text (a TUI's drawn screen, wrapped as rendered).")
-            @Flag(name: .long, help: "Read the full screen + scrollback instead of just the visible screen.") var all = false
-            @Option(name: .long, help: "Keep only the last N lines of the full buffer.") var lines: Int?
-            @Option(name: .long, help: "Read that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
-            var pane: String?
-            @OptionGroup var target: TargetOptions
-            @OptionGroup var options: ClientOptions
-
-            // same order as the dispatcher, so the CLI and the socket reject the same call the same way.
-            func validate() throws {
-                if all, lines != nil {
-                    throw ValidationError("use either --all or --lines, not both")
-                }
-                if let lines, lines <= 0 {
-                    throw ValidationError("--lines must be greater than 0")
-                }
-                try Overlay.validatePane(pane)
-            }
-
-            func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: .sessionOverlayText, target: target.target,
-                               args: options.withWindow(ControlArgs(pane: pane, all: all ? true : nil, lines: lines)))
-            }
-        }
-    }
-
     /// The passive message panel. `Open` is the default subcommand, so posting one is
     /// `agtermctl session hud "gathering options…"`; a message that is literally `update` or `close` needs
     /// the explicit `hud open` verb. Message length and control characters are the dispatcher's to reject —
@@ -1044,5 +831,220 @@ extension Session.Overlay {
     static func absoluteFileTarget(_ spec: String) throws -> String {
         guard let target = RebasedFileTarget(spec: spec) else { throw ValidationError("invalid --file target") }
         return absolutePath(target.path) + (target.line == 0 ? "" : ":\(target.line)")
+    }
+}
+
+extension Session {
+    struct Overlay: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
+            subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Result.self, Submit.self, Copy.self,
+                          Text.self, RunJob.self]
+        )
+
+        /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
+        /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and
+        /// reusing it would send `scratch` to the socket instead of failing as a usage error.
+        static func validatePane(_ pane: String?) throws {
+            if let pane, OverlayPane(controlName: pane) == nil {
+                throw ValidationError("--pane must be left or right")
+            }
+        }
+
+        struct Open: RequestCommand {
+            static let configuration = CommandConfiguration(
+                abstract: "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html or --url.")
+            @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html or --url.") var command: String?
+            @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
+            @Flag(name: .long, help: "Open Rebased for the local repository instead of running COMMAND.") var rebased = false
+            @Flag(name: .long, help: "With --rebased --diff, compare tracked working-tree changes against the base.") var workingTree = false
+            @Option(name: .long, help: "With --rebased, open FILE[:LINE] in the editor (excludes --diff).") var file: String?
+            @Option(name: .long, help: "With --rebased, open exactly this project directory without searching for a git root.") var project: String?
+            @Option(name: .long, help: "With --rebased, run this shell command once when the overlay is released; hiding does not release it.") var onClose: String?
+            @Option(name: .long, help: "With --rebased, show the changes of RANGE: A..B, A...B (from the merge base), or A (A..HEAD).") var diff: String?
+            @Option(name: .long, help: """
+                Show this http or https URL instead of running COMMAND; links to its own origin load in place. \
+                localhost means the Mac running agterm.
+                """)
+            var url: String?
+            @Flag(name: .long, help: "With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons.")
+            var navigation = false
+            @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
+            @Flag(name: .long, help: "With --html, show the page without agterm's strip naming it; ⌘W or session overlay close closes it.") var chromeless = false
+            @Flag(name: .long, help: Open.persistentHelp) var persistent = false
+            @Flag(name: .long, help: Open.browseHelp) var browse = false
+            @Option(name: .long, help: """
+                Working directory (default: the session's current directory). With --html, grants read access \
+                inside this directory; relative links resolve beside FILE. Without --cwd, the page has no file access.
+                """)
+            var cwd: String?
+            @Flag(name: .long, help: "Keep the overlay open after COMMAND exits (press any key to close).") var wait = false
+            @Flag(name: .long, help: Open.blockHelp) var block = false
+            @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
+            @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
+            @Option(name: .long, help: "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.") var backgroundColor: String?
+            @Option(name: .long, help: """
+                Scope the overlay to ONE split pane (primary/left/top or split/right/bottom), leaving the sibling pane live and \
+                visible; omit for the session-wide overlay. A pane overlay is always full-pane, so this \
+                cannot be combined with --size-percent.
+                """)
+            var pane: String?
+            /// Phase two of the overlay redirect: this open is already wrapped, so the app must NOT run the
+            /// decision again. Set by `agtermctl` itself on a local re-send, and carried over ssh to the
+            /// viewer's `agtermctl`, whose own row usually carries a pairing that would otherwise bounce the
+            /// overlay straight back. Hidden: nothing but the redirect has any business passing it.
+            @Flag(name: .long, help: .hidden) var resolved = false
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+
+            // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
+            // so it's a clean usage error and is unit-testable without a socket.
+            func validate() throws {
+                if rebased || diff != nil || workingTree || file != nil || project != nil || onClose != nil { return try validateRebased() }
+                if block && wait { throw ValidationError("--block cannot be combined with --wait") }
+                if [command, html, url].compactMap({ $0 }).count != 1 {
+                    throw ValidationError("provide exactly one of COMMAND, --html or --url")
+                }
+                if command == nil, wait || (url != nil && block) { throw ValidationError("a page takes no --wait, and a --url page no --block") }
+                if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
+                if javascript, command != nil { throw ValidationError("--js requires --html or --url") }
+                if chromeless, html == nil { throw ValidationError("--chromeless requires --html") }
+                if chromeless, navigation { throw ValidationError("--chromeless cannot be combined with --navigation") }
+                if persistent, url == nil { throw ValidationError("--persistent requires --url") }
+                if browse, url == nil { throw ValidationError("--browse requires --url") }
+                if url != nil, cwd != nil { throw ValidationError("--cwd cannot be combined with --url") }
+                if let backgroundColor, !WatermarkConfig.isValidColorHex(backgroundColor) {
+                    throw ValidationError("background-color must be a #rrggbb hex value")
+                }
+                try Overlay.validatePane(pane)
+                if pane != nil, sizePercent != nil {
+                    throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
+                }
+                try Session.validateSizePercent(sizePercent)
+            }
+
+            func makeRequest() throws -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayOpen, target: target.target,
+                               args: options.withWindow(ControlArgs(cwd: html == nil && !rebased ? cwd : cwd.map(Overlay.absolutePath),
+                                                                     command: command, wait: wait ? true : nil,
+                                                                     sizePercent: sizePercent, follow: follow ? true : nil,
+                                                                     resolved: resolved ? true : nil,
+                                                                     pane: pane, color: backgroundColor,
+                                                                     html: html.map(Overlay.absolutePath),
+                                                                     navigation: navigation ? true : nil, url: url,
+                                                                     javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
+                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil, diff: diff,
+                                                                     workingTree: workingTree ? true : nil,
+                                                                     file: try file.map(Overlay.absoluteFileTarget), project: project.map(Overlay.absolutePath),
+                                                                     onClose: onClose)))
+            }
+
+            /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
+            /// `makeRequest()` as before, and what happens next depends on whether the app answers with a
+            /// redirect. In block mode `validate()` guarantees `!wait`, so its `wait` is nil there and the
+            /// floating `--size-percent` rides that single source instead of a duplicated ControlArgs.
+            func run() throws {
+                // a page has no command to wrap, so it never takes the redirect path
+                if block, html != nil {
+                    return try HtmlPageRunner(json: options.json, send: SocketClient(path: options.socketPath()).send)
+                        .block(makeRequest())
+                }
+                let client = SocketClient(path: options.socketPath())
+                try runRedirecting(environment: .live, send: client.send)
+            }
+        }
+
+        struct Close: RequestCommand {
+            static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it; for one shown on another Mac, requests its cancel).")
+            @Option(name: .long, help: "Close that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+            var pane: String?
+            @Option(name: .long, help: "Close only the Rebased overlay with this UUID, in whichever slot holds it; excludes --pane.") var overlay: String?
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+
+            func validate() throws {
+                try Overlay.validatePane(pane)
+                if let overlay {
+                    guard pane == nil else { throw ValidationError("--overlay cannot be combined with --pane") }
+                    guard UUID(uuidString: overlay) != nil else { throw ValidationError("invalid --overlay id") }
+                }
+            }
+
+            func makeRequest() throws -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayClose, target: target.target,
+                               args: options.withWindow(pane != nil || overlay != nil ? ControlArgs(pane: pane, overlay: overlay) : nil))
+            }
+        }
+
+        struct Resize: RequestCommand {
+            static let configuration = CommandConfiguration(abstract: "Resize an open overlay: floating at a percent, or back to full-pane.")
+            @Option(name: .long, help: "Resize to a floating, framed panel at PERCENT (1-100) of the pane.") var sizePercent: Int?
+            @Flag(name: .long, help: "Resize to full-pane (translucent, hides the session).") var full = false
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+
+            // require exactly one of --size-percent / --full at parse time (before any connection), so it is a
+            // clean usage error and unit-testable without a socket; the dispatcher re-checks the same rules.
+            func validate() throws {
+                if full && sizePercent != nil { throw ValidationError("--full cannot be combined with --size-percent") }
+                if !full && sizePercent == nil { throw ValidationError("provide --size-percent PERCENT or --full") }
+                try Session.validateSizePercent(sizePercent)
+            }
+
+            func makeRequest() throws -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayResize, target: target.target,
+                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil)))
+            }
+        }
+
+        struct Result: RequestCommand {
+            static let configuration = CommandConfiguration(abstract: "Print the overlay program's exit status, or with --page an HTML page's outcome.")
+            @Option(name: .long, help: "Read that split pane's overlay status (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+            var pane: String?
+            @Option(name: .long, help: "Read the outcome of the HTML page with this id, as a --block open prints it.") var page: String?
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+        }
+
+        struct Copy: RequestCommand {
+            static let configuration = CommandConfiguration(abstract: "Print the selection made INSIDE the overlay (session copy reads the pane underneath).")
+            @Option(name: .long, help: "Read that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+            var pane: String?
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+
+            func validate() throws { try Overlay.validatePane(pane) }
+
+            func makeRequest() throws -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayCopy, target: target.target,
+                               args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+            }
+        }
+
+        struct Text: RequestCommand {
+            static let configuration = CommandConfiguration(abstract: "Print the overlay's terminal buffer as plain text (a TUI's drawn screen, wrapped as rendered).")
+            @Flag(name: .long, help: "Read the full screen + scrollback instead of just the visible screen.") var all = false
+            @Option(name: .long, help: "Keep only the last N lines of the full buffer.") var lines: Int?
+            @Option(name: .long, help: "Read that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
+            var pane: String?
+            @OptionGroup var target: TargetOptions
+            @OptionGroup var options: ClientOptions
+
+            // same order as the dispatcher, so the CLI and the socket reject the same call the same way.
+            func validate() throws {
+                if all, lines != nil {
+                    throw ValidationError("use either --all or --lines, not both")
+                }
+                if let lines, lines <= 0 {
+                    throw ValidationError("--lines must be greater than 0")
+                }
+                try Overlay.validatePane(pane)
+            }
+
+            func makeRequest() throws -> ControlRequest {
+                ControlRequest(cmd: .sessionOverlayText, target: target.target,
+                               args: options.withWindow(ControlArgs(pane: pane, all: all ? true : nil, lines: lines)))
+            }
+        }
     }
 }
