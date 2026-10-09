@@ -438,6 +438,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var rebased: Bool?
     /// diff is the range a `--rebased` open shows, as typed; the dispatcher parses it.
     public var diff: String?
+    public var workingTree: Bool?
+    public var file: String?
+    public var project: String?
+    public var onClose: String?
+    public var overlay: String?
     /// current makes `session.overlay.reload` reload the page the user navigated to, not the original file.
     public var current: Bool?
     /// navigation gives an `--html` or `--url` overlay its toolbar.
@@ -491,7 +496,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil,
+                workingTree: Bool? = nil, file: String? = nil, project: String? = nil, onClose: String? = nil, overlay: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -585,6 +591,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.browse = browse
         self.rebased = rebased
         self.diff = diff
+        self.workingTree = workingTree
+        self.file = file
+        self.project = project
+        self.onClose = onClose
+        self.overlay = overlay
     }
 }
 
@@ -687,6 +698,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var pageOutcome: ControlHtmlPageOutcome?
     /// restart is what `session.restart` replaced: the pane's stable id and its shell before and after.
     public var restart: ControlRestartReceipt?
+    public var overlay: String?
+    public var request: String?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -703,10 +716,12 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
-                restart: ControlRestartReceipt? = nil) {
+                restart: ControlRestartReceipt? = nil, overlay: String? = nil, request: String? = nil) {
         self.overlayRedirect = overlayRedirect
         self.bookmarks = bookmarks
         self.restart = restart
+        self.overlay = overlay
+        self.request = request
         self.width = width
         self.height = height
         self.restore = restore

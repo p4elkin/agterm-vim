@@ -4,6 +4,53 @@ import Testing
 
 @MainActor
 struct ControlDispatcherOverlayTests {
+    @Test func aRebasedPaneOpenRoutesItsViewProjectAndCallbackCwd() async throws {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayOpen, target: "s",
+            args: ControlArgs(cwd: "/callback", pane: "left", rebased: true, diff: "A..", workingTree: true,
+                              project: "/repo", onClose: "/bin/flush")))
+        #expect(actions.calls == [.overlayOpen(target: "s", window: nil,
+            ControlSessionOverlayOpenOptions(command: "", cwd: "/callback", wait: false, sizePercent: nil, backgroundColor: nil,
+                pane: .left, rebased: true, rebasedDiff: RebasedDiff(spec: "A.."),
+                rebasedView: try #require(RebasedView(diff: "A..", workingTree: true)), rebasedProject: "/repo", rebasedOnClose: "/bin/flush"))])
+    }
+
+    @Test(arguments: [
+        (ControlArgs(command: "cat", workingTree: true), "--working-tree requires --rebased"),
+        (ControlArgs(command: "cat", file: "/repo/a"), "--file requires --rebased"),
+        (ControlArgs(command: "cat", project: "/repo"), "--project requires --rebased"),
+        (ControlArgs(command: "cat", onClose: "/bin/flush"), "--on-close requires --rebased"),
+        (ControlArgs(rebased: true, workingTree: true), "--working-tree requires --diff"),
+        (ControlArgs(rebased: true, diff: "A..B", workingTree: true), "--working-tree requires a default head or a merge-base range"),
+        (ControlArgs(rebased: true, diff: "A..", file: "/repo/a"), "--file cannot be combined with --diff"),
+        (ControlArgs(rebased: true, file: "a\tb.kt"), "invalid --file target"),
+        (ControlArgs(rebased: true, file: "a.kt:0"), "invalid --file target")
+    ])
+    func invalidRebasedViewFlagsRefuseBeforeAnyAction(args: ControlArgs, detail: String) async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(cmd: .sessionOverlayOpen, args: args))
+        #expect(response == ControlResponse(ok: false, error: "session.overlay.open: " + detail))
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func overlayCloseRoutesAValidatedOverlayID() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let id = UUID()
+        _ = await dispatcher.dispatch(ControlRequest(cmd: .sessionOverlayClose, target: "s", args: ControlArgs(window: "w", overlay: id.uuidString)))
+        #expect(actions.calls == [.overlayCloseID(target: "s", window: "w", overlay: id)])
+    }
+
+    @Test(arguments: [("invalid", nil as String?), (UUID().uuidString, "left")])
+    func overlayCloseRefusesInvalidOrConflictingSelectors(id: String, pane: String?) async {
+        let actions = MockControlActions()
+        let response = await ControlDispatcher(actions: actions).dispatch(ControlRequest(cmd: .sessionOverlayClose,
+                                                                                       args: ControlArgs(pane: pane, overlay: id)))
+        #expect(!response!.ok)
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func rebasedOpenRoutesItsOwnContentWithTheProject() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)
@@ -25,7 +72,8 @@ struct ControlDispatcherOverlayTests {
             .overlayOpen(target: "session", window: nil,
                          ControlSessionOverlayOpenOptions(command: "", cwd: "/repo", wait: false, sizePercent: nil,
                                                           backgroundColor: nil, rebased: true,
-                                                          rebasedDiff: RebasedDiff(base: "main", head: "HEAD", mergeBase: true)))
+                                                          rebasedDiff: RebasedDiff(base: "main", head: "HEAD", mergeBase: true),
+                                                          rebasedView: RebasedView(diff: "main...")))
         ])
     }
 
@@ -45,7 +93,6 @@ struct ControlDispatcherOverlayTests {
         (ControlArgs(command: "cat", rebased: true), "COMMAND"),
         (ControlArgs(html: "/tmp/r.html", rebased: true), "--html"),
         (ControlArgs(url: "http://localhost:5173/", rebased: true), "--url"),
-        (ControlArgs(pane: "left", rebased: true), "--pane"),
         (ControlArgs(wait: true, rebased: true), "--wait"),
         (ControlArgs(javascript: true, rebased: true), "--js"),
         (ControlArgs(navigation: true, rebased: true), "--navigation"),

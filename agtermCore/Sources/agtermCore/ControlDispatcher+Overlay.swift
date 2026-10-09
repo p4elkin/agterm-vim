@@ -5,6 +5,11 @@ extension ControlDispatcher {
     func dispatchSessionOverlayCommand(_ request: ControlRequest) -> ControlResponse {
         switch request.cmd {
         case .sessionOverlayOpen:
+            let rebasedView: RebasedView?
+            switch Self.parseRebasedView(request.args) {
+            case .rejected(let response): return response
+            case .view(let view): rebasedView = view
+            }
             let command = request.args?.command ?? ""
             let page: HtmlSource?
             let rebased: Bool
@@ -14,14 +19,8 @@ extension ControlDispatcher {
             case .page(let source): page = source; rebased = false
             case .rebased: page = nil; rebased = true
             }
-            var rebasedDiff: RebasedDiff?
-            if let spec = request.args?.diff {
-                guard rebased else { return ControlResponse(ok: false, error: "session.overlay.open: --diff requires --rebased") }
-                guard let parsed = RebasedDiff(spec: spec) else {
-                    return ControlResponse(ok: false, error: "session.overlay.open: invalid --diff range")
-                }
-                rebasedDiff = parsed
-            }
+            let rebasedDiff: RebasedDiff?
+            if case .diff(let diff, _) = rebasedView { rebasedDiff = diff } else { rebasedDiff = nil }
             if let color = request.args?.color, !WatermarkConfig.isValidColorHex(color) {
                 return ControlResponse(ok: false, error: "invalid color: \(color) (#rrggbb)")
             }
@@ -53,7 +52,10 @@ extension ControlDispatcher {
                                                 persistent: request.args?.persistent ?? false,
                                                 browse: request.args?.browse ?? false,
                                                 rebased: rebased,
-                                                rebasedDiff: rebasedDiff
+                                                rebasedDiff: rebasedDiff,
+                                                rebasedView: rebasedView,
+                                                rebasedProject: request.args?.project,
+                                                rebasedOnClose: request.args?.onClose
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
@@ -73,6 +75,15 @@ extension ControlDispatcher {
                                                       navigation: navigation)
             }
         case .sessionOverlayClose:
+            if let overlay = request.args?.overlay {
+                guard request.args?.pane == nil else {
+                    return ControlResponse(ok: false, error: "session.overlay.close: --overlay cannot be combined with --pane")
+                }
+                guard let id = UUID(uuidString: overlay) else {
+                    return ControlResponse(ok: false, error: "session.overlay.close: invalid --overlay id")
+                }
+                return actions.closeSessionOverlay(request.target, window: request.args?.window, overlay: id)
+            }
             switch parseOverlayPane(request.args?.pane) {
             case .rejected(let response): return response
             case .pane(let pane):
@@ -132,6 +143,36 @@ extension ControlDispatcher {
         }
     }
 
+    enum RebasedViewParse {
+        case view(RebasedView?)
+        case rejected(ControlResponse)
+    }
+
+    static func parseRebasedView(_ args: ControlArgs?, command: String = "session.overlay.open") -> RebasedViewParse {
+        let reject = { (detail: String) in RebasedViewParse.rejected(ControlResponse(ok: false, error: command + ": " + detail)) }
+        if args?.rebased != true && command == "session.overlay.open" {
+            let flags: [(Bool, String)] = [
+                (args?.diff != nil, "--diff"), (args?.workingTree == true, "--working-tree"),
+                (args?.file != nil, "--file"), (args?.project != nil, "--project"), (args?.onClose != nil, "--on-close")
+            ]
+            if let flag = flags.first(where: { $0.0 }) { return reject(flag.1 + " requires --rebased") }
+        }
+        if args?.file != nil && args?.diff != nil { return reject("--file cannot be combined with --diff") }
+        if args?.workingTree == true && args?.diff == nil { return reject("--working-tree requires --diff") }
+        if let spec = args?.diff {
+            guard RebasedDiff(spec: spec) != nil else { return reject("invalid --diff range") }
+            guard let view = RebasedView(diff: spec, workingTree: args?.workingTree ?? false) else {
+                return reject("--working-tree requires a default head or a merge-base range")
+            }
+            return .view(view)
+        }
+        if let spec = args?.file {
+            guard let target = RebasedFileTarget(spec: spec) else { return reject("invalid --file target") }
+            return .view(.file(path: target.path, line: target.line))
+        }
+        return .view(nil)
+    }
+
     private enum OverlayContent {
         case rejected(ControlResponse)
         case program
@@ -144,7 +185,7 @@ extension ControlDispatcher {
         if args?.rebased == true {
             let conflicts: [(Bool, String)] = [
                 (!command.isEmpty, "COMMAND"), (args?.html != nil, "--html"), (args?.url != nil, "--url"),
-                (args?.pane != nil, "--pane"), (args?.wait == true, "--wait"), (args?.javascript == true, "--js"),
+                (args?.wait == true, "--wait"), (args?.javascript == true, "--js"),
                 (args?.navigation == true, "--navigation"), (args?.chromeless == true, "--chromeless"),
                 (args?.persistent == true, "--persistent"), (args?.browse == true, "--browse"), (args?.color != nil, "--background-color")
             ]

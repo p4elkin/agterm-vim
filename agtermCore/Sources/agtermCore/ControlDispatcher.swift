@@ -148,6 +148,7 @@ public protocol ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse
     func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
+    func closeSessionOverlay(_ target: String?, window: String?, overlay: UUID) -> ControlResponse
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,

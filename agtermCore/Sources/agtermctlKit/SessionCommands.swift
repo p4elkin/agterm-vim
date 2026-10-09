@@ -566,6 +566,10 @@ struct Session: ParsableCommand {
             @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html or --url.") var command: String?
             @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
             @Flag(name: .long, help: "Open Rebased for the local repository instead of running COMMAND.") var rebased = false
+            @Flag(name: .long, help: "With --rebased --diff, compare tracked working-tree changes against the base.") var workingTree = false
+            @Option(name: .long, help: "With --rebased, open FILE[:LINE] in the editor (excludes --diff).") var file: String?
+            @Option(name: .long, help: "With --rebased, open exactly this project directory without searching for a git root.") var project: String?
+            @Option(name: .long, help: "With --rebased, run this shell command once when the overlay is released; hiding does not release it.") var onClose: String?
             @Option(name: .long, help: "With --rebased, show the changes of RANGE: A..B, A...B (from the merge base), or A (A..HEAD).") var diff: String?
             @Option(name: .long, help: """
                 Show this http or https URL instead of running COMMAND; links to its own origin load in place. \
@@ -605,7 +609,7 @@ struct Session: ParsableCommand {
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
-                if rebased || diff != nil { return try validateRebased() }
+                if rebased || diff != nil || workingTree || file != nil || project != nil || onClose != nil { return try validateRebased() }
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
                 if [command, html, url].compactMap({ $0 }).count != 1 {
                     throw ValidationError("provide exactly one of COMMAND, --html or --url")
@@ -638,7 +642,10 @@ struct Session: ParsableCommand {
                                                                      html: html.map(Overlay.absolutePath),
                                                                      navigation: navigation ? true : nil, url: url,
                                                                      javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
-                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil, diff: diff)))
+                                                                     browse: browse ? true : nil, rebased: rebased ? true : nil, diff: diff,
+                                                                     workingTree: workingTree ? true : nil,
+                                                                     file: try file.map(Overlay.absoluteFileTarget), project: project.map(Overlay.absolutePath),
+                                                                     onClose: onClose)))
             }
 
             /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same
@@ -660,14 +667,21 @@ struct Session: ParsableCommand {
             static let configuration = CommandConfiguration(abstract: "Close the overlay terminal (destroys it; for one shown on another Mac, requests its cancel).")
             @Option(name: .long, help: "Close that split pane's overlay (primary/left/top or split/right/bottom); omit for the session-wide overlay.")
             var pane: String?
+            @Option(name: .long, help: "Close only the Rebased overlay with this UUID, in whichever slot holds it; excludes --pane.") var overlay: String?
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            func validate() throws { try Overlay.validatePane(pane) }
+            func validate() throws {
+                try Overlay.validatePane(pane)
+                if let overlay {
+                    guard pane == nil else { throw ValidationError("--overlay cannot be combined with --pane") }
+                    guard UUID(uuidString: overlay) != nil else { throw ValidationError("invalid --overlay id") }
+                }
+            }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionOverlayClose, target: target.target,
-                               args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+                               args: options.withWindow(pane != nil || overlay != nil ? ControlArgs(pane: pane, overlay: overlay) : nil))
             }
         }
 
@@ -1003,12 +1017,32 @@ extension Session {
 
 extension Session.Overlay.Open {
     func validateRebased() throws {
-        guard rebased else { throw ValidationError("--diff requires --rebased") }
-        if let diff, RebasedDiff(spec: diff) == nil { throw ValidationError("--diff takes A..B, A...B or A; neither side may start with - or .") }
-        if command != nil || html != nil || url != nil || pane != nil || wait || block || javascript || navigation
-            || chromeless || persistent || browse || backgroundColor != nil {
-            throw ValidationError("--rebased cannot be combined with COMMAND, page, pane, wait, block, or background options")
+        if !rebased {
+            let flag = diff != nil ? "--diff" : workingTree ? "--working-tree" : file != nil ? "--file" : project != nil ? "--project" : "--on-close"
+            throw ValidationError(flag + " requires --rebased")
         }
+        if file != nil, diff != nil { throw ValidationError("--file cannot be combined with --diff") }
+        if workingTree, diff == nil { throw ValidationError("--working-tree requires --diff") }
+        if let diff {
+            guard RebasedDiff(spec: diff) != nil else { throw ValidationError("--diff takes A..B, A...B or A; neither side may start with - or .") }
+            guard RebasedView(diff: diff, workingTree: workingTree) != nil else {
+                throw ValidationError("--working-tree requires a default head or a merge-base range")
+            }
+        }
+        if let file, RebasedFileTarget(spec: file) == nil { throw ValidationError("invalid --file target") }
+        if command != nil || html != nil || url != nil || wait || block || javascript || navigation
+            || chromeless || persistent || browse || backgroundColor != nil {
+            throw ValidationError("--rebased cannot be combined with COMMAND, page, wait, block, or background options")
+        }
+        try Session.Overlay.validatePane(pane)
+        if pane != nil, sizePercent != nil { throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)") }
         try Session.validateSizePercent(sizePercent)
+    }
+}
+
+extension Session.Overlay {
+    static func absoluteFileTarget(_ spec: String) throws -> String {
+        guard let target = RebasedFileTarget(spec: spec) else { throw ValidationError("invalid --file target") }
+        return absolutePath(target.path) + (target.line == 0 ? "" : ":\(target.line)")
     }
 }

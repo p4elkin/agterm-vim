@@ -5,6 +5,42 @@ import agtermCore
 @testable import agtermctlKit
 
 struct OverlayCommandsTests {
+    @Test(arguments: ["left", "right"])
+    func rebasedPaneOpenCarriesTheNewFlags(pane: String) throws {
+        let req = try request(["session", "overlay", "open", "--rebased", "--pane", pane, "--diff", "A..", "--working-tree",
+                               "--project", "repo", "--cwd", "callbacks", "--on-close", "/bin/flush --final"])
+        #expect(req.args?.pane == pane)
+        #expect(req.args?.workingTree == true)
+        #expect(req.args?.project == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("repo").standardizedFileURL.path)
+        #expect(req.args?.cwd == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("callbacks").standardizedFileURL.path)
+        #expect(req.args?.onClose == "/bin/flush --final")
+    }
+
+    @Test func rebasedRelativeFileKeepsItsLineWhileBecomingAbsolute() throws {
+        let req = try request(["session", "overlay", "open", "--rebased", "--file", "src/a:b.kt:42", "--cwd", "/other"])
+        let path = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("src/a:b.kt").standardizedFileURL.path
+        #expect(req.args?.file == path + ":42")
+    }
+
+    @Test(arguments: [
+        ["--rebased", "--working-tree"], ["--rebased", "--diff", "A..B", "--working-tree"],
+        ["--rebased", "--file", "a.kt", "--diff", "A.."], ["--rebased", "--pane", "left", "--size-percent", "60"],
+        ["cat", "--working-tree"], ["cat", "--file", "a.kt"], ["cat", "--project", "/repo"], ["cat", "--on-close", "/bin/flush"],
+        ["--rebased", "--file", "a.kt:0"], ["--rebased", "--file", "a\tb.kt"], ["--rebased", "--file", "a\nb.kt"]
+    ])
+    func rebasedViewFlagsRefuseInvalidCombinations(extra: [String]) {
+        #expect(rejects(["session", "overlay", "open"] + extra))
+    }
+
+    @Test func closeByOverlayIDIsExclusiveWithPane() throws {
+        let id = UUID().uuidString
+        let req = try request(["session", "overlay", "close", "--overlay", id, "--target", "s"])
+        #expect(req.args?.overlay == id)
+        #expect(req.target == "s")
+        #expect(rejects(["session", "overlay", "close", "--overlay", id, "--pane", "left"]))
+        #expect(rejects(["session", "overlay", "close", "--overlay", "invalid"]))
+    }
+
     @Test func rebasedOpenSendsItsProjectSizeAndTarget() throws {
         let req = try request(["session", "overlay", "open", "--rebased", "--cwd", "repo", "--size-percent", "60", "--target", "s"])
         #expect(req.cmd == .sessionOverlayOpen)
@@ -33,7 +69,7 @@ struct OverlayCommandsTests {
     }
 
     @Test(arguments: [
-        ["cat"], ["--html", "/tmp/r.html"], ["--url", "http://localhost:5173/"], ["--pane", "left"],
+        ["cat"], ["--html", "/tmp/r.html"], ["--url", "http://localhost:5173/"],
         ["--wait"], ["--block"], ["--js"], ["--navigation"], ["--chromeless"], ["--persistent"], ["--browse"],
         ["--background-color", "#102030"],
     ])

@@ -529,7 +529,7 @@ Size: M. Driven by the conflict matrix across CLI, dispatcher and protocol.
 - Files: `agtermCore/Sources/agtermCore/{ControlProtocol,ControlDispatcher+Overlay,ControlDispatcherOptions,ControlDispatcher,ControlActionsDefaults}.swift`
   (`ControlActions` is declared in `ControlDispatcher.swift`), `agtermCore/Sources/agtermctlKit/SessionCommands.swift`;
   tests `OverlayCommandsTests`, `ControlProtocolTests`, `ControlDispatcherOverlayTests`, `MockControlActions`.
-- [ ] Tests first:
+- [x] Tests first:
   - CLI (`OverlayCommandsTests`): `--rebased --pane left|right` parses; `--working-tree` without `--diff`,
     `--file` with `--diff`, `--pane` with `--size-percent`, and each of `--working-tree`, `--file`,
     `--project`, `--on-close` without `--rebased` are usage errors; a relative `--file` and `--project` become
@@ -541,7 +541,7 @@ Size: M. Driven by the conflict matrix across CLI, dispatcher and protocol.
     Rebased-only flag without `--rebased` answers the same error shape as `--diff` today; a bad `--file`
     answers before any action runs; `--project` and `--cwd` both reach the options; `close --overlay` with a
     non-UUID is refused before the host.
-- [ ] Add `ControlArgs.workingTree`, `.file`, `.project`, `.onClose`, `.overlay`; `ControlResult.overlay`,
+- [x] Add `ControlArgs.workingTree`, `.file`, `.project`, `.onClose`, `.overlay`; `ControlResult.overlay`,
   `.request`; the options fields beside `rebasedDiff`; a shared `parseRebasedView(args)` in the dispatcher;
   the `closeSessionOverlay` overload taking an overlay id, defaulted in `ControlActionsDefaults` to refuse.
   CLI flags and help text in `Overlay.Open` and `Overlay.Close`.

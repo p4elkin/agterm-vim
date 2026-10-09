@@ -98,6 +98,7 @@ class MockControlActionsBase {
         case sessionSearch(target: String?, window: String?, text: String?, to: String?)
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
         case overlayClose(target: String?, window: String?, pane: OverlayPane?)
+        case overlayCloseID(target: String?, window: String?, overlay: UUID)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
@@ -717,6 +718,11 @@ class MockControlActionsBase {
                                 navigation: HtmlNavigation) -> ControlResponse {
         calls.append(.overlayNavigate(target: target, window: window, pane: pane, navigation))
         return ControlResponse(ok: true)
+    }
+
+    func closeSessionOverlay(_ target: String?, window: String?, overlay: UUID) -> ControlResponse {
+        calls.append(.overlayCloseID(target: target, window: window, overlay: overlay))
+        return nextOverlayCloseResponse
     }
 
     func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {

@@ -3,6 +3,24 @@ import Testing
 @testable import agtermCore
 
 struct ControlProtocolTests {
+    @Test func liveReviewFieldsRoundTripAndRemainOptionalForOlderPeers() throws {
+        let args = ControlArgs(rebased: true, diff: "A..", workingTree: true, file: "/repo/a:3", project: "/repo",
+                               onClose: "/bin/flush", overlay: UUID().uuidString)
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: args)
+        #expect(try roundTrip(request) == request)
+        let response = ControlResponse(ok: true, result: ControlResult(id: "session", overlay: "overlay", request: "request"))
+        #expect(try roundTrip(response) == response)
+        let old = try JSONDecoder().decode(ControlRequest.self, from: Data(#"{"cmd":"session.overlay.open","args":{"command":"cat"}}"#.utf8))
+        #expect(old.args?.workingTree == nil)
+        #expect(old.args?.file == nil)
+        #expect(old.args?.project == nil)
+        #expect(old.args?.onClose == nil)
+        #expect(old.args?.overlay == nil)
+        let oldResponse = try JSONDecoder().decode(ControlResponse.self, from: Data(#"{"ok":true,"result":{"id":"session"}}"#.utf8))
+        #expect(oldResponse.result?.overlay == nil)
+        #expect(oldResponse.result?.request == nil)
+    }
+
     @Test func rebasedRoundTripsAndOlderRequestsDecode() throws {
         let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(cwd: "/repo", sizePercent: 60, rebased: true, diff: "main...HEAD"))
         #expect(try roundTrip(request) == request)
