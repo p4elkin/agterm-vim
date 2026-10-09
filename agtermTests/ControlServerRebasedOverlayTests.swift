@@ -141,7 +141,8 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
                                                                                           backgroundColor: nil, rebased: true, rebasedDiff: diff))
         XCTAssertTrue(response.ok, response.error ?? "")
         frameOpened(session)
-        XCTAssertEqual(runtime.calls.last, "diff main\ttopic\t0\t\(RebasedHost.canonical(stateDir.path))")
+        let request = try XCTUnwrap(session.rebasedOverlay?.view?.id)
+        XCTAssertEqual(runtime.calls.last, "diff \(request)\tmain\ttopic\t0\t0\tsession\t\(RebasedHost.canonical(stateDir.path))")
         let node = try XCTUnwrap(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString })
         XCTAssertEqual(node.rebasedOverlay?.diff, "main..topic")
     }

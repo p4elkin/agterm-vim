@@ -34,7 +34,7 @@ final class RebasedHost {
         case notStarted, starting, running, failed(String)
     }
 
-    private struct Entry {
+    struct Entry {
         let id: UUID
         let session: UUID
         let project: String
@@ -70,7 +70,7 @@ final class RebasedHost {
     private static let logger = Logger(subsystem: "com.umputun.agterm", category: "RebasedHost")
 
     private(set) var jvm = JVM.notStarted
-    private var entries: [UUID: Entry] = [:]
+    var entries: [UUID: Entry] = [:]
     private var frameNumbers: [String: Int] = [:]
     private(set) var visible: [String: UUID] = [:]
     // a slot is hidden until its view reports it on screen, so no path can show a frame over another session
@@ -78,12 +78,13 @@ final class RebasedHost {
     private var visibilityReports: [UUID: Set<UUID>] = [:]
     private var needsInitialFocus: Set<UUID> = []
     private var saving = false
+    var now: () -> Date = Date.init
+    var idePort: Int?
+    var portLookup: UUID?
     // keyed by overlay id: a released overlay's dialogs must never replay over the session's next project
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
-    // keyed by overlay id like the dialogs; sent once the frame is shown in its own session
-    private var pendingDiffs: [UUID: RebasedDiff] = [:]
     // sessions whose mirror is being refreshed; a second open would race the same git directory
-    private var fetching: Set<UUID> = []
+    var fetching: Set<UUID> = []
     private var slots: [UUID: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -131,7 +132,7 @@ final class RebasedHost {
         switch jvm {
         case .notStarted: return .init(jvm: "notStarted")
         case .starting: return .init(jvm: "starting", projects: projects)
-        case .running: return .init(jvm: "running", projects: projects)
+        case .running: return .init(jvm: "running", projects: projects, port: idePort)
         case .failed(let error): return .init(jvm: "failed", error: error, projects: projects)
         }
     }
@@ -143,71 +144,72 @@ final class RebasedHost {
 
     // MARK: - Opening
 
-    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, diff: RebasedDiff? = nil,
+    func openOverlay(in store: AppStore, session id: UUID, cwd: String?, sizePercent: Int?, view: RebasedView? = nil,
                      pane: OverlayPane? = nil, project: String? = nil) -> Result<RebasedOpened, RebasedOpenRefusal> {
         guard let session = store.session(withID: id) else {
             return .failure(.init(message: RebasedOverlayOpenFailure.unknownSession.message))
         }
         if session.remoteHost != nil {
-            return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, diff: diff, pane: pane)
+            return openRemote(in: store, session: session, path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane)
         }
         let project = project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd)
         if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == Self.canonical(project) {
             guard pane == nil || placement.pane == pane else {
                 return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
             }
-            if let diff { deliver(diff, to: session) }
-            return .success(.init(overlay: placement.overlay.id))
+            let request = view.map { requestView(overlay: placement.overlay.id, view: $0) }
+            return .success(.init(overlay: placement.overlay.id, request: request))
         }
-        let overlay = RebasedOverlay(project: project, diff: diff)
+        var overlay = RebasedOverlay(project: project, view: view.map(RebasedViewRequest.init(view:)))
+        if case .diff(let diff, _) = view { overlay.diff = diff }
         if let failure = store.openRebasedOverlay(id, overlay: overlay, sizePercent: sizePercent, pane: pane) {
             return .failure(.init(message: failure.message(pane: pane)))
         }
         open(session: id)
-        return .success(.init(overlay: overlay.id))
-    }
-
-    private func deliver(_ diff: RebasedDiff, to session: Session) {
-        guard let open = session.rebasedPlacement?.overlay else { return }
-        session.updateRebasedOverlay(open.id) { $0.diff = diff }
-        pendingDiffs[open.id] = diff
-        sendDiff(session: session.id)
+        return .success(.init(overlay: overlay.id, request: overlay.view?.id))
     }
 
     // MARK: - Remote rows
 
-    private func openRemote(in store: AppStore, session: Session, path: String, sizePercent: Int?, diff: RebasedDiff?,
-                            pane: OverlayPane?) -> Result<RebasedOpened, RebasedOpenRefusal> {
+    func openRemote(in store: AppStore, session: Session, path: String, sizePercent: Int?, view: RebasedView?,
+                    pane: OverlayPane?) -> Result<RebasedOpened, RebasedOpenRefusal> {
         let host = session.remoteHost ?? ""
         guard let mirror = RebasedMirror(host: host, path: path) else {
             return .failure(.init(message: "Rebased cannot mirror \(host):\(path)"))
         }
         if fetching.contains(session.id) { return .failure(.init(message: "Rebased is still fetching from \(host)")) }
         let overlayID: UUID
+        let request: String?
         if let placement = session.rebasedPlacement {
             guard pane == nil || placement.pane == pane, let source = placement.overlay.source,
                   RebasedMirror.covers(source: source, host: host, path: path) else {
                 return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
             }
             overlayID = placement.overlay.id
+            request = view.map { issueView(overlay: overlayID, view: $0) }
         } else {
-            let placeholder = RebasedOverlay(project: path, state: .fetching, diff: diff, source: mirror.source(top: path))
+            var placeholder = RebasedOverlay(project: path, state: .fetching, source: mirror.source(top: path),
+                                             view: view.map(RebasedViewRequest.init(view:)))
+            if case .diff(let diff, _) = view { placeholder.diff = diff }
             if let failure = store.openRebasedOverlay(session.id, overlay: placeholder, sizePercent: sizePercent, pane: pane) {
                 return .failure(.init(message: failure.message(pane: pane)))
             }
             overlayID = placeholder.id
+            request = placeholder.view?.id
+            opens += 1
+            entries[overlayID] = Entry(id: overlayID, session: session.id, project: Self.canonical(path), order: opens)
         }
         fetching.insert(session.id)
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
         offMain({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
-            self?.mirrored(result.value, session: sessionID, overlay: overlayID, diff: diff)
+            self?.mirrored(result.value, session: sessionID, overlay: overlayID, request: request)
         })
-        return .success(.init(overlay: overlayID))
+        return .success(.init(overlay: overlayID, request: request))
     }
 
     private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, session sessionID: UUID, overlay overlayID: UUID,
-                          diff: RebasedDiff?) {
+                          request: String?) {
         fetching.remove(sessionID)
         guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedPlacement?.overlay,
               current.id == overlayID else { return }
@@ -220,23 +222,26 @@ final class RebasedHost {
             }
             open(session: sessionID)
         case (.success?, false):
-            if let diff { deliver(diff, to: session) }
+            if request == current.view?.id { sendView(overlay: overlayID) }
         case (.failure(let error)?, let placeholder):
             let message = (error as? RebasedMirrorRefresh.Failure)?.message ?? error.localizedDescription
             if placeholder { session.updateRebasedOverlay(overlayID) { $0.state = .failed(message) } }
+            if let request { failView(overlay: overlayID, request: request, reason: message) }
             Self.logger.error("\(message, privacy: .public)")
-        case (nil, _):
-            break
+        case (nil, _): break
         }
     }
 
     func open(session: UUID) {
-        guard let overlay = store(session)?.session(withID: session)?.rebasedPlacement?.overlay else { return }
+        guard let model = store(session)?.session(withID: session), var overlay = model.rebasedPlacement?.overlay else { return }
+        if overlay.view == nil, let diff = overlay.diff {
+            overlay.view = RebasedViewRequest(view: .diff(diff, workingTree: false))
+            model.updateRebasedOverlay(overlay.id) { $0.view = overlay.view }
+        }
         opens += 1
         let project = Self.canonical(overlay.project)
         entries[overlay.id] = Entry(id: overlay.id, session: session, project: project, order: opens)
         if store(session)?.session(withID: session)?.rebasedPlacement?.pane != nil { needsInitialFocus.insert(overlay.id) }
-        if let diff = overlay.diff { pendingDiffs[overlay.id] = diff }
         switch jvm {
         case .running:
             if frameNumbers[project] != nil { show(overlay: overlay.id) } else { _ = runtime.call("open", project) }
@@ -337,6 +342,8 @@ final class RebasedHost {
             guard fields.count >= 2, let number = Int(fields[0]), let window = window(number) else { return }
             let owner = fields.count > 2 && !fields[2].isEmpty ? Self.canonical(fields[2]) : nil
             windowOpened(window, kind: fields[1], owner: owner)
+        case "viewOpened", "viewFailed":
+            handleViewEvent(kind: kind, payload: payload)
         case "failed":
             fail(payload)
         default:
@@ -347,6 +354,7 @@ final class RebasedHost {
     // A frame that arrives after its overlays failed stays hidden for the next open instead of reviving them.
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
+        beginPortLookup()
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
         for entry in waiting { setState(.shown, overlay: entry.id) }
         let onScreen = waiting.filter { visibleSlots.contains($0.id) }
@@ -411,7 +419,7 @@ final class RebasedHost {
     func show(overlay id: UUID) {
         guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
-        guard overlay(entry)?.hidden != true else { return }
+        guard overlay(entry)?.hidden != true, overlayState(entry) != .fetching else { return }
         setState(.shown, overlay: id)
         guard visibleSlots.contains(id) else { return }
         visible[entry.project] = id
@@ -419,7 +427,7 @@ final class RebasedHost {
         lastShownByProject[entry.project] = id
         _ = runtime.call("show", entry.project)
         frames.adopt(frame, in: hostWindow(entry.session))
-        sendDiff(session: entry.session)
+        sendView(overlay: id)
         if needsInitialFocus.remove(id) != nil,
            let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
            isFocusedPane(entry.session, pane) { focus(overlay: id) }
@@ -436,14 +444,6 @@ final class RebasedHost {
     func hide(overlay id: UUID) {
         guard let entry = entries[id] else { return }
         hide(entry)
-    }
-
-    // The bridge shows the diff as a dialog of the project frame, so it waits until that frame is on screen
-    // here; sent while hidden, the dialog would come up over another session or queue behind the slot.
-    private func sendDiff(session: UUID) {
-        guard let id = overlayID(for: session), let entry = entries[id], visible[entry.project] == id,
-              let diff = pendingDiffs.removeValue(forKey: id) else { return }
-        _ = runtime.call("diff", diff.bridgeArgument(project: entry.project))
     }
 
     func hide(session: UUID) {
@@ -555,7 +555,6 @@ final class RebasedHost {
     // never dropped: it comes up over the session now, rather than over whatever that session opens next.
     private func release(_ overlayID: UUID) {
         armed.remove(overlayID)
-        pendingDiffs[overlayID] = nil
         visibleSlots.remove(overlayID)
         visibilityReports[overlayID] = nil
         needsInitialFocus.remove(overlayID)
@@ -583,7 +582,7 @@ final class RebasedHost {
         entries.values.filter { $0.session == session }.max { $0.order < $1.order }
     }
 
-    private func overlay(_ entry: Entry) -> RebasedOverlay? {
+    func overlay(_ entry: Entry) -> RebasedOverlay? {
         guard let overlay = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.overlay,
               overlay.id == entry.id else { return nil }
         return overlay
@@ -667,7 +666,7 @@ final class RebasedHost {
 }
 
 // Carries one off-main result back to the main actor; written once before the hop, read once after it.
-private final class ResultBox<Value>: @unchecked Sendable {
+final class ResultBox<Value>: @unchecked Sendable {
     private(set) var value: Result<Value, any Error>?
     func set(_ work: () throws -> Value) { value = Result(catching: work) }
 }

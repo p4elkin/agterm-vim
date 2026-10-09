@@ -758,7 +758,7 @@ Size: M. Driven by the queue, the deadline, the event match, the remote refresh 
 
 - Files: new `agterm/Rebased/RebasedHost+Views.swift`, `RebasedHost.swift` (`handle(event:payload:)`,
   `pendingDiffs` and `sendDiff` replaced, `openRemote`); tests `RebasedHostTests`.
-- [ ] Tests first, with the fake runtime and test clock:
+- [x] Tests first, with the fake runtime and test clock:
   - A view asked while the JVM starts is sent after `frameOpened` and the slot report, never before, and its
     deadline is armed at the send.
   - A view on a hidden overlay stays `queued` with no deadline, and is sent when the toggle shows it.
@@ -771,7 +771,7 @@ Size: M. Driven by the queue, the deadline, the event match, the remote refresh 
   - `port` is asked after `frameOpened`, off the main actor, at 0.5 s doubling to 4 s; it stops when a number
     comes back (`status.port` reports it) or 30 s after that `frameOpened`; a later `frameOpened` starts it
     again.
-- [ ] `requestView(overlay:view:) -> String` returns the request id. `openOverlay` takes `view: RebasedView?`
+- [x] `requestView(overlay:view:) -> String` returns the request id. `openOverlay` takes `view: RebasedView?`
   in place of the `RebasedDiff?` and puts the request id into `RebasedOpened`; `rebasedOverlay.diff` keeps
   its last-range meaning. The remote path reuses
   `openRemote`'s refresh-then-deliver.

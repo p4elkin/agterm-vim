@@ -39,7 +39,8 @@ extension ControlServer: ControlActions {
         resolver.resolveSession(target, window: window) { store, id in
             if options.rebased {
                 if case .failure(let refusal) = RebasedHost.shared.openOverlay(in: store, session: id, cwd: options.cwd,
-                                                                              sizePercent: options.sizePercent, diff: options.rebasedDiff) {
+                                                                              sizePercent: options.sizePercent,
+                                                                              view: options.rebasedView ?? options.rebasedDiff.map { .diff($0, workingTree: false) }) {
                     return ControlResponse(ok: false, error: refusal.message)
                 }
                 if options.follow { store.selectSession(id) }

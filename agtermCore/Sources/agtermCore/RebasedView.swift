@@ -109,12 +109,14 @@ public struct RebasedViewRequest: Equatable, Sendable {
 
     @discardableResult
     public mutating func apply(event: Event, request: String) -> Bool {
-        guard request == id, state == .sent else { return false }
+        guard request == id else { return false }
         switch event {
         case .opened(let detail):
+            guard state == .sent else { return false }
             state = .opened
             self.detail = detail
         case .failed(let reason):
+            guard state == .queued || state == .sent else { return false }
             state = .failed
             detail = reason
         }
@@ -122,9 +124,9 @@ public struct RebasedViewRequest: Equatable, Sendable {
     }
 
     @discardableResult
-    public mutating func timedOut(request: String) -> Bool {
+    public mutating func timedOut(request: String, reason: String = "view request timed out") -> Bool {
         guard request == id, state == .sent else { return false }
-        return apply(event: .failed("view request timed out"), request: request)
+        return apply(event: .failed(reason), request: request)
     }
 }
 
