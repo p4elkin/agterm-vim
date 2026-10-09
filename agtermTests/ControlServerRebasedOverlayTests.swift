@@ -76,7 +76,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(runtime.starts, 1)
         frameOpened(session)
         let node = try XCTUnwrap(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString })
-        XCTAssertEqual(node.rebasedOverlay, ControlRebasedOverlayNode(project: stateDir.path, state: "shown"))
+        XCTAssertEqual(node.rebasedOverlay, ControlRebasedOverlayNode(project: stateDir.path, state: "shown", hidden: false))
         XCTAssertEqual(node.overlaySizePercent, 70)
         XCTAssertEqual(server.buildTree(in: store).rebased?.jvm, "running")
     }

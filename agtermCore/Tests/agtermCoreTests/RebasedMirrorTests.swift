@@ -53,6 +53,6 @@ struct RebasedMirrorTests {
     @MainActor @Test func theOverlayNodeReportsFetchingAndTheSource() {
         let overlay = RebasedOverlay(project: "/home/s/repo", state: .fetching, source: "p4linux:/home/s/repo")
         #expect(overlay.controlNode == ControlRebasedOverlayNode(project: "/home/s/repo", state: "fetching",
-                                                                 source: "p4linux:/home/s/repo"))
+                                                                 source: "p4linux:/home/s/repo", hidden: false))
     }
 }

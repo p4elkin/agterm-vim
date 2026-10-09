@@ -590,7 +590,7 @@ Size: S. Driven by two node types and their omission tests.
   `AppStoreTreeProjectionTests`, `ControlProtocolTests`, `RebasedDiffTests`, `RebasedMirrorTests`, and the
   expected node in
   `ControlServerRebasedOverlayTests.testOpenRoutesToTheHostAndShowsInTheTree`.
-- [ ] Tests first, in a new `testRebasedNodeProjectsPaneHiddenViewAndOnClose`: a session-wide holder projects
+- [x] Tests first, in a new `testRebasedNodeProjectsPaneHiddenViewAndOnClose`: a session-wide holder projects
   no `pane` and `hidden: false`; a left holder projects
   `pane: "left"` and still appears in `paneOverlays`; a hidden holder projects `hidden: true` and is still
   present; a view projects `{request, kind, target, state, detail?}`; `onClose: true` only when armed; every
@@ -598,7 +598,7 @@ Size: S. Driven by two node types and their omission tests.
   `ControlProtocolTests`: a node JSON without `hidden` still decodes. The expected nodes that compare a whole
   `controlNode` gain `hidden: false`: the hosted test, `RebasedDiffTests.theOverlayNodeReportsTheRequestedRange`
   and `RebasedMirrorTests.theOverlayNodeReportsFetchingAndTheSource`.
-- [ ] Add `pane`, `hidden` (`Bool?`, always set by `controlNode`), `view`, `onClose` to `ControlRebasedOverlayNode`, a `ControlRebasedViewNode`, and
+- [x] Add `pane`, `hidden` (`Bool?`, always set by `controlNode`), `view`, `onClose` to `ControlRebasedOverlayNode`, a `ControlRebasedViewNode`, and
   `port` to `ControlRebasedNode`, all defaulted. `AppStore.controlTree` projects the node while the overlay is
   held anywhere, not only while `rebasedOverlayActive`.
 

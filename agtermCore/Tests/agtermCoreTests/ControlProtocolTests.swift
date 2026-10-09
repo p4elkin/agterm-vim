@@ -3,6 +3,16 @@ import Testing
 @testable import agtermCore
 
 struct ControlProtocolTests {
+    @Test func olderRebasedNodesDecodeWithoutTheHiddenOrViewFields() throws {
+        let overlay = try JSONDecoder().decode(ControlRebasedOverlayNode.self, from: Data(#"{"project":"/repo","state":"shown"}"#.utf8))
+        #expect(overlay.hidden == nil)
+        #expect(overlay.pane == nil)
+        #expect(overlay.view == nil)
+        #expect(overlay.onClose == nil)
+        let status = try JSONDecoder().decode(ControlRebasedNode.self, from: Data(#"{"jvm":"running","projects":[]}"#.utf8))
+        #expect(status.port == nil)
+    }
+
     @Test func liveReviewFieldsRoundTripAndRemainOptionalForOlderPeers() throws {
         let args = ControlArgs(rebased: true, diff: "A..", workingTree: true, file: "/repo/a:3", project: "/repo",
                                onClose: "/bin/flush", overlay: UUID().uuidString)
