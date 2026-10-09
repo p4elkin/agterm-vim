@@ -875,7 +875,8 @@ error keeps those names for compatibility.
   A hidden holder stays hidden and reads `queued` until shown; no holder is refused.
 - `session rebased toggle [--target] [--window W]` (fork only)
   — hide or show the same holder, close a failed one, or open one when none is held; another occupant is refused.
-  The answer carries `{id, overlay, text}` with `text` `hidden`, `shown`, `opened` or `closed`; the tree's `hidden` follows.
+  The answer carries `{id, overlay, text}` with `text` `hidden`, `shown` or `opened`; the tree's `hidden` follows.
+  On a failed overlay it closes it and answers `{id, text: "closed"}` with no `overlay`; the tree drops `rebasedOverlay`.
 - `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   `command` runs through `sh -c` (so shell operators DO work here) but with the app's GUI `PATH` (no

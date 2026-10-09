@@ -18,6 +18,7 @@ final class OpenFile {
           Bridge.emit("viewFailed", request + "\tfile not found: " + path);
           return;
         }
+        if (Bridge.superseded(dir, request)) return;
         var descriptor = line == 0 ? new OpenFileDescriptor(project, file) : new OpenFileDescriptor(project, file, line - 1, 0);
         if (FileEditorManager.getInstance(project).openTextEditor(descriptor, true) == null) {
           Bridge.emit("viewFailed", request + "\tfile editor did not open: " + path);

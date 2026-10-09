@@ -48,11 +48,14 @@ final class RangeDiff {
                 if (producer != null) producers.add(producer);
               }
               if (producers.isEmpty()) throw new IllegalStateException("cannot show any changed file in the diff editor");
+              // A newer request can arrive while the producers are built; its own runnable opens after this one.
+              if (Bridge.superseded(dir, request)) return;
               var file = new ChainDiffVirtualFile(new ChangeDiffRequestChain(producers, 0), title);
               if (FileEditorManager.getInstance(project).openFile(file, true).length == 0) {
                 throw new IllegalStateException("diff editor did not open");
               }
             } else {
+              if (Bridge.superseded(dir, request)) return;
               VcsDiffUtil.showChangesDialog(project, title, changes);
             }
             Bridge.emit("viewOpened", request + "\t" + changes.size());
