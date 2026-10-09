@@ -5,6 +5,7 @@ extension Session {
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
     public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil && rebasedOverlay?.hidden != true }
+    public var visibleOverlayActive: Bool { overlayActive && rebasedOverlay?.hidden != true }
 
     /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
     /// `programOverlayActive` instead.
@@ -38,6 +39,11 @@ extension Session {
     public func paneOverlayCovers(_ pane: OverlayPane) -> Bool {
         guard let overlay = paneOverlay(pane) else { return false }
         return overlay.rebased?.hidden != true
+    }
+
+    public func paneRebasedOverlayActive(_ pane: OverlayPane) -> Bool {
+        guard let review = paneOverlay(pane)?.rebased else { return false }
+        return !review.hidden
     }
 
     public func paneOverlayIsProgram(_ pane: OverlayPane) -> Bool {

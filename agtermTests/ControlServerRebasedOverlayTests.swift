@@ -353,8 +353,12 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden)
         XCTAssertTrue(refocused)
         XCTAssertEqual(session.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
+        XCTAssertEqual(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.hidden, true)
         XCTAssertEqual(actions.toggleRebasedOverlay(), .shown)
         XCTAssertEqual(session.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertEqual(runtime.calls.last, "show \(RebasedHost.canonical(stateDir.path))")
+        XCTAssertEqual(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.hidden, false)
     }
 
     func testCommandWOverAReviewAlwaysConfirms() throws {
@@ -450,6 +454,33 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             RebasedHost.shared.setSlotVisible(true, session: session.id)
             XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
             store.closeRebasedOverlay(session.id, id: opened.overlay)
+        }
+    }
+
+    func testShowingAPaneIDEMakesItKeyOnceOnlyWhenSelectedAndFocused() throws {
+        let (store, session) = try addSession()
+        let (_, other) = try addSession()
+        store.toggleSplit(session.id)
+        for target in ["focused", "otherPane", "otherSession"] {
+            store.selectSession(session.id)
+            session.splitFocused = false
+            let opened = try RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: stateDir.path,
+                                                           sizePercent: nil, pane: .left).get()
+            frameOpened(session)
+            XCTAssertEqual(actions.toggleRebasedOverlay(session: session.id), .hidden)
+            RebasedHost.shared.setSlotVisible(false, session: session.id)
+            session.splitFocused = target == "otherPane"
+            if target == "otherSession" { store.selectSession(other.id) }
+            let before = frames.log.filter { $0 == "makeKey frame" }.count
+            XCTAssertEqual(actions.toggleRebasedOverlay(session: session.id), .shown)
+            XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before)
+            RebasedHost.shared.setSlotVisible(true, session: session.id)
+            let expected = before + (target == "focused" ? 1 : 0)
+            XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
+            RebasedHost.shared.setSlotVisible(false, session: session.id)
+            RebasedHost.shared.setSlotVisible(true, session: session.id)
+            XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, expected)
+            XCTAssertTrue(store.closeRebasedOverlay(session.id, id: opened.overlay))
         }
     }
 

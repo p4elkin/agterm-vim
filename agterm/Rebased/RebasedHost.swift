@@ -434,10 +434,11 @@ final class RebasedHost {
         show(overlay: id)
     }
 
-    func show(overlay id: UUID) {
+    func show(overlay id: UUID, focusIfFocusedPane: Bool = false) {
         guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
         guard overlay(entry)?.hidden != true, overlayState(entry) != .fetching else { return }
+        if focusIfFocusedPane, visible[entry.project] != id { needsInitialFocus.insert(id) }
         setState(.shown, overlay: id)
         guard visibleSlots.contains(id) else { return }
         visible[entry.project] = id

@@ -235,10 +235,10 @@ pane occupant. The explicit placement accessor costs more edits and keeps "sessi
   local term hides the frame, the slot shows nothing.
 - Focus: `AppActions.focusSplitPane` asks `RebasedHost.focus(overlay:)` when the target pane holds a shown
   IDE, instead of retrying `focusTarget`, which is nil there. `RebasedFrames` gains `makeKey(_ frame:)`.
-- An open over the focused pane makes the IDE key once: the host marks the overlay at open, and on its FIRST
-  show it calls `RebasedHost.focus(overlay:)` only if the holder's pane is still the focused pane of the
-  selected session in the key window. The mark clears at that first show either way. `show` never calls
-  `focus` otherwise, so closing a palette or switching back never pulls the keyboard into the IDE.
+- An open or explicit toggle-show over the focused pane makes the IDE key once: the host marks the overlay,
+  and on its first visible show calls `RebasedHost.focus(overlay:)` only if the holder's pane is still the
+  focused pane of the selected session. The mark clears at that show either way. Visibility reports alone
+  never arm focus, so closing a palette or switching back never pulls the keyboard into the IDE.
 - That question goes through a seam, `RebasedHost.isFocusedPane: (UUID, OverlayPane) -> Bool`, set in
   `RebasedHost.configure`: true when the session id is `library.activeStore`'s `selectedSessionID` and that
   session's `focusedPane` is the pane. The host never reads `NSApp.keyWindow` for it. The hosted test wires the
@@ -733,8 +733,8 @@ Size: M. Driven by the deck's held-versus-active branches, the raw slot reads, f
 - [x] The ⌘W rung for `focusedOverlayPane` skips a Rebased occupant. `confirmCloseSession` gains the Rebased
   branch and the `closeConfirmer` seam ([Hide](#hide)). `focusSplitPane` calls `RebasedHost.focus(overlay:)`
   for a shown pane IDE. The open path marks the overlay, and the first show calls `focus` under the one-shot
-  rule in [Visibility](#visibility), asking the `isFocusedPane` seam set in `RebasedHost.configure`; `show`
-  never calls it otherwise. The `session.overlayActive` rung asks the `closeConfirmer` first when it holds a
+  rule in [Visibility](#visibility), asking the `isFocusedPane` seam set in `RebasedHost.configure`;
+  explicit toggle-show arms the same rule. The `visibleOverlayActive` rung asks the `closeConfirmer` first when it holds a
   shown Rebased overlay. `RebasedFrames` gains `makeKey(_:)`.
 - [x] Walk the raw session-slot reads,
   `grep -rn 'overlayActive' agterm --include='*.swift' | grep -v 'coverOverlayActive\|programOverlayActive\|htmlOverlayActive\|rebasedOverlayActive\|fullOverlayActive'`,
@@ -915,7 +915,9 @@ Size: M. Driven by one live session of checks by eye and one UI test case.
     it at that line.
   - `live-swap`: `session swap` and back keep the IDE shown on its pane.
   - `live-focus-pane`: click the right shell, then ⌃1 (and once `session focus left --socket …`): the IDE
-    window becomes key and takes typing. Click the right shell again and press ⌘W: a dialog naming the review
+    window becomes key and takes typing. Hide and toggle-show the IDE with its pane focused: it takes keys
+    once. Toggle-show with the other pane or another session selected: it keeps focus there.
+    Click the right shell again and press ⌘W: a dialog naming the review
     appears; Cancel leaves the session, the IDE and the reader as they were, and no marker file appears.
     Hide the IDE and repeat with ⌘W: the same dialog.
   - `live-scratch-over`: ⌘J over the session with the pane IDE shown hides the IDE and shows the scratch;

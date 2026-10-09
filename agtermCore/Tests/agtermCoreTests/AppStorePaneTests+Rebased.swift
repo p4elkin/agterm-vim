@@ -19,8 +19,10 @@ extension AppStorePaneTests {
         defer { RebasedOverlayReleases.shared.onRelease = nil }
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
         #expect(session.paneOverlayCovers(pane))
+        #expect(session.paneRebasedOverlayActive(pane))
         #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
         #expect(!session.paneOverlayCovers(pane))
+        #expect(!session.paneRebasedOverlayActive(pane))
         #expect(session.focusedOverlayPane == nil)
         #expect(!session.programOverlayOwnsKeyboard)
         #expect(session.topmostSurface === session.activeSurface)

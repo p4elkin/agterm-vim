@@ -20,7 +20,7 @@ extension AppActions {
                 if store.selectedSessionID == session.id { rebasedRefocus(session) }
                 return .hidden
             }
-            RebasedHost.shared.show(overlay: placement.overlay.id)
+            RebasedHost.shared.show(overlay: placement.overlay.id, focusIfFocusedPane: true)
             return .shown
         }
         switch RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil) {

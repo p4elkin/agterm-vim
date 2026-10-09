@@ -526,7 +526,7 @@ struct OverlayPanelStyle: Equatable {
     private static let hudBorderOpacity = 0.30
 
     @MainActor static func sessionHitTesting(_ session: Session, live: Bool, hostsSurface: Bool) -> Bool {
-        live && session.overlayActive && session.rebasedOverlay?.hidden != true && hostsSurface
+        live && session.visibleOverlayActive && hostsSurface
     }
 
     @MainActor static func paneHitTesting(_ session: Session, pane: OverlayPane, visible: Bool, active: Bool) -> Bool {
@@ -534,7 +534,7 @@ struct OverlayPanelStyle: Equatable {
     }
 
     @MainActor static func resolve(_ session: Session) -> OverlayPanelStyle {
-        if session.rebasedOverlay?.hidden == true {
+        if session.overlayActive && !session.visibleOverlayActive {
             return OverlayPanelStyle(widthFraction: 1, heightFraction: 1, framed: false, cornerRadius: 0,
                                      borderOpacity: 0, shadowRadius: 0, backdrop: false, interactive: false, position: .center)
         }

@@ -271,7 +271,7 @@ final class AppActions {
         if terminalZoomActive { frontmostTerminalZoom?.clear(); return true }
         if let dashboard = frontmostDashboard, dashboard.isOpen { dashboard.close(); focusActiveSession(); return true }
         guard let store, let session = store.activeSession else { return false }
-        if session.overlayActive, session.rebasedOverlay?.hidden != true {
+        if session.visibleOverlayActive {
             if let review = session.rebasedOverlay, !ContentView.shouldBypassCloseConfirmation,
                !closeConfirmer("End the Rebased review of \(review.project)?", "The session will stay open.") { return true }
             store.closeOverlay(session.id)
@@ -323,7 +323,7 @@ final class AppActions {
     }
 
     /// Close session `id` in `store` from a GUI surface (the sidebar row's Close), honoring the "Confirm
-    /// before closing a session" setting. `store` is passed in so a background window's sidebar closes ITS
+    /// before closing a session" setting and always confirming a Rebased review. `store` closes ITS
     /// session; ⌘W/menu/palette use `closeActiveSession`, and the control `session.close` never prompts.
     func closeSession(_ id: UUID, in store: AppStore) {
         guard uiActionsEnabled else { return }
