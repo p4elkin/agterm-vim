@@ -560,7 +560,7 @@ public final class Session: Identifiable {
     /// fullOverlayActive says a program or page covers the whole session, with no size percent. It hides the
     /// panes and a shown scratch, since under window translucency anything left visible would bleed through.
     /// A HUD never counts, whatever its size.
-    public var fullOverlayActive: Bool { overlayActive && !hudActive && overlaySizePercent == nil }
+    public var fullOverlayActive: Bool { coverOverlayActive && overlaySizePercent == nil }
 
     /// The left pane's overlay, covering that pane only and leaving the sibling live; nil means none is up,
     /// so the slot itself IS the "active" signal. Observed, ephemeral, control-channel only.
@@ -779,7 +779,7 @@ public final class Session: Identifiable {
     /// The focused pane's overlay pane, nil when that pane's slot is empty.
     public var focusedOverlayPane: OverlayPane? {
         let pane = focusedPane
-        return paneOverlay(pane) == nil ? nil : pane
+        return paneOverlayCovers(pane) ? pane : nil
     }
 
     /// Whether a caller's program or page is taking this session's keystrokes: the session-wide cover, or
@@ -1014,7 +1014,7 @@ public final class Session: Identifiable {
     public func focusTarget(wantSplit: Bool) -> (any TerminalSurface)? {
         if coverOverlayActive || scratchActive { return topmostSurface }
         let pane: OverlayPane = wantSplit ? .right : .left
-        if paneOverlay(pane) != nil { return paneOverlaySurface(pane) }
+        if paneOverlayCovers(pane) { return paneOverlaySurface(pane) }
         return wantSplit ? splitSurface : surface
     }
 

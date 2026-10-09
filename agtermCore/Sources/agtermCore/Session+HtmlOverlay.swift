@@ -4,7 +4,7 @@ extension Session {
     /// htmlOverlayActive means a page covers the session: it owns input like a program but has no terminal
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
-    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil }
+    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil && rebasedOverlay?.hidden != true }
 
     /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
     /// `programOverlayActive` instead.
@@ -33,6 +33,11 @@ extension Session {
             return true
         }
         return false
+    }
+
+    public func paneOverlayCovers(_ pane: OverlayPane) -> Bool {
+        guard let overlay = paneOverlay(pane) else { return false }
+        return overlay.rebased?.hidden != true
     }
 
     public func paneOverlayIsProgram(_ pane: OverlayPane) -> Bool {

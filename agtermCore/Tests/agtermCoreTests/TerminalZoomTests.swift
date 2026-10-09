@@ -5,6 +5,27 @@ import Testing
 @MainActor
 struct TerminalZoomTests {
     @Test(arguments: OverlayPane.allCases)
+    func hidingAPaneIDEOffersTheUnderlyingTerminalForZoom(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        session.splitFocused = pane == .right
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(pane.paneZoomSurface.isAvailable(in: session))
+        #expect(pane.paneZoomSurface.isActive(in: session))
+        #expect(pane.paneZoomSurface.isVisible(in: session))
+        #expect(!pane.zoomSurface.isAvailable(in: session))
+        #expect(!pane.zoomSurface.isActive(in: session))
+        #expect(!pane.zoomSurface.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, pane.paneZoomSurface))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+    }
+
+    @Test(arguments: OverlayPane.allCases)
     func rebasedPaneHasNoTerminalZoomTarget(pane: OverlayPane) throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")

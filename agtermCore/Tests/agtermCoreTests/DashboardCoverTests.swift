@@ -25,6 +25,18 @@ struct DashboardCoverTests {
         #expect(session.dashboardCover(for: pane == .left ? .right : .left) == nil)
     }
 
+    @Test(arguments: ["session", "left", "right"])
+    func hidingAnIDELeavesNoDashboardCover(slot: String) {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        let pane = OverlayPane(rawValue: slot)
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(session.dashboardCover(for: .left) == nil)
+        #expect(session.dashboardCover(for: .right) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(session.dashboardCover(for: pane ?? .left) == .rebased(project: "/tmp/repo"))
+    }
+
     @Test func anUncoveredPaneHasNoCover() {
         #expect(session.dashboardCover(for: .left) == nil)
         #expect(session.dashboardCover(for: .right) == nil)

@@ -15,9 +15,10 @@ public struct RebasedOverlay: Equatable, Sendable {
     public var source: String?
     public var view: RebasedViewRequest?
     public var onClose: RebasedOnClose?
+    public var hidden: Bool
 
     public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, source: String? = nil,
-                id: UUID = UUID(), view: RebasedViewRequest? = nil, onClose: RebasedOnClose? = nil) {
+                id: UUID = UUID(), view: RebasedViewRequest? = nil, onClose: RebasedOnClose? = nil, hidden: Bool = false) {
         self.id = id
         self.project = project
         self.state = state
@@ -25,6 +26,7 @@ public struct RebasedOverlay: Equatable, Sendable {
         self.source = source
         self.view = view
         self.onClose = onClose
+        self.hidden = hidden
     }
 }
 
@@ -96,6 +98,12 @@ public final class RebasedOverlayReleases {
 }
 
 extension AppStore {
+    @discardableResult
+    public func setRebasedHidden(_ sessionID: UUID, id: UUID, _ hidden: Bool) -> Bool {
+        guard let session = session(withID: sessionID) else { return false }
+        return session.updateRebasedOverlay(id) { $0.hidden = hidden }
+    }
+
     @discardableResult
     public func closeRebasedOverlay(_ sessionID: UUID, id: UUID) -> Bool {
         guard let session = session(withID: sessionID), let placement = session.rebasedPlacement,

@@ -4,6 +4,22 @@ import Testing
 
 @MainActor
 struct AppStoreRemoteOverlayTests {
+    @Test(arguments: ["session", "left", "right"])
+    func aHiddenRebasedHolderStillReservesItsSlotAgainstRemoteJobs(slot: String) throws {
+        let (session, _) = try origin(split: true)
+        let pane = OverlayPane(rawValue: slot)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        if let pane { session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane) }
+        else {
+            session.rebasedOverlay = overlay
+            session.overlayActive = true
+        }
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(open(session, pane: pane) == .slotTaken)
+        #expect(session.rebasedPlacement?.overlay.id == overlay.id)
+        #expect(session.remoteOverlays.slots.isEmpty)
+    }
+
     final class Sink: PresentationSink {
         var frames: [PresentationFrame] = []
 

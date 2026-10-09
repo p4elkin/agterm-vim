@@ -4,6 +4,42 @@ import Testing
 
 @MainActor
 struct HtmlOverlayTests {
+    @Test func hiddenRebasedSessionRetainsItsSlotAndRestoresTerminalFocus() throws {
+        session.surface = SpySurface()
+        let callback = RebasedOnClose(command: "/bin/flush", cwd: "/tmp", environment: [:])
+        let overlay = RebasedOverlay(project: "/tmp/repo", view: RebasedViewRequest(view: .file(path: "/tmp/repo/a", line: 1)), onClose: callback)
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(!store.setRebasedHidden(session.id, id: UUID(), true))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(session.overlayActive)
+        #expect(session.rebasedOverlay?.hidden == true)
+        #expect(session.rebasedOverlay?.id == overlay.id)
+        #expect(session.rebasedOverlay?.view == overlay.view)
+        #expect(session.rebasedOverlay?.onClose == callback)
+        #expect(!session.rebasedOverlayActive)
+        #expect(!session.coverOverlayActive)
+        #expect(!session.fullOverlayActive)
+        #expect(!session.programOverlayActive)
+        #expect(session.topmostSurface === session.surface)
+        #expect(session.focusTarget(wantSplit: false) === session.surface)
+        #expect(!store.openOverlay(session.id, command: "other"))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page(), sizePercent: nil) == .alreadyOpen)
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil) == .alreadyOpen)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(session.rebasedOverlayActive)
+        #expect(session.coverOverlayActive)
+        #expect(session.fullOverlayActive)
+        #expect(session.topmostSurface == nil)
+        #expect(session.focusTarget(wantSplit: false) == nil)
+        #expect(releases.isEmpty)
+        #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
+        #expect(!store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(releases == [overlay.id])
+    }
+
     final class Sink: PresentationSink {
         var frames: [PresentationFrame] = []
 

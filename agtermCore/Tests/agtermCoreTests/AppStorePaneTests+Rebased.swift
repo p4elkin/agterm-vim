@@ -5,6 +5,40 @@ import Testing
 @MainActor
 extension AppStorePaneTests {
     @Test(arguments: OverlayPane.allCases)
+    func hidingAPaneRebasedOverlayReturnsInputWithoutReleasingIt(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface()
+        store.toggleSplit(session.id)
+        session.splitSurface = SpySurface()
+        session.splitFocused = pane == .right
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(session.paneOverlayCovers(pane))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(!session.paneOverlayCovers(pane))
+        #expect(session.focusedOverlayPane == nil)
+        #expect(!session.programOverlayOwnsKeyboard)
+        #expect(session.topmostSurface === session.activeSurface)
+        #expect(session.focusTarget(wantSplit: pane == .right) === session.activeSurface)
+        #expect(session.openPaneOverlays == [pane])
+        #expect(store.openPaneOverlay(session.id, pane: pane, command: "other") == .alreadyOpen)
+        #expect(store.openHtmlOverlay(session.id, pane: pane, overlay: HtmlOverlay(source: .file(path: "/tmp/a.html", grantRoot: nil)),
+                                     sizePercent: nil) == .alreadyOpen)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(session.paneOverlayCovers(pane))
+        #expect(session.focusedOverlayPane == pane)
+        #expect(session.topmostSurface == nil)
+        #expect(releases.isEmpty)
+        #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
+        #expect(releases == [overlay.id])
+    }
+
+    @Test(arguments: OverlayPane.allCases)
     func rebasedPaneOpenKeepsTheOtherPaneInteractive(pane: OverlayPane) throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")

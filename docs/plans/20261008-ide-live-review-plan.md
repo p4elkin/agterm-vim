@@ -499,7 +499,7 @@ Size: M. Driven by the cover predicates of both slots and a hidden-pane test for
 - Files: `agtermCore/Sources/agtermCore/{RebasedOverlay,Session,Session+HtmlOverlay,TerminalZoom,DashboardCover,AppStore+RemoteOverlay}.swift`;
   tests `HtmlOverlayTests`, `AppStorePaneTests`, `TerminalZoomTests`, `DashboardCoverTests`,
   `AppStoreRemoteOverlayTests`.
-- [ ] Tests first:
+- [x] Tests first:
   - `AppStore.setRebasedHidden(session, id:, true)` keeps the overlay, its id, `view` and `onClose`;
     `overlayActive` stays true; opening a program, a page or a second Rebased overlay is still refused.
   - Hidden session-wide holder: `rebasedOverlayActive`, `coverOverlayActive` and `fullOverlayActive` are
@@ -511,11 +511,11 @@ Size: M. Driven by the cover predicates of both slots and a hidden-pane test for
   - A hidden session-wide holder still holds the slot for a remote job: `openRemoteOverlay` answers
     `.slotTaken`.
   - Showing again restores every predicate. Hide, show and close fire the release once, at the close.
-- [ ] Add `RebasedOverlay.hidden`, `AppStore.setRebasedHidden`, `Session.paneOverlayCovers`, and the hidden
+- [x] Add `RebasedOverlay.hidden`, `AppStore.setRebasedHidden`, `Session.paneOverlayCovers`, and the hidden
   term in `rebasedOverlayActive`, `fullOverlayActive`, `focusedOverlayPane`, `focusTarget`, the `TerminalZoom`
   arms and `dashboardCover(for:)`. `AppStore+RemoteOverlay.localOverlayHolds(nil)` asks "held"
   (`overlayActive && !hudActive`) instead of `coverOverlayActive`.
-- [ ] Sweep core for any other read of `coverOverlayActive` that means "the slot is occupied" rather than "a
+- [x] Sweep core for any other read of `coverOverlayActive` that means "the slot is occupied" rather than "a
   cover takes input" (`grep -rn coverOverlayActive agtermCore/Sources`), and switch each such read to "held".
 
 Check: `grep -q 'setRebasedHidden' agtermCore/Tests/agtermCoreTests/HtmlOverlayTests.swift && grep -q 'setRebasedHidden' agtermCore/Tests/agtermCoreTests/AppStoreRemoteOverlayTests.swift && cd agtermCore && swift test --filter 'HtmlOverlayTests|AppStorePaneTests|TerminalZoomTests|DashboardCoverTests|AppStoreRemoteOverlayTests'`
