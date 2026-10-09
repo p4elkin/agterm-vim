@@ -234,7 +234,14 @@ static void detach(JNIEnv *env, JavaVM *vm, bool attached) {
     if (attached) (*vm)->DetachCurrentThread(vm);
 }
 
+// The plugin drops its system property on hello, so the first lookup is kept for the JVM's lifetime.
+static jobject bridge_ref;
+
 static jobject bridge(JNIEnv *env) {
+    pthread_mutex_lock(&state_lock);
+    jobject cached = bridge_ref;
+    pthread_mutex_unlock(&state_lock);
+    if (cached) return cached;
     jclass system = (*env)->FindClass(env, "java/lang/System");
     jmethodID get = system ? (*env)->GetStaticMethodID(env, system, "getProperties", "()Ljava/util/Properties;") : NULL;
     jobject properties = get ? (*env)->CallStaticObjectMethod(env, system, get) : NULL;
@@ -243,8 +250,18 @@ static jobject bridge(JNIEnv *env) {
     jstring key = lookup ? (*env)->NewStringUTF(env, "agterm.rebased.bridge") : NULL;
     jobject result = key ? (*env)->CallObjectMethod(env, properties, lookup, key) : NULL;
     if ((*env)->ExceptionCheck(env)) { exception_error(env, "Cannot read Rebased bridge"); return NULL; }
-    if (!result) answer("Rebased bridge is not ready");
-    return result;
+    if (!result) { answer("Rebased bridge is not ready"); return NULL; }
+    jobject global = (*env)->NewGlobalRef(env, result);
+    if (!global) { exception_error(env, "Cannot keep the Rebased bridge"); return NULL; }
+    pthread_mutex_lock(&state_lock);
+    if (bridge_ref) {
+        (*env)->DeleteGlobalRef(env, global);
+        global = bridge_ref;
+    } else {
+        bridge_ref = global;
+    }
+    pthread_mutex_unlock(&state_lock);
+    return global;
 }
 
 static const char *call_bridge(JNIEnv *env, jobject object, const char *command, const char *argument) {

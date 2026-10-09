@@ -10,7 +10,7 @@ public struct RebasedInstall: Sendable {
             self.contents = contents
         }
 
-        fileprivate func requiredContents() throws -> String {
+        func requiredContents() throws -> String {
             guard let contents else { throw InstallError.missingFile(path) }
             return contents
         }
@@ -47,18 +47,16 @@ public struct RebasedInstall: Sendable {
     public init(bundlePath: String, stateDirectory: String, productInfo: FileInput, vmOptions: FileInput,
                 runtimeRelease: FileInput, architecture: String = RebasedInstall.nativeArchitecture,
                 homeDirectory: String = NSHomeDirectory()) throws {
-        let productText = try productInfo.requiredContents()
+        let product = try RebasedProduct(bundlePath: bundlePath, productInfo: productInfo, architecture: architecture)
+        try self.init(bundlePath: bundlePath, stateDirectory: stateDirectory, product: product, vmOptions: vmOptions,
+                      runtimeRelease: runtimeRelease, homeDirectory: homeDirectory)
+    }
+
+    public init(bundlePath: String, stateDirectory: String, product: RebasedProduct, vmOptions: FileInput,
+                agtermVmOptions: String? = nil, runtimeRelease: FileInput, homeDirectory: String = NSHomeDirectory()) throws {
         let optionsText = try vmOptions.requiredContents()
         let releaseText = try runtimeRelease.requiredContents()
-        let product: ProductInfo
-        do {
-            product = try JSONDecoder().decode(ProductInfo.self, from: Data(productText.utf8))
-        } catch {
-            throw InstallError.invalidFile(productInfo.path, error.localizedDescription)
-        }
-        guard let launch = product.launch.first(where: { $0.os == "macOS" && $0.arch == architecture }) else {
-            throw InstallError.missingLaunch(architecture: architecture)
-        }
+        let launch = product.launch
         let runtimeVersion = try Self.runtimeVersion(releaseText, path: runtimeRelease.path)
         guard runtimeVersion.major >= product.minRequiredJavaVersion else {
             throw InstallError.javaVersion(required: product.minRequiredJavaVersion, runtime: runtimeVersion.text)
@@ -66,24 +64,31 @@ public struct RebasedInstall: Sendable {
 
         buildNumber = product.buildNumber
         mainClass = launch.mainClass
-        let root = URL(fileURLWithPath: stateDirectory).appendingPathComponent("rebased").path
+        let root = product.ideRoot(stateDirectory: URL(fileURLWithPath: stateDirectory)).path
         let lib = URL(fileURLWithPath: bundlePath).appendingPathComponent("Contents/lib")
         let classPath = launch.bootClassPathJarNames.map { lib.appendingPathComponent($0).path }.joined(separator: ":")
-        let fileOptions = optionsText.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-        jvmOptions = (["-XX:ErrorFile=\(root)/log/java_error_in_agterm_%p.log",
-                       "-XX:HeapDumpPath=\(root)/log/java_error_in_agterm.hprof"]
-            + fileOptions + launch.additionalJvmArguments
-            + ["-Djava.class.path=\(classPath)", "-Dide.native.launcher=true", "-Dsun.java.command=\(launch.mainClass)"]
-            + ["-Didea.config.path=\(root)/config", "-Didea.system.path=\(root)/system",
-               "-Didea.plugins.path=\(root)/plugins", "-Didea.log.path=\(root)/log"])
-            .map { $0.replacingOccurrences(of: "$APP_PACKAGE", with: bundlePath)
+        let hostOptions = [
+            "-XX:ErrorFile=\(root)/log/java_error_in_agterm_%p.log",
+            "-XX:HeapDumpPath=\(root)/log/java_error_in_agterm.hprof",
+            "-Djava.class.path=\(classPath)",
+            "-Didea.config.path=\(root)/config", "-Didea.system.path=\(root)/system",
+            "-Didea.plugins.path=\(root)/plugins", "-Didea.log.path=\(root)/log",
+            "-Dide.native.launcher=true", "-Dsun.java.command=\(launch.mainClass)",
+            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"
+        ]
+        let options = Self.options(optionsText) + launch.additionalJvmArguments + Self.options(agtermVmOptions ?? "") + hostOptions
+        jvmOptions = options.map { $0.replacingOccurrences(of: "$APP_PACKAGE", with: bundlePath)
                 .replacingOccurrences(of: "$USER_HOME", with: homeDirectory) }
     }
 
     public static func pluginCacheKey(buildNumber: String, sourceDigest: String) -> String {
         "\(buildNumber.utf8.count):\(buildNumber)\(sourceDigest.utf8.count):\(sourceDigest)"
+    }
+
+    private static func options(_ text: String) -> [String] {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
     }
 
     private static func runtimeVersion(_ contents: String, path: String) throws -> (text: String, major: Int) {
@@ -95,19 +100,5 @@ public struct RebasedInstall: Sendable {
             return (version, major)
         }
         throw InstallError.invalidFile(path, "missing or invalid JAVA_VERSION")
-    }
-
-    private struct ProductInfo: Decodable {
-        let buildNumber: String
-        let minRequiredJavaVersion: Int
-        let launch: [Launch]
-    }
-
-    private struct Launch: Decodable {
-        let os: String
-        let arch: String
-        let mainClass: String
-        let bootClassPathJarNames: [String]
-        let additionalJvmArguments: [String]
     }
 }

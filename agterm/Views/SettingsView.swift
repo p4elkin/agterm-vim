@@ -185,9 +185,10 @@ private struct GeneralSettingsView: View {
                     Text("Workspace tree").tag(FlaggedViewLayout.tree)
                 }
                 .accessibilityIdentifier("settings-flagged-view-layout")
-                TextField("Rebased app", text: Binding(get: { model.settings.effectiveRebasedAppPath },
+                TextField("IDE app", text: Binding(get: { model.settings.effectiveRebasedAppPath },
                                                        set: { model.setRebasedAppPath($0) }))
                     .accessibilityIdentifier("settings-rebased-app-path")
+                SettingHint("Changes apply after restarting agterm.")
             }
 
             Section("Ghostty Config") {

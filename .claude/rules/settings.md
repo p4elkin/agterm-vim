@@ -287,8 +287,9 @@ paths:
   which is what makes the toggle survive a relaunch. It has NO Settings UI and no menu item — the keymap
   chord (`map <chord> overlay_redirect_toggle`), the palette action, and `agtermctl overlay-redirect
   toggle` are the three ways in.
-- `rebasedAppPath` (fork only, see [[rebased-overlay]]) names the Rebased bundle, nil for
-  `/Applications/Rebased.app` through `effectiveRebasedAppPath`. Settings > General edits it.
+- `rebasedAppPath` (fork only, see [[rebased-overlay]]) names the IDE bundle, nil for
+  `/Applications/Rebased.app` through `effectiveRebasedAppPath`.
+  Settings > General > IDE app accepts Rebased or IntelliJ IDEA; changes apply after restarting agterm.
 - `rebasedMirrorMaxAgeDays` (fork only) is the days a Rebased mirror may go unused before a prune removes it.
   `effectiveRebasedMirrorMaxAgeDays` gives 14 for nil or a negative value, and 0 turns the start prune off.
   `settings.json` only, with no Settings UI, so a hand edit applies at the next launch.

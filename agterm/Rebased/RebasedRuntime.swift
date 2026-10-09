@@ -45,15 +45,22 @@ struct JNIRebasedRuntime: RebasedRuntime {
             let url = app.appendingPathComponent(relative)
             return .init(path: url.path, contents: try? String(contentsOf: url, encoding: .utf8))
         }
-        let install = try RebasedInstall(bundlePath: appPath, stateDirectory: stateDirectory.path,
-                                         productInfo: input("Contents/Resources/product-info.json"),
-                                         vmOptions: input("Contents/bin/rebased.vmoptions"),
+        let product = try RebasedProduct(bundlePath: appPath, productInfo: input("Contents/Resources/product-info.json"))
+        let ideRoot = product.ideRoot(stateDirectory: stateDirectory)
+        if let seed = try RebasedSeed.plan(product: product, stateDirectory: stateDirectory) {
+            try RebasedSeed.execute(seed)
+        }
+        let agtermOptionsFile = ideRoot.appendingPathComponent("config/idea.vmoptions")
+        let agtermVmOptions = FileManager.default.fileExists(atPath: agtermOptionsFile.path)
+            ? try String(contentsOf: agtermOptionsFile, encoding: .utf8) : nil
+        let vmOptions = RebasedInstall.FileInput(path: product.vmOptionsPath,
+                                                contents: try? String(contentsOfFile: product.vmOptionsPath, encoding: .utf8))
+        let install = try RebasedInstall(bundlePath: appPath, stateDirectory: stateDirectory.path, product: product,
+                                         vmOptions: vmOptions, agtermVmOptions: agtermVmOptions,
                                          runtimeRelease: input("Contents/jbr/Contents/Home/release"))
-        _ = try RebasedPluginBuilder(appBundle: app, stateDirectory: stateDirectory).build(buildNumber: install.buildNumber)
-        // IntelliJ's own screen menu would fight SwiftUI over NSApp.mainMenu; MacMenuSettings reads the jb flag first.
-        let options = install.jvmOptions + ["-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"]
+        _ = try RebasedPluginBuilder(appBundle: app, ideRoot: ideRoot).build(buildNumber: install.buildNumber)
         return RebasedLaunch(libjvm: app.appendingPathComponent("Contents/jbr/Contents/Home/lib/server/libjvm.dylib").path,
-                             options: options, mainClass: install.mainClass)
+                             options: install.jvmOptions, mainClass: install.mainClass)
     }
 
     func launch(_ launch: RebasedLaunch) throws {

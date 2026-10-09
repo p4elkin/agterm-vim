@@ -32,6 +32,7 @@ import java.util.function.BiFunction;
 // The host reaches this object through System.getProperties(), typed as a JDK interface, so it never needs
 // the plugin class loader. Events go back through hostEvent, which the host binds with RegisterNatives.
 public final class Bridge implements BiFunction<String, String, String> {
+  static final String PROPERTY = "agterm.rebased.bridge";
   static native void hostEvent(String kind, String payload);
 
   private static final Object lock = new Object();
@@ -69,7 +70,7 @@ public final class Bridge implements BiFunction<String, String, String> {
   static void log(String s) { System.err.println("[agterm-bridge] " + s); }
 
   static void install() {
-    System.getProperties().put("agterm.rebased.bridge", new Bridge());
+    System.getProperties().put(PROPERTY, new Bridge());
     Toolkit.getDefaultToolkit().addAWTEventListener(e -> onWindowEvent((WindowEvent) e), AWTEvent.WINDOW_EVENT_MASK);
     emit("ready", "");
   }
@@ -193,6 +194,9 @@ public final class Bridge implements BiFunction<String, String, String> {
   @Override public String apply(String cmd, String arg) {
     switch (cmd) {
       case "hello" -> {
+        // The host holds its own reference by now. A non-String system property breaks code that copies them
+        // as strings: IntelliJ IDEA's Maven import fails with an NPE before any project opens.
+        System.getProperties().remove(PROPERTY);
         List<String[]> flush;
         synchronized (lock) { hostAttached = true; flush = new ArrayList<>(pending); pending.clear(); }
         for (String[] ev : flush) hostEvent(ev[0], ev[1]);

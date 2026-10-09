@@ -43,6 +43,10 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- IntelliJ IDEA can run in the Rebased overlay. Set Settings > General > IDE app to its bundle and restart
+  agterm. Each product has separate state. On the first IDEA start, agterm copies selected standalone settings,
+  licence and IDE Services state, plus IdeaVim and claude-remarks. Its isolated `config/idea.vmoptions` can be
+  edited for later starts; deleting the product root repeats the seed.
 - Rebased removes the mirrors of remote repositories that nobody has used for 14 days, with the IDE's data for
   them, when the IDE starts. A mirror counts as used whenever its overlay is shown, not only when it is opened,
   and one in use is never removed. `rebasedMirrorMaxAgeDays` in `settings.json` sets the days, 0 for never; a

@@ -96,7 +96,9 @@ final class RebasedHost {
     private var slots: [ObjectIdentifier: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
-    private var armed: Set<UUID> = []
+    // each overlay's running start deadline; a pre-frame dialog drops it and its close arms a new one
+    private var deadlines: [UUID: UUID] = [:]
+    private var dialogCloses: [UUID: NSObjectProtocol] = [:]
     private var prepared = false
     private var bound = false
     private var deadlinePassed = false
@@ -346,13 +348,28 @@ final class RebasedHost {
     }
 
     private func armDeadline(_ id: UUID) {
-        guard armed.insert(id).inserted else { return }
+        guard deadlines[id] == nil else { return }
+        let token = UUID()
+        deadlines[id] = token
         after(Self.readyDeadline) { [weak self] in
-            guard let self else { return }
-            armed.remove(id)
+            guard let self, deadlines[id] == token else { return }
+            deadlines[id] = nil
             if jvm == .starting { deadlinePassed = true }
             guard let entry = entries[id], overlayState(entry) == .starting else { return }
             setState(.failed(Self.deadlineMessage), session: entry.session)
+        }
+    }
+
+    // The user may take any time to answer, so the 30 s start again only once the dialog closes.
+    private func pauseDeadline(_ id: UUID, until dialog: NSWindow) {
+        guard deadlines.removeValue(forKey: id) != nil, dialogCloses[id] == nil else { return }
+        dialogCloses[id] = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: dialog,
+                                                                  queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let token = self.dialogCloses.removeValue(forKey: id) else { return }
+                NotificationCenter.default.removeObserver(token)
+                if self.entries[id] != nil { self.armDeadline(id) }
+            }
         }
     }
 
@@ -422,6 +439,7 @@ final class RebasedHost {
             frames.attach(window, to: hostWindow(session))
         } else if kind == "dialog", let (id, waiting) = waiting(owner) {
             // IntelliJ can ask before any frame exists ("Trust project?"); it belongs to the slot being opened
+            pauseDeadline(id, until: window)
             if visibleSlots.contains(waiting.session) {
                 frames.attach(window, to: hostWindow(waiting.session))
             } else {
@@ -573,7 +591,8 @@ final class RebasedHost {
     // A queued dialog is still blocking the IDE (a modal "Trust project?" holds every project), so it is
     // never dropped: it comes up over the session now, rather than over whatever that session opens next.
     private func release(_ overlayID: UUID) {
-        armed.remove(overlayID)
+        deadlines[overlayID] = nil
+        if let token = dialogCloses.removeValue(forKey: overlayID) { NotificationCenter.default.removeObserver(token) }
         pendingDiffs[overlayID] = nil
         pendingMirrorOpens[overlayID] = nil
         let queued = pendingDialogs.removeValue(forKey: overlayID) ?? []

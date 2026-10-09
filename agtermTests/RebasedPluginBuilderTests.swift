@@ -7,7 +7,7 @@ final class RebasedPluginBuilderTests: XCTestCase {
         let app = try installedApp()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-bridge-contracts-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let built = try RebasedPluginBuilder(appBundle: app, stateDirectory: root).build(buildNumber: "fixture-contracts")
+        let built = try RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("rebased")).build(buildNumber: "fixture-contracts")
         let source = root.appendingPathComponent("BridgeContracts.java")
         try """
         package agterm.rebased;
@@ -74,6 +74,11 @@ final class RebasedPluginBuilderTests: XCTestCase {
             assert !Bridge.onDisk(file.toString(), utf8);
             Files.delete(file);
             assert !Bridge.onDisk(file.toString(), little);
+
+            events.clear();
+            System.getProperties().put(Bridge.PROPERTY, new Bridge());
+            assert "ok".equals(new Bridge().apply("hello", ""));
+            assert System.getProperties().get(Bridge.PROPERTY) == null : "hello must drop the bridge property";
             System.out.println("bridge contracts passed");
           }
         }
@@ -116,11 +121,22 @@ final class RebasedPluginBuilderTests: XCTestCase {
         return app
     }
 
+    func testBuildsIntoTheIdeaProductRoot() throws {
+        let app = try installedApp()
+        let state = FileManager.default.temporaryDirectory.appendingPathComponent("idea-builder-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: state) }
+        let ideRoot = state.appendingPathComponent("rebased/ide/IntelliJIdea2026.2")
+        let built = try RebasedPluginBuilder(appBundle: app, ideRoot: ideRoot).build(buildNumber: "fixture-idea")
+        XCTAssertEqual(built.jar, ideRoot.appendingPathComponent("plugins/agterm-bridge/lib/agterm-bridge.jar"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: built.jar.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: state.appendingPathComponent("rebased/plugins").path))
+    }
+
     func testBuildsAPluginReusesItAndRebuildsForAChangedKey() throws {
         let app = try installedApp()
         let state = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: state) }
-        let builder = RebasedPluginBuilder(appBundle: app, stateDirectory: state)
+        let builder = RebasedPluginBuilder(appBundle: app, ideRoot: state.appendingPathComponent("rebased"))
         let first = try builder.build(buildNumber: "fixture-build")
         XCTAssertTrue(first.rebuilt)
         let firstBytes = try Data(contentsOf: first.jar)
@@ -158,7 +174,7 @@ final class RebasedPluginBuilderTests: XCTestCase {
         let resources = try XCTUnwrap(Bundle.main.url(forResource: "rebased", withExtension: nil))
         let source = root.appendingPathComponent("source")
         try FileManager.default.copyItem(at: resources, to: source)
-        let builder = RebasedPluginBuilder(appBundle: app, stateDirectory: root.appendingPathComponent("state"), sourceDirectory: source)
+        let builder = RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("state/rebased"), sourceDirectory: source)
         let first = try builder.build(buildNumber: "fixture-build")
         let java = source.appendingPathComponent("src/agterm/rebased/Bridge.java")
         let text = try String(contentsOf: java, encoding: .utf8)

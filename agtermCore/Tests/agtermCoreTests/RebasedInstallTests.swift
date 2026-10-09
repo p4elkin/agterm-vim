@@ -12,12 +12,15 @@ struct RebasedInstallTests {
     private var product: String {
         """
         {
+          "name": "Rebased", "dataDirectoryName": "IdeaIC1.1", "productCode": "IC",
           "buildNumber": "262.10968.SNAPSHOT",
           "minRequiredJavaVersion": 25,
           "launch": [
             {"os": "Linux", "arch": "amd64", "mainClass": "wrong.Main",
+             "vmOptionsFilePath": "../bin/wrong.vmoptions",
              "bootClassPathJarNames": ["wrong.jar"], "additionalJvmArguments": ["-Dwrong=true"]},
             {"os": "macOS", "arch": "aarch64", "mainClass": "com.intellij.idea.Main",
+             "vmOptionsFilePath": "../bin/rebased.vmoptions",
              "bootClassPathJarNames": ["platform-loader.jar", "util.jar"],
              "additionalJvmArguments": ["-Didea.home.path=$APP_PACKAGE/Contents", "-Didea.config.path=standalone"],
              "customCommands": [{"commands": ["inspect"], "additionalJvmArguments": ["-Dwrong=custom"]}]}
@@ -26,28 +29,60 @@ struct RebasedInstallTests {
         """
     }
 
-    private func install(product: String? = nil, release: String = "JAVA_VERSION=\"25.0.4\"\n") throws -> RebasedInstall {
+    private func install(product: String? = nil, release: String = "JAVA_VERSION=\"25.0.4\"\n",
+                         agtermVmOptions: String? = nil) throws -> RebasedInstall {
         try RebasedInstall(bundlePath: bundle, stateDirectory: state,
-                           productInfo: .init(path: productPath, contents: product ?? self.product),
+                           product: RebasedProduct(bundlePath: bundle, productInfo: .init(path: productPath, contents: product ?? self.product),
+                                                   architecture: "aarch64"),
                            vmOptions: .init(path: optionsPath, contents: "# heap\n\n-Xmx2048m\n  # comment\n-Dfixture=$APP_PACKAGE/Contents\n-Dhome=$USER_HOME/x\n"),
-                           runtimeRelease: .init(path: releasePath, contents: release), architecture: "aarch64",
+                           agtermVmOptions: agtermVmOptions, runtimeRelease: .init(path: releasePath, contents: release),
                            homeDirectory: "/Users/tester")
     }
 
     @Test func optionsFollowLauncherOrderAndOverrideStandalonePaths() throws {
-        let install = try install()
+        let install = try install(agtermVmOptions: "# tuning\n-Xmx1g\n-XX:ErrorFile=standalone\n-XX:HeapDumpPath=standalone\n"
+                                  + "-Didea.config.path=user\n-Djava.class.path=user\n-Dide.native.launcher=false\n"
+                                  + "-DjbScreenMenuBar.enabled=true\n-Dapple.laf.useScreenMenuBar=true\n")
         #expect(install.buildNumber == "262.10968.SNAPSHOT")
         #expect(install.mainClass == "com.intellij.idea.Main")
         #expect(install.jvmOptions == [
-            "-XX:ErrorFile=\(state)/rebased/log/java_error_in_agterm_%p.log",
-            "-XX:HeapDumpPath=\(state)/rebased/log/java_error_in_agterm.hprof",
             "-Xmx2048m", "-Dfixture=\(bundle)/Contents", "-Dhome=/Users/tester/x",
             "-Didea.home.path=\(bundle)/Contents", "-Didea.config.path=standalone",
+            "-Xmx1g", "-XX:ErrorFile=standalone", "-XX:HeapDumpPath=standalone",
+            "-Didea.config.path=user", "-Djava.class.path=user", "-Dide.native.launcher=false",
+            "-DjbScreenMenuBar.enabled=true", "-Dapple.laf.useScreenMenuBar=true",
+            "-XX:ErrorFile=\(state)/rebased/log/java_error_in_agterm_%p.log",
+            "-XX:HeapDumpPath=\(state)/rebased/log/java_error_in_agterm.hprof",
             "-Djava.class.path=\(bundle)/Contents/lib/platform-loader.jar:\(bundle)/Contents/lib/util.jar",
-            "-Dide.native.launcher=true", "-Dsun.java.command=com.intellij.idea.Main",
             "-Didea.config.path=\(state)/rebased/config", "-Didea.system.path=\(state)/rebased/system",
-            "-Didea.plugins.path=\(state)/rebased/plugins", "-Didea.log.path=\(state)/rebased/log"
+            "-Didea.plugins.path=\(state)/rebased/plugins", "-Didea.log.path=\(state)/rebased/log",
+            "-Dide.native.launcher=true", "-Dsun.java.command=com.intellij.idea.Main",
+            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"
         ])
+    }
+
+    @Test func ideaUsesItsLaunchOptionsPathAndProductRoot() throws {
+        let text = product.replacingOccurrences(of: "\"Rebased\"", with: "\"IntelliJ IDEA\"")
+            .replacingOccurrences(of: "IdeaIC1.1", with: "IntelliJIdea2026.2")
+            .replacingOccurrences(of: "../bin/rebased.vmoptions", with: "../bin/idea.vmoptions")
+        let metadata = try RebasedProduct(bundlePath: bundle, productInfo: .init(path: productPath, contents: text), architecture: "aarch64")
+        #expect(metadata.name == "IntelliJ IDEA")
+        #expect(metadata.vmOptionsPath == "\(bundle)/Contents/bin/idea.vmoptions")
+        #expect(metadata.ideRoot(stateDirectory: URL(fileURLWithPath: state)).path == "\(state)/rebased/ide/IntelliJIdea2026.2")
+        #expect(try install(product: text).jvmOptions.contains("-Didea.system.path=\(state)/rebased/ide/IntelliJIdea2026.2/system"))
+    }
+
+    @Test func rebasedNameKeepsLegacyRootRegardlessOfProductCode() throws {
+        let text = product.replacingOccurrences(of: "\"IC\"", with: "\"IU\"")
+        let metadata = try RebasedProduct(bundlePath: bundle, productInfo: .init(path: productPath, contents: text), architecture: "aarch64")
+        #expect(metadata.ideRoot(stateDirectory: URL(fileURLWithPath: state)).path == "\(state)/rebased")
+    }
+
+    @Test(arguments: ["", ".", "..", "one/two", "/absolute"])
+    func invalidDataDirectoryNameIsRefused(name: String) {
+        #expect(throws: RebasedInstall.InstallError.invalidFile(productPath, "dataDirectoryName must be a single path component")) {
+            try install(product: product.replacingOccurrences(of: "IdeaIC1.1", with: name))
+        }
     }
 
     @Test func requiredJavaVersionErrorNamesBothVersions() {

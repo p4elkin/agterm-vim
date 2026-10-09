@@ -16,8 +16,8 @@ paths:
 
 ## Rebased in an overlay (fork only)
 
-`session overlay open --rebased` shows Rebased, an IntelliJ-platform git client, in the session's overlay
-slot for the repository holding the session's working directory.
+`session overlay open --rebased` shows Rebased or IntelliJ IDEA in the session's overlay slot for the
+repository holding the session's working directory.
 The IDE runs inside agterm's own process.
 A window of another process can never be a child window, so two-process docking floats over every app or
 drops behind agterm; that route was measured failing and is not to be re-proposed.
@@ -25,24 +25,58 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 
 ### The JVM
 
-- `RebasedInstall` (core) builds the JVM options from the bundle's `product-info.json` and
-  `rebased.vmoptions`. IDE config, system, plugins and logs live under `<stateDir>/rebased/`, apart from a
-  normal Rebased install.
+- `RebasedProduct` (core) decodes `product-info.json` before the vmoptions file is read.
+  Its macOS launch entry names that file relative to `Contents/MacOS`.
+  `dataDirectoryName` must be a single non-empty path component, other than `.` or `..`.
+- A product named exactly `Rebased` keeps `<stateDir>/rebased/{config,system,plugins,log}`.
+  Other products use `<stateDir>/rebased/ide/<dataDirectoryName>/`, so a versioned name gets a fresh root.
+  Lock and mirrors stay under `rebased/`.
+- `RebasedInstall` builds options in order: bundle vmoptions, launch entry's `additionalJvmArguments`,
+  the product root's optional `config/idea.vmoptions`, then host-owned options.
+  The last group owns error/heap-dump paths, class path, the four `idea.*.path` properties,
+  native-launcher properties and both screen-menu flags; user tuning cannot redirect isolated state.
+  Repeated options are preserved, including `--add-opens`.
+- Six IDE-root consumers: `RebasedInstall`, `JNIRebasedRuntime.prepare`, `RebasedPluginBuilder`,
+  `RebasedMirrorCleanup` (legacy Rebased `system` only), `RebasedSeed`, and the agterm vmoptions read in `prepare`.
 - `JNIRebasedRuntime` `dlopen`s the bundle's JBR `libjvm`, creates the JVM on an 8 MB thread and runs
   IntelliJ's main class. JBR finds an `NSApplication` already running and takes its embedded path.
-  It also adds `-DjbScreenMenuBar.enabled=false -Dapple.laf.useScreenMenuBar=false` (see Keys and menu).
+  `RebasedInstall` pins `-DjbScreenMenuBar.enabled=false -Dapple.laf.useScreenMenuBar=false` (see Keys and menu).
 - The JVM is never destroyed: `DestroyJavaVM` cannot be undone, and the JVM lives until agterm exits.
 - Release ships `allow-jit` and `disable-library-validation` for the differently signed `libjvm`; `ci.md`
   owns the entitlement pin.
 
+### First IDEA start
+
+- `RebasedSeed` runs before the plugin build, under `RebasedStateLock`, only for names starting with
+  `IntelliJ IDEA` and only while the product root is absent.
+  Source: `~/Library/Application Support/JetBrains/<dataDirectoryName>/`.
+- Config allowlist: `options`, `keymaps`, `codestyles`, `templates`, `inspection`, `ssl`, `idea.key`,
+  `early-access-registry.txt`, `tbe`.
+  Plugin allowlist: `IdeaVIM`, `tbe-intellij-plugin`, `claude-remarks`.
+  Symbolic links, at the top or inside a copied directory, are dropped from the copy.
+  `c.kdbx` and `c.pwd` are excluded; licence and IDE Services files are copied without reading or logging their contents.
+- The seed writes `config/idea.vmoptions`: standalone `idea.vmoptions` when present, followed by
+  `-Xms128m`, `-Xmx1g`, `-XX:ReservedCodeCacheSize=240m`, and `idea.load.plugins.id` allowing
+  `com.intellij.java`, `org.jetbrains.idea.maven`, `Git4Idea`, `IdeaVIM`, `org.jetbrains.toolbox-enterprise-client`,
+  `agterm.rebased.bridge`, `dev.sasha.clauderemarks`, `org.intellij.plugins.markdown`.
+  A missing source writes only this vmoptions file.
+  Existing roots and edited options are left alone; deleting the root repeats the seed.
+- The whole root is staged in `rebased/ide/.<dataDirectoryName>-seed-<uuid>` and renamed into place.
+  Leftover staging entries for that product are removed before a new seed.
+  A failed copy removes staging and throws from `prepare`, leaving the next start able to retry.
+
 ### The bridge plugin
 
 - `agterm/Resources/rebased/` is compiled at first start with the bundle's own `javac` (JBR ships no `jar`
-  tool, so `/usr/bin/zip -r -X` packs it) into `<stateDir>/rebased/plugins/agterm-bridge`, keyed by build
+  tool, so `/usr/bin/zip -r -X` packs it) into the product root's `plugins/agterm-bridge`, keyed by build
   number and source digest.
 - The plugin publishes a `BiFunction` under the system property `agterm.rebased.bridge`. The host calls it
   for `open`, `hide`, `show`, `diff` and `saveAll`, and registers the native `hostEvent` on its class, then
   calls `hello`; the plugin queues events until then.
+  JNI keeps a checked strong global reference from its first successful lookup, published under `state_lock`,
+  for the JVM lifetime, including event-registration retries.
+  `hello` removes the system property before flushing queued events, so IDEA sees only string properties.
+  JNI never holds `state_lock` while calling `hello`.
 - `diff <base>\t<head>\t<0|1>\t<dir>` runs `GitChangeUtils.getDiff` (after `GitHistoryUtils.getMergeBase`
   for `1`) on a pooled thread and shows `VcsDiffUtil.showChangesDialog`, a non-modal dialog of the project
   frame; a git error shows a modal error dialog. `RangeDiff` holds the Git plugin calls so Bridge loads
@@ -63,6 +97,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - `RebasedHost` holds the JVM state (`notStarted|starting|running|failed`) and each overlay's state.
   Each open gets its own 30 s deadline, armed after the plugin build and before `launch`, which can block
   without bound. A late `ready` serves the next open.
+  A pre-frame dialog ("Trust project?") stops that overlay's deadline; its close starts a fresh 30 s.
 - One project frame is shown in one place. A second session on the same repository takes it; closing that
   session or hiding its slot hands it to the newest other holder whose slot is on screen.
 - A slot counts as hidden until its view reports it visible. The palette, dashboard, pick and zoom hide the
@@ -139,9 +174,10 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   config reopens is a mirror being deleted, and before the deadlines are armed, so they never count it.
   It is skipped while any row fetches and when the age is 0; its error is logged and never fails the start.
 - A mirror's IDE entries go before its clone, matched by `RebasedMirrorCleanup.javaHash` of the project path,
-  only under an allowlist in `system/`: `projects`, `editor`, `compiler`, `vcs-log`, `vcs-users` and
+  only under an allowlist in Rebased's legacy `rebased/system/`: `projects`, `editor`, `compiler`, `vcs-log`, `vcs-users` and
   `frameworks/detection`. Shared directories such as `index` and `caches` are never opened.
   IDE config is left alone: editing it while the IDE runs is not safe.
+  IDEA's per-product caches are outside this cleanup and may retain entries for removed mirrors.
 - `agtermctl rebased mirror list` and `rebased mirror prune [--older-than DAYS] [--dry-run]` (see
   [[control-api]]). A real prune takes the state lock only for its run (`RebasedStateLock.withLockIfFree`),
   and is refused while another instance holds it; a list and a dry run never take it.
@@ -149,12 +185,17 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - The headless origin forwards `--rebased` to the Mac presenting the row (`ForwardPolicy`), `--cwd` unchanged.
 - `site/commands.html` does not list it: fork-only commands stay off the upstream site, as for `zmx.new`.
 - `rebasedAppPath` (see [[settings]]) names the bundle, default `/Applications/Rebased.app`.
+  Settings > General > IDE app can name `/Applications/IntelliJ IDEA.app`; changes apply after restarting agterm.
+  A running JVM keeps its product.
 
 ### Risks accepted
 
 - Shared fate: an IDE crash is a terminal crash.
-- RSS 400–830 MB with a project open.
+- Rebased RSS 400–830 MB with a project open; IDEA's Maven spike measured about 1.1–1.3 GB.
 - IntelliJ asks "Trust project?" before the first open of each repository; agterm does not auto-trust.
+  An overlay reopened while that dialog is still up gets an unpaused 30 s; only a new dialog pauses a deadline.
+- IDEA's `idea.paths.selector` comes from the bundle, so Help ▸ Edit Custom Properties and Edit Custom VM
+  Options open the standalone IDEA config directory, not the product root.
 - Another instance holds the state lock while its IDE runs, and for the length of its prune or refresh; an IDE
   start or a refresh in that time fails, and closing the overlay and opening it again recovers.
 - An open while the host is unreachable does not freshen the mirror's marker; at worst a prune removes it and

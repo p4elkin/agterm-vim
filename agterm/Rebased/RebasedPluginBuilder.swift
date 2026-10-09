@@ -22,7 +22,7 @@ struct RebasedPluginBuilder: Sendable {
     }
 
     let appBundle: URL
-    let stateDirectory: URL
+    let ideRoot: URL
     var sourceDirectory: URL?
 
     func build(buildNumber: String) throws -> BuildResult {
@@ -38,7 +38,7 @@ struct RebasedPluginBuilder: Sendable {
             digest.update(data: data)
         }
         let key = RebasedInstall.pluginCacheKey(buildNumber: buildNumber, sourceDigest: digest.finalize().map { String(format: "%02x", $0) }.joined())
-        let plugins = stateDirectory.appendingPathComponent("rebased/plugins")
+        let plugins = ideRoot.appendingPathComponent("plugins")
         let plugin = plugins.appendingPathComponent("agterm-bridge")
         let jar = plugin.appendingPathComponent("lib/agterm-bridge.jar")
         let stamp = plugin.appendingPathComponent(".build-key")

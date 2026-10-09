@@ -813,6 +813,19 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
 
+    func testAPreFrameDialogPausesTheDeadlineUntilItCloses() {
+        open(first)
+        host.handle(event: "ready", payload: "")
+        let trust = window("trust", number: 9)
+        host.handle(event: "windowOpened", payload: "9\tdialog\t")
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(first), .starting)
+
+        trust.close()
+        fire(RebasedHost.readyDeadline)
+        XCTAssertEqual(state(first), .failed(RebasedHost.deadlineMessage))
+    }
+
     func testADialogOfAClosedProjectDoesNotRestoreTheSessionsNewProject() {
         startAndShow(first)
         store.closeOverlay(first.id)
@@ -1018,7 +1031,7 @@ final class RebasedHostTests: XCTestCase {
         _ = window("trust", number: 9)
         host.handle(event: "windowOpened", payload: "9\tdialog\t")
         fire(RebasedHost.readyDeadline)
-        XCTAssertEqual(state(first), .failed(RebasedHost.deadlineMessage))
+        XCTAssertEqual(state(first), .starting)
         host.setSlotVisible(true, session: first.id)
         XCTAssertEqual(frames.log.last, "attach trust to host1")
     }
