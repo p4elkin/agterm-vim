@@ -33,3 +33,7 @@ Not a defect. Nothing in the merge broke, and both paths work today.
 The 2026-09-25 merge widened it again. An upstream attach now also mirrors the origin's `session.context`
 (#634), follows the origin's split layout (#636), and takes an explicit zmx lead with a cover on the
 following pane (#635). None of it reaches a mirror-job row, whose pane is a plain mosh `session new --command`.
+
+The 2026-10-10 merge widened it again. Upstream #710 (`f98bd464`) added File ▸ Attach Remote… (`cmd+shift+r`,
+`attach_remote`, a palette row), fed by a host list in `~/.config/agterm/remotes.conf` that
+`RemotesWatcher.swift` reloads. Upstream now has its own list of the machines to attach from.

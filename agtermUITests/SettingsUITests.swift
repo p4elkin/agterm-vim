@@ -80,14 +80,23 @@ final class SettingsUITests: XCTestCase {
                       "the default 'On first key' should remove statusReset from settings.json")
     }
 
+    // a grouped Form scrolls, so an overflowing tab still reports every control as hittable, and its last
+    // text can sit inside the window while the section's bottom inset does not. Scrolling is the only
+    // direct measure: content that fits does not move.
+    private func assertGeneralTabFits(control: String, file: StaticString = #filePath, line: UInt = #line) {
+        let window = app.windows.containing(.any, identifier: control).firstMatch
+        let hint = app.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@", "Also loads")).firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "the General tab's closing hint should exist", file: file, line: line)
+        XCTAssertLessThanOrEqual(hint.frame.maxY, window.frame.maxY, "the closing hint should be on screen", file: file, line: line)
+        let before = hint.frame.minY
+        hint.scroll(byDeltaX: 0, deltaY: -80)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(hint.frame.minY, before, accuracy: 0.5, "the General tab should not scroll", file: file, line: line)
+    }
+
     func testFlaggedViewLayoutPickerPersists() throws {
         let picker = settingsControl(tab: "General", control: "settings-flagged-view-layout")
-        // the tab's last line must sit inside the fixed-size window: a grouped Form scrolls, so an
-        // overflowing tab still reports every control as hittable.
-        let window = app.windows.containing(.any, identifier: "settings-flagged-view-layout").firstMatch
-        let lastLine = app.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@", "Also loads")).firstMatch
-        XCTAssertTrue(lastLine.waitForExistence(timeout: 5), "the General tab's closing hint should exist")
-        XCTAssertLessThanOrEqual(lastLine.frame.maxY, window.frame.maxY, "the General tab should fit without scrolling")
+        assertGeneralTabFits(control: "settings-flagged-view-layout")
 
         picker.click()
         let tree = app.menuItems["Workspace tree"]
@@ -95,6 +104,13 @@ final class SettingsUITests: XCTestCase {
         tree.click()
         XCTAssertTrue(poll { self.settingsValue("flaggedViewLayout") == "tree" },
                       "selecting 'Workspace tree' should persist flaggedViewLayout=tree to settings.json")
+
+        picker.click()
+        let plain = app.menuItems["Flat list, names only"]
+        XCTAssertTrue(plain.waitForExistence(timeout: 5), "the layout picker should offer 'Flat list, names only'")
+        plain.click()
+        XCTAssertTrue(poll { self.settingsValue("flaggedViewLayout") == "plain" },
+                      "selecting 'Flat list, names only' should persist flaggedViewLayout=plain to settings.json")
 
         picker.click()
         let flat = app.menuItems["Flat list"]
@@ -106,10 +122,7 @@ final class SettingsUITests: XCTestCase {
 
     func testLinkOpenModePickerPersists() throws {
         let picker = settingsControl(tab: "General", control: "settings-link-open-mode")
-        let window = app.windows.containing(.any, identifier: "settings-link-open-mode").firstMatch
-        let lastLine = app.staticTexts.matching(NSPredicate(format: "value BEGINSWITH %@", "Also loads")).firstMatch
-        XCTAssertTrue(lastLine.waitForExistence(timeout: 5), "the General tab's closing hint should exist")
-        XCTAssertLessThanOrEqual(lastLine.frame.maxY, window.frame.maxY, "the General tab should fit without scrolling")
+        assertGeneralTabFits(control: "settings-link-open-mode")
 
         picker.click()
         let overlay = app.menuItems["Session overlay"]

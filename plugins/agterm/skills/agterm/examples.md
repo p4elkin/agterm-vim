@@ -529,8 +529,8 @@ agtermctl tree --json | jq '.result.tree.quickVisible'  # is it open right now?
 ## Flag a working set and view just the flagged sessions
 
 Flag a few sessions across workspaces, then flip the sidebar to the flagged view: one flat list with each
-row labeled `session : workspace`, or, under the tree layout, the flagged sessions nested under their
-workspace rows. The flag is durable (persisted per session); `sidebar mode` is per-window; the layout is
+row labeled `session : workspace` (or by session name alone under the `plain` layout), or, under the tree
+layout, the flagged sessions nested under their workspace rows. The flag is durable (persisted per session); `sidebar mode` is per-window; the layout is
 app-wide.
 
 ```bash
@@ -538,6 +538,7 @@ agtermctl session flag on --target "$AGTERM_SESSION_ID"   # flag this session
 agtermctl session flag on --target a1b2                   # flag another (any workspace)
 agtermctl sidebar mode flagged                            # show only the flagged sessions
 agtermctl sidebar flagged-layout tree                     # nest them under workspace rows, in every window
+agtermctl sidebar flagged-layout plain                    # or one flat list of session names, no workspace suffix
 agtermctl session go --to next                            # in flagged mode, nav steps the flagged set only
 agtermctl sidebar mode tree                               # back to the full tree
 agtermctl session flag clear                              # unflag everything in the window
@@ -775,8 +776,9 @@ agtermctl events --json --kind status |
   head -n 1
 ```
 
-The pipeline ends after the match. A transport or cursor failure makes `agtermctl events` exit
-non-zero; preserve pipeline status in automation that must distinguish a match from a failed stream.
+The pipeline ends after the match. A cursor failure, or a transport failure the CLI does not retry,
+makes `agtermctl events` exit non-zero; preserve pipeline status in automation that must distinguish a
+match from a failed stream.
 
 ## Relay accepted notifications
 
@@ -1086,7 +1088,8 @@ agtermctl session hud "gathering options…" --spinner --position bottom-right \
 ```
 
 The stable pane ID wins when it resolves. `--pane` is the fallback for older or unknown IDs. The selected
-pane supplies the size, 80% cap, anchor, and 10% edge margin. A hidden pane keeps its HUD and shows it again
+pane supplies the size, 80% cap, anchor, and 10% edge margin; `--sticky` drops the margin and, off center,
+lifts the WIDTH cap to 100. A hidden pane keeps its HUD and shows it again
 when restored; closing the pane closes its HUD.
 
 `session hud update` repaints in place, no re-spawn and no blink, and it replaces the whole spec: `--detail`,

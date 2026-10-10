@@ -35,6 +35,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     /// the `CustomCommandRunner.rebuild()` merge line like `normalMode` and `overlayRedirectToggle`.
     case newSessionInWorkspace = "new_session_in_workspace"
     case rebasedToggle = "rebased_toggle"
+    case attachRemote = "attach_remote"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
     /// `map`s one. Every action that ships with a key returns it here, including the six arrow-bound ones —
@@ -66,6 +67,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
         case .customCommandPalette: return Chord(mods: [.control, .shift], key: "o")
         case .showAttention: return Chord(mods: [.control, .shift], key: "i")
         case .dashboard: return Chord(mods: [.command, .shift], key: "g")
+        case .attachRemote: return Chord(mods: [.command, .shift], key: "r")
         case .focusLeftPane: return Chord(mods: [.command, .option], key: "left")
         case .focusRightPane: return Chord(mods: [.command, .option], key: "right")
         case .previousSession: return Chord(mods: [.command, .option], key: "up")

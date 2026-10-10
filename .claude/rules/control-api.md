@@ -41,8 +41,10 @@ paths:
 - Agent Hooks installation copies generic, Claude, Codex, Pi, OpenCode, and shell assets under
   `~/.config/agterm/agent-status`, baking the bundled CLI. Marker merges are idempotent and preserve
   unrelated config; unreadable config is never treated as absent.
-- Claude maps prompt/tool work to `active --blink`, Stop to `completed --auto-reset`, and permission
-  prompt to blocked. PostToolUse clears a prior block because there is no answer event.
+- Claude maps prompt/tool work to `active --blink`, Stop to `completed --auto-reset`, and a permission
+  request to blocked. `PermissionRequest` fires as the prompt opens.
+  `Notification[permission_prompt]` waits about six idle seconds and stays for the sandboxed network
+  prompt, which `PermissionRequest` skips. PostToolUse clears a prior block because there is no answer event.
 - Codex maps SessionStart idle; prompt/pre/post tool active; Stop ending `?` blocked, otherwise completed.
   `PermissionRequest` is insufficient under Auto Review, so a pane watcher reads `session.text` and blocks
   only for visible approval/question UI. Remove stale issue #193 `codex-notify.sh` values, not comments or
@@ -90,6 +92,10 @@ paths:
   Support. CLI `--socket` overrides. Explicit short paths avoid Unix `sun_path` near 104 bytes. Use 0600.
 - Each connection sets `SO_NOSIGPIPE` and a 5-second receive timeout. Close on non-EINTR read failure,
   including EAGAIN. Start is idempotent and logs bind failure without blocking launch.
+- `agtermctl events` branches on the connect errno: once it holds a cursor it retries `ECONNREFUSED`
+  with that cursor, bounded by `EventStreamState.retryBudget`, and treats every other failure as fatal.
+  A change to what a refused or absent server returns must keep that path in step.
+  `reference.md` owns the user contract.
 - `ControlServer.init` takes an exclusive non-blocking `flock` on `<socketPath>.lock`, and start refuses
   to bind while another process holds it. Ownership is decided at INIT, not at start: the launch window's
   surfaces are built during the initial render pass and snapshot `AGTERM_SOCKET` into the pty environment,
@@ -188,11 +194,22 @@ The `rebased.mirror` family is the exception: it is in the bundled skill, as `--
 stays out of `site/commands.html` and `README.md`.
 The synchronization contract below applies to upstream commands.
 
-`terminfo install` is a CLI-only command with no protocol counterpart, the one exemption from the
+`terminfo install` is a CLI-only command with no protocol counterpart, one of the two exemptions from the
 protocol/dispatcher contract: it runs `infocmp` and `ssh` locally and never opens the socket, so there is
 nothing for the app to dispatch or read back. `TerminfoInstall` in `agtermCore` owns the argv and the
 pipeline; the CLI owns the typed option surface, deliberately narrower than ssh's so `-G`, `-N`, `-n` and
 `-f` cannot fake a success or hang the install.
+
+`clipboard set` is the other. It prints an OSC 52 write into the caller's own pane through
+`zmx print <ZMX_SESSION>`, run from the `zmx` beside the CLI, and never opens the socket. The socket still
+never writes a clipboard: the write arrives in the pane's bytes, so every attached terminal applies its own
+`clipboard-write` policy, and a session attached from another Mac gets the text on the Mac showing it.
+`TerminalClipboard` in `agtermCore` owns the sequence, the size bound and the daemon resolution.
+It takes no target: the daemon is the one zmx named in the pane's environment, so scratch, quick and
+overlay terminals, which have none, are refused, and a name `ZmxSupport.isDaemonName` rejects is too.
+`zmx print` reads no reply and exits 0 on a dropped connection, so exit 0 confirms neither receipt nor a
+pasteboard write. It also injects between two 4096-byte pty reads, where the program's own escape sequence
+may be unfinished: the OSC 52 still parses whole, and the interrupted sequence is cut short.
 
 `debug.appearance` is a private `Command` case, absent from the list above, used only by `AppearanceFlipUITests`.
 It accepts light/dark, sets `NSApp.appearance`, posts `.agtermSystemAppearanceChanged`, echoes the effective
@@ -495,7 +512,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   it and `passiveClick` forwards it to libghostty, whose own resolution reaches `openLink`. It grabs no
   focus. A HUD has no tracking area, so the monitor also reports the pointer to the panel while ⌘ is held
   over it and takes it away when ⌘ is released or the pointer leaves, which is what raises and drops the
-  pointing hand. It claims nothing under a terminal ask drawn over the panel.
+  pointing hand. It claims nothing under a terminal ask drawn over the panel, nor under chrome that marks
+  itself with `HudClickCover`, which the search bar does.
   Keying the refocus on the raw slot instead yanks focus out of a search field or a rename on every
   close. Never spell it inline; two spellings will disagree. `OverlayPanelStyle` resolves
   every per-occupant parameter, so the modifier chain stays constant and only values flip. `overlayPanel`'s
@@ -712,14 +730,30 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   The pane hosts publish those bounds in the session detail coordinate space. Never derive them from
   `splitRatio` or the terminal surface frame: the ratio is observation-ignored and the surface moves on zoom.
 - `--size-percent` reaches the WIDTH alone, on open and on `overlay.resize`, and the height takes no caller
-  override at all. A plain message wraps at `HudLayout.maxColumns`, so a resize changes no rows. A markdown
-  message wraps at the panel (`HudLayout.wrapColumns` when measured, `textColumns` when painted), and its
-  height is measured only at open and update: narrowed afterwards it can outgrow that height. Every HUD WIDTH passes `HudLayout.clampSizePercent` (10...80), the caller's included, so
-  `--full`'s refusal and the never-cover invariant cannot disagree. The height is capped at the same 80 but
-  takes NO minimum floor: the box already carries `verticalPadding`, and flooring it is the square again.
-  The 80 cap is also what makes an edge anchor always fit its margin on EITHER axis, each axis' own extent
-  being what decides how far the panel travels there; the centering fallback in `OverlayPanelStyle`'s two
-  offsets is defensive only.
+  override. Every HUD width passes `HudLayout.clampSizePercent(_:for:)`: 10...80, or up to 100 for a `sticky`
+  spec off center, which owes no edge margin. The height is capped at 80 and has NO minimum floor. A plain
+  message wraps at `HudLayout.maxColumns`; markdown wraps there while the app measures the width and at the
+  full text width once a caller set one, by `--size-percent` or `overlay.resize`.
+- The height is held in POINTS, capped once in `HudLayout.panelSize`; that one value drives the frame, the
+  paint grid's rows and the derived `heightPercent`. Nil only over an unmeasured pane, where the percent
+  path still answers.
+- `ControlServer.refreshHud` is the one remeasure path, for the deck's geometry trigger, `overlay.resize`
+  and the panel surface's `onGridChange` (a size push or `CELL_SIZE`). It is not an update: spec, pane
+  scope, slot generation and the auto-hide deadline stay, and a failed write puts the size back. The deck
+  trigger observes the bounds the panel is laid out in, never the panel's own size.
+- Measure and paint from `Session.effectiveHudSpec`, never the stored spec: it carries the width
+  `overlay.resize` forced (`hudResizedWidthPercent`, cleared by the store's open and update), without
+  which a geometry change undoes the resize.
+- A session-wide HUD is measured from `hudPaneFrames.detail`, never the terminal views: zoom and the
+  dashboard move those to another host. A live panel is measured with its own surface's cell
+  (`HudPanelSurface`), matched by its pinned creation size, never `currentFontSize`, which is nil under
+  `window-inherit-font-size = false`.
+- The panel's surface gets `ControlServer.windowPadding` plus `window-padding-balance` in its per-surface
+  config; libghostty keeps creation-time padding without the balance key, and `ghostty_config_get` cannot
+  read the user's. That overlay loads AFTER `ghostty_config_load_recursive_files`, or a `config-file`
+  include outranks it.
+- `sticky` zeroes `OverlayPanelStyle.edgeMargin`; `center` ignores it. `frame` false zeroes the radius,
+  the border and the box's blank rows while `framed` stays true, since that flag is also the opaque backing.
 - `HudPosition` is the nine anchors of a 3x3 grid, spelled exactly as `BackgroundWatermark.Position` so
   `--position` means one thing across `session.background` and `session.hud`. The bare `top`/`bottom` it
   shipped with stay ACCEPTED as aliases for the middle column, and `HudPosition.parse` is the one entry
@@ -747,7 +781,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `HudLayout.foregroundSGR` owns the encoding, host-free, and resolves a malformed hex to the
   `noTextColor` sentinel rather than a partial run; the helper converts nothing and wraps only digits and
   semicolons, so a malformed header cannot emit an arbitrary escape into the pane.
-- Read back `ControlSessionNode.hud` with BOTH shares, `sizePercent` and `heightPercent`, `overlay` false
+- Read back `ControlSessionNode.hud` with BOTH shares, `sizePercent` and `heightPercent`, `sticky` and
+  `frame` (always present, absent keys decoding to false and true), `overlay` false
   and `overlaySizePercent` omitted beside it, plus `textColor` (omitted when the panel keeps the terminal
   foreground, and tracking the LATEST update unlike `backgroundColor`);
   `position` and `spinner` always report the effective value, defaults included — `spinner` names the STYLE
@@ -767,15 +802,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ⌘W, session/workspace/window teardown — so a HUD closed before its surface realized cannot strand the
   message text in `/tmp`. An update carries the OPEN's background color forward, the factory reading it once
   at creation, so `hud.backgroundColor` never names a color the panel will not paint.
-- The header's grid is `HudLayout.paintGrid` — the PANEL's own cells (`panelGrid`: the effective percent of
-  the pane, less `window-padding-*`, over the measured cell), NOT `HudLayout.box`, which only decides the
-  size. Both now measure the same message, so the two usually agree, but the panel is whole CELLS of a
-  rounded percent and the box is not — centering on the box can still strand the message by a column or a
-  row, and a `--size-percent` width detaches them outright. `box` remains the fallback when nothing is
-  measured. Every path that changes the panel's size — open, update, `overlay.resize` — must rewrite the
-  header through `ControlServer.writeHudBody`, which reads the size the STORE resolved. The deck's own size
-  change is the fourth: it calls `Session.onHudGeometryChange`, which `ControlServer.watchHudGeometry`
-  installs at open and coalesces into one rewrite per main-actor turn.
+- The header's grid is `HudLayout.paintGrid`, the panel's laid-out cells, NOT `HudLayout.box`, which only
+  decides the size; `box` is the fallback when nothing is measured. Every path that changes the panel's size
+  rewrites the header through `ControlServer.writeHudBody`, which reads the size the STORE resolved.
 - `--markdown` (`HudSpec.markdown`) renders standard markdown through Foundation's `.full` parser in
   `HudMarkdown`, with no dialect of its own: a single LF inside a paragraph is a soft break, lists always
   render tight because the parser does not say which a list was, and trailing all-empty table rows and an
@@ -787,7 +816,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   A link renders as its label. A target `LinkPolicy` accepts is underlined and wrapped in OSC 8, which
   is why `Run` carries `link` through wrapping and clipping: every row reopens its own hyperlink.
   A table renders framed in box-drawing borders with a header rule only when the header has cells, and a
-  thematic break spans the widest other row. Text wraps at the panel's text width, `maxColumns` at most, table rows stay intact, and all rows are clipped to the grid on
+  thematic break spans the widest other row. Text wraps as the width bullet above says, table rows stay intact, and all rows are clipped to the grid on
   both axes in `renderedBody`, so the painter never measures them: the header's seventh field, `blockwidth`, is 0 for plain mode and the
   painted width of the finished rows otherwise, and the helper prints those rows verbatim at one shared
   offset. The painter draws the spinner glyph on the first row; the renderer indents the others by the gutter.
@@ -1108,10 +1137,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   exception set — reported independently of the flag, like `focused` beside `workspaceFilter` — and
   `parkedCount` on the workspace node, omitted when zero, counting parked rows drawn or hidden alike so
   nothing disappears without trace.
-- `sidebar.flagged-layout flat|tree|toggle` is APP-WIDE: no `activeStore` guard and no window target, since it
+- `sidebar.flagged-layout flat|plain|tree|toggle` is APP-WIDE: no `activeStore` guard and no window target, since it
   writes the `FlaggedViewLayout` setting through `SettingsModel.setFlaggedViewLayout`, the seam the Settings
-  picker uses, whose delta guard skips an unchanged value. `toggle` resolves from the effective setting and
-  the response echoes the resulting layout in `result.text`. Read back as top-level `sidebarFlaggedLayout`
+  picker uses, whose delta guard skips an unchanged value. `toggle` resolves from the effective setting, leaving `tree` for `flat` and
+  either flat form for `tree`, and the response echoes the resulting layout in `result.text`. Read back as top-level `sidebarFlaggedLayout`
   on EVERY tree response, ordinary-tree windows included: `AppStore.controlTree` takes it as a parameter and
   `ControlServer.buildTree` passes the `GhosttyApp` mirror the sidebars render from. The legacy
   `controlTree(foreground:)` overload reports nil, meaning the host supplied none. An outside
@@ -1158,6 +1187,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   absent from `window.list` because it describes the app rather than a window and duplicating it there
   buys nothing — NOT because a cache would stale it, which cannot happen to a constant. A caller with no
   tree uses `version`.
+- `version` alone also carries `result.installed`, the bundle's on-disk version and commit, read through
+  `AppIdentity.installed(bundleURL:)` on every request from the URL `ControlServer` was given.
+  It parses the plist file because `Bundle` caches its info dictionary and would keep answering the
+  running identity after a replacement. Absent means unknown, and equal metadata does not prove equal
+  executables. It is deliberately not on the tree: `version` is the build preflight, and a tree copy
+  would cost a file read on every poll.
 - `agtermctl version`'s `client:` line is HUMAN OUTPUT ONLY. `--json` stays the raw `ControlResponse` like
   every other command; a client-reported path in the protocol would be a field the server cannot vouch
   for. Resolve it with `_NSGetExecutablePath` + `realpath`, never `argv[0]`, and never print it after a

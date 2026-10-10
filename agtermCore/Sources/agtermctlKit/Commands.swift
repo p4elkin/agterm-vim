@@ -88,8 +88,8 @@ struct SurfaceTargetOptions: ParsableArguments {
     var target: String = "active"
 }
 
-/// The root `agtermctl` command. Subcommands mirror the control catalog 1:1, except `terminfo`, which runs
-/// locally and never opens the socket.
+/// Agtermctl is the root `agtermctl` command. Subcommands mirror the control catalog 1:1, except `terminfo` and
+/// `clipboard`, which run locally and never open the socket.
 public struct Agtermctl: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "agtermctl",
@@ -97,7 +97,7 @@ public struct Agtermctl: ParsableCommand {
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Font.self, Keymap.self, Hooks.self, Browser.self,
                       Config.self, Theme.self, Pick.self, Ask.self, Restore.self, Zmx.self, Terminfo.self,
-                      OverlayRedirect.self, Rebased.self, Version.self]
+                      OverlayRedirect.self, Rebased.self, Clipboard.self, Version.self]
     )
 
     public init() {}

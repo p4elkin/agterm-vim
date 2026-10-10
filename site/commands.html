@@ -207,6 +207,7 @@
             <a href="#config" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">config</a>
             <a href="#restore" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">restore</a>
             <a href="#zmx" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">zmx</a>
+            <a href="#clipboard" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">clipboard</a>
             <a href="#terminfo" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">terminfo</a>
             <a href="#version" style="color: #bfbab0; padding: 7px 12px; border-radius: 7px" class="hv9">version</a>
             <div style="height: 16px"></div>
@@ -494,7 +495,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id}</span>, one of file and url set,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">state</span> being loading, loaded or failed; omitted when none is open),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hud</span> (the message panel holding the session-wide
-                slot — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?}</span>, where
+                slot — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}</span>, where
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">spinner</span> names the effective style or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">none</span> —
                 omitted when none is up; mutually exclusive with
@@ -590,7 +591,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">linkOpenMode</span> (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser</span> or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">overlay</span>, the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">browser links</span>; app-wide),
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarFlaggedLayout</span> (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">flat</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sidebarFlaggedLayout</span> (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">flat</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">plain</span> or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>, the read side of
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">sidebar flagged-layout</span>; app-wide, so every window reports the
                 same value, under the ordinary tree too),
@@ -700,7 +701,10 @@
                 A changed app run, an expired cursor, or a cursor ahead of the current sequence is a hard error carrying the ring's
                 current anchor — treat it as a data-loss boundary rather than silently rebaselining.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl events</span> exits non-zero on those, on a
-                server error, and on a missing app or socket. There is no terminal-output or scrollback stream.
+                server error, and on a missing app or socket. Once the stream holds a cursor, a refused connection, which a busy
+                app's full accept queue also returns, is retried with that cursor for about 30 seconds before the stream exits.
+                Without a cursor, a refused connection exits at once. There is no
+                terminal-output or scrollback stream.
               </p>
             </div>
           </section>
@@ -781,7 +785,7 @@
                 Whether a workspace is collapsed makes no difference — a folded workspace is stepped into like any other. While the
                 workspace focus filter is applied, stepping stays inside the marked workspaces, the same scoping
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session go</span> gets. With nowhere to step — flagged mode in
-                either layout, or a single visible workspace — it errors with
+                any layout, or a single visible workspace — it errors with
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no other workspace to navigate to</span>.
               </p>
             </div>
@@ -1836,7 +1840,7 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Against a <a href="#hud" style="color: #6d82f3">HUD</a> a percent is accepted and re-flows its WIDTH (the height
-                stays measured from the message, which a resize does not change), but
+                is measured again for that width), but
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--full</span> errors
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">a hud is always floating: pass --size-percent, not --full</span>
                 — full size would cover the session the message is about.
@@ -2045,8 +2049,8 @@
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session hud [open] &lt;message&gt;|--file FILE [--markdown] [--font-size PT] [--detail T] [--spinner] [--spinner-style S] [--position P]
-                [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS]
-                [--pane P] [--pane-id ID] [--target T] [--window W]
+                [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame]
+                [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.hud.open</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -2087,8 +2091,18 @@
                 closing the target closes the HUD.
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--size-percent N</span> (1–100)
                 overrides the WIDTH only; the height always follows the message, since a caller-set height could only strand it
-                in an empty box. The effective width is bounded to 10–80% of the pane, so a message never covers the session
-                it is about and a requested 100 reads back as 80. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> gives the
+                in an empty box. The effective width is bounded to 10–80% of the pane, or up to 100% with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--sticky</span> off center, so without it a requested 100 reads back as 80.
+                The height follows the rendered rows, capped at 80% of the pane. Markdown wraps at the panel's text width
+                once a width is set, here or by <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session overlay resize</span>, and at 60 columns at
+                most while the app measures the width.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--sticky</span> drops the edge margin, so the panel sits flush against the edge or
+                corner <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--position</span> names (center ignores it); it does not force full width.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--no-frame</span> draws no border, no rounded corners and no blank row above and
+                below the text, keeping the opaque backing. Together with
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">--position top --size-percent 100</span> they make a caption: a strip across the
+                top as tall as its text. Both read back, as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">sticky</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">frame</span>. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--background-color</span> gives the
                 panel its own solid background, read once when the panel is created, while
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--text-color</span> colors the TEXT and rides the
                 panel's body file, so an update can change it. Both effective shares read back, as
@@ -2114,7 +2128,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">http</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">https</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">mailto</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ftp</span> open, a local <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file://</span> link is revealed in Finder, and a link to anything
                 else is its plain label. That ⌘-click is the one click the panel takes, and it moves no focus. It raises the message cap to 4096 characters and allows newlines and tabs in it; the
                 detail keeps the plain rules. A message that renders nothing visible is refused like an empty one. A single newline inside a paragraph is a space, so end a line with two spaces or a
-                backslash, or use list items; lists always render tight. Text wraps at the panel's width, 60 columns at most, while table rows stay intact,
+                backslash, or use list items; lists always render tight. Text wraps at the panel's width, while table rows stay intact,
                 all left-aligned as one block. What does not fit is clipped: a table row too wide ends in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">…</span>, and rows past the
                 panel's height give way to a dim <span style="font-family: &quot;JetBrains Mono&quot;, monospace">… N more</span>, itself clipped in a narrow panel. Trailing all-empty table
                 rows and an all-empty header row are not shown; a table is framed in box-drawing borders with a rule under its header.
@@ -2132,8 +2146,8 @@
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session hud update &lt;message&gt;|--file FILE [--markdown] [--detail T] [--spinner] [--spinner-style S] [--position P]
-                [--text-color #rrggbb] [--size-percent N] [--hide-after SECONDS] [--pane P] [--pane-id ID]
-                [--target T] [--window W]
+                [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS]
+                [--pane P] [--pane-id ID] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.hud.update</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
@@ -2965,14 +2979,14 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
-                agtermctl sidebar flagged-layout [flat|tree|toggle]
+                agtermctl sidebar flagged-layout [flat|plain|tree|toggle]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">sidebar.flagged-layout</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
                 Pick how the flagged view arranges its sessions: <span style="font-family: &quot;JetBrains Mono&quot;, monospace">flat</span> is one list
-                labeled <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session : workspace</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> nests
+                labeled <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">session : workspace</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">plain</span> is the same list labeled by session name alone, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> nests
                 them under their workspace rows and leaves out workspaces with nothing flagged.
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> is the default; an unknown layout errors. App-wide, the same
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">toggle</span> is the default, leaving <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span> for <span style="font-family: &quot;JetBrains Mono&quot;, monospace">flat</span> and either flat form for <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree</span>; an unknown layout errors. App-wide, the same
                 setting as Settings ▸ General: it takes no <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--window</span>, needs no open
                 window, and applies to every window's flagged view at once. <strong style="color: #bfbab0">Returns</strong> the
                 resulting layout in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.text</span>. Read back via the tree's
@@ -2980,8 +2994,8 @@
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 The tree layout shares each workspace's collapse state with the ordinary tree, so collapsing a group there
-                collapses that workspace in both. It ignores the workspace focus filter, as the flat list does, and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace go</span> stays unavailable in flagged mode under either layout.
+                collapses that workspace in both. It ignores the workspace focus filter, as the flat lists do, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">workspace go</span> stays unavailable in flagged mode under any layout.
               </p>
             </div>
 
@@ -3657,6 +3671,43 @@
             </div>
           </section>
 
+          <section id="clipboard" style="scroll-margin-top: 88px; padding-top: 56px">
+            <h2
+              style="
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-weight: 700;
+                font-size: 28px;
+                letter-spacing: -0.02em;
+                margin: 0 0 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              "
+            >
+              clipboard
+            </h2>
+
+            <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 0 0 12px">
+              Local-only: this group never opens the control socket, so it has no protocol command, no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--target</span> and no
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--json</span>.
+            </p>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl clipboard set [TEXT]
+              </div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Copy text to the clipboard of every terminal showing the pane the command runs in. The text goes out through the pane itself, so it reaches the Mac you are looking at: for a session attached from another Mac that is the Mac showing it, where <span style="font-family: &quot;JetBrains Mono&quot;, monospace">pbcopy</span> would fill the clipboard of the Mac the command runs on. The Mac the session runs on receives it too. It needs no terminal, so an agent's shell tool can run it.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TEXT</span> is copied as given; without it the text is read from standard input byte for byte, a trailing newline included. Text that starts with a dash is read as an option: pipe it on standard input, or put <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--</span> before it. Empty text is refused, and so is text over about 6 MB. Run it in a main or split pane started under Live sessions: a scratch, quick or overlay terminal, and a pane started in another restore mode, is refused with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">this pane has no zmx daemon</span>.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Each receiving terminal applies its own <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clipboard-write</span> setting, so one set to <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ask</span> prompts and one set to <span style="font-family: &quot;JetBrains Mono&quot;, monospace">deny</span> drops the copy. Exit status 0 does not confirm that the session or any terminal received the text. A copy made while the pane's program is in the middle of heavy output can land inside one of its escape sequences and garble that one sequence.
+              </p>
+            </div>
+          </section>
+
           <section id="terminfo" style="scroll-margin-top: 88px; padding-top: 56px">
             <h2
               style="
@@ -3720,10 +3771,17 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.app</span> with
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">version</span> and, when the build recorded one,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">commit</span> — diagnostics only, never part of a
-                version comparison.
+                version comparison. It also returns
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.installed</span>, the same two values read from the app bundle on disk at
+                request time. The two differ once the bundle is replaced under a running app, by
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">brew upgrade</span> for one, and stay different until the app is restarted. It is build
+                metadata, not a comparison of the executables: a rebuild from the same commit reads as equal.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">installed</span> is omitted when the bundle cannot be read and by an older app; treat
+                its absence as unknown, never as a match.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Human output is the version, or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">version (commit)</span>,
+                then an <span style="font-family: &quot;JetBrains Mono&quot;, monospace">installed:</span> line only when the bundle on disk differs,
                 followed by a <span style="font-family: &quot;JetBrains Mono&quot;, monospace">client:</span> line naming the resolved path of
                 the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">agtermctl</span> that ran — a diagnostic for a stale CLI
                 ahead of the app's bundled helper on <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span>. That line is

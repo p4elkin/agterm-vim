@@ -39,3 +39,12 @@ Two ways out, both outside a merge:
    the local-row arm. Cheapest to maintain, and it gives up a real case.
 
 Not a defect. Nothing is broken today; this is fork code that may not need to exist.
+
+## 2026-10-10: upstream added a missing-directory refusal the fork can never reach
+
+Upstream `312987af` made `CustomCommandRunner.spawn(_:context:cwd:)` refuse a non-existent cwd with
+"session directory X no longer exists". In the fork it is unreachable: `spawnSessionless` passes
+`cwd: nil`, and `spawn(_:for:in:selectionSurface:pane:)` passes either a directory that exists or home.
+The merge kept the fork's two sealed-directory tests instead of upstream's exact-message assertions,
+which name text no fork path produces. Another upstream feature the widening makes dead, which
+strengthens option 1 above.

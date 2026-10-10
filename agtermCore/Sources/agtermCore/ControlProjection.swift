@@ -82,7 +82,7 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
     public let textColor: String?
     /// The EFFECTIVE share of the pane's WIDTH the panel occupies — the app's measurement, or the caller's
     /// `sizePercent` override, either way bounded by `HudLayout.clampSizePercent`, so a requested 100 reads
-    /// back as the maximum a HUD may take. Reported here because the node's `overlaySizePercent` stays
+    /// back as the maximum that panel may take: 100 for a sticky one off center, 80 otherwise. Reported here because the node's `overlaySizePercent` stays
     /// omitted for a HUD. Optional because it projects the slot's optional percent, but no supported path
     /// leaves a live HUD sizeless: `openHud` always sets one and `overlay.resize --full` is refused.
     public let sizePercent: Int?
@@ -105,14 +105,23 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
     public let markdown: Bool
     /// fontSize is the caller's requested point size, nil/omitted when the panel inherits the session's.
     public let fontSize: Double?
+    /// sticky reports a panel flush against its edge or corner. Always present; an absent key decodes as
+    /// false.
+    public let sticky: Bool
+    /// frame reports whether the panel draws its border, rounding and blank rows. Always present; an absent
+    /// key decodes as true.
+    public let frame: Bool
 
     public init(message: String, detail: String? = nil, spinner: String = HudSpinner.noneName,
                 backgroundColor: String? = nil, textColor: String? = nil,
                 sizePercent: Int? = nil, heightPercent: Int? = nil, position: String,
-                pane: String? = nil, hideAfter: Double = 0, markdown: Bool = false, fontSize: Double? = nil) {
+                pane: String? = nil, hideAfter: Double = 0, markdown: Bool = false, fontSize: Double? = nil,
+                sticky: Bool = false, frame: Bool = true) {
         self.hideAfter = hideAfter
         self.markdown = markdown
         self.fontSize = fontSize
+        self.sticky = sticky
+        self.frame = frame
         self.message = message
         self.detail = detail
         self.spinner = spinner
@@ -126,7 +135,7 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case message, detail, spinner, backgroundColor, textColor, sizePercent, heightPercent, position, pane
-        case hideAfter, markdown, fontSize
+        case hideAfter, markdown, fontSize, sticky, frame
     }
 
     public init(from decoder: Decoder) throws {
@@ -143,6 +152,8 @@ public struct ControlHudNode: Codable, Sendable, Equatable {
         hideAfter = try c.decode(Double.self, forKey: .hideAfter)
         markdown = try c.decodeIfPresent(Bool.self, forKey: .markdown) ?? false
         fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize)
+        sticky = try c.decodeIfPresent(Bool.self, forKey: .sticky) ?? false
+        frame = try c.decodeIfPresent(Bool.self, forKey: .frame) ?? true
     }
 }
 
@@ -648,7 +659,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// write-only `sidebar.mode`. `tree`-only, as every field below is: a GUI toggle bypasses the command
     /// path, so a cached `window.list` copy would go stale.
     public let sidebarMode: String?
-    /// How the flagged view arranges its sessions — `FlaggedViewLayout.rawValue` (`flat` | `tree`). APP-WIDE,
+    /// How the flagged view arranges its sessions — `FlaggedViewLayout.rawValue` (`flat` | `plain` | `tree`). APP-WIDE,
     /// so every window's `tree` reports the same value, and reported under the ordinary tree too, where it
     /// is dormant. The read side of `sidebar.flagged-layout` and a term of the workspace-row visibility
     /// predicate on `ControlWorkspaceNode.focused`.

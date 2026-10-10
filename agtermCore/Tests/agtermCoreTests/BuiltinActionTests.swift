@@ -39,7 +39,8 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.rebasedToggle.rawValue == "rebased_toggle")
         #expect(BuiltinAction.previousWindow.rawValue == "previous_window")
         #expect(BuiltinAction.nextWindow.rawValue == "next_window")
-        #expect(BuiltinAction.allCases.count == 52)
+        #expect(BuiltinAction.attachRemote.rawValue == "attach_remote")
+        #expect(BuiltinAction.allCases.count == 53)
     }
 
     @Test func rejectsUnknownName() {
@@ -135,6 +136,7 @@ struct BuiltinActionTests {
             .overlayRedirectToggle: nil,
             .rebasedToggle: nil,
             .newSessionInWorkspace: nil,
+            .attachRemote: Chord(mods: [.command, .shift], key: "r"),
         ]
         #expect(expected.count == BuiltinAction.allCases.count)
         for action in BuiltinAction.allCases {

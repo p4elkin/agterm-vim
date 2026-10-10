@@ -720,6 +720,13 @@ final class CustomCommandRunner {
     /// exit 127. Only commands opting into failure panels capture stderr; a clean exit reports nothing.
     @discardableResult
     private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) -> String? {
+        if let cwd, !cwd.isEmpty, !FileManager.default.fileExists(atPath: cwd) {
+            // `Process.run` would refuse it too, naming only the last path component.
+            let reason = "session directory \(TerminalText.sanitized(cwd)) no longer exists"
+            logger.error("custom command \"\(command.name, privacy: .public)\" not started: \(reason, privacy: .public)")
+            report(command: command, reason: reason, detail: nil, sessionID: context.sessionID)
+            return reason
+        }
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")

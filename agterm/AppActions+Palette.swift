@@ -39,6 +39,7 @@ extension AppActions {
             hasRecentClosed: !library.recentClosedItems.isEmpty,
             hasActiveSession: activeStore?.activeSession != nil,
             hasCurrentWorkspace: activeStore?.currentWorkspaceID != nil,
+            hasRemotes: !configuredRemotes.isEmpty,
             terminalZoomActive: terminalZoomActive,
             dashboardOpen: frontmostDashboard?.isOpen == true,
             pickerActive: pickActive(for: library.activeWindowID)
@@ -106,6 +107,7 @@ extension AppActions {
         case .decreaseFontSize: decreaseFontSize()
         case .resetFontSize: resetFontSize()
         case .selectTheme: openThemePalette()
+        case .attachRemote: attachRemote()
         case .editKeymap: editKeymap()
         case .reloadKeymap: reloadKeymap()
         case .editHooks: editHooks()

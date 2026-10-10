@@ -482,6 +482,7 @@ final class SettingsModel {
         reloadKeymap()
         reloadHooks()
         reloadGhosttyConfig()
+        remotes.watch(remotesURL)
     }
 
     /// Re-read `hooks.conf` and post `.agtermHooksChanged` so the scheduler applies it; diagnostics surface as
@@ -492,6 +493,14 @@ final class SettingsModel {
         if !hooksDiagnostics.isEmpty {
             NotificationManager.shared.notifyHooksDiagnostics(count: hooksDiagnostics.count)
         }
+    }
+
+    /// remotesURL is the resolved `remotes.conf`, beside `keymap.conf`.
+    var remotesURL: URL { ConfigPaths.remotesPath(configDirectory: configDirectoryURL()) }
+
+    /// remotes follows `remotes.conf` on disk; File ▸ Attach Remote lists its entries.
+    @ObservationIgnored private(set) lazy var remotes = RemotesWatcher(url: remotesURL) {
+        NotificationManager.shared.notifyRemotesDiagnostics(count: $0)
     }
 
     /// The resolved `hooks.conf` path: `<config dir>/hooks.conf`, beside `keymap.conf`.

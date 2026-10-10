@@ -123,6 +123,9 @@ C-boundary concurrency before changing the bridge.
   changing the main checkout's branch. Squash/rebase makes removal report unmerged commits; after
   verification, discard the worktree safely. Native removal may leave a renamed branch, which must be
   deleted separately after checking the remote.
+- Never `git worktree remove` the directory a live session sits in: agterm spawns custom commands in the
+  session's directory, so every leader command then fails to spawn. When ExitWorktree reports no active
+  session, leave the removal to a session started in the main checkout.
 - Before removing a worktree, and after any hosted or UI test run, run
   `lsappinfo list | grep -A4 agterm.debug`.
   An entry marked `exited-with-subordinates` that lists `relatedCoalitionPIDs` is held by those pids:

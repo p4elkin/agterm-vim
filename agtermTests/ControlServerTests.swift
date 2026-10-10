@@ -166,6 +166,19 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(owner.resolvedSocketPath, socketPath, "the owner should still hold the path")
     }
 
+    // the serial accept loop parks on a client that sends nothing; the rest must wait, not be refused
+    func testAStalledAcceptLoopQueuesConnectionsInsteadOfRefusingThem() {
+        let server = makeServer()
+        server.start()
+        XCTAssertEqual(server.boundSocketPath, socketPath, "precondition: the server should be serving")
+
+        var clients: [Int32] = []
+        defer { for fd in clients where fd >= 0 { close(fd) } }
+        for _ in 0..<33 { clients.append(Self.connectFD(to: socketPath)) }
+
+        XCTAssertEqual(clients.filter { $0 < 0 }.count, 0, "no client should be refused while the loop waits")
+    }
+
     func testStartBindsOverAForceQuitLeftover() {
         let stale = socket(AF_UNIX, SOCK_STREAM, 0)
         XCTAssertGreaterThanOrEqual(stale, 0)

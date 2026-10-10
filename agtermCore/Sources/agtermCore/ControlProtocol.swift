@@ -219,7 +219,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` (`on|off|toggle`), `quick`/`surface.zoom` (`show|hide|toggle`),
     /// `session.flag` (`on|off|toggle|clear`), `session.park` (`on|off|toggle`, no `clear` — unparking
     /// every row at once would leave a screen of rows that look live and hold nothing),
-    /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|tree|toggle`),
+    /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|plain|tree|toggle`),
     /// `sidebar.parked` (`show|hide|toggle`),
     /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
@@ -365,6 +365,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// markdown renders the HUD message as markdown for `session.hud.open`/`.update`; nil/omitted is plain.
     /// An update omitting it returns the panel to plain text, the whole spec being replaced.
     public var markdown: Bool?
+    /// sticky puts a HUD flush against the edge or corner its `position` names, for `session.hud.open`/
+    /// `.update`; nil/omitted keeps the edge margin.
+    public var sticky: Bool?
+    /// frame false drops a HUD's border, rounding and blank rows, for `session.hud.open`/`.update`;
+    /// nil/omitted is framed.
+    public var frame: Bool?
     /// The finished caller-provided choices for `pick.open`.
     public var items: [ControlPickItem]?
     /// Optional placeholder text for `pick.open`'s query field.
@@ -483,7 +489,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, resolved: Bool? = nil,
                 message: String? = nil, detail: String? = nil, spinner: String? = nil,
-                hideAfter: Double? = nil, markdown: Bool? = nil,
+                hideAfter: Double? = nil, markdown: Bool? = nil, sticky: Bool? = nil, frame: Bool? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, selection: String? = nil,
                 buttons: [ControlAskButton]? = nil, defaultButton: String? = nil,
@@ -536,6 +542,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.spinner = spinner
         self.hideAfter = hideAfter
         self.markdown = markdown
+        self.sticky = sticky
+        self.frame = frame
         self.items = items
         self.prompt = prompt
         self.query = query
@@ -694,6 +702,9 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var bookmarks: [ControlBookmarkNode]?
     /// The app serving this socket, for `version`. The same value `tree` carries.
     public var app: AppIdentity?
+    /// The build metadata of the bundle on disk, for `version`. Omitted when it cannot be read, which
+    /// means unknown, never "same as `app`".
+    public var installed: AppIdentity?
     /// The restore-mode policy for `restore.mode`, and the header `zmx list` repeats so its rows can be
     /// read without a second call.
     public var restore: ControlRestoreStatus?
@@ -729,13 +740,15 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
-                restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil, overlay: String? = nil, request: String? = nil) {
+                restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil, overlay: String? = nil, request: String? = nil,
+                installed: AppIdentity? = nil) {
         self.overlayRedirect = overlayRedirect
         self.rebasedMirrors = rebasedMirrors
         self.bookmarks = bookmarks
         self.restart = restart
         self.overlay = overlay
         self.request = request
+        self.installed = installed
         self.width = width
         self.height = height
         self.restore = restore
@@ -794,7 +807,7 @@ public enum OverlayHudError {
     /// `overlayActive` alone would otherwise answer the misleading "overlay still running".
     public static let noResult = "no overlay result: the slot holds a hud"
     /// A HUD is always floating (`AppStore.openHud`): it must never cover the session it is a message about.
-    /// A percent is accepted but bounded by `HudLayout.clampSizePercent`, which states the same invariant.
+    /// A percent is accepted but bounded by `HudLayout.clampSizePercent(_:for:)`.
     public static let fullResize = "a hud is always floating: pass --size-percent, not --full"
     /// `session.hud.update`/`.close` against a slot that holds no HUD — empty, or running a caller's program.
     public static let noHud = "no hud"
