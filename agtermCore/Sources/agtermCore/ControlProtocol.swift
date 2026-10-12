@@ -334,8 +334,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// For `session.overlay.resize`, requests the full-pane (translucent, session-hidden) overlay — the way
     /// to switch a floating overlay back to full. Mutually exclusive with `sizePercent`.
     public var full: Bool?
-    /// For `session.overlay.open`, whether to select the target after opening; omitted/false opens in the
-    /// background without changing the active session (the default for full and floating overlays alike).
+    /// Whether `session.overlay.open` and a showing `session.scratch` select their target; omitted/false
+    /// leaves the active session alone. For `pick.open` and `ask.open` it raises the owning window instead.
     public var follow: Bool?
     /// `session.overlay.open`'s two-phase resolved re-send: `agtermctl` sets this ONLY on the second
     /// request it sends after wrapping the program in ssh per the redirect decision. The app then skips the
