@@ -126,6 +126,7 @@ extension AppStore {
             session.remoteOverlays.clearFailure(pane)
             session.mintPaneOverlayGeneration(pane)
             session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane)
+            scheduleTreeChanged()
             return nil
         }
         if session.hudActive { closeOverlay(sessionID) }
@@ -137,6 +138,7 @@ extension AppStore {
         session.overlayBackgroundColor = nil
         session.rebasedOverlay = overlay
         session.overlayActive = true
+        scheduleTreeChanged()
         return nil
     }
 }

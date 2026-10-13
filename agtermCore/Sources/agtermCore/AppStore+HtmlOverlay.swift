@@ -50,6 +50,7 @@ extension AppStore {
             session.mintPaneOverlayGeneration(pane)
             session.setPaneOverlay(PaneOverlay(html: overlay, backgroundColor: backgroundColor), pane: pane)
             HtmlPageOutcomes.shared.register(overlay.id)
+            scheduleTreeChanged()
             return nil
         }
         if session.hudActive { closeOverlay(sessionID) }
@@ -62,6 +63,7 @@ extension AppStore {
         session.htmlOverlay = overlay
         session.overlayActive = true
         HtmlPageOutcomes.shared.register(overlay.id)
+        scheduleTreeChanged()
         return nil
     }
 

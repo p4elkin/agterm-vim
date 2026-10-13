@@ -261,6 +261,7 @@ struct EventCommandsTests {
             ControlEvent(seq: 17, ts: 0, kind: .status,
                          payload: ControlEventPayload(name: "api", status: "blocked", shape: "star",
                                                       note: #"ask: "main" or "dev""#)),
+            ControlEvent(seq: 18, ts: 0, kind: .appLaunched),
         ]
         let human = events.map { EventFormatter.human($0, timeZone: TimeZone(secondsFromGMT: 0)!) }
         #expect(human[0] == "00:00:00 status api blocked pane=right blink")
@@ -280,6 +281,7 @@ struct EventCommandsTests {
         #expect(human[14] == "00:00:00 session.selected api previous=before")
         #expect(human[15] == "00:00:00 session.selected win previous=-")
         #expect(human[16] == #"00:00:00 status api blocked shape=star note="ask: \"main\" or \"dev\"""#)
+        #expect(human[17] == "00:00:00 app.launched")
 
         for event in events {
             let line = try EventFormatter.json(event)
