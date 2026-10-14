@@ -647,26 +647,23 @@ final class CustomCommandRunner {
     }
 
     /// Spawn for a session pane: the context carries the pane's reported cwd raw, while the process starts
-    /// where `Session.localWorkingDirectory` says, widened here to ANY row whose reported path is not a local
-    /// directory, not just a remote one. `Process.run()` validates `currentDirectoryURL` inside the spawn and
-    /// throws before `/bin/sh` is exec'd, so a local row whose directory was deleted or replaced by a file
-    /// loses the command exactly as a remote row did (measured 2026-09-09).
+    /// where `Session.localWorkingDirectory` says, or in HOME when that is not a directory here: a deleted
+    /// one, or a remote path reported through an `ssh` typed into a local session.
     @discardableResult
     private func spawn(_ command: CustomCommand, for session: Session, in store: AppStore,
                        selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) -> String? {
         let context = self.context(for: session, in: store, selectionSurface: selectionSurface, pane: pane)
         let home = NSHomeDirectory()
-        var cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
+        let cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
         var isDirectory: ObjCBool = false
-        let resolves = FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory) && isDirectory.boolValue
-        if !cwd.isEmpty, !resolves {
+        let usable = FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory) && isDirectory.boolValue
+        if !usable, !cwd.isEmpty {
             logger.notice("""
                 custom command "\(command.name, privacy: .public)" runs from home: \
                 \(cwd, privacy: .public) is not a local directory
                 """)
-            cwd = home
         }
-        return spawn(command, context: context, cwd: cwd)
+        return spawn(command, context: context, cwd: usable ? cwd : home)
     }
 
     func environment(for session: Session, in store: AppStore) -> [String: String] {
@@ -720,13 +717,6 @@ final class CustomCommandRunner {
     /// exit 127. Only commands opting into failure panels capture stderr; a clean exit reports nothing.
     @discardableResult
     private func spawn(_ command: CustomCommand, context: CommandContext, cwd: String?) -> String? {
-        if let cwd, !cwd.isEmpty, !FileManager.default.fileExists(atPath: cwd) {
-            // `Process.run` would refuse it too, naming only the last path component.
-            let reason = "session directory \(TerminalText.sanitized(cwd)) no longer exists"
-            logger.error("custom command \"\(command.name, privacy: .public)\" not started: \(reason, privacy: .public)")
-            report(command: command, reason: reason, detail: nil, sessionID: context.sessionID)
-            return reason
-        }
         let line = context.expand(command.command)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
