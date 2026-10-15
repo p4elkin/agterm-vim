@@ -116,6 +116,9 @@ enum HeadlessRequests {
         request(.browserLinks),
         request(.rebasedMirrorList),
         request(.rebasedMirrorPrune),
+        request(.recentList),
+        request(.recentOpen, target: "r"),
+        request(.recentClear),
         request(.sessionRestart, target: target) { $0.pane = "left" },
 
         request(.sessionClose, target: target),

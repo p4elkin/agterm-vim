@@ -58,6 +58,9 @@ class MockControlActionsBase {
         case keymapRun(name: String, target: String?, window: String?)
         case hooksReload
         case hooksList
+        case recentList
+        case recentClear
+        case recentOpen(target: String?, window: String?)
         case browserClear
         case browserLinks(LinkOpenMode?)
         case version
@@ -171,6 +174,7 @@ class MockControlActionsBase {
     var nextBrowserClearResponse = ControlResponse(ok: true)
     var nextBrowserLinksResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
+    var nextRecentResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
     var nextConfigResponse = ControlResponse(ok: true)
@@ -510,6 +514,21 @@ class MockControlActionsBase {
     func listHooks() -> ControlResponse {
         calls.append(.hooksList)
         return nextHooksListResponse
+    }
+
+    func listRecentClosed() -> ControlResponse {
+        calls.append(.recentList)
+        return nextRecentResponse
+    }
+
+    func clearRecentClosed() -> ControlResponse {
+        calls.append(.recentClear)
+        return nextRecentResponse
+    }
+
+    func openRecentClosed(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.recentOpen(target: target, window: window))
+        return nextRecentResponse
     }
 
     func clearBrowser() async -> ControlResponse {

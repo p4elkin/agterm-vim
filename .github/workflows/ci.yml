@@ -311,8 +311,9 @@ jobs:
         run: find cookbook -type f -name '*.fish' -print0 | xargs -0 -r -n1 fish --no-execute
       - name: Install ruff
         # not on the ubuntu-latest image, unlike shellcheck. pipx, because the runner's
-        # python is externally managed and a bare pip install into it fails
-        run: pipx install ruff
+        # python is externally managed and a bare pip install into it fails. Pinned because a
+        # new ruff release can add rules that fail recipes nobody touched
+        run: pipx install ruff==0.16.10
       - name: ruff
         # the .py counterpart of shellcheck, so a recipe is linted rather than only parsed.
         # EXE001 is ignored because it fails a shebang on a non-executable file, which

@@ -618,7 +618,7 @@ final class ControlServer {
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
                 .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version,
-                .rebasedMirrorList, .rebasedMirrorPrune:
+                .rebasedMirrorList, .rebasedMirrorPrune, .recentList, .recentOpen, .recentClear:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)

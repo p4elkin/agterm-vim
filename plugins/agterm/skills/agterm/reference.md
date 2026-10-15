@@ -999,9 +999,10 @@ error keeps those names for compatibility.
   result or rejects with the error. What the page leaves out comes from where it sits NOW: a session
   command (the `session.*` names bar `new` and `go`, plus `notify`, `font.*` and a non-gui `ask.open`) gets
   the page's session, and `session.overlay.close|reload|navigate|submit` its pane too; a `window.*` command
-  that takes a window gets it as target; anything else gets `--window`. An explicit target, `active`,
-  window or batch is used as given, and `zmx.attach` and `dashboard` keep their ids and still land in the
-  page's window. A page's `reload` defaults to `--current`. `sidebar` and `sidebar.mode` act on the
+  that takes a window gets it as target; anything else gets `--window`, except the app-global `hooks.*`,
+  `browser.*`, `recent list` and `recent clear`, which get none. An explicit target, `active`, window or
+  batch is used as given, and `zmx.attach`, `dashboard` and `recent open` keep their ids and still land in
+  the page's window. A page's `reload` defaults to `--current`. `sidebar` and `sidebar.mode` act on the
   frontmost window. Refused from a page: `zmx.present`, `zmx.reset`, `session.overlay.job.run`, and any
   request from a frame. Escape outside text you put in a page: it can run commands.
 - `session overlay open --url URL [--navigation] [--js] [--persistent] [--browse] [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
@@ -2223,6 +2224,27 @@ For a PER-SESSION, per-pane override that pins (or suppresses) what a pane resto
 `session restore` (in the session section above): it wins over the captured foreground, bypasses the
 denylist, and is what a `SessionStart` hook rewrites to reattach a non-idempotent command. `restore clear`
 here is app-global and touches only the captured commands, not those overrides.
+
+## recent
+
+The File ▸ Open Recent list: sessions and workspaces closed recently, newest first, capped at 20 with
+the oldest dropped silently.
+
+`agtermctl recent list` — returns `result.recent[]`: `id`, `kind` (`session` | `workspace`), `title`,
+`subtitle`, `closedAt` (Unix seconds), `workspaceID` (the parent workspace of a session entry, the
+workspace itself otherwise) and `sessionIDs`, the sessions a reopen brings back. Human output prints one
+row per entry with the full id. This is the read-back for `open` and `clear`.
+
+`agtermctl recent open [ID] [--window W]` — reopen the entry with that id or unique prefix, or the newest
+with no id. The session returns under its original id. It goes to `--window` or the frontmost window,
+unless another window already holds its session or workspace; the window is not raised. Returns
+`result.recentOpen`: `item` (the entry, as `list` shows it), `window` (where it went) and `complete`,
+false when the entry is still in the list afterwards. An unknown or closed `--window` fails before
+anything is restored. Errors: `no recently closed items`, `no such recent item: ID`, ambiguous prefix.
+
+`agtermctl recent clear` — empty the list; ok only when the list is empty afterwards.
+
+`list` and `clear` are app-global and refuse a target or `--window`.
 
 ## clipboard
 

@@ -42,7 +42,8 @@ public enum ForwardPolicy {
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
-             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize:
+             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize,
+             .recentList, .recentOpen, .recentClear:
             return .refused("no windows or UI")
         // a forwarded scratch would open a login shell on the Mac
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:

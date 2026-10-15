@@ -75,11 +75,22 @@ struct HtmlBridgeTests {
         #expect(workspace.args?.window == nil)
     }
 
-    @Test(arguments: ["hooks.reload", "hooks.list", "browser.clear", "browser.links"])
+    @Test(arguments: ["hooks.reload", "hooks.list", "browser.clear", "browser.links", "recent.list", "recent.clear"])
     func aCommandRefusingAnyWindowGetsNone(_ cmd: String) throws {
         let built = try request(#"{"cmd":"\#(cmd)"}"#)
         #expect(built.target == nil)
         #expect(built.args?.window == nil)
+    }
+
+    @Test func recentOpenReopensIntoThePagesWindow() throws {
+        let newest = try request(#"{"cmd":"recent.open"}"#)
+        #expect(newest.target == nil)
+        #expect(newest.args?.window == "W1")
+        let targeted = try request(#"{"cmd":"recent.open","target":"ab12"}"#)
+        #expect(targeted.target == "ab12")
+        #expect(targeted.args?.window == "W1")
+        #expect(try request(#"{"cmd":"recent.open","target":"ab12","args":{"window":"W2"}}"#).args?.window == "W2")
+        #expect(try request(#"{"cmd":"recent.open","args":{"window":"active"}}"#).args?.window == "active")
     }
 
     @Test(arguments: ["window.close", "window.select", "window.rename", "window.delete", "window.resize", "window.move",
