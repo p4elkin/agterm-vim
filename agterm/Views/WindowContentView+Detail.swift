@@ -61,7 +61,7 @@ extension WindowContentView {
     /// drawable and flicker.
     @ViewBuilder var detailPane: some View {
         let sessions = store.workspaces.flatMap(\.sessions)
-        ZStack {
+        TerminalDeck {
             if store.activeSession == nil {
                 Text("No session selected")
                     .foregroundStyle(.secondary)

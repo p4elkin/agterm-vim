@@ -48,6 +48,27 @@ struct agtermApp: App {
     /// The plain `WindowGroup`'s scene id, used by `openWindow(id:)` to spawn additional windows.
     private static let windowGroupID = "terminal"
 
+    /// Held for the whole process; the kernel releases it at exit, a force-quit included.
+    private static var stateDirectoryLock: StateDirectoryLock?
+
+    /// Exits before anything reads or writes `directory` unless this process owns it. A lock that cannot
+    /// be taken exits too: it does not show that no other process is using the directory.
+    private static func claimStateDirectory(_ directory: URL) {
+        let reason: String
+        switch StateDirectoryLock.acquire(directory: directory) {
+        case .owned(let lock):
+            stateDirectoryLock = lock
+            return
+        case .heldByAnother:
+            reason = "another instance is already running on \(directory.path); control it with agtermctl"
+        case .unavailable(let detail):
+            reason = "cannot claim the state directory: \(detail)"
+        }
+        logger.error("\(reason, privacy: .public)")
+        FileHandle.standardError.write(Data("agterm: \(reason)\n".utf8))
+        exit(1)
+    }
+
     /// Which agterm this is, read from the bundle ONCE and shared by every surface that reports a version:
     /// the `TERM_PROGRAM_VERSION` of each spawned terminal, the `tree` payload, and the `version` command.
     /// Nothing below the app target reads `Bundle.main` — a hosted test would see its own host bundle and
@@ -77,10 +98,11 @@ struct agtermApp: App {
         #endif
         let stateDirectory = ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? PersistenceStore.defaultDirectory
+        Self.claimStateDirectory(stateDirectory)
         liveResetMarkerStore = LiveResetMarkerStore(directory: stateDirectory)
         HtmlOverlayRegistry.shared.profile = BrowserProfile(directory: stateDirectory)
-        // FIRST, before anything reads or writes the state directory: `WindowLibrary`'s bootstrap seeds a
-        // window and saves it, which a later read would see as evidence of an earlier launch.
+        // before anything else reads or writes the state directory (the lock adds only `agterm.lock`):
+        // `WindowLibrary`'s bootstrap seeds a window and saves it, which would read as an earlier launch.
         let hadPriorState = FirstRunWelcome.hasPriorState(in: stateDirectory)
         // the pacer exists before the library so the model can discard the key of a pane it removes before
         // that pane's window ever mounts; the registry that routes grants comes after

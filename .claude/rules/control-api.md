@@ -98,7 +98,10 @@ paths:
   A change to what a refused or absent server returns must keep that path in step.
   `reference.md` owns the user contract.
 - `ControlServer.init` takes an exclusive non-blocking `flock` on `<socketPath>.lock`, and start refuses
-  to bind while another process holds it. Ownership is decided at INIT, not at start: the launch window's
+  to bind while another process holds it. A second instance on the SAME state directory never gets here:
+  it exits at launch on `StateDirectoryLock` (CLAUDE.md), so this lock separates only instances on
+  different state directories sharing one socket.
+  Ownership is decided at INIT, not at start: the launch window's
   surfaces are built during the initial render pass and snapshot `AGTERM_SOCKET` into the pty environment,
   while start runs from the scene's `.task` afterwards, so deciding there would hand the first shell the
   owner's live socket. Start retries acquisition for the instance refused while the owner was still alive,
@@ -113,8 +116,7 @@ paths:
   exclude nobody.
 - A refused instance advertises `<socketPath>.unavailable` through `resolvedSocketPath`, so its shells and
   `{AGT_SOCKET}` carry a path nothing serves instead of the resolved default, which would point them at
-  the other instance — the user's live terminal, where shared state makes persisted session ids resolve
-  too. Do NOT omit the variable instead: `agterm-agent-status.sh` drops `--socket` when it is absent and
+  the other instance, where an untargeted command would land. Do NOT omit the variable instead: `agterm-agent-status.sh` drops `--socket` when it is absent and
   `agtermctl` then resolves that same default, so an unset value routes agent status onto the live app.
   `refused` clears on a later successful acquire, since `start()` re-runs per window scene and the owner
   may have quit. Its `stop()` returns early without unlinking, leaving the owner's socket intact.
@@ -561,7 +563,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `--cwd`). The dispatcher parses it once and the host gets `options.page`; the tree reports `file` or
   `url`. A URL page is pinned to its ORIGINAL origin (`HtmlOrigin`, default ports equal): same-origin main
   frame loads clicked or not, which is what lets dev-server redirects and client routing work, any
-  http(s) subframe loads, and a redirect elsewhere during an unclicked load is refused. A clicked link's
+  http(s) subframe loads unless the page is chromeless, which keeps subframes on its origin too, and a
+  redirect elsewhere during an unclicked load is refused. A clicked link's
   redirect reaches the policy as `.linkActivated` (WebKit reuses the triggering action), so it is handled
   like the click and the retained page stays `loaded`. `HtmlOverlayPage.loadPending` makes every
   load in flight (explicit, or started by the page) end `loaded` or `failed`: a policy cancel of its main
@@ -650,8 +653,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - The panel has an app-drawn identity strip (`HtmlOverlay.identity`: the file shown or the origin)
   that the page cannot cover or retitle, with the close button; `--navigation` adds the buttons. The page
   title follows it as a separate dimmed view that yields width first, never replacing the identity; agents
-  reading it from `tree` must treat it as untrusted. `--chromeless` (`HtmlOverlay.chromeless`) drops the strip,
-  file pages only: a URL page's strip is the only statement of whose content it is. It is refused with
+  reading it from `tree` must treat it as untrusted. `--chromeless` (`HtmlOverlay.chromeless`) drops the strip.
+  A URL page's strip is the only statement of whose content it is, so a URL page may drop it only on an
+  exact loopback host (`HtmlSource.isLoopback`: 127.0.0.1, ::1, localhost, never a range or alias, shared by
+  the CLI and the dispatcher), never with `--browse`, and its frames are then held to its own origin by
+  `HtmlNavigationPolicy`. A loopback port can still forward remote content, so this narrows what the page
+  can show, never proves who wrote it. It is refused with
   `--navigation`, whose buttons live in the strip, and closes through the Command-W ladder, which
   `ControlHtmlOverlayUITests` pins against a `--js` page that cancels every keydown.
   Page views refuse drags and pastes

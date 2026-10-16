@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.37.0 - 2026-10-15
+
+### New Features
+
+- **File ▸ Open Recent from the CLI.** `agtermctl recent list` prints the Open Recent entries newest first, `recent open [ID] [--window W]` reopens one by id or prefix, the newest with no id, through the menu's own restore path, and `recent clear` empties the list. A reopened session keeps its id, split, flag, context and restore pins, which `session new` could not bring back. It goes to `--window` or the frontmost window unless another window already holds its session or workspace, and the window is not raised. `--json` carries `closedAt`, the workspace id and the session ids each entry restores #744 @umputun
+- **Lock a keyboard layout in terminals.** Settings ▸ Key Mapping ▸ Lock in terminals, off by default, picks one of the keyboard layouts enabled in macOS and holds it while a terminal has the keyboard: a layout switch made in a terminal is switched straight back, and the previous layout returns when focus moves to another app, a web overlay or a text field, and on quit. It covers main, split and scratch panes, program overlays and the quick terminal. macOS selects a layout system-wide, so a crash or force quit leaves the locked layout selected. The setting has no control command #727 @umputun
+- **Launch hook and overlay events.** A new `app.launched` event fires once per app run after `hooks.conf` is loaded and the control socket accepts connections, so `on app.launched <cmd>` in `hooks.conf` runs a script once per launch. `tree.changed` now also fires when a program, page, pane overlay or HUD opens or closes, so a script no longer polls the tree for that. A `tree.changed` hook that opens a HUD unconditionally loops; the docs say to open only when no HUD is up #736 @umputun
+- `session overlay open --url URL --chromeless` works for a page served from this Mac, on host `127.0.0.1`, `::1` or `localhost` exactly, so a local dashboard drops the overlay's strip and keeps its `--persistent` storage. Other hosts, `--browse` and `--navigation` are refused with it, and frame navigations stay on the page's origin. The page closes with ⌘W, `session overlay close`, or its own `window.close()` under `--js` #750 @umputun
+- `agtermctl version` prints an `installed:` line when the app bundle on disk differs from the running build, after a background `brew upgrade` for example. `--json` carries it as `result.installed` #723 @umputun
+- a new cookbook recipe, `session-snapshot`, snapshots every open window into JSON and a browsable HTML page, and restores any session or workspace later from a copied line. Claude Code sessions come back with `claude --resume`, each with its own conversation #742 @ne0r0mancer
+
+### Improved
+
+- `session scratch on --target A` starts the scratch on A in the background and no longer switches the window to A; the scratch takes the keyboard once A is selected. `--follow` selects the target, as with `session overlay open`. The forced switch also cleared A's unseen badge and reordered Ctrl-Tab recency. **Behavior change:** a script that relied on `scratch on` to switch sessions passes `--follow` #730 @umputun #728
+- a custom command started in a session whose directory was removed, a deleted git worktree for example, now runs in HOME instead of being refused. `AGT_SESSION_PWD` still carries the path the session reported. The same applies after `ssh` from a local session, where the pane reports a remote path #740 @umputun
+- the docs and the bundled agent skill describe upgrading with Live sessions active, and note that `AGTERM_WORKSPACE_ID` is fixed when the shell starts, so `tree` is the source for a session's current workspace #725 ed831ab3 @umputun
+
+### Bug Fixes
+
+- a second agterm launched on a state directory another instance was using kept running without a window, and once the owner quit, its first save rewrote the window files from a stale copy: sessions created after it started disappeared and their daemons kept running as orphans. `agterm --help` typed in a pane started one. Such a launch now exits with status 1 before it reads or writes anything #749 @umputun #741
+- agterm was unresponsive at launch with many restored sessions, 96 in the report, spending its time on SwiftUI layout of the hidden terminals #747 @bot-rogerthat
+- the selected sidebar row lost a custom theme's selection colors, or took them from a bundled theme with the same name, when the theme was set by path or kept in `~/.config/ghostty/themes`. Light-theme selections could be unreadable #746 @umputun #745
+- supervised Live panes read `liveAttribution: unknown` after the session host ran for three days, because macOS deleted its pidfile from `/tmp`. A host started by an older build keeps the old behavior until it is replaced #733 @umputun #732
+- `session scratch on --command CMD` against a scratch already shown answered ok and never ran CMD #730 @umputun
+- with two OpenCode v1 permission prompts open at once, answering the first cleared `blocked` while the second still waited #734 @umputun
+
 ## v0.36.0 - 2026-10-09
 
 ### New Features

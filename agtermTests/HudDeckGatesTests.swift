@@ -377,7 +377,7 @@ final class HudDeckGatesTests: XCTestCase {
             Color.clear.frame(width: Self.sidebarWidth)
             VStack(spacing: 0) {
                 Color.clear.frame(height: Self.titlebarHeight)
-                ZStack {
+                TerminalDeck {
                     if split {
                         HSplitView {
                             Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).hudPaneAnchor(.left)

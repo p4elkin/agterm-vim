@@ -10,9 +10,16 @@ public enum HtmlSource: Equatable, Sendable {
     case url(URL)
 
     /// webURL parses `--url`: an absolute http or https URL with a host, nil for anything else.
-    static func webURL(_ text: String) -> URL? {
+    public static func webURL(_ text: String) -> URL? {
         guard let url = URL(string: text), HtmlOrigin(url) != nil else { return nil }
         return url
+    }
+
+    /// isLoopback says whether `--url` names this Mac by one of three exact hosts: 127.0.0.1, ::1 or localhost.
+    /// Ranges and aliases never match, so WebKit cannot read an accepted host as a different one.
+    public static func isLoopback(_ text: String) -> Bool {
+        guard let url = webURL(text), let host = HtmlOrigin(url)?.host else { return false }
+        return ["127.0.0.1", "::1", "localhost"].contains(host)
     }
 }
 
@@ -71,7 +78,8 @@ public struct HtmlOverlay: Equatable, Sendable {
     public let navigation: Bool
     /// javascript lets the page run its own scripts; agterm's theme script runs either way.
     public let javascript: Bool
-    /// chromeless drops the identity strip, file pages only: the strip is what names a URL page's origin.
+    /// chromeless drops the identity strip: a file page, or a URL page on a loopback host whose frames stay on
+    /// its origin, since nothing else names whose content it shows.
     public let chromeless: Bool
     /// persistent puts a URL page on the saved browser store; every other page gets an in-memory one of its own.
     public let persistent: Bool
@@ -256,7 +264,8 @@ public enum HtmlNavigationPolicy {
             return HtmlOverlay.contains(grantRoot, action.url.path) ? .allow : .cancel
         case .url(let original):
             guard web else { return .cancel }
-            if overlay.browse || action.target == .subframe || HtmlOrigin(action.url) == HtmlOrigin(original) { return .allow }
+            if HtmlOrigin(action.url) == HtmlOrigin(original) || overlay.browse { return .allow }
+            if action.target == .subframe, !overlay.chromeless { return .allow }
             return action.userActivated ? .openExternal : .cancel
         }
     }
