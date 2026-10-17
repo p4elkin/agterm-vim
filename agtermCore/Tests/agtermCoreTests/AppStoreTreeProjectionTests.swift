@@ -200,6 +200,44 @@ struct AppStoreTreeProjectionTests {
         #expect(decoded.workspaces.first?.sessions.first == node)
     }
 
+    @Test(arguments: [true, false])
+    func hiddenUnrealizedSplitTakesThePrimarysBacking(_ backed: Bool) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface(backedByZmx: backed)
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitPaneIdentity = UUID()
+        let node = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(node.backedByZmx == backed)
+        #expect(node.surfaces?.first { $0.kind == "right" }?.backedByZmx == backed)
+    }
+
+    @Test func hiddenUnrealizedPrimaryTakesTheFocusedSplitsBacking() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitFocused = true
+        session.splitPaneIdentity = UUID()
+        session.splitSurface = SpySurface(backedByZmx: true)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.backedByZmx == true)
+    }
+
+    @Test func realizedUnbackedSplitStillClearsTheSessionBacking() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface(backedByZmx: true)
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitPaneIdentity = UUID()
+        session.splitSurface = SpySurface(backedByZmx: false)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.backedByZmx == false)
+    }
+
     @Test func paneBackgroundsProjectOverridesOnlyNeverTheInheritedDefault() throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")

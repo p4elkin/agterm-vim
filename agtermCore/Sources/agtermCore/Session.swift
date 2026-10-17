@@ -215,16 +215,17 @@ public final class Session: Identifiable {
     /// hiding the split keeps the shell alive. Freed only on `closeSplit`/`closeSession`.
     @ObservationIgnored public var splitSurface: (any TerminalSurface)?
 
+    /// A pane hidden since launch has no surface yet, so its realized sibling answers for the shared launch disposition.
     public func zmxBacking(for surface: TerminalZoomSurface) -> Bool? {
         switch surface {
-        case .primary: self.surface?.backedByZmx ?? false
-        case .split: splitSurface?.backedByZmx ?? false
+        case .primary: (self.surface ?? splitSurface)?.backedByZmx ?? false
+        case .split: (splitSurface ?? self.surface)?.backedByZmx ?? false
         default: nil
         }
     }
 
     public var allPanesBackedByZmx: Bool {
-        (surface?.backedByZmx ?? false) && (!hasSplit || (splitSurface?.backedByZmx ?? false))
+        zmxBacking(for: .primary) == true && (!hasSplit || zmxBacking(for: .split) == true)
     }
 
     /// Where the split (right) pane re-spawns on restore (the split factory reads it), from the persisted

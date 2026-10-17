@@ -9,6 +9,7 @@ import os
 import runpy
 import sys
 import tempfile
+import textwrap
 import unittest
 from contextlib import redirect_stderr
 from dataclasses import replace
@@ -3365,6 +3366,159 @@ class MessageInputTests(unittest.TestCase):
                     None, None, CLAUDE_PROFILE
                 )
                 self.assertEqual(path.read_text(encoding="utf-8"), "message to retry")
+
+
+class ComposerSimulation:
+    """In-memory editor only: never reads or writes a real agent pane."""
+
+    def __init__(self, width):
+        self.width = width
+        self.body = ""
+        self.submitted = []
+        self.scrolled = False
+        self.clock = 0
+
+    def monotonic(self):
+        self.clock += 0.11
+        return self.clock
+
+    def state(self, *_args):
+        if not self.body:
+            return "Ask Codex to do anything", 2
+        rows = textwrap.wrap(self.body, self.width, break_on_hyphens=False)
+        visible = rows[-8:]
+        if len(rows) > len(visible):
+            self.scrolled = True
+            visible[0] = visible[0].ljust(self.width) + "↑"
+        return "\n".join(visible), len(visible[-1]) + 2
+
+    def type(self, _sid, _profile, text, _window=None):
+        for char in text:
+            if char == "\n":
+                self.submitted.append(self.body)
+                self.body = ""
+            elif char == "\x7f":
+                self.body = self.body[:-1]
+            else:
+                self.body += char
+
+    def replacements(self):
+        return {
+            "pane_text": Mock(return_value="› Ask Codex to do anything\n  model"),
+            "cursor_column": Mock(return_value=2),
+            "composer_state": self.state,
+            "type_text": self.type,
+            "time": Mock(monotonic=self.monotonic, sleep=Mock()),
+        }
+
+
+class ScrollIndicatorTests(unittest.TestCase):
+    def setUp(self):
+        self.hidden = "Chat from Claude: Reviewed the example module and tests; "
+        self.rows = [
+            "The first visible row ends beside the scroll indicator.",
+            "The next row contains another part of the message.",
+            "The remaining rows must still match the source text;",
+            "override [peer-check:0]",
+        ]
+        self.expected = self.hidden + " ".join(self.rows)
+        self.chunk = " override [peer-check:0]"
+        self.rendered = "\n".join([self.rows[0] + "↑", *self.rows[1:]])
+
+    def test_live_failure_shape_confirms_body_and_cleanup(self):
+        screen = "› " + self.rendered.replace("\n", "\n  ")
+        screen += "\n\n  model · project\n  tab to queue message\n"
+        content = LIVE_PROMPT_TEXT(SCRIPT["PROFILES"]["codex"], screen)
+        # Keep the parser lossless; source-aware comparisons interpret decoration.
+        self.assertEqual(content, self.rendered)
+        self.assertTrue(COMPOSER_HAS_EXPECTED_TAIL(content, self.expected, self.chunk, True))
+        self.assertEqual(
+            COMPOSER_OWNED_SPANS(content, self.expected, {len(self.expected)}, True),
+            {(len(self.hidden), len(self.expected))},
+        )
+
+    def test_claude_does_not_ignore_arrow(self):
+        self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL(self.rendered, self.expected, self.chunk, False))
+        self.assertFalse(COMPOSER_OWNED_SPANS(self.rendered, self.expected, {len(self.expected)}))
+
+    def test_no_hidden_prefix_is_not_a_scroll_indicator(self):
+        expected = " ".join(self.rows)
+        self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL(self.rendered, expected, self.chunk, True))
+        self.assertFalse(COMPOSER_OWNED_SPANS(self.rendered, expected, {len(expected)}, True))
+
+    def test_one_row_or_bottom_arrow_is_not_ignored(self):
+        for rendered in (self.expected + "↑", "\n".join(self.rows) + "↑",
+                         "\n".join(self.rows) + "↓"):
+            with self.subTest(rendered=rendered):
+                self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL(rendered, self.expected, self.chunk, True))
+                self.assertFalse(COMPOSER_OWNED_SPANS(rendered, self.expected, {len(self.expected)}, True))
+
+    def test_literal_arrows_are_preserved_with_and_without_indicator(self):
+        rows = list(self.rows)
+        rows[0] += "↑"
+        rows[1] += " literal ↑ arrow ↓"
+        expected = self.hidden + " ".join(rows)
+        for decoration in ("", "↑"):
+            rendered = "\n".join([rows[0] + decoration, *rows[1:]])
+            with self.subTest(decoration=decoration):
+                self.assertTrue(COMPOSER_HAS_EXPECTED_TAIL(rendered, expected, self.chunk, True))
+                self.assertTrue(COMPOSER_OWNED_SPANS(rendered, expected, {len(expected)}, True))
+
+    def test_missing_literal_arrow_and_foreign_input_are_rejected(self):
+        rows = list(self.rows)
+        rows[1] += " literal ↑ arrow"
+        expected = self.hidden + " ".join(rows)
+        rendered = "\n".join([rows[0] + "↑", *rows[1:]])
+        for broken in (rendered.replace("literal ↑", "literal"),
+                       rendered.replace("contains", "FOREIGN_TEXT"),
+                       rendered.replace("override", "overide"),
+                       rendered + " foreign input"):
+            with self.subTest(broken=broken):
+                self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL(broken, expected, self.chunk, True))
+                self.assertFalse(COMPOSER_OWNED_SPANS(broken, expected, {len(expected)}, True))
+
+    def test_insufficient_tail_and_periodic_truncation_stay_rejected(self):
+        self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL("old↑\n" + self.rows[-1], self.expected, self.chunk, True))
+        expected = "a" * 114 + " [peer-check:0]"
+        chunk = "a" * 50 + " [peer-check:0]"
+        self.assertFalse(COMPOSER_HAS_EXPECTED_TAIL("aaa↑\n" + "a" * 101 + " [peer-check:0]", expected, chunk, True))
+
+    def test_full_send_preserves_long_unicode_body_and_submits_once(self):
+        message = " ".join(f"café-{n:03d} naïve résumé déjà-vu" for n in range(90))
+        profile = SCRIPT["PROFILES"]["codex"]
+        expected = SCRIPT["normalize"](profile, message)
+        send = SCRIPT["send"]
+        for width in (30, 57, 100):
+            with self.subTest(width=width):
+                editor = ComposerSimulation(width)
+                with patch.dict(send.__globals__, editor.replacements()):
+                    self.assertEqual(send("fixture", profile, message), len(message))
+                self.assertTrue(editor.scrolled)
+                self.assertEqual(editor.submitted, [expected])
+                self.assertEqual(editor.body, "")
+
+    def test_cleanup_removes_only_owned_body_through_scrolling(self):
+        editor = ComposerSimulation(40)
+        editor.body = self.hidden + " ".join(f"check-{n:03d}" for n in range(90))
+        clear = SCRIPT["clear_composer"]
+        with patch.dict(clear.__globals__, editor.replacements()):
+            self.assertTrue(clear("fixture", SCRIPT["PROFILES"]["codex"],
+                                  ("Ask Codex to do anything", 2), editor.body))
+        self.assertTrue(editor.scrolled)
+        self.assertEqual(editor.body, "")
+        self.assertEqual(editor.submitted, [])
+
+    def test_cleanup_does_not_erase_foreign_suffix_in_scrolled_editor(self):
+        editor = ComposerSimulation(40)
+        owned = self.hidden + " ".join(f"check-{n:03d}" for n in range(90))
+        editor.body = owned + " FOREIGN INPUT"
+        before = editor.body
+        clear = SCRIPT["clear_composer"]
+        with patch.dict(clear.__globals__, editor.replacements()):
+            self.assertFalse(clear("fixture", SCRIPT["PROFILES"]["codex"],
+                                   ("Ask Codex to do anything", 2), owned))
+        self.assertEqual(editor.body, before)
+        self.assertEqual(editor.submitted, [])
 
 
 if __name__ == "__main__":

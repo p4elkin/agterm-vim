@@ -883,6 +883,29 @@ def row_readings(row: str, tolerant: bool) -> list[str]:
     return trailing_particle_variants(row) if tolerant else [row]
 
 
+def composer_row_readings(
+    rows: list[str], index: int, tolerant: bool
+) -> list[tuple[str, bool]]:
+    """Offer a literal row and Codex's top-margin scroll decoration reading.
+
+    Codex 0.162.1 renders one ↑ in the reserved right margin of the first
+    visible textarea row when earlier rows are hidden (chat_composer.rs).
+    Keep the parser lossless and always try the literal reading too. The
+    decorated reading is valid only at a nonzero source offset, enforced by
+    both callers. Never treat a bottom/down arrow as permission to submit
+    while the message tail is hidden, or strip arrows from arbitrary rows.
+    """
+    row = rows[index]
+    readings = [(reading, False) for reading in row_readings(row, tolerant)]
+    if tolerant and index == 0 and len(rows) > 1 and row.endswith("↑"):
+        readings.extend(
+            (reading, True)
+            for reading in row_readings(row[:-1].rstrip(), tolerant)
+            if reading
+        )
+    return readings
+
+
 def row_matches(expected: str, row: str, tolerant: bool = False) -> bool:
     """Compare one screen row with source text of the same length.
 
@@ -958,12 +981,13 @@ def composer_has_expected_tail(
     positions = {len(expected)}
     rows = content.splitlines() or [content]
     for index in range(len(rows) - 1, -1, -1):
-        readings = row_readings(rows[index], tolerant)
+        readings = composer_row_readings(rows, index, tolerant)
         matched = {
             end - len(row)
             for end in positions
-            for row in readings
+            for row, scrolled in readings
             if end >= len(row)
+            and (not scrolled or end > len(row))
             and row_matches(expected[end - len(row) : end], row, tolerant)
         }
         if not matched:
@@ -1030,12 +1054,13 @@ def composer_owned_spans(
     )
     rows = content.splitlines() or [content]
     for index in range(len(rows) - 1, -1, -1):
-        readings = row_readings(rows[index], tolerant)
+        readings = composer_row_readings(rows, index, tolerant)
         matched = {
             (position - len(row), end)
             for position, end in positions
-            for row in readings
+            for row, scrolled in readings
             if position >= len(row)
+            and (not scrolled or position > len(row))
             and row_matches(owned_text[position - len(row) : position], row, tolerant)
         }
         if not matched:

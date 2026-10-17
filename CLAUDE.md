@@ -19,6 +19,9 @@ C-boundary concurrency before changing the bridge.
   meaningful to drive.
 - For each hideable titlebar/sidebar element, ask whether it should join host-free `InterfaceElement` and
   Settings > Interface. Never add that preference without approval.
+- A decline of a feature request that a custom command covers explains the extension model with the request
+  as the worked example: README's "bind X yourself", `site/docs.html#extend`, the agent skill, the cookbook.
+  It also points "can you add X" requests to Discussions ▸ Ideas instead of issues.
 - When adding a process that runs user commands or reparents a session, weigh its effect on macOS TCC
   attribution per service, up front. The responsible process is not always TCC's authorization subject:
   the #574 microphone test recorded `agterm-session-host` as responsible, `com.umputun.agterm` as the

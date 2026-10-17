@@ -143,8 +143,9 @@ paths:
 - `agtermctl --json` prints the server's line unchanged: `SocketClient.send` returns a `SocketReply`
   carrying the bytes beside the decoded `ControlResponse`, and `formatResponse` is human-only. Re-encoding
   the decoded struct drops every field the CLI build does not model (#625), so no CLI path prints JSON from
-  the model; the pick/ask `--no-block` id object, their result payloads and `events`' per-event lines are
-  the deliberate exceptions, each printing its own nested object rather than the response.
+  the model; the pick/ask `--no-block` id object, their result payloads, `events`' per-event lines and
+  `session wait`'s `{id, status}` object are the deliberate exceptions, each printing its own nested object
+  rather than the response.
 - Human output shows IDs only for created session/workspace/window, retains them in JSON, uses
   `result.affected` for session counts and for `zmx.prune`'s killed-daemon count, and reserves
   `result.count` for diagnostics/search.
@@ -215,6 +216,15 @@ overlay terminals, which have none, are refused, and a name `ZmxSupport.isDaemon
 pasteboard write. It also injects between two 4096-byte pty reads, where the program's own escape sequence
 may be unfinished: the OSC 52 still parses whole, and the interrupted sequence is cut short.
 
+`session wait` is not a third exemption but a client-side composite, like `overlay open --block`: it
+opens the socket only for existing reads (`events.read`, `window.list`, `tree`), so there is no
+`session.wait` command and nothing new to read back. It cannot be a server command: the inline accept loop
+would hold the very status writes it waits for. It anchors the cursor BEFORE reading the tree, so a status
+set between the two is replayed, and resolves `--target` client-side with `ControlResolve.resolve`, the
+server's own rule. `SocketClient` has no receive timeout and `runBlocking` waits indefinitely, so
+`SessionWaitWatchdog` enforces `--timeout` from a timer that exits 124 even while a send is blocked; a
+deadline check in the poll loop alone cannot.
+
 `debug.appearance` is a private `Command` case, absent from the list above, used only by `AppearanceFlipUITests`.
 It accepts light/dark, sets `NSApp.appearance`, posts `.agtermSystemAppearanceChanged`, echoes the effective
 side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provide no CLI or skill entry.
@@ -234,7 +244,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `resolveSessions`. Reject batch `--to`. Count only actual moves. A one-member batch uses singular behavior.
 - Sidebar batch Flag computes one uniform value: flag all unless all are already flagged. This is not
   equivalent to repeated toggle; scripts read state then loop on/off. Batch Clear Status is equivalent to
-  repeated `session.status idle` and needs no batch command.
+  repeated `session.status idle` and needs no batch command. Mark for Attention is `session.status
+  completed` on the targets `tree` reports idle; it skips the rest, so it is not an unconditional write.
 - `workspace.move --to up|down|top|bottom` reorders relative to the target. Drag remains the precise
   between-row surface. `active` resolves through `currentWorkspaceID` — a foreground-created workspace
   first, then the selected session's, then `workspaces.last` — so repeated moves may target a different
@@ -1255,6 +1266,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.
+  A pane hidden since launch has no surface yet and reports its realized sibling's backing, the launch
+  disposition it attaches with once shown; otherwise `zmx tree` drops a session with a hidden split (#762).
 - `liveAttribution`/`splitLiveAttribution` report the observed responsibility attribution of a local Live
   pane's leader process, probed from `sessionLeaderPIDs`: `supervisor`, `app`, `orphaned` or `unknown`,
   from `SessionHost.classify`. Omitted for a non-Live or remote pane; the split field covers a hidden
