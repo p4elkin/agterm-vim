@@ -5,7 +5,7 @@ description: >
   create, rename, close, reopen, select or
   reorder sessions and workspaces; split panes; toggle the scratch terminal; run overlay programs
   and read their exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
-  post a HUD/caption or notification; show a picker or question dialog; show an image inline; type
+  post a HUD/caption/notification; show a picker, question or input dialog; show images inline; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows; set font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
   a closed window's session screen; subscribe to status, notify, lifecycle, selection,
@@ -16,6 +16,7 @@ description: >
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
   split the pane, close the overlay, show a message over the session, show a question dialog, agtermctl ask,
+  ask the user to type a value or a message, let the user pick one or several items from a list,
   show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
@@ -176,7 +177,7 @@ you open overlays / type into whatever the user has selected, not your own sessi
 - **Fresh shells** restores the saved windows, workspaces, sessions, directories, and split layout with new shells.
 - **Re-run commands** starts each captured foreground command again. It does not reconnect to the old process.
 - **Live sessions** runs every primary and split pane through zmx and reattaches to the same process. It requires
-  zsh as the macOS login shell. Scratch, overlay, and quick terminals stay temporary.
+  zsh or fish as the macOS login shell. Scratch, overlay, and quick terminals stay temporary.
 
 Upgrading: with Live sessions already active, install the new version, quit agterm and open it again. Local
 primary and split panes reattach to the same processes and no reset is needed. `agtermctl version` adds an
@@ -620,7 +621,8 @@ control command, the socket `dashboard` command is unchanged.
 
 **pick**: `pick [--prompt TEXT] [--query TEXT] [--select ID] [--allow-custom] [--follow] [--window W] [--no-block]`
 reads choices from stdin and opens the target window's native fuzzy picker. Supply nonblank lines (each line
-is both the id and label) or a JSON array of `{id,label,subtitle?}` items; typing matches labels only, and an
+is both the id and label) or a JSON array of `{id,label,subtitle?,status?,statusColor?,statusShape?}` items (the
+status fields draw a trailing glyph, as `session status` does); typing matches labels only, and an
 empty query keeps the supplied order, so without `--select` the caller's first item is the one Return runs. `--query` prefills
 the field and filters on open, which re-ranks and drops that order. `--select ID` opens with that item
 highlighted and scrolled into view (it must name a supplied item; a `--query` that hides it leaves the first
@@ -641,7 +643,10 @@ is accepted and keeps its ask hidden and pending. A terminal ask leaves the rest
 `--window` selects the window; `--follow` raises it without changing session selection.
 `--default ID` seeds the highlight, `--hotkey ID=LETTER` adds a shortcut, and `--destructive ID` marks a
 button that cannot be the default. `--align left|center|right` aligns the buttons; `--width N` fixes the
-panel width to 10...100 percent of its region. Exit 0 means answered, including No: inspect `.id`.
+panel width to 10...100 percent of its region. `--input line|multiline` adds a focused text field and
+`--choice ID=LABEL` (with `--multiple`, `--choice-subtitle`, `--checked`) a radio or checkbox list; either
+defaults the buttons to OK/Cancel, Cancel returning `escaped`, and the answer carries `.text` or `.selected`.
+Exit 0 means answered, including No: inspect `.id`.
 Esc/Command-W on the interactive ask return `escaped` with exit 3; cancellation returns `cancelled`
 with exit 2. `--no-block` returns an id for `ask result ID` or `ask cancel ID`; explicit `--window` must
 match its owner. Tree exposes terminal asks on session nodes as `ask: {id, pane?}` and GUI asks as
@@ -751,7 +756,8 @@ reset ·
 `zmx tree [HOST]` - attachable sessions across EVERY open window, on another Mac with a HOST or this app
 without one (the bare form is exactly what the remote call runs on the far side). Each row carries the id
 `zmx attach` takes plus `windowID`/`windowName`, `workspaceID`/`workspaceName` (show the names, group by
-the ids: neither is unique), `context` when set, and per-pane `foreground`; only a session whose every pane
+the ids: neither is unique), `context` when set, `status`/`statusColor`/`statusShape` when not idle, and
+per-pane `foreground`; only a session whose every pane
 still has a live daemon is listed, and an empty list does NOT mean the far side is not in live mode -
 `zmx list` reports that · `zmx attach
 HOST SESSION [--window W]` - open one of them here, marked remote and carrying its split, in the

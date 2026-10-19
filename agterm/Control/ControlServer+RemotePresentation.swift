@@ -121,6 +121,7 @@ extension ControlServer {
                 guard let self else { return reply(ControlResponse(ok: false, error: "the Mac is shutting down")) }
                 Task { @MainActor in reply(await self.runForwarded(request, forSession: id)) }
             },
+            sound: { [weak self] sound in self?.playRemoteSound(sound, forSession: id) },
             layout: { [weak self] layout in
                 guard let self, let store = library.store(forSession: id) else { return }
                 agtermApp.applyRemoteLayout(layout, store: store, sessionID: id, library: library)
@@ -149,6 +150,18 @@ extension ControlServer {
         let command = CommandRestore.shellQuotedLine(argv)
         return store.presentReplicaOverlay(overlay, command: command, forSession: id) { [weak self] job in
             self?.remoteClients[id]?.answer(.overlayClosed(PresentationOverlayChange(job: job)))
+        }
+    }
+
+    private func playRemoteSound(_ sound: PresentationSound, forSession id: UUID) {
+        guard library.store(forSession: id)?.session(withID: id) != nil,
+              let name = sound.name ?? settingsModel.settings.blockedStatusSoundName, !name.isEmpty else { return }
+        let player = statusSoundPlayer
+        // the origin stays silent, so an unavailable sound falls back to the system alert
+        Task {
+            guard await !player.play(name) else { return }
+            remoteLogger.notice("status sound \(name, privacy: .public) from \(id, privacy: .public)'s origin is unknown here, playing the alert")
+            await player.play("default")
         }
     }
 

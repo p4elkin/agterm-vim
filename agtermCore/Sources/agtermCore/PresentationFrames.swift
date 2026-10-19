@@ -106,6 +106,16 @@ public struct PresentationNotify: Codable, Equatable, Sendable {
     }
 }
 
+/// PresentationSound is a status sound the origin hands its presenter to play instead of playing it itself.
+/// A nil `name` is the presenter's own Settings blocked sound, so each Mac's choice applies where it plays.
+public struct PresentationSound: Codable, Equatable, Sendable {
+    public var name: String?
+
+    public init(name: String?) {
+        self.name = name
+    }
+}
+
 /// PresentationAsk is an ask the origin hands its presenter to draw. `owner` is the presenter generation it
 /// was handed under, and every answer echoes it, so one arriving after a handback is recognisably stale.
 public struct PresentationAsk: Codable, Equatable, Sendable {
@@ -121,6 +131,10 @@ public struct PresentationAsk: Codable, Equatable, Sendable {
     /// The origin's pane the dialog covers, nil for the whole session.
     public var pane: PresentationPane?
     public var owner: Int
+    /// input and choices carry the ask's form; a presenter without `ask.form` never receives either.
+    public var input: AskInputForm?
+    public var choices: AskChoiceForm?
+    public var cancelID: String?
 
     public init(_ ask: PendingAsk, pane: PresentationPane?, owner: Int) {
         id = ask.id
@@ -134,20 +148,55 @@ public struct PresentationAsk: Codable, Equatable, Sendable {
         width = ask.width
         self.pane = pane
         self.owner = owner
+        cancelID = ask.cancelID
+        switch ask.form {
+        case .input(let form): input = form
+        case .choices(let form): choices = form
+        case nil: break
+        }
+    }
+
+    /// The form the request carries, input first should a malformed frame carry both.
+    public var form: AskForm? {
+        if let input { return .input(input) }
+        return choices.map(AskForm.choices)
+    }
+
+    /// Whether the presenter must understand `ask.form` to show this ask as the origin means it.
+    public var needsFormSupport: Bool { input != nil || choices != nil || cancelID != nil }
+
+    /// Whether the request, and the largest answer it can produce, each fit one stream frame, measured through
+    /// the codec with the widest counters. A text answer is tried with every button and the text cap at twice
+    /// its bytes, the worst escaping the allowed characters reach; a selection names only ids the request
+    /// already carried.
+    public func fitsFrames() -> Bool {
+        guard Self.fits(.askRequest(self)) else { return false }
+        guard input != nil else { return true }
+        let text = String(repeating: "\"", count: AskInputForm.maxTextBytes)
+        return buttons.allSatisfy { Self.fits(.askResolve(PresentationAskAnswer(id: id, owner: owner, button: $0.id, text: text))) }
+    }
+
+    private static func fits(_ body: PresentationFrame.Body) -> Bool {
+        (try? PresentationCodec.encode(PresentationFrame(gen: .max, rev: .max, body: body))) != nil
     }
 }
 
 /// PresentationAskAnswer is the presenter's answer: a button id, or nil for a dismissal with Esc or Command-W.
-/// Only the id travels; the origin derives label and index from the buttons it stored.
+/// The origin derives label and index from the buttons it stored and checks `text` and `selected` against
+/// the form it stored.
 public struct PresentationAskAnswer: Codable, Equatable, Sendable {
     public var id: String
     public var owner: Int
     public var button: String?
+    public var text: String?
+    public var selected: [String]?
 
-    public init(id: String, owner: Int, button: String?) {
+    public init(id: String, owner: Int, button: String?, text: String? = nil, selected: [String]? = nil) {
         self.id = id
         self.owner = owner
         self.button = button
+        self.text = text
+        self.selected = selected
     }
 }
 
@@ -248,6 +297,7 @@ public struct PresentationFrame: Equatable, Sendable {
         case layout(PresentationLayout)
         case hud(PresentationHud?)
         case notify(PresentationNotify)
+        case sound(PresentationSound)
         /// A viewer asking to be the session's sole presenter. Sent only after the origin's hello offered it.
         case presenterAcquire
         /// Transfers the presenter role to this viewer, replacing any current holder.
@@ -285,6 +335,7 @@ public struct PresentationFrame: Equatable, Sendable {
             case .layout: return "layout"
             case .hud: return "hud"
             case .notify: return "notify"
+            case .sound: return "sound"
             case .presenterAcquire: return "presenter.acquire"
             case .presenterTake: return "presenter.take"
             case .presenterGranted: return "presenter.granted"
@@ -318,7 +369,7 @@ public struct PresentationFrame: Equatable, Sendable {
 
 extension PresentationFrame: Codable {
     private enum CodingKeys: String, CodingKey {
-        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, ask, overlay, forward
+        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, sound, ask, overlay, forward
     }
 
     public init(from decoder: Decoder) throws {
@@ -337,6 +388,7 @@ extension PresentationFrame: Codable {
         case "layout": body = .layout((try? container.decode(PresentationLayout.self, forKey: .layout)) ?? .invalid)
         case "hud": body = .hud(try container.decodeIfPresent(PresentationHud.self, forKey: .hud))
         case "notify": body = .notify(try container.decode(PresentationNotify.self, forKey: .notify))
+        case "sound": body = .sound(try container.decode(PresentationSound.self, forKey: .sound))
         case "presenter.acquire": body = .presenterAcquire
         case "presenter.take": body = .presenterTake
         case "presenter.granted": body = .presenterGranted
@@ -370,6 +422,7 @@ extension PresentationFrame: Codable {
         case .layout(let layout): try container.encode(layout, forKey: .layout)
         case .hud(let hud): try container.encodeIfPresent(hud, forKey: .hud)
         case .notify(let notify): try container.encode(notify, forKey: .notify)
+        case .sound(let sound): try container.encode(sound, forKey: .sound)
         case .askRequest(let ask): try container.encode(ask, forKey: .ask)
         case .askResolve(let answer): try container.encode(answer, forKey: .ask)
         case .askRejected(let ref), .askDismiss(let ref): try container.encode(ref, forKey: .ask)

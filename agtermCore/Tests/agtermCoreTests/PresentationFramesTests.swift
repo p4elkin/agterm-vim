@@ -59,6 +59,8 @@ struct PresentationFramesTests {
             id: "f2", response: ControlResponse(ok: false, error: "no such session")))),
         PresentationFrame(gen: 1, rev: 34, body: .status(PresentationStatus(
             status: .blocked, blink: false, color: nil, shape: nil, pane: pane, changedAt: nil, note: "perm: Bash"))),
+        PresentationFrame(gen: 1, rev: 35, body: .sound(PresentationSound(name: "Glass"))),
+        PresentationFrame(gen: 1, rev: 36, body: .sound(PresentationSound(name: nil))),
     ]
 
     static var forwardRequest: ControlRequest {

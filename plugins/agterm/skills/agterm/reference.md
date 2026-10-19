@@ -718,7 +718,10 @@ error keeps those names for compatibility.
   (`Basso`, `Blow`, `Bottle`, `Frog`, `Funk`, `Glass`, `Hero`, `Morse`, `Ping`, `Pop`, `Purr`,
   `Sosumi`, `Submarine`, `Tink`; also any custom sound in `~/Library/Sounds`) — an unknown name errors.
   Without `--sound`, a `blocked` status plays the user's Settings "Blocked sound" if they configured one
-  (Appearance ▸ Agent Status; off by default); an explicit `--sound` always overrides it.
+  (Appearance ▸ Agent Status; off by default); an explicit `--sound` always overrides it. On a session
+  another Mac presents, either sound plays there instead while the origin reports the status pane as a
+  follower and the presenting agterm supports it; otherwise it plays here (see Remote sessions). A custom
+  name the presenting Mac lacks plays its system alert.
   `--color` (`#rrggbb`) overrides the glyph tint for THIS call only — it rides the status, so the next
   `session status` without `--color` reverts to the Settings-configured color (a malformed hex errors).
   Use it to distinguish states beyond the fixed palette (e.g. a caller-specific blocked color).
@@ -1423,10 +1426,12 @@ subcommand, so `agtermctl pick open` is not required. Stdin is read unconditiona
 no items needs `< /dev/null` or it blocks.
 
 The first non-whitespace input byte selects the format. `[` starts a JSON array of objects with required
-`id` and `label` strings plus an optional `subtitle`; any other input is split into lines, blank and
+`id` and `label` strings plus an optional `subtitle` and an optional trailing status glyph: `status`
+(`idle|active|completed|blocked`, idle drawing none), `statusColor` (`#rrggbb`) and `statusShape` (a
+`session status --shape` name), the values `session status` takes; any other input is split into lines, blank and
 whitespace-only lines are dropped, and each remaining line becomes both the id and label. Item ids must
-be unique, labels must not be empty, labels and subtitles may not contain control characters, and a
-picker accepts at most 1,000 items. An empty list is rejected with `pick.open requires at least one item`
+be unique, labels must not be empty, labels and subtitles may not contain control characters, an invalid
+status, color or shape is refused, and a picker accepts at most 1,000 items. An empty list is rejected with `pick.open requires at least one item`
 unless `--allow-custom` is set, which accepts it and opens a plain text prompt. Omitting `items` altogether
 is rejected with `pick.open requires items`, reachable only over the raw protocol: the CLI always sends the
 list it parsed, empty or not.
@@ -1477,7 +1482,7 @@ it waited for. Results age out oldest-first: the 8 most recent per open window, 
 
 ## ask
 
-`agtermctl ask [open] TITLE --button ID=LABEL [--button ...] [--message TEXT]` opens a question without
+`agtermctl ask [open] TITLE [--button ID=LABEL ...] [--message TEXT]` opens a question without
 reading stdin. Use explicit `ask open` when the title is `open`, `result`, or `cancel`.
 
 `--style terminal` is the default and uses the window's selected session, with one pending ask per
@@ -1489,22 +1494,42 @@ terminal area, excluding the sidebar. An explicit GUI target must be selected in
 GUI pane selectors require it. Terminal asks can coexist with GUI asks and picks.
 `--window W` selects the window; `--follow` raises it without changing session selection.
 
-Supply one to six buttons with unique ids and nonempty labels. A token without `=` is both id and label;
+Supply one to six buttons with unique ids and nonempty labels; a question with a field or a list may omit
+them. A token without `=` is both id and label;
 otherwise the first `=` separates them. Title, message, and labels reject control characters.
 `--default ID` sets the initial highlight; otherwise the first non-destructive button is highlighted,
-or the first button if it is the only choice. Tab/arrows move the highlight, Return answers, and
-`--hotkey ID=LETTER` assigns a unique ASCII letter shortcut. `--destructive ID` cannot name the default.
+or the first button if it is the only choice. On a buttons-only question Tab/arrows move the highlight, Return answers, and
+`--hotkey ID=LETTER` assigns a unique ASCII letter shortcut; a Latin layout matches the typed letter, any
+other layout the key that types it in the US layout. `--destructive ID` cannot name the default.
 `--align left|center|right` defaults to right. `--width N` fixes the width to 10...100 percent of the
 region; omitted means content sizing. Invalid style, alignment, and width return `unknown style`,
 `unknown align`, and `width must be 10 to 100` respectively.
+
+A question can collect text or a choice instead of only a button. `--input line|multiline` adds a field
+that has the keyboard at open (`--value` prefill, `--placeholder` hint, text held to 64 KiB). `--choice
+ID=LABEL` (up to 50) adds a radio list, checkboxes with `--multiple`; `--choice-subtitle ID=TEXT` adds a
+dimmed description that may span lines, and `--checked ID` preselects. One or the other, never both. With
+either, `--button` is optional and defaults to `ok`=OK and `cancel`=Cancel; `--cancel ID` names the button
+that ends the question like Esc with no payload, which the generated Cancel already is. Keys: Tab moves the
+button highlight, Return answers a one-line field, Command-Return a multiline one, nothing answers while an
+input method composes, and `--hotkey` is refused with a field; in a list Up/Down move and Space toggles.
+
+```bash
+agtermctl ask "Branch name" --input line --placeholder "feature/..."
+agtermctl ask "Open which?" --multiple --choice 398="issue #398" --choice-subtitle 398="waits on you" --choice 395="PR #395"
+```
 
 The blocking call prints one bare result:
 
 ```json
 {"result":"answered","id":"yes","label":"Yes","index":0}
+{"result":"answered","id":"ok","label":"OK","index":0,"text":"feature/forms"}
+{"result":"answered","id":"ok","label":"OK","index":0,"selected":["398","395"]}
 {"result":"escaped"}
 {"result":"cancelled"}
 ```
+
+`text` keeps whitespace and newlines; `selected` lists ids in caller order, exactly one for a radio list.
 
 Index follows caller order. An answer exits 0, including a named No button; inspect `id` before acting.
 Esc/Command-W on the interactive ask return `escaped` with exit 3. Cancellation exits 2; failure exits 1.
@@ -1516,7 +1541,7 @@ global id and reject a mismatched explicit window.
 Session nodes expose terminal asks as `ask: {id, pane?}`, plus a handed-over ask of either style with
 `remote` or `replica` (see Remote sessions); `pane` follows the current left/right role and is omitted for
 session-wide placement. Top-level `askPending` is the window's GUI slot. Resolution removes the field
-for that slot. The raw open reply echoes `result.pane` for pane placement. The latest 32 finished results
+for that slot; a field or list adds no tree field. The raw open reply echoes `result.pane` for pane placement. The latest 32 finished results
 are retained across both styles, including after owner closure; pending requests are never evicted.
 App shutdown can interrupt polling. Ask emits no events.
 
@@ -1643,7 +1668,9 @@ in vi-mode there stays where it was. Leaving is idempotent and never errors.
 
 `agtermctl notify <body> [--title T] [--target] [--window W]` — post a macOS desktop notification
 attributed to a session (default: the active session of the frontmost window). `--title` defaults to
-the session name. Clicking the banner reveals that session. This is the only app-level way to post a
+the session name. Clicking the banner reveals that session. A session keeps one such banner: a newer
+`notify` replaces it, the session's OSC 9/777 banners do not, and focusing the session removes it.
+This is the only app-level way to post a
 banner (the terminal's own OSC 9/777 is the other source). Control-native (no GUI/menu equivalent).
 
 The banner is gated by **Settings ▸ Notifications ▸ Show notification banners**; the unseen badge has its
@@ -1978,8 +2005,8 @@ started with, so a change applies after restarting agterm.
 
 - **Fresh shells** restores the structural snapshot with new shells.
 - **Re-run commands** starts captured commands again. The old processes are not attached.
-- **Live sessions** wraps primary and split panes with zmx and reattaches to their running processes. Zsh
-  must be the macOS login shell. Scratch, overlay, and quick terminals remain temporary.
+- **Live sessions** wraps primary and split panes with zmx and reattaches to their running processes. Zsh or
+  fish must be the macOS login shell. Scratch, overlay, and quick terminals remain temporary.
 
 Closing agterm or sending it SIGTERM ends the attach clients and leaves live daemons running. A clean quit
 also captures each live pane's foreground command, so a daemon missing after an orderly machine restart is
@@ -2097,7 +2124,8 @@ far side, so it is also how to see what another machine would answer without ssh
 `presentation` (the presentation protocol version, absent from an app too old to stream),
 and `sessions`, each with `id`, `name`, `windowID`/`windowName` and `workspaceID`/`workspaceName` (show the
 names, group by the ids — neither is unique, so two windows called `main` merge if you group by name),
-`context` when its owner set one, `cwd`, `splitAxis` when it has a split, and `panes`
+`context` when its owner set one, `cwd`, `splitAxis` when it has a split, `status`/`statusColor`/`statusShape`
+as the far side's `tree` reports them (omitted when idle, and from an app too old to send them), and `panes`
 (`{pane, daemon, foreground}`, the last being the argv that pane is running and omitted when none is
 reported). `host` is the ssh destination the REQUESTING app was given, stamped on after decoding: the far
 side has no idea which name reached it.
@@ -2181,6 +2209,9 @@ Nothing has to be set up beyond the `agtermctl` PATH precondition above. What to
   when the target pane reports `follower` there, or every existing pane does for session-wide placement.
   Mixed, unknown or unowned roles stay local; one already open stays where it is when the lead changes.
   The caller on the origin gets the answer or the exit status as usual.
+- A `session status` sound (`--sound`, or the blocked default) plays on the presenting Mac instead of the
+  origin under the same rule for the status pane; a `scratch` status, or a presenter too old for it, keeps
+  it on the origin. The blocked default is the presenting Mac's own Settings choice.
 - A handed-over ask the presenting Mac refuses (its slot is taken, or a GUI question's target is not on
   screen), or one whose stream drops, goes back to the origin and waits there like a local one. If the
   origin cannot place it, it ends `{"result":"cancelled","reason":"presentation-lost"}`.

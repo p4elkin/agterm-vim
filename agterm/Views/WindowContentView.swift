@@ -663,14 +663,17 @@ struct WindowContentView: View {
                 actions: actions,
                 terminalAreaInset: terminalAreaInset,
                 items: pending.items.enumerated().map { index, item in
-                    PaletteItem(id: item.id, title: item.label, subtitle: item.subtitle) {
+                    let indicator = item.indicator
+                    return PaletteItem(id: item.id, title: item.label, subtitle: item.subtitle,
+                                       indicator: { indicator },
+                                       run: {
                         pick.resolve(ControlPickResult(
                             result: .picked,
                             id: item.id,
                             label: item.label,
                             index: index
                         ))
-                    }
+                    })
                 },
                 prompt: pending.prompt,
                 initialQuery: pending.query,
@@ -694,12 +697,8 @@ struct WindowContentView: View {
                     if let frame = askAnchorFrame(ask.anchor, anchors: anchors, proxy: proxy), valid {
                         AskDialogView(ask: ask, anchorFrame: frame, font: askFont,
                                       foreground: chromeText, background: terminalColor, focusAllowed: isFrontmost,
-                                      onAnswer: { index in
-                                          guard pick.pendingAsk?.id == ask.id else { return }
-                                          let button = ask.buttons[index]
-                                          pick.resolveAsk(ControlAskResult(result: .answered, id: button.id,
-                                                                           label: button.label, index: index))
-                                      },
+                                      draft: pick.askDraft, updateDraft: { pick.updateAskDraft(id: ask.id, $0) },
+                                      onAnswer: { pick.answerAsk(id: ask.id, buttonAt: $0) },
                                       onDismiss: {
                                           guard pick.pendingAsk?.id == ask.id else { return }
                                           actions.escapePendingAsk(for: windowID)

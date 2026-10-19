@@ -11,7 +11,7 @@ enum ZmxLaunch {
         let initialInput: String?
     }
 
-    private struct Runtime {
+    struct Runtime {
         let bundleURL: URL
         let environment: [String: String]
         let passwordDatabaseShell: String?
@@ -127,8 +127,8 @@ enum ZmxLaunch {
         return value.isEmpty ? nil : value
     }
 
-    private static func configurationResult(runtime: Runtime, paneIdentity: UUID,
-                                            baseEnvironment: [String: String], lead: ZmxLeadAttachment? = nil)
+    static func configurationResult(runtime: Runtime, paneIdentity: UUID,
+                                    baseEnvironment: [String: String], lead: ZmxLeadAttachment? = nil)
         -> Result<ZmxSupport.Configuration, ZmxSupport.Rejection> {
         let bundledResources = runtime.bundleURL.appendingPathComponent("Contents/Resources/ghostty").path
         let resources = runtime.environment["GHOSTTY_RESOURCES_DIR"].flatMap { $0.isEmpty ? nil : $0 }
