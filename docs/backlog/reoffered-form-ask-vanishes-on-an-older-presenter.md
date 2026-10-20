@@ -1,6 +1,6 @@
 ---
 worth: yes
-where: agtermCore/Sources/agtermCore/AppStore+RemoteAsk.swift:36
+where: agtermCore/Sources/agtermCore/AppStore+RemoteAsk.swift:reofferRemoteAsk
 added: 2026-10-19
 ---
 # a re-offered form ask vanishes when the new presenter lacks ask.form
@@ -10,6 +10,9 @@ The fork's `reofferRemoteAsk` empties the session's ask slot (`session.releaseAs
 with no presenter, which `reofferRemoteAsk` had already ruled out. Upstream #778 added a second nil:
 a form or `cancelButton` ask (`PresentationAsk.needsFormSupport`) goes only to a presenter whose hello lists
 `ask.form`, and only when it `fitsFrames()`. That nil now lands after the slot was emptied.
+Upstream #779 (2026-10-20 merge) adds a third: a choice list with an `other` row
+(`needsOtherSupport`) goes only to a presenter listing `ask.other`, so a presenter built between #778
+and #779 empties the slot the same way.
 
 ## What happened
 

@@ -61,12 +61,25 @@ struct PresentationFramesTests {
             status: .blocked, blink: false, color: nil, shape: nil, pane: pane, changedAt: nil, note: "perm: Bash"))),
         PresentationFrame(gen: 1, rev: 35, body: .sound(PresentationSound(name: "Glass"))),
         PresentationFrame(gen: 1, rev: 36, body: .sound(PresentationSound(name: nil))),
+        PresentationFrame(gen: 1, rev: 37, body: .askRequest(PresentationAsk(
+            PendingAsk(id: "a2", title: "pick", buttons: [ControlAskButton(id: "ok", label: "OK")],
+                       form: .choices(AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A")], multiple: true, other: "Other"))),
+            pane: nil, owner: 3))),
+        PresentationFrame(gen: 1, rev: 38, body: .askResolve(PresentationAskAnswer(id: "a2", owner: 3, button: "ok", text: " mine ",
+                                                                                   selected: ["a"]))),
     ]
 
     static var forwardRequest: ControlRequest {
         var args = ControlArgs()
         args.mode = "on"
         return ControlRequest(cmd: .sessionFlag, target: "11111111-2222-3333-4444-555555555555", args: args)
+    }
+
+    @Test func aChoiceRequestFromAnOriginWithoutTheOtherRowDecodesWithNone() throws {
+        let choices = try JSONDecoder().decode(AskChoiceForm.self, from: Data(#"{"choices":[{"id":"a","label":"A"}],"multiple":false,"checked":[]}"#.utf8))
+
+        #expect(choices == AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A")]))
+        #expect(choices.other == nil)
     }
 
     @Test(arguments: frames)

@@ -311,7 +311,8 @@ that window, omitted when no pick is pending.
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
 `--kind` over `status`, `notify`, `session.created`, `session.closed`, `session.selected` (a window's
 selection moved; carries the session that lost it as `previous`), `session.parked`, `tree.changed`,
-`pane.split`, `pane.scratch`, `remote.opened`, `remote.closed` and `app.launched` (once per app run, when
+`pane.split`, `pane.scratch`, `pane.focused` (a session's selection moved between its two split panes;
+carries the pane and its `paneID`), `remote.opened`, `remote.closed` and `app.launched` (once per app run, when
 hooks and the socket are ready); resume with paired `--run RUN --after SEQ`; and set page size with
 `--limit 1...1000`. The app retains 4,096 events for one process run. Cursor
 run changes, expiry, and ahead-of-tail errors are fatal and are never silently rebaselined. Once the stream holds a
@@ -644,8 +645,9 @@ is accepted and keeps its ask hidden and pending. A terminal ask leaves the rest
 `--default ID` seeds the highlight, `--hotkey ID=LETTER` adds a shortcut, and `--destructive ID` marks a
 button that cannot be the default. `--align left|center|right` aligns the buttons; `--width N` fixes the
 panel width to 10...100 percent of its region. `--input line|multiline` adds a focused text field and
-`--choice ID=LABEL` (with `--multiple`, `--choice-subtitle`, `--checked`) a radio or checkbox list; either
-defaults the buttons to OK/Cancel, Cancel returning `escaped`, and the answer carries `.text` or `.selected`.
+`--choice ID=LABEL` (with `--multiple`, `--choice-subtitle`, `--checked`, and `--other PLACEHOLDER` for a
+free-form line) a radio or checkbox list; either defaults the buttons to OK/Cancel, Cancel returning
+`escaped`, and the answer carries `.text` or `.selected`, plus `.text` when the free-form line is selected.
 Exit 0 means answered, including No: inspect `.id`.
 Esc/Command-W on the interactive ask return `escaped` with exit 3; cancellation returns `cancelled`
 with exit 2. `--no-block` returns an id for `ask result ID` or `ask cancel ID`; explicit `--window` must

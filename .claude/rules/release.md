@@ -2,6 +2,7 @@
 paths:
   - "scripts/release.sh"
   - "scripts/sign-local.sh"
+  - "packaging/agterm.rb"
 ---
 
 ## Release (`scripts/release.sh`)
@@ -13,6 +14,9 @@ paths:
   Without `--publish`, the dry run stops before upload. Upstream signs as
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
+- `release.sh` copies `packaging/agterm.rb` into the tap only when the tap has no cask, then rewrites
+  just `version` and `sha256`. Any other cask edit is made by hand in `umputun/homebrew-apps` too, and the
+  two files must stay identical apart from those two lines.
 - Developer ID signing is inside-out: `agtermctl`, zmx and `agterm-session-host` are signed first with no
   entitlements, then the app is sealed with its entitlements: the TCC keys plus Rebased's `allow-jit` and
   `disable-library-validation`. The script rejects any helper carrying them.

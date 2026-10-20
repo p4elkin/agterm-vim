@@ -74,6 +74,13 @@ The event kinds and payloads are:
 - `pane.split` / `pane.scratch`: session `name` and a `status` of `shown` or `hidden`, emitted only on a
   real visibility change: showing or hiding the split or scratch, closing the split, the primary pane
   exiting with a split promoted, or the scratch shell exiting. An axis change while shown emits nothing.
+- `pane.focused`: session `name`, the newly selected split pane as `pane` (`left` or `right`), and that
+  pane's surface token as `paneID`, absent until its surface exists. It reports the settled selection,
+  coalesced over 100 ms per window, so a move and back inside that interval emits nothing. It follows the
+  terminal, not the position: a click, the focus-pane keys, `session focus`, a new split, closing the
+  selected split and the primary exiting while selected each emit one; a swap, a hidden split shown again
+  and a window coming forward emit nothing, and neither does a reload. The scratch keeps `pane.scratch`
+  and a session switch keeps `session.selected`. A session created in or moved into a window starts silent.
 - `remote.opened` / `remote.closed`: session `name` and the ssh destination of a local row created by
   `zmx attach` as `host`, emitted beside `session.created` / `session.closed` for that session only. They describe the row's
   presence in the local tree, never the ssh connection: undo re-emits `remote.opened`, and an ssh that
@@ -476,7 +483,7 @@ buys nothing. A caller with no tree uses `version`.
   Wrap in a login shell for both — `--command "zsh -lc 'htop'"` — or give an absolute path
   (`/opt/homebrew/bin/htop`). All of that describes Fresh shells and Re-run commands. In Live sessions
   mode the command is instead a create-only zmx payload the persistent shell runs as a login shell, so
-  shell operators are interpreted, the `PATH` is that shell's rather than the launchd default, and the
+  the line uses that shell's syntax (zsh or fish), shell operators are interpreted, the `PATH` is that shell's rather than the launchd default, and the
   session stays open after the command exits.
   `--wait` (only with `--command`, else an error) HOLDS the session open after the command exits —
   showing libghostty's press-any-key prompt with the final output intact instead of closing immediately —
@@ -652,7 +659,7 @@ error keeps those names for compatibility.
   (nested shell, ssh, an agent). Answers ok on a session with no split.
 - `session restart [--command LINE] (--pane-id ID | --pane left|right) [--target] [--window W]`: replace one
   pane's shell. Ends the shell and its foreground program, then starts a new login shell in the same pane
-  that runs LINE and stays interactive. Without `--command` it runs the pane's current foreground program
+  that runs LINE using that login shell's syntax (zsh or fish) and stays interactive. Without `--command` it runs the pane's current foreground program
   again: the argv `tree` reports as `foreground`/`splitForeground`, in the directory that program is running in, and
   the reply carries the requested argv as `restart.replayedArgv`. That is the program as it runs now, not the line that
   started it, so environment assignments, redirections and the rest of a pipeline are not reconstructed.
@@ -1508,7 +1515,11 @@ region; omitted means content sizing. Invalid style, alignment, and width return
 A question can collect text or a choice instead of only a button. `--input line|multiline` adds a field
 that has the keyboard at open (`--value` prefill, `--placeholder` hint, text held to 64 KiB). `--choice
 ID=LABEL` (up to 50) adds a radio list, checkboxes with `--multiple`; `--choice-subtitle ID=TEXT` adds a
-dimmed description that may span lines, and `--checked ID` preselects. One or the other, never both. With
+dimmed description that may span lines, and `--checked ID` preselects. `--other PLACEHOLDER` adds one
+free-form line after the items: a non-space character enables and selects it, clearing it disables it
+(clearing a selected line in a radio list returns to the previous pick), and while it is selected the answer
+adds its raw `text` beside `selected` (radio: one id or the text with `selected` `[]`, never both). On that
+line Space is text, Up returns to the item above, and Down stays. One or the other, never both. With
 either, `--button` is optional and defaults to `ok`=OK and `cancel`=Cancel; `--cancel ID` names the button
 that ends the question like Esc with no payload, which the generated Cancel already is. Keys: Tab moves the
 button highlight, Return answers a one-line field, Command-Return a multiline one, nothing answers while an
@@ -1517,6 +1528,7 @@ input method composes, and `--hotkey` is refused with a field; in a list Up/Down
 ```bash
 agtermctl ask "Branch name" --input line --placeholder "feature/..."
 agtermctl ask "Open which?" --multiple --choice 398="issue #398" --choice-subtitle 398="waits on you" --choice 395="PR #395"
+agtermctl ask "Deploy where?" --choice staging --choice production --other "another environment"
 ```
 
 The blocking call prints one bare result:
@@ -1529,7 +1541,8 @@ The blocking call prints one bare result:
 {"result":"cancelled"}
 ```
 
-`text` keeps whitespace and newlines; `selected` lists ids in caller order, exactly one for a radio list.
+`text` keeps whitespace and newlines; `selected` lists ids in caller order, exactly one for a radio list
+unless the `--other` line answered, when it is `[]` beside `text`.
 
 Index follows caller order. An answer exits 0, including a named No button; inspect `id` before acting.
 Esc/Command-W on the interactive ask return `escaped` with exit 3. Cancellation exits 2; failure exits 1.

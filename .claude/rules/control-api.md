@@ -967,7 +967,15 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   one), never both; `ControlDispatcher+Ask` owns the validation messages. Without caller `buttons` a form gets
   `ok`=OK (default) and `cancel`=Cancel. `cancelButton` names a button that resolves `escaped` with no payload,
   as Esc does, and may also be the default; it defaults to `cancel` only for the generated pair.
-  Other answers add `text` (whitespace kept) or `selected` (caller order; radio exactly one, checkboxes any).
+  Other answers add `text` (whitespace kept) or `selected` (caller order; radio exactly one, checkboxes any),
+  except as the `other` row below changes it.
+  A list's optional `other` placeholder adds one free-form row after the items, its text in the draft's `text`:
+  `AskDraft` owns the transitions (non-blank edit selects, blank deselects, and blanking the SELECTED row of a
+  radio list restores the pick it took over from; blanking retained text of an unselected row leaves the pick
+  alone) and `AskChoiceForm.isBlank` the blankness rule. Its answer keeps caller ids in `selected` and adds the
+  raw `text` only while the row is selected, so a radio answer is one id or text, never both. The row's editor
+  holds the keyboard only while the cursor is on it (`KeyCatcherView.editorActive`); there Space is text, Up
+  returns to the item above, and Down clamps on the last row.
   Input asks reject hotkeys. The field takes focus at open; Tab/Shift-Tab move the button highlight, one-line
   Return and multiline Command-Return answer; no key answers or dismisses while the editor composes, though
   `ask.cancel` and owner teardown still resolve. Lists use Up/Down for the item cursor, Space to toggle,
@@ -1027,7 +1035,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the result before clearing the slot. Pending requests are never evicted. Finished results keep their
   owning window in one 32-entry cache across both styles, ordered by resolution. `PickRegistry` retains
   pick results separately.
-- Blocking CLI output is `{"result":"answered","id":"yes","label":"Yes","index":0}` (plus `text` or
+- Blocking CLI output is `{"result":"answered","id":"yes","label":"Yes","index":0}` (plus `text` and/or
   `selected` for a form), `{"result":"escaped"}`, or `{"result":"cancelled"}`; index follows caller order.
   Exit 0 means answered, including a No button; exit 3 means escaped, exit 2 means cancelled,
   and exit 1 means failure. `--no-block` prints `{"id":"…"}`.
@@ -1723,6 +1731,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   suppresses it, since a reload is not a selection. `addSession` emits `session.created` first.
   The selection is per window, so a window coming forward emits nothing, and `tree.changed` still does
   not fire on selection.
+- `pane.focused` is emitted from one store observer over each session's selected pane IDENTITY
+  (`AppStore+PaneFocus`), never from the `splitFocused` writers, which are spread across both targets.
+  Identity is what keeps a swap silent: it exchanges both identities and toggles the flag. The check is a
+  100 ms trailing debounce, because a shown split's deck re-render moves first responder to the primary
+  and the focus retry moves it back on a later main-queue turn, which a one-turn reconciliation would
+  report as two selections. `restore(from:)` rebaselines, and a session new to the store only joins the
+  baseline.
 - `remote.opened` / `remote.closed` are emitted by `emitSessionCreated` / `emitSessionClosed` themselves,
   gated on `remoteHost`, never from `zmx.attach`: the attach inserts the row before ssh starts, and a
   soft close emits `session.closed` while the pane is still alive for undo, whose `session.created` never
@@ -1839,6 +1854,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   against the stored ask (`PendingAsk.validatedAnswer`). A form or `cancelButton` ask goes only to a presenter
   whose hello lists `ask.form`, and only when its request and its largest possible answer each fit one
   stream frame (`PresentationAsk.fitsFrames`); otherwise it stays on the origin.
+  A list with an `other` row also needs `ask.other`, since an `ask.form`-only presenter would drop the row.
   It ends when answered or escaped on the viewer, or when the origin cancels it or tears down its
   session or pane, which dismisses the replica. A viewer refusing it because its slot is taken or a GUI
   target is not on screen hands it back. A terminal replica for a hidden row waits hidden like a local one.

@@ -32,6 +32,8 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 12, ts: 12.5, kind: .sessionSelected, window: "win", workspace: "work", session: "sess",
                          payload: ControlEventPayload(name: "api", previous: "before")),
             ControlEvent(seq: 13, ts: 13.5, kind: .appLaunched),
+            ControlEvent(seq: 14, ts: 14.5, kind: .paneFocused, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", pane: "right", paneID: "tok")),
         ]
 
         let data = try JSONEncoder().encode(events)
@@ -71,6 +73,8 @@ struct ControlEventProtocolTests {
             ControlEvent(seq: 12, ts: 12.5, kind: .sessionSelected, window: "win", workspace: "work", session: "sess",
                          payload: ControlEventPayload(name: "api", previous: "before")),
             ControlEvent(seq: 13, ts: 13.5, kind: .appLaunched),
+            ControlEvent(seq: 14, ts: 14.5, kind: .paneFocused, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "api", pane: "right", paneID: "tok")),
         ]
         let expected = [
             ##"{"kind":"status","payload":{"blink":true,"color":"#aabbcc","name":"api","pane":"right","##
@@ -89,6 +93,8 @@ struct ControlEventProtocolTests {
             ##"{"kind":"session.selected","payload":{"name":"api","previous":"before"},"seq":12,"session":"sess","##
                 + ##""ts":12.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"app.launched","payload":{},"seq":13,"ts":13.5}"##,
+            ##"{"kind":"pane.focused","payload":{"name":"api","pane":"right","paneID":"tok"},"seq":14,"session":"sess","##
+                + ##""ts":14.5,"window":"win","workspace":"work"}"##,
         ]
 
         #expect(try events.map(canonicalJSON) == expected)
