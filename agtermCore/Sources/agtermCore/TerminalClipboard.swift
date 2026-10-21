@@ -64,7 +64,12 @@ public enum TerminalClipboard {
         process.standardError = stderr
         try process.run()
         // a zmx that exits before reading everything must surface as its status, not kill this process
+        #if canImport(Darwin)
         _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        #else
+        // Linux has no per-descriptor flag; only the CLI calls this, so ignoring SIGPIPE process-wide is safe
+        signal(SIGPIPE, SIG_IGN)
+        #endif
         try? stdin.fileHandleForWriting.write(contentsOf: sequence)
         try? stdin.fileHandleForWriting.close()
         let diagnostics = stderr.fileHandleForReading.readDataToEndOfFile()

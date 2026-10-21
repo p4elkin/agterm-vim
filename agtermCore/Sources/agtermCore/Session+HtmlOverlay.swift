@@ -4,12 +4,13 @@ extension Session {
     /// htmlOverlayActive means a page covers the session: it owns input like a program but has no terminal
     /// surface, zoom target or exit status, so it never counts as `programOverlayActive`.
     public var htmlOverlayActive: Bool { overlayActive && htmlOverlay != nil }
-    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil && rebasedOverlay?.hidden != true }
-    /// The slot holds something on screen: anything but a hidden Rebased IDE, a HUD included.
-    public var visibleOverlayActive: Bool { overlayActive && rebasedOverlay?.hidden != true }
+    /// rebasedOverlayActive says an IDE holds the session-wide slot, hidden or not.
+    public var rebasedOverlayActive: Bool { overlayActive && rebasedOverlay != nil }
+    /// rebasedOverlayVisible is `rebasedOverlayActive` minus a hidden occupant.
+    public var rebasedOverlayVisible: Bool { rebasedOverlayActive && !overlayHidden }
 
-    /// coverOverlayActive is the input-exclusion question; terminal-surface questions ask
-    /// `programOverlayActive` instead.
+    /// coverOverlayActive says a program, page or IDE holds the session-wide slot, hidden or not; input exclusion
+    /// asks `coverOverlayVisible`, terminal-surface questions `programOverlayActive`.
     public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
 
     public var rebasedPlacement: (overlay: RebasedOverlay, pane: OverlayPane?)? {
@@ -37,14 +38,12 @@ extension Session {
         return false
     }
 
-    public func paneOverlayCovers(_ pane: OverlayPane) -> Bool {
-        guard let overlay = paneOverlay(pane) else { return false }
-        return overlay.rebased?.hidden != true
-    }
+    /// rebasedHidden is the hidden bit of the slot holding this session's IDE, false without one.
+    public var rebasedHidden: Bool { rebasedPlacement.map { overlayHidden($0.pane) } ?? false }
 
+    /// paneRebasedOverlayActive says `pane` holds a shown IDE.
     public func paneRebasedOverlayActive(_ pane: OverlayPane) -> Bool {
-        guard let review = paneOverlay(pane)?.rebased else { return false }
-        return !review.hidden
+        paneOverlay(pane)?.rebased != nil && paneOverlayVisible(pane)
     }
 
     public func paneOverlayIsProgram(_ pane: OverlayPane) -> Bool {
@@ -63,7 +62,7 @@ extension Session {
     /// rebasedHidesTerminal says whether a shown IDE covers the terminal a `--pane` font command addresses:
     /// the session-wide IDE covers every pane, a pane IDE only its own pane.
     public func rebasedHidesTerminal(_ pane: StatusPane?) -> Bool {
-        if rebasedOverlayActive { return true }
+        if rebasedOverlayVisible { return true }
         switch pane {
         case .scratch: return false
         case nil, .left: return paneRebasedOverlayActive(.left)
@@ -74,19 +73,19 @@ extension Session {
     /// htmlHidesTerminal says whether a page covers the terminal a `--pane` font command addresses: the
     /// session-wide page covers both split panes and a shown scratch, a pane page only its own pane.
     public func htmlHidesTerminal(_ pane: StatusPane?) -> Bool {
-        if rebasedOverlayActive { return false }
+        if rebasedOverlayVisible { return false }
         switch pane {
-        case .scratch: return htmlOverlayActive && scratchActive
-        case nil, .left: return htmlOverlayActive || paneOverlayIsHtml(.left)
-        case .right: return htmlOverlayActive || paneOverlayIsHtml(.right)
+        case .scratch: return htmlOverlayVisible && scratchActive
+        case nil, .left: return htmlOverlayVisible || (paneOverlayVisible(.left) && paneOverlayIsHtml(.left))
+        case .right: return htmlOverlayVisible || (paneOverlayVisible(.right) && paneOverlayIsHtml(.right))
         }
     }
 
     /// topmostHtmlOverlay is the page that takes the keyboard when focus returns to this session, in the
     /// order `topmostSurface` resolves covers; nil when a terminal is on top.
     public var topmostHtmlOverlay: HtmlOverlay? {
-        if htmlOverlayActive { return htmlOverlay }
-        if programOverlayActive || rebasedOverlayActive || scratchActive { return nil }
+        if htmlOverlayVisible { return htmlOverlay }
+        if programOverlayVisible || rebasedOverlayVisible || scratchActive { return nil }
         return focusedOverlayPane.flatMap { paneOverlay($0)?.html }
     }
 

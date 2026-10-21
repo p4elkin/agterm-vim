@@ -349,6 +349,7 @@ struct SocketClientTests {
             toggle_horizontal_split     cmd+shift+d
             toggle_scratch              cmd+j
             toggle_terminal_zoom        cmd+shift+return
+            toggle_overlay              cmd+shift+j
             toggle_search               cmd+f
           * toggle_sidebar              t
             select_theme                -
@@ -1064,6 +1065,17 @@ struct SocketClientTests {
         let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
         let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         #expect(lines[1] == "  * shell (split hidden)  [s1]  /tmp")
+    }
+
+    @Test(arguments: [([String]?.none, " (overlay)"), (["session"], " (overlay hidden)"), (["left"], " (overlay)")])
+    func formatTreeTagsAHiddenSessionOverlay(hidden: [String]?, tag: String) {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, overlay: true, hiddenOverlays: hidden)
+        let workspace = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])
+        let tree = ControlTree(workspaces: [workspace])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "  * shell\(tag)  [s1]  /tmp")
     }
 
     @Test func formatTreeTagsAnUnrealizedSession() {

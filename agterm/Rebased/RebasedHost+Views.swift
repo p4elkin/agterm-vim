@@ -50,7 +50,7 @@ extension RebasedHost {
     // A view changes the project's one frame: sent before the frame is in this slot, it lands in another session.
     func sendView(overlay id: UUID) {
         guard let entry = entries[id], visible[entry.project] == id, !fetching.contains(entry.session),
-              let held = overlay(entry), !held.hidden, let request = held.view, request.state == .queued,
+              let held = overlay(entry), !overlayHidden(entry), let request = held.view, request.state == .queued,
               let session = store(entry.session)?.session(withID: entry.session) else { return }
         let pane = session.rebasedPlacement?.pane != nil
         session.updateRebasedOverlay(id) { $0.view?.sent() }

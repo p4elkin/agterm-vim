@@ -529,7 +529,7 @@ final class RebasedHost {
     func show(overlay id: UUID, focusIfFocusedPane: Bool = false) {
         guard let entry = entries[id], let number = frameNumbers[entry.project], let frame = window(number) else { return }
         if case .failed = overlayState(entry) { return }
-        guard overlay(entry)?.hidden != true, overlayState(entry) != .fetching else { return }
+        guard !overlayHidden(entry), overlayState(entry) != .fetching else { return }
         // Armed only while the pane has the keyboard, so a later switch back to the session never takes it.
         if focusIfFocusedPane, visible[entry.project] != id,
            let pane = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.pane,
@@ -577,7 +577,7 @@ final class RebasedHost {
 
     @discardableResult
     func focus(overlay id: UUID) -> Bool {
-        guard let entry = entries[id], visible[entry.project] == id, overlay(entry)?.hidden != true,
+        guard let entry = entries[id], visible[entry.project] == id, !overlayHidden(entry),
               let number = frameNumbers[entry.project], let frame = window(number) else { return false }
         frames.makeKey(frame)
         return true
@@ -688,7 +688,7 @@ final class RebasedHost {
     private func handBack(_ previous: Entry) {
         let next = entries.values.filter {
             $0.project == previous.project && $0.id != previous.id && visibleSlots.contains($0.id)
-                && overlayState($0) == .shown && overlay($0)?.hidden != true
+                && overlayState($0) == .shown && !overlayHidden($0)
         }.max { $0.order < $1.order }
         if let next { show(overlay: next.id) }
     }
@@ -817,6 +817,11 @@ final class RebasedHost {
         guard let overlay = store(entry.session)?.session(withID: entry.session)?.rebasedPlacement?.overlay,
               overlay.id == entry.id else { return nil }
         return overlay
+    }
+
+    /// overlayHidden reads the hidden bit of the slot holding `entry`, the one `session.overlay.hide` flips.
+    func overlayHidden(_ entry: Entry) -> Bool {
+        overlay(entry) != nil && store(entry.session)?.session(withID: entry.session)?.rebasedHidden == true
     }
 
     private func overlayState(_ entry: Entry) -> RebasedOverlay.State? { overlay(entry)?.state }

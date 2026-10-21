@@ -3,8 +3,8 @@ name: agterm
 description: >
   Drive agterm, a native macOS terminal, via agtermctl. Use in an agterm session:
   create, rename, close, reopen, select or
-  reorder sessions and workspaces; split panes; toggle the scratch terminal; run overlay programs
-  and read their exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
+  reorder sessions and workspaces; split panes; toggle the scratch terminal; run, hide or show overlays;
+  read exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
   post a HUD/caption/notification; show a picker, question or input dialog; show images inline; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows; set font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
@@ -15,13 +15,14 @@ description: >
   problems, filing a bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
-  split the pane, close the overlay, show a message over the session, show a question dialog, agtermctl ask,
+  split the pane, close the overlay, hide the overlay for a moment, show a message over the session, show a question dialog, agtermctl ask,
   ask the user to type a value or a message, let the user pick one or several items from a list,
   show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
-  run my custom command, tell me when the selected session changes, wait until that worker session
-  finishes, bring back the session I just closed, park a session, hide parked rows, turn on normal mode,
+  flag every session in a workspace, run my custom command, tell me when the selected session changes,
+  wait until that worker session finishes, bring back the session I just closed, park a session,
+  hide parked rows, turn on normal mode,
   attach a session from another Mac, copy this to the clipboard, was agterm upgraded under the running app,
   upgrade agterm without losing sessions, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
@@ -105,14 +106,17 @@ under it.
 In this fork, Rebased can cover the session or one pane (`--rebased --pane left|right`) for a live review.
 `--diff RANGE [--working-tree]` or `--file PATH[:LINE]` chooses the view; `--project DIR` opens exactly that folder.
 `--on-close COMMAND` runs once when a fresh holder is released. The toggle hides and shows the same holder.
-`session rebased show` updates its view; `session rebased toggle` controls visibility (all fork only).
+`session rebased show` updates its view; `session rebased toggle` controls visibility (all fork only);
+`session overlay hide|show|toggle` hides it like any other overlay.
 Save the open's `result.overlay` and `result.request`; close with `session overlay close --overlay ID` to avoid closing another holder.
 Read `rebasedOverlay`'s `pane`, `hidden`, `view` and armed `onClose`, and top-level `rebased` (including `rebased.port` once known).
 A view is ready at `view.state: opened`; a hidden view stays `queued`. Remote rows support commit diffs and panes,
 but refuse `--working-tree`, `--file`, `--project` and `--on-close`. Details are in [reference.md](reference.md).
 A remote row's repository is mirrored to the Mac first (its commits only); `rebased mirror list|prune`
 lists and removes those mirrors.
-The session-wide slot holds either a HUD or a program overlay. Separately, the app has one
+The session-wide slot holds either a HUD or a program overlay. A program or page overlay can be
+hidden without closing it (`session overlay hide|show|toggle`, ⇧⌘J for the user): it keeps running and keeps
+its slot until it closes, so opening another there is refused. Separately, the app has one
 **quick terminal** (a scratch shell in a floating panel at 90% of the focused screen capped at 1100x700,
 or whatever share Settings sets instead; not part of the tree and not owned by a window).
 
@@ -260,6 +264,8 @@ omitted for a full-pane overlay or no overlay so gate on `overlay` first; the re
 overlay resize` for a record-then-restore zoom), `paneOverlays` (the panes covered by their own overlay —
 `["left"]`, `["right"]` or `["left","right"]`, omitted when neither is; the read side of `session overlay
 open --pane`, independent of the session-wide `overlay` flag),
+`hiddenOverlays` (the hidden slots — `session`, `left`, `right` — omitted when none is hidden; the read
+side of `session overlay hide`),
 `hud` (the message panel occupying the session-wide slot — `{message, detail?, spinner, backgroundColor?,
 textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}`, the two percents being the panel's width and height
 shares and `hideAfter` the configured auto-hide in seconds, 0 for a panel that stays — omitted when none is
@@ -341,6 +347,8 @@ all with the sidebar hidden or under the flat flagged list, the ordinary tree re
 off and narrows to the members only while it is on, and the flagged tree ignores the filter — and
 `workspace filter on` with nothing marked is
 refused so the pair can never lie) ·
+`workspace flag [on|off|toggle]` (flag or unflag EVERY session of one workspace as one value; `toggle` (default)
+unflags only when all are flagged, otherwise flags all; read back from each session's `flagged`) ·
 `workspace collapse [--target W] [--window W]` · `workspace expand [--target W] [--window W]` (collapse/expand ONE workspace
 in the sidebar tree — the per-workspace pair, distinct from the all-workspace `sidebar expand`/`collapse`;
 read the open/closed state back from the tree workspace node's `collapsed` flag, `true` when collapsed and
@@ -446,7 +454,7 @@ omitted when expanded).
   status is one of the values, returning at once when it already is. Exit 0 and print the status on a match,
   2 when the session closes, 124 on timeout, 1 on failure. Use it to wait for a worker started with
   `session new --command`; in a reused session wait for `active` first. Details in reference.md.
-- `session flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
+- `session flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all; `workspace flag` covers one whole workspace).
 - `session park [on|off|toggle]` — mark a session parked: the row is kept, whatever agent it held is not.
   The row draws dimmed and stays selectable, navigable and where it is; only the look changes, unless
   `sidebar parked hide` is on, which takes hidden parked rows out of the tree and the navigation order.
@@ -492,6 +500,7 @@ omitted when expanded).
 - `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
   `session overlay resize (--size-percent N | --full)` ·
   `session overlay close [--pane left|right]` ·
+  `session overlay hide|show|toggle [--pane left|right]` ·
   `session overlay reload [--current] [--pane left|right]` ·
   `session overlay navigate back|forward|browser|finder [--pane left|right]` ·
   `session overlay result [--pane left|right] | --page ID` ·

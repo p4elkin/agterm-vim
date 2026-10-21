@@ -254,7 +254,7 @@ extension AppActions {
         if session.paneRebasedOverlayActive(pane), let review = session.paneOverlay(pane)?.rebased,
            RebasedHost.shared.focus(overlay: review.id) { return }
         RebasedHost.shared.releaseKey(from: session.id)
-        let pageMayCover = session.coverOverlayActive || session.paneOverlayIsHtml(wantSplit ? .right : .left)
+        let pageMayCover = session.coverOverlayVisible || (session.paneOverlayVisible(pane) && session.paneOverlayIsHtml(pane))
         let pageCovers = pageMayCover && HtmlOverlayRegistry.shared.focusCover(of: session)
         if !pageCovers, let view = session.focusTarget(wantSplit: wantSplit) as? GhosttySurfaceView, let window = view.window {
             guard !view.deferFocusToAsk() else { return }

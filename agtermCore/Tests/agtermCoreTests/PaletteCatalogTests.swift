@@ -30,6 +30,7 @@ struct PaletteCatalogTests {
             "Close Split",
             "Swap Panes",
             "Toggle Scratch",
+            "Toggle Overlays",
             "Toggle Terminal Zoom",
             "Toggle Sidebar",
             "Flag Session",
@@ -65,7 +66,7 @@ struct PaletteCatalogTests {
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 57)
+        #expect(PaletteCommand.allCases.count == 58)
     }
 
     @Test func idsRoundTripThroughRawValue() {
@@ -210,7 +211,7 @@ struct PaletteCatalogTests {
                                              canStepWindows: true,
                                              activeSessionHasSplit: true, hasPendingClose: true,
                                              hasRecentClosed: true, hasActiveSession: true,
-                                             hasCurrentWorkspace: true, hasRemotes: true)
+                                             hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
 
     /// The commands whose menu item carries no `modalActive` term at all.
     private static let coverProof: Set<PaletteCommand> = [
@@ -231,7 +232,7 @@ struct PaletteCatalogTests {
 
     private static let needSession: Set<PaletteCommand> = [
         .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit, .toggleHorizontalSplit,
-        .swapPanes, .toggleScratch, .toggleRebased, .find,
+        .swapPanes, .toggleScratch, .toggleRebased, .toggleOverlay, .find,
         .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
         .firstSession, .lastSession,
     ]
@@ -249,7 +250,7 @@ struct PaletteCatalogTests {
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
                                      hasRecentClosed: true, hasActiveSession: false,
-                                     hasCurrentWorkspace: true, hasRemotes: true)
+                                     hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
         for command in PaletteCommand.allCases {
             #expect(command.isEnabled(in: context) == !Self.needSession.contains(command), "\(command)")
         }
@@ -272,7 +273,7 @@ struct PaletteCatalogTests {
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
                                      hasRecentClosed: true, hasActiveSession: true,
-                                     hasCurrentWorkspace: false, hasRemotes: true)
+                                     hasCurrentWorkspace: false, hasRemotes: true, activeSessionHasOverlay: true)
         let needWorkspace: Set<PaletteCommand> = [.renameWorkspace, .focusWorkspace, .addWorkspaceToFocus,
                                                   .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
                                                   .attachRemote]
@@ -367,5 +368,16 @@ struct PaletteCatalogTests {
         #expect(PaletteCommand.clearFlagged.builtinAction == nil)
         #expect(PaletteCommand.addWorkspaceToFocus.builtinAction == nil)
         #expect(PaletteCommand.expandWorkspaces.builtinAction == nil)
+    }
+
+    @Test func toggleOverlayNeedsAnOverlayToHideOrShow() {
+        let without = PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true)
+        #expect(PaletteCommand.toggleOverlay.isVisible(in: without), "stays listed, inert")
+        #expect(!PaletteCommand.toggleOverlay.isEnabled(in: without))
+        #expect(PaletteCommand.toggleOverlay.isEnabled(
+            in: PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true, activeSessionHasOverlay: true)))
+        #expect(!PaletteCommand.toggleOverlay.isEnabled(
+            in: PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true, pickerActive: true, activeSessionHasOverlay: true)))
+        #expect(PaletteCommand.toggleOverlay.builtinAction == .toggleOverlay)
     }
 }

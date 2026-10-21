@@ -131,11 +131,16 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
 - The Rebased overlay's hooks into upstream files ([[rebased-overlay]]) need these paths preserved:
-  - `Session.swift`: `PaneOverlay.rebased`, pane release, unrealized-program cleanup and hidden-aware focus.
-  - `Session+HtmlOverlay.swift`: placement/update by id, cover predicates and session release.
+  - `Session.swift`: `PaneOverlay.rebased`, pane release, unrealized-program cleanup, and the IDE in
+    `topmostSurface` and `programOverlayOwnsKeyboard` (which reads `coverOverlayVisible`).
+  - `Session+HtmlOverlay.swift`: placement/update by id, the IDE in `coverOverlayActive`, `rebasedHidden`
+    and session release.
+  - `AppStore+OverlayVisibility.swift`: `setSlotHidden` reports an IDE slot's hide to
+    `RebasedOverlayReleases.onHiddenChange`; every hide route must go through it.
   - `AppStore+Panes.swift`: pane close release; swap and promotion move the whole value.
   - `TerminalZoom.swift`, `DashboardCover.swift`: IDEs have no terminal target; hidden holders uncover panes.
-  - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`.
+  - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`;
+    `init` connects `RebasedOverlayReleases.onHiddenChange`.
   - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to
     their terminal.
   - `AppStore.swift`: project a held overlay through `rebasedPlacement`, even hidden or in a pane.
@@ -146,8 +151,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
     retains the port.
   - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, callback refusal and
     id-targeted close routing.
-  - `WindowContentView+Detail.swift`: held-slot IDE branches, hidden panel gates and
-    `paneOverlayCovers` in `deckPane`.
+  - `WindowContentView+Detail.swift`: held-slot IDE branches and the `RebasedSlot` visibility inputs.
   - `WindowContentView.swift`: `rebasedCovered` keeps in-window covers above the child frame.
   - `AppStore+RemoteOverlay.swift`: a hidden session-wide holder still reserves the local slot.
   - `AppDelegate.swift`: `saveBeforeQuit` and `releaseAllBeforeQuit` in `applicationWillTerminate`.

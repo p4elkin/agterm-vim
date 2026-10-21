@@ -62,6 +62,9 @@ struct HtmlOverlayView: View {
                     }
                 }
             }
+            button("minus", "Hide", "htmlOverlay.hide", enabled: true) {
+                store.hideHtmlOverlay(overlay.id)
+            }
             button("xmark", "Close", "htmlOverlay.close", enabled: true) {
                 store.closeHtmlOverlay(overlay.id)
             }

@@ -458,6 +458,11 @@ buys nothing. A caller with no tree uses `version`.
   back from the tree top-level `workspaceFilter`. The GUI half is the sidebar's bottom-bar grid button
   (filled while applied, disabled with nothing marked), View ▸ Toggle Workspace Filter, the ⌃⇧P palette
   entry, and the `toggle_workspace_filter` keymap action.
+- `workspace flag [on|off|toggle] [--target W] [--window W]` — flag or unflag EVERY session of one workspace
+  as one value, including those the flagged tree layout hides; the control twin of the workspace row's Flag
+  All Sessions. `toggle` (default) unflags only when every session is flagged and otherwise flags them all,
+  so it is not a per-session invert. `on`/`off` are idempotent; an empty workspace changes nothing; returns the workspace
+  id. Read back from each session's `flagged`. Unflagging can move the selection like `session flag off`.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
   (hide its sessions); returns the workspace id. The per-workspace counterpart of `sidebar collapse`
   (which collapses ALL but the active workspace) — this targets exactly the addressed workspace and does
@@ -1081,6 +1086,15 @@ error keeps those names for compatibility.
   as a courtesy — the slot is the same one. For an overlay shown on another Mac (see Remote sessions) the
   reply means the cancel was REQUESTED, not that the program ended; `session overlay result` reports how
   it ended.
+- `session overlay hide|show|toggle [--pane left|right] [--target] [--window W]` — hide program and page
+  overlays without closing them, or show them again. Without `--pane` it acts on every one the session has;
+  `toggle` hides them all while any is shown, else shows them all, and `result.text` says `hidden` or
+  `shown`. A hidden program keeps running, `--block` keeps waiting and `session overlay result` still
+  answers. Showing restores visibility; the slot stays occupied until the overlay closes. Opening another
+  overlay into a hidden slot, or a HUD while the session-wide slot is hidden, fails with `overlay hidden`. A HUD or a dialog cannot be hidden (`no overlay`), nor an overlay shown on
+  another Mac (`overlay is shown on another Mac`). From a page, a bare call acts on the page's pane, or on
+  the whole session for a session-wide page. Read back `hiddenOverlays` and `htmlOverlays[].hidden` on
+  `tree`.
 - `session overlay result --page ID` — the outcome of the page `open --html` named (`result.pageID`),
   readable after the page and its session are gone, up to the 32 most recent finished outcomes (a page still
   open is never evicted; an aged-out id answers `no such page`): `result.pageOutcome` `{pageID, outcome, value?}` with
@@ -2443,6 +2457,8 @@ locally with `mode must be on, off, or toggle`) /
 CLI rejects the same value locally with `mode must be one of: on, off, toggle, add`),
 `invalid workspace filter mode: <value>` (workspace filter over the raw socket; the CLI rejects it
 locally with `mode must be on, off, or toggle`),
+`invalid workspace flag mode: <value>` (workspace flag over the raw socket; the CLI rejects it locally
+with `mode must be on, off, or toggle`),
 `no open window` (quick/sidebar/workspace filter), `quick terminal not open` / `quick terminal not realized` (quick type) /
 `failed to read surface buffer` (quick text / session text),
 `text must not contain a NUL byte` (session type / quick type),

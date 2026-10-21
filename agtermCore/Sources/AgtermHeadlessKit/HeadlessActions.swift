@@ -262,6 +262,10 @@ public final class HeadlessActions: ControlActions {
 
     public func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse { refuse(.sessionFlag) }
 
+    public func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        refuse(.workspaceFlag)
+    }
+
     public func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         refuse(.sessionPark)
     }

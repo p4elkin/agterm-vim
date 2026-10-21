@@ -1,5 +1,7 @@
 import ArgumentParser
+#if canImport(Darwin)
 import Darwin
+#endif
 import Foundation
 import Testing
 import agtermCore

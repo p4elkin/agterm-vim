@@ -11,13 +11,13 @@ struct RebasedSlot: View {
 
     static func isVisible(_ visible: Bool, session: Session, pane: OverlayPane? = nil,
                           overlaid: Bool = false, covered: Bool = false) -> Bool {
-        guard visible, !overlaid, !covered, session.rebasedPlacement?.overlay.hidden != true else { return false }
+        guard visible, !overlaid, !covered, !session.rebasedHidden else { return false }
         if session.askPending != nil, pane == nil || session.askPaneIdentity == nil || session.askTargetPane == pane { return false }
         return true
     }
 
     static func message(for overlay: RebasedOverlay, shownElsewhere: Bool, visible: Bool = true) -> String? {
-        guard visible, !overlay.hidden else { return nil }
+        guard visible else { return nil }
         switch overlay.state {
         case .fetching: return "Fetching \(overlay.source ?? "the repository")…"
         case .starting: return "Starting Rebased…"

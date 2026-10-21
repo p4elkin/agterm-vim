@@ -19,6 +19,7 @@ C-boundary concurrency before changing the bridge.
   meaningful to drive.
 - For each hideable titlebar/sidebar element, ask whether it should join host-free `InterfaceElement` and
   Settings > Interface. Never add that preference without approval.
+  A control enabled there stays visible and is disabled when it cannot act; never show or hide it by state.
 - A decline of a feature request that a custom command covers explains the extension model with the request
   as the worked example: README's "bind X yourself", `site/docs.html#extend`, the agent skill, the cookbook.
   It also points "can you add X" requests to Discussions ▸ Ideas instead of issues.
@@ -262,8 +263,8 @@ C-boundary concurrency before changing the bridge.
   Verify in a Release binary: the closure's demangled symbol must not say `@Swift.MainActor`.
 - The session-wide overlay slot holds a caller's program, an HTML page, or a HUD. Raw `overlayActive` answers
   only "the slot is occupied"; a layer asking "does a cover own this session's input" reads
-  `Session.coverOverlayActive`, and one asking about the covering terminal surface reads
-  `programOverlayActive`. Deck gates, focus routing, zoom, and scratch focus all turn on that distinction,
+  `Session.coverOverlayVisible`, and one asking about the covering terminal surface reads
+  `programOverlayVisible`; their `Active` forms answer occupancy, hidden or not. Deck gates, focus routing, zoom, and scratch focus all turn on that distinction,
   so never spell a predicate inline. `control-api.md` lists the sites.
 - A terminal ask has a separate slot on `Session`, independent of the HUD/program overlay slot; see [[control-api]].
 - A long-lived process spawned into a surface needs a stop condition of its own. A hard-killed app runs no

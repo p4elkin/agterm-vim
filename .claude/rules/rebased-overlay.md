@@ -30,13 +30,20 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - One session holds at most one Rebased overlay: `Session.rebasedOverlay` or `PaneOverlay.rebased`.
   `rebasedPlacement` derives its current slot; `updateRebasedOverlay` writes by id after swap or promotion.
   Pane holders have no terminal surface: `paneOverlayIsProgram` excludes them.
-- `hidden` keeps the holder, view and callback while coverage, zoom and dashboard predicates expose
-  the terminal.
+- An IDE hides through its slot's bit, upstream's `overlayHidden` or `PaneOverlay.hidden`; `rebasedHidden`
+  reads it. There is no hidden bit on `RebasedOverlay`. A hidden slot keeps the holder, view and callback
+  while the `*Visible` predicates expose the terminal.
   Both deck branches render held Rebased slots, including hidden ones; they never create an overlay
-  terminal for them.
-  A hidden panel has no chrome, backdrop, text or hit testing.
-- `rebased_toggle`, the palette and `session rebased toggle` share `AppActions.toggleRebasedOverlay`.
-  A held overlay hides or shows, a failed one closes so the next press retries; without one the action opens it.
+  terminal for them. A hidden panel is transparent, with no backdrop, text or hit testing.
+- Every route flips the same bit: `rebased_toggle`, `toggle_overlay` (⇧⌘J), the menu, the palette, the
+  title-bar button and `session overlay hide|show|toggle`. `AppStore.setSlotHidden` reports each change of a
+  slot holding an IDE through `RebasedOverlayReleases.onHiddenChange`, and `AppActions.rebasedSlotHidden`
+  moves the window with it: `RebasedHost.hide` and a refocus of the selected session's terminal, or
+  `RebasedHost.show` with one focus attempt. Without the hook the IDE window stays over a terminal that
+  takes the keys.
+- `rebased_toggle`, the palette's Toggle Rebased and `session rebased toggle` share
+  `AppActions.toggleRebasedOverlay`. A held overlay hides or shows only its own slot, a failed one closes so
+  the next press retries; without one the action opens it.
   The outcome is `hidden`, `shown`, `opened`, `closed` or `refused`; UI callers beep on refusal.
 - Pane visibility requires the deck visible, no session-wide cover or scratch, no `rebasedCovered`,
   and no ask over that pane.
@@ -198,7 +205,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   Same-project opens without `--on-close` reuse the holder when `--pane` is omitted or matches it.
   `session overlay close --overlay ID` closes only that holder, in either slot; it excludes `--pane`.
 - Read-back while held:
-  `rebasedOverlay: {project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`.
+  `rebasedOverlay: {project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`, `hidden` derived
+  from the slot bit. A hidden session-wide IDE keeps `overlay: true`, as every hidden occupant does, and the
+  slot is named in `hiddenOverlays`.
   `view` is `{request, kind, target, state, detail?}`; kind is `diff`, `working-tree` or `file`.
   `diff` is the last range asked for; `view.state: opened` confirms installation, with a file count
   or path in `detail`.

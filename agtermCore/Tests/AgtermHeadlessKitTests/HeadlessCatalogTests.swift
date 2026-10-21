@@ -27,7 +27,7 @@ struct HeadlessCatalogTests {
         "window.resize", "window.move", "window.zoom", "window.fullscreen", "window.minimize",
         "workspace.new", "workspace.rename", "workspace.delete", "workspace.select", "workspace.go",
         "workspace.move", "workspace.focus", "workspace.filter", "workspace.collapse", "workspace.expand",
-        "sidebar", "sidebar.mode", "sidebar.flagged-layout", "sidebar.expand", "sidebar.collapse",
+        "workspace.flag", "sidebar", "sidebar.mode", "sidebar.flagged-layout", "sidebar.expand", "sidebar.collapse",
         "sidebar.parked", "sidebar.width", "mode", "theme.set", "theme.list", "font.inc", "font.dec",
         "font.reset", "keymap.reload", "keymap.list", "keymap.run", "config.reload", "quick", "quick.type", "quick.text",
         "dashboard", "debug.appearance", "session.go", "session.move",
@@ -59,6 +59,7 @@ struct HeadlessCatalogTests {
         "session.flag", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
+        "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",
     ])
     func macUICommandsAreForwarded(_ name: String) throws {
         #expect(HeadlessCatalog.support(for: try #require(Command(rawValue: name))) == .forwarded)

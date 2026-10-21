@@ -30,14 +30,15 @@ public enum ForwardPolicy {
              .sessionFlag, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
-             .sessionRebasedShow, .sessionRebasedToggle:
+             .sessionRebasedShow, .sessionRebasedToggle,
+             .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle:
             return .forwarded
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed
         case .windowNew, .windowSelect, .windowGo, .windowClose, .windowRename, .windowDelete,
              .windowResize, .windowMove, .windowZoom, .windowFullscreen, .windowMinimize,
              .workspaceNew, .workspaceRename, .workspaceDelete, .workspaceSelect, .workspaceGo,
-             .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
+             .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
              .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarExpand, .sidebarCollapse,
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,

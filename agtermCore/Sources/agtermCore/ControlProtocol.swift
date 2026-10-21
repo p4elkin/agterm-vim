@@ -21,6 +21,7 @@ public enum Command: String, Codable, Sendable {
     case workspaceFilter = "workspace.filter"
     case workspaceCollapse = "workspace.collapse"
     case workspaceExpand = "workspace.expand"
+    case workspaceFlag = "workspace.flag"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
@@ -69,6 +70,9 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlaySubmit = "session.overlay.submit"
     case sessionOverlayCopy = "session.overlay.copy"
     case sessionOverlayText = "session.overlay.text"
+    case sessionOverlayHide = "session.overlay.hide"
+    case sessionOverlayShow = "session.overlay.show"
+    case sessionOverlayToggle = "session.overlay.toggle"
     case sessionHudOpen = "session.hud.open"
     case sessionHudUpdate = "session.hud.update"
     case sessionHudClose = "session.hud.close"
@@ -223,8 +227,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `session.flag` (`on|off|toggle|clear`), `session.park` (`on|off|toggle`, no `clear` — unparking
     /// every row at once would leave a screen of rows that look live and hold nothing),
     /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|plain|tree|toggle`),
-    /// `sidebar.parked` (`show|hide|toggle`),
-    /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
+    /// `sidebar.parked` (`show|hide|toggle`), `workspace.focus` (`on|off|toggle|add`),
+    /// `workspace.filter`/`workspace.flag`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
     /// `command`, pin nothing, or drop the pin), `session.context` (`set|clear`), and `session.pairing`
     /// (`mirrors|viewer` — which of the two pairings `host`/`name` describe).
@@ -902,6 +906,13 @@ public enum OverlayHtmlError {
     public static let invalidPageID = "invalid page id"
     /// unknownPage: no page with that id was opened, or its outcome aged out of the retained results.
     public static let unknownPage = "no such page"
+}
+
+/// Error strings for `session.overlay.hide|show|toggle` and for opening into a slot whose overlay is hidden.
+public enum OverlayVisibilityError {
+    /// hidden: the slot still holds its overlay, running; show or close it before opening another.
+    public static let hidden = "overlay hidden"
+    public static let noOverlay = "no overlay"
 }
 
 /// Error strings for the pane-scoped (`--pane`) arm of `session.overlay.*`. Shared because the rejections

@@ -31,6 +31,8 @@ public protocol ControlActions {
     /// it takes no workspace target — the host resolves the store from `window` (frontmost when nil).
     func setWorkspaceFilter(window: String?, mode: ControlToggleMode) -> ControlResponse
     func setWorkspaceExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse
+    /// Flags or unflags every session of the target workspace as one value; `toggle` unflags only when all are.
+    func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse
     /// Set the target's parked mark — the row is kept, whatever agent it held is not. The mode arrives
     /// PARSED, unlike `setSessionFlag`; the host resolves the session and reads `Session.parked` for `toggle`.
@@ -166,6 +168,9 @@ public protocol ControlActions {
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse
     func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse
+    /// Hides, shows or toggles the session's overlays, or one pane's; a hidden overlay keeps running.
+    func setSessionOverlayVisibility(_ target: String?, window: String?, pane: OverlayPane?,
+                                     mode: OverlayVisibilityMode) -> ControlResponse
     /// Answers the page in the addressed slot with `value` and closes it; `session.overlay.result --page` reads it.
     func submitSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, value: String) -> ControlResponse
     /// The selector outcome of page `pageID`, readable after the page and its session are gone.
@@ -312,12 +317,14 @@ public struct ControlDispatcher {
                 .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
                 .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
+                .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle,
                 .sessionBackground, .sessionText:
             return await dispatchSessionSurfaceCommand(request)
         case .sessionOverlayJobRun:
             return dispatchSessionOverlayCommand(request)
         case .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete,
-                .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand:
+                .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
+                .workspaceFlag:
             return dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarFlaggedLayout,
@@ -718,6 +725,12 @@ public struct ControlDispatcher {
             return actions.setWorkspaceExpansion(request.target, window: request.args?.window, expanded: false)
         case .workspaceExpand:
             return actions.setWorkspaceExpansion(request.target, window: request.args?.window, expanded: true)
+        case .workspaceFlag:
+            guard let mode = ControlToggleMode.parse(request.args?.mode) else {
+                return ControlResponse(ok: false,
+                                       error: "invalid workspace flag mode: \(request.args?.mode ?? "toggle")")
+            }
+            return actions.setWorkspaceFlag(request.target, window: request.args?.window, mode: mode)
         default:
             preconditionFailure("unexpected workspace command: \(request.cmd.rawValue)")
         }
@@ -804,7 +817,7 @@ public struct ControlDispatcher {
                                                text: request.args?.text, to: request.args?.to)
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayReload,
              .sessionOverlayNavigate, .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy,
-             .sessionOverlayText:
+             .sessionOverlayText, .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle:
             return dispatchSessionOverlayCommand(request)
         case .sessionBackground:
             return dispatchSessionBackground(request)

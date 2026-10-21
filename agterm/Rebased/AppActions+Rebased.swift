@@ -19,20 +19,26 @@ extension AppActions {
                 guard store.closeRebasedOverlay(session.id, id: placement.overlay.id) else { return .refused("no Rebased overlay in this session") }
                 return .closed
             }
-            let hidden = !placement.overlay.hidden
+            let hidden = !session.rebasedHidden
             guard store.setRebasedHidden(session.id, id: placement.overlay.id, hidden) else { return .refused("no Rebased overlay in this session") }
-            if hidden {
-                RebasedHost.shared.hide(overlay: placement.overlay.id)
-                if store.selectedSessionID == session.id { rebasedRefocus(session) }
-                return .hidden
-            }
-            RebasedHost.shared.show(overlay: placement.overlay.id, focusIfFocusedPane: true)
-            return .shown
+            return hidden ? .hidden : .shown
         }
         switch RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil) {
         case .success: return .opened
         case .failure(let refusal): return .refused(refusal.message)
         }
+    }
+
+    /// rebasedSlotHidden moves the IDE window with its slot bit, whichever route flipped it: the Rebased toggle,
+    /// `toggle_overlay`, `session overlay hide|show|toggle`, the menu or the title-bar button.
+    func rebasedSlotHidden(session id: UUID, overlay: UUID, hidden: Bool) {
+        guard hidden else {
+            RebasedHost.shared.show(overlay: overlay, focusIfFocusedPane: true)
+            return
+        }
+        RebasedHost.shared.hide(overlay: overlay)
+        if let store = library.store(forSession: id), store.selectedSessionID == id,
+           let session = store.session(withID: id) { rebasedRefocus(session) }
     }
 
     func performRebasedToggle(session: UUID? = nil) {

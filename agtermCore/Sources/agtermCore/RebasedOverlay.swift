@@ -15,10 +15,9 @@ public struct RebasedOverlay: Equatable, Sendable {
     public var source: String?
     public var view: RebasedViewRequest?
     public var onClose: RebasedOnClose?
-    public var hidden: Bool
 
     public init(project: String, state: State = .starting, diff: RebasedDiff? = nil, source: String? = nil,
-                id: UUID = UUID(), view: RebasedViewRequest? = nil, onClose: RebasedOnClose? = nil, hidden: Bool = false) {
+                id: UUID = UUID(), view: RebasedViewRequest? = nil, onClose: RebasedOnClose? = nil) {
         self.id = id
         self.project = project
         self.state = state
@@ -26,7 +25,6 @@ public struct RebasedOverlay: Equatable, Sendable {
         self.source = source
         self.view = view
         self.onClose = onClose
-        self.hidden = hidden
     }
 }
 
@@ -91,18 +89,30 @@ public enum RebasedOverlayOpenFailure: Equatable, Sendable {
 public final class RebasedOverlayReleases {
     public static let shared = RebasedOverlayReleases()
     public var onRelease: ((UUID) -> Void)?
+    /// onHiddenChange hears every hide or show of a slot holding an IDE, whichever route flipped the slot bit:
+    /// (session, overlay, hidden). The app moves the IDE window with it.
+    public var onHiddenChange: ((UUID, UUID, Bool) -> Void)?
 
     func release(_ overlay: RebasedOverlay?) {
         guard let overlay else { return }
         onRelease?(overlay.id)
     }
+
+    func hiddenChanged(_ session: Session, slot pane: OverlayPane?) {
+        let overlay = pane.map { session.paneOverlay($0)?.rebased } ?? session.rebasedOverlay
+        guard let overlay else { return }
+        onHiddenChange?(session.id, overlay.id, session.overlayHidden(pane))
+    }
 }
 
 extension AppStore {
+    /// setRebasedHidden flips only the slot holding IDE `id`, through the bit `session.overlay.hide` flips.
     @discardableResult
     public func setRebasedHidden(_ sessionID: UUID, id: UUID, _ hidden: Bool) -> Bool {
-        guard let session = session(withID: sessionID) else { return false }
-        return session.updateRebasedOverlay(id) { $0.hidden = hidden }
+        guard let session = session(withID: sessionID), let placement = session.rebasedPlacement,
+              placement.overlay.id == id else { return false }
+        setSlotHidden(session, slot: placement.pane, hidden)
+        return true
     }
 
     @discardableResult

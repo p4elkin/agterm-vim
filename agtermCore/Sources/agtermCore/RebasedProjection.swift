@@ -100,9 +100,9 @@ public struct ControlRebasedMirrors: Codable, Sendable, Equatable {
 }
 
 extension RebasedOverlay {
-    var controlNode: ControlRebasedOverlayNode { controlNode(pane: nil) }
+    var controlNode: ControlRebasedOverlayNode { controlNode(pane: nil, hidden: false) }
 
-    func controlNode(pane: OverlayPane?) -> ControlRebasedOverlayNode {
+    func controlNode(pane: OverlayPane?, hidden: Bool) -> ControlRebasedOverlayNode {
         let stateName: String
         var error: String?
         switch state {

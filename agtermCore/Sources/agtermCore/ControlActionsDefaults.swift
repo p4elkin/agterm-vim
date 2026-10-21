@@ -30,6 +30,11 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.submit"))
     }
 
+    func setSessionOverlayVisibility(_: String?, window _: String?, pane _: OverlayPane?,
+                                     mode: OverlayVisibilityMode) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.\(mode.rawValue)"))
+    }
+
     // outcomes live in agtermCore, so every host answers the read the same way and owes no conformance
     func htmlPageResult(_ pageID: UUID) -> ControlResponse {
         HtmlPageOutcomes.shared.response(for: pageID)
@@ -50,6 +55,10 @@ public extension ControlActions {
 
     func setFlaggedViewLayout(_: ControlFlaggedLayoutMode) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("sidebar.flagged-layout"))
+    }
+
+    func setWorkspaceFlag(_: String?, window _: String?, mode _: ControlToggleMode) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("workspace.flag"))
     }
 
     func reloadHooks() -> ControlResponse {
