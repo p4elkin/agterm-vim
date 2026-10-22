@@ -534,10 +534,17 @@ worktree that follows the repo's symlink rule for `GhosttyKit.xcframework` and t
 
 ### Mac step 4: Remote rows
 
-- [ ] check the store-scoped remote state after a move: presentation stream, remote overlays and replicas, and
+- [x] check the store-scoped remote state after a move: presentation stream, remote overlays and replicas, and
       that the live `RemoteRowBook` rewrite (tested on Linux in Task 4) puts the row in the destination window
-- [ ] if any of it breaks, either fix it in the transfer or make `canSurviveTransfer` refuse remote rows, with a test
-- [ ] ⚠️ this decides whether p4linux rows viewed on the Mac can move; report the outcome to Sasha
+- [x] if any of it breaks, either fix it in the transfer or make `canSurviveTransfer` refuse remote rows, with a test
+- [x] ⚠️ this decides whether p4linux rows viewed on the Mac can move; report the outcome to Sasha
+      ➕ Remote rows move. The presentation stream is keyed by session id and looks the store up per call, so it
+      follows. Two gaps fixed in `ControlServer+Transfer`: the rebuilt panes ran their insert-time line (the last
+      lead nonce, whose reports and link-lost notices the book dropped, and a user attach's claim), now rewritten
+      with a fresh unclaimed attach begun in `ZmxLeadBook` (`RemoteBinding.attachPaneCommand`, shared with
+      `PaneReattach`); the remote-row book was written only on its debounce, now at once. Documented, not changed:
+      a replica ask is rejected to the origin, and a pane waiting to reconnect reattaches once more. Hosted tests
+      `ControlServerTransferTests.testAMovedRemoteRow…` (two) fail without the fix and pass with it.
 
 ### Mac step 5: Wide gates
 
@@ -570,7 +577,7 @@ Separate branch in `~/dev/agterm-agents`.
 - After a crash between the two saves, both windows hold the same session ids. Closing either copy runs
   `finalizePaneIdentities` and kills the daemon the other copy still shows. Rare (a crash inside one main-actor
   step); documented in `.claude/rules/windows.md` with the fix: close the duplicate with its window, not the row.
-- Remote rows: store-scoped remote state, decided in Mac step 4.
+- Remote rows: store-scoped remote state, decided in Mac step 4 (they move; see there).
 - The deployed app is built from `remote-row-names` (`e402b443`), which is not in `origin/main`. Deploying this
   branch alone would drop that work.
 
