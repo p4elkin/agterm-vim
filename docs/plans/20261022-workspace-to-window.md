@@ -453,11 +453,16 @@ Check: `bash -lc "source ~/.local/share/swiftly/env.sh && cd agtermCore && swift
 owner: lead
 depends: 4, 6, 8
 
-- [ ] every requirement in Overview has code and a test, except the app-target parts listed in the Mac stage
-- [ ] recount the consumers in [Consumers of the new pieces](#consumers-of-the-new-pieces); list the ones left for the Mac stage
-- [ ] full Linux gate passes, skipping only the two baseline failures
+- [x] every requirement in Overview has code and a test, except the app-target parts listed in the Mac stage
+- [x] recount the consumers in [Consumers of the new pieces](#consumers-of-the-new-pieces); list the ones left for the Mac stage
+- [x] full Linux gate passes, skipping only the two baseline failures
 
 Check: `bash -lc "source ~/.local/share/swiftly/env.sh && export PATH=$HOME/.local/share/mise/installs/node/26/bin:$PATH && cd agtermCore && swift test --no-parallel --skip 'aFramelessPanelIsAsTallAsItsText|interruptedPayloadStillExecsTheFinalShell'"`
+
+➕ Result 2026-10-22: full Linux gate 5416 tests in 249 suites green (baseline 5334; the two baseline failures skipped).
+Consumers: 14 of 20 done on Linux. Open for the Mac stage (6): `ControlServer` override of the two transfer
+requirements, its use of `resolveTransferDestination`, of the transfer types, of `TransferResult.controlResult`, of
+`TransferRefusal`; `GhosttySurfaceView.prepareForTransfer` override. The live `RemoteRowBook` check stays in Mac step 4.
 
 ### Task 8: Fork docs and the bundled agterm skill
 
