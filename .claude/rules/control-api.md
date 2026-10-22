@@ -491,7 +491,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   surface's callbacks resolve their pane through `Session.paneOverlayRole(of:)`, never a captured one.
   Read back `paneOverlays`, ordered left-then-right.
 - `session.overlay.hide|show|toggle [--pane]` set a per-slot hidden bit (`Session.overlayHidden`,
-  `PaneOverlay.hidden`, which travels with the struct through swap and promotion) on program and page slots only.
+  `PaneOverlay.hidden`, which travels with the struct through swap and promotion) on program and page slots only;
+  a session-wide Rebased IDE leaves its slot instead ([[rebased-overlay]]).
   Bare scope is every such slot of the session; toggle hides all when any is shown, else shows all. A HUD, an
   ask and a remote PROGRAM reservation are not hideable: an empty scope answers `no overlay`, a reserved one
   `overlay is shown on another Mac`. A page shown on the presenting Mac is in scope: the request goes to that

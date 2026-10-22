@@ -27,17 +27,27 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 
 ### Slots, hide and focus
 
-- One session holds at most one Rebased overlay: `Session.rebasedOverlay` or `PaneOverlay.rebased`.
-  `rebasedPlacement` derives its current slot; `updateRebasedOverlay` writes by id after swap or promotion.
+- One session holds at most one Rebased overlay: `Session.rebasedOverlay`, `Session.parkedRebased` or
+  `PaneOverlay.rebased`. `rebasedPlacement` derives its current slot, a parked IDE as `pane: nil`;
+  `updateRebasedOverlay` writes by id after swap or promotion.
+  So while an IDE is parked, an open for another project answers `overlay already open` over an empty slot.
   Pane holders have no terminal surface: `paneOverlayIsProgram` excludes them.
-- An IDE hides through its slot's bit, upstream's `overlayHidden` or `PaneOverlay.hidden`; `rebasedHidden`
-  reads it. There is no hidden bit on `RebasedOverlay`. A hidden slot keeps the holder, view and callback
-  while the `*Visible` predicates expose the terminal.
-  Both deck branches render held Rebased slots, including hidden ones; they never create an overlay
+- A pane IDE hides through its slot's bit, `PaneOverlay.hidden`. A session-wide IDE never sets
+  `overlayHidden`: hiding parks it in `parkedRebased` with its size and empties the slot, so any overlay opens.
+  This breaks upstream's rule that a hidden occupant keeps its slot, for this IDE only.
+  Showing seats it back through the helper `openRebasedOverlay` uses, closing a HUD, and refuses while
+  `AppStore.sessionSlotFree` is false: `overlay already open` for a program, page or remote reservation,
+  the presenter message for a presenting viewer. The user closes the occupant; nothing closes it for them.
+  `rebasedHidden` reads the pane bit or the parked state; there is no hidden bit on `RebasedOverlay`.
+  A hidden IDE keeps the holder, view and callback while the `*Visible` predicates expose the terminal.
+  Both deck branches render held Rebased slots, including hidden pane ones; they never create an overlay
   terminal for them. A hidden panel is transparent, with no backdrop, text or hit testing.
-- Every route flips the same bit: `rebased_toggle`, `toggle_overlay` (⇧⌘J), the menu, the palette, the
-  title-bar button and `session overlay hide|show|toggle`. `AppStore.setSlotHidden` reports each change of a
-  slot holding an IDE through `RebasedOverlayReleases.onHiddenChange`, and `AppActions.rebasedSlotHidden`
+- Every route takes the same path: `rebased_toggle`, `toggle_overlay` (⇧⌘J), the menu, the palette, the
+  title-bar button and `session overlay hide|show|toggle`. The upstream routes see a parked IDE through
+  `Session.slotEffectivelyHidden`; a bare show unparks it only when no program or page is in the slot, and
+  otherwise acts on that occupant. A refused unpark comes back last, as `OverlayVisibilityFailure.rebased`,
+  and `toggle_overlay` beeps on it. `AppStore.setSlotHidden` and the park and unpark report each change
+  through `RebasedOverlayReleases.onHiddenChange`, once, and `AppActions.rebasedSlotHidden`
   moves the window with it: `RebasedHost.hide` and a refocus of the selected session's terminal, or
   `RebasedHost.show` with one focus attempt. Without the hook the IDE window stays over a terminal that
   takes the keys.
@@ -206,8 +216,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   `session overlay close --overlay ID` closes only that holder, in either slot; it excludes `--pane`.
 - Read-back while held:
   `rebasedOverlay: {project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`, `hidden` derived
-  from the slot bit. A hidden session-wide IDE keeps `overlay: true`, as every hidden occupant does, and the
-  slot is named in `hiddenOverlays`.
+  from the slot bit or the parked state. A parked IDE has no `pane`; the session reads `overlay: false`, and
+  `hiddenOverlays` names `session` while no program or page holds the slot, since a bare show brings it back.
+  With one there, `overlay` and `hiddenOverlays` describe that occupant.
   `view` is `{request, kind, target, state, detail?}`; kind is `diff`, `working-tree` or `file`.
   `diff` is the last range asked for; `view.state: opened` confirms installation, with a file count
   or path in `detail`.

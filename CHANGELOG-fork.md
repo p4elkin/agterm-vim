@@ -25,6 +25,9 @@ publishes an empty body with only a warning on stderr.
 - Hide Overlays (⇧⌘J, View ▸ Hide Overlays, `session overlay hide|show|toggle`) hides and shows a Rebased or
   IntelliJ overlay too, and takes its window off the screen. The Rebased toggle and the overlay hide now
   share one hidden state, so `tree` reports a hidden IDE in `hiddenOverlays`.
+- A hidden session-wide Rebased or IntelliJ overlay no longer blocks other overlays: a picker, page or HUD
+  opens while it is hidden. Showing it again answers `overlay already open` until that overlay closes, and
+  the chord beeps. `tree` reads `overlay: false` for it, with `session` still in `hiddenOverlays`.
 
 ### Added
 
