@@ -148,10 +148,13 @@ flowchart TD
   `attachSessions(_ s: [Session], toNewWorkspaceNamed: String) -> UUID`: append, select, `scheduleTreeChanged()`.
   The last one creates the workspace without `addWorkspace` (which saves). No `sessionCreated` event: the ids
   already exist.
-- `withdrawTransferred(sessionIDs: [UUID], workspaceID: UUID?, createdWorkspace: Bool)`: the rollback on the
+- `withdrawTransferred(sessionIDs: [UUID], workspaceID: UUID?, createdWorkspace: Bool, previousSelection: UUID?)`:
+  the rollback on the
   destination. Removes exactly what attach added, including a workspace the transfer created, with no
   `sessionCreated` / `sessionClosed`, no recent-closed record, no finalize. The previous selection is restored
   normally, so `sessionSelected` fires and subscribers see the selection go back. `freshWorkspaceID` is not restored.
+  ➕ The caller reads the destination's `selectedSessionID` before the attach and passes it as
+  `previousSelection` (the store keeps no copy). A focus filter that the attach switched off stays off.
 - `detachWorkspace(_ id: UUID)` and `detachSessions(_ ids: [UUID])`, run on the source only after the destination
   saved. Keep from `removeWorkspace` / `moveSessions`: `releaseLeavingSession`; selection moved off a detached
   active session (`workspaceRemovalTarget` for a workspace, `closeReselectionTarget(after:)` for sessions, then
@@ -160,7 +163,7 @@ flowchart TD
   `parkedRevealedWorkspaceIDs` by direct write (not `commitParkedHiding`, which saves); `scheduleTreeChanged()`.
   Never: `recordRecentClosedWorkspace`, `emitSessionClosed`, `finalizePaneIdentities`, `dropLaunchPanes` (the panes
   stay claimed), `sessionDidFinalize` (it drops bookmarks), the watermark sweep.
-- Refusal checks, returning a plain `String?` message (Task 4 wraps it in `TransferRefusal`): the last workspace of
+- Refusal checks, `workspaceTransferRefusal(_ workspaceID: UUID) -> String?`, returning a plain message (Task 4 wraps it in `TransferRefusal`): the last workspace of
   the store → `last workspace in window`; a workspace that a pending-close record names as its undo target
   (`PendingSessionClose.workspaceID`) → `workspace has a pending close`.
 - None of these call `save()`.
@@ -324,23 +327,23 @@ depends: 3
 - Modify: `agtermCore/Sources/agtermCore/AppStore.swift` (access level of `orderedSessionIDs` only, it is private)
 - Create: `agtermCore/Tests/agtermCoreTests/AppStoreTransferTests.swift`
 
-- [ ] write failing tests for `releaseForTransfer` with fake surfaces and a recording `paneFinalizer`:
+- [x] write failing tests for `releaseForTransfer` with fake surfaces and a recording `paneFinalizer`:
       `prepareForTransfer()` on primary and split, `overlayActive == false`, `scratchActive == false` (also when
       the scratch surface was nil), `hudSpec == nil`, `searchActive == false`, every surface slot nil, pane
       identities unchanged, finalizer never called
-- [ ] write failing tests for attach: appended at the end, `selecting` selects, `toNewWorkspaceNamed` creates one
+- [x] write failing tests for attach: appended at the end, `selecting` selects, `toNewWorkspaceNamed` creates one
       workspace, `treeChanged` scheduled, no `sessionCreated`, no file written
-- [ ] write failing tests for `withdrawTransferred`: workspaces and selection equal their state before the attach,
+- [x] write failing tests for `withdrawTransferred`: workspaces and selection equal their state before the attach,
       including a created workspace removed; `sessionSelected` fires for the restored selection; no recent-closed
       item, no `sessionCreated` or `sessionClosed`
-- [ ] write failing tests for detach: no finalize, no `sessionClosed`, no recent-closed item, no launch-pane drop,
+- [x] write failing tests for detach: no finalize, no `sessionClosed`, no recent-closed item, no launch-pane drop,
       `releaseLeavingSession` ran, selection moves off a detached active session (workspace and session cases),
       focus set, recency, fresh workspace and parked-revealed ids drop the detached ids, `treeChanged` scheduled,
       no file written
-- [ ] write failing tests for the refusal checks: last workspace; a workspace named by a pending-close record
-- [ ] implement as in Technical Details > Store transfer, using `removeFromRecency(_:)`, never writing
+- [x] write failing tests for the refusal checks: last workspace; a workspace named by a pending-close record
+- [x] implement as in Technical Details > Store transfer, using `removeFromRecency(_:)`, never writing
       `sessionRecency` directly
-- [ ] run the check
+- [x] run the check
 
 Check: `bash -lc "source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter AppStoreTransferTests"`
 
@@ -351,14 +354,14 @@ Check: `bash -lc "source ~/.local/share/swiftly/env.sh && cd agtermCore && swift
 - Modify: `agtermCore/Sources/agtermCore/Session.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/SessionTransferSurvivalTests.swift`
 
-- [ ] write failing tests: the default `prepareForTransfer()` calls `teardown()` once; an overriding fake is
+- [x] write failing tests: the default `prepareForTransfer()` calls `teardown()` once; an overriding fake is
       dispatched through `any TerminalSurface`
-- [ ] write failing tests for `canSurviveTransfer`: zmx-backed primary; zmx-backed primary plus split; split not
+- [x] write failing tests for `canSurviveTransfer`: zmx-backed primary; zmx-backed primary plus split; split not
       zmx-backed (false); plain unwrapped primary (false); both slots nil (true); a remote row (true)
-- [ ] add `prepareForTransfer()` as a protocol requirement of `TerminalSurface` with a default in an extension
+- [x] add `prepareForTransfer()` as a protocol requirement of `TerminalSurface` with a default in an extension
       (an extension-only method would not dispatch to the app's override)
-- [ ] add `Session.canSurviveTransfer`, reading `surface?.backedByZmx` and `splitSurface?.backedByZmx` directly
-- [ ] run the check
+- [x] add `Session.canSurviveTransfer`, reading `surface?.backedByZmx` and `splitSurface?.backedByZmx` directly
+- [x] run the check
 
 Check: `bash -lc "source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter SessionTransferSurvivalTests"`
 
