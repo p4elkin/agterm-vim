@@ -72,6 +72,17 @@ struct ControlTransferRoutingTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func sessionMoveRefusesAWorkspaceWithAWorkspaceName() async throws {
+        let actions = MockControlActions()
+
+        let response = try #require(await dispatch(
+            ControlRequest(cmd: .sessionMove, target: "s1",
+                           args: ControlArgs(workspace: "w9", workspaceName: "logs", toWindow: "new")), actions))
+
+        #expect(response.error == "use either --workspace or --workspace-name, not both")
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func movesWithoutToWindowRouteAsBefore() async {
         let actions = MockControlActions()
 

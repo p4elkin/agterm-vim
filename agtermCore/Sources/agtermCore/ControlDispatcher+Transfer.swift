@@ -22,6 +22,9 @@ extension ControlDispatcher {
         guard args.to == nil, args.after == nil, args.before == nil else {
             return ControlResponse(ok: false, error: "--to-window cannot be combined with --to, --after or --before")
         }
+        guard args.workspace == nil || args.workspaceName == nil else {
+            return ControlResponse(ok: false, error: "use either --workspace or --workspace-name, not both")
+        }
         let targets = args.targets ?? [request.target ?? "active"]
         guard !targets.isEmpty else {
             return ControlResponse(ok: false, error: "session.move requires at least one --target")

@@ -19,7 +19,7 @@ extension ControlServer {
     func transferSessions(_ targets: [String], window: String?, transfer request: ControlSessionTransfer) async -> ControlResponse {
         let workspace: TransferWorkspaceTarget
         switch (trimmed(request.workspace), request.workspaceName) {
-        case (.some, .some): return ControlResponse(ok: false, error: "a workspace and --workspace-name are exclusive")
+        case (.some, .some): preconditionFailure("the dispatcher refuses a workspace with --workspace-name")
         case (.some(let id), nil): workspace = .id(id)
         case (nil, .some(let name)): workspace = .name(name)
         case (nil, nil): workspace = .none

@@ -151,7 +151,6 @@ public enum ControlWorkspaceFocusMode: String, CaseIterable, Equatable, Sendable
     private static var validNames: [String] { allCases.map(\.rawValue) }
 }
 
-/// The mutually exclusive move forms accepted by `session.move`.
 /// Where `session.move --to-window` sends its sessions: the destination window, and the workspace there by id
 /// (`workspace`) or by name (`workspaceName`); `windowName` names a window `toWindow == "new"` creates.
 public struct ControlSessionTransfer: Equatable, Sendable {
@@ -168,6 +167,7 @@ public struct ControlSessionTransfer: Equatable, Sendable {
     }
 }
 
+/// The mutually exclusive move forms accepted by `session.move`.
 public enum ControlSessionMove: Equatable, Sendable {
     case reorder(ReorderDirection)
     case workspace(String)

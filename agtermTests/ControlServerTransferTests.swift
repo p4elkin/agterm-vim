@@ -141,19 +141,6 @@ final class ControlServerTransferTests: XCTestCase {
         XCTAssertEqual(landed.sessions.map(\.id), [session.id])
     }
 
-    func testASessionMoveNamingBothAWorkspaceAndAWorkspaceNameIsRefused() async throws {
-        let store = try XCTUnwrap(library.activeStore)
-        let session = try XCTUnwrap(store.workspaces.first?.sessions.first)
-        _ = library.newWindow(name: "other")
-
-        let response = await makeActions().transferSessions(
-            [session.id.uuidString], window: nil,
-            transfer: ControlSessionTransfer(toWindow: "other", workspace: "active", workspaceName: "landed"))
-
-        XCTAssertEqual(response.error, "a workspace and --workspace-name are exclusive")
-        XCTAssertNotNil(store.session(withID: session.id))
-    }
-
     func testAMovedRemoteRowAttachesWithAFreshNonceAndNoClaim() async throws {
         let store = try XCTUnwrap(library.activeStore)
         let (session, before) = try remoteRow(in: store)

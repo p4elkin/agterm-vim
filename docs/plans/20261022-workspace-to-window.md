@@ -506,8 +506,8 @@ worktree that follows the repo's symlink rule for `GhosttyKit.xcframework` and t
       `TransferRefusal` to an error answer with its message
       ➕ In `ControlServer+Transfer.swift`. Every destination goes through `actions.openWindow`, which raises an
       open window and opens a new or loaded one, then `takeFrontmost`. `pollUntil` and `resolveBatchSessions`
-      lost `private` to be shared. A raw request naming both a workspace and `workspaceName` answers
-      `a workspace and --workspace-name are exclusive` (the CLI already rejects it; the dispatcher does not).
+      lost `private` to be shared. A raw request naming both a workspace and `workspaceName` is refused by
+      `dispatchSessionTransfer` with `use either --workspace or --workspace-name, not both` (review round 04).
 - [x] confirm by reading `makeSurface` / `makeSplitSurface` that a rebuilt surface for an existing daemon only
       attaches; no factory change expected
       ➕ Confirmed, no change: both build `ZmxLaunch.configuration(paneIdentity:)` from the session's persisted
