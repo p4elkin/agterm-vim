@@ -560,7 +560,8 @@ struct SocketClient {
                 // the whole complaint in #416 — it is listed, named, and does nothing.
                 let realizedTag = session.realized == false ? " (not realized)" : ""
                 let overlayHidden = session.hiddenOverlays?.contains("session") == true
-                let overlayTag = session.overlay ? (overlayHidden ? " (overlay hidden)" : " (overlay)") : ""
+                // a parked IDE leaves `overlay` false but still names `session` hidden
+                let overlayTag = overlayHidden ? " (overlay hidden)" : session.overlay ? " (overlay)" : ""
                 let tags = splitTag + realizedTag + overlayTag
                     + (session.scratch ? " (scratch)" : "")
                 let splitCwdSuffix = session.splitCwd.map { $0 == session.cwd ? "" : "  split cwd: \($0)" } ?? ""

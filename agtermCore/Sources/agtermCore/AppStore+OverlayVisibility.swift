@@ -4,20 +4,22 @@ extension AppStore {
     /// setOverlaysHidden hides or shows a session's overlays: one pane's, or every program and page of the
     /// session for a nil `pane`. A hidden overlay keeps running and stays addressable. nil on success,
     /// including when nothing changed; `tree.changed` fires only on a change. A page shown on the presenting
-    /// Mac is asked to change, and its reported state changes when that Mac answers.
+    /// Mac is asked to change, and its reported state changes when that Mac answers. A parked IDE that cannot
+    /// be seated back is refused last, after every other slot changed.
     @discardableResult
     public func setOverlaysHidden(_ sessionID: UUID, pane: OverlayPane?, hidden: Bool) -> OverlayVisibilityFailure? {
         guard let session = session(withID: sessionID) else { return .unknownSession }
         let slots = session.hideableOverlaySlots(pane)
         let pages = session.remotePageSlots(pane)
         guard !slots.isEmpty || !pages.isEmpty else { return session.overlayVisibilityRefusal(pane) }
-        let changing = slots.filter { session.overlayHidden($0) != hidden }
-        for slot in changing { setSlotHidden(session, slot: slot, hidden) }
+        let changing = slots.filter { session.slotEffectivelyHidden($0) != hidden }
+        var refusal: RebasedOverlayOpenFailure?
+        for slot in changing { refusal = setSlotHidden(session, slot: slot, hidden) ?? refusal }
         for page in session.replicaPages where changing.contains(page.pane) { onReplicaPageChanged?(page.page.id) }
         for slot in pages where slot.page?.effectiveHidden != hidden {
             sendRemotePageCommand(sessionID, pane: slot.pane, action: hidden ? .hide : .show)
         }
-        return nil
+        return refusal.map(OverlayVisibilityFailure.rebased)
     }
 
     /// toggleOverlaysHidden hides the scoped overlays when any of them is shown, otherwise shows them all.
@@ -56,7 +58,7 @@ extension AppStore {
         if slot == nil, session.parkedRebased != nil, !session.coverOverlayActive {
             return hidden ? nil : unparkRebasedOverlay(session)
         }
-        guard session.overlayHidden(slot) != hidden else { return nil }
+        guard session.slotEffectivelyHidden(slot) != hidden else { return nil }
         session.setOverlayHidden(hidden, slot: slot)
         RebasedOverlayReleases.shared.hiddenChanged(session, slot: slot)
         scheduleTreeChanged()

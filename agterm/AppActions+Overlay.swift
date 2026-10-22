@@ -6,7 +6,7 @@ extension AppActions {
     /// all: the menu, palette, title-bar button and `toggle_overlay` chord share it with `session.overlay.toggle`.
     func toggleOverlays() {
         guard uiActionsEnabled, let store, let session = store.activeSession else { return }
-        store.toggleOverlaysHidden(session.id, pane: nil)
+        if case .rebased = store.toggleOverlaysHidden(session.id, pane: nil) { NSSound.beep() }
     }
 
     /// beepIfHiddenOverlayRefused answers an editor open the session slot refused because a hidden overlay holds

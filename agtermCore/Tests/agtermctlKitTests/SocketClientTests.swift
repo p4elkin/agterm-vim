@@ -1078,6 +1078,16 @@ struct SocketClientTests {
         #expect(lines[1] == "  * shell\(tag)  [s1]  /tmp")
     }
 
+    @Test func formatTreeTagsAParkedIDEWithAnEmptySlotAsAHiddenOverlay() {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, overlay: false, hiddenOverlays: ["session"])
+        let workspace = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])
+        let tree = ControlTree(workspaces: [workspace])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "  * shell (overlay hidden)  [s1]  /tmp")
+    }
+
     @Test func formatTreeTagsAnUnrealizedSession() {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
                                          realized: false)

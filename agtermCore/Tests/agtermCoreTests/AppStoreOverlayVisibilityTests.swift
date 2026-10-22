@@ -284,4 +284,69 @@ struct AppStoreOverlayVisibilityTests {
 
         #expect(fixture.session.hiddenOverlayNames == ["session", "left"])
     }
+
+    @Test func bareHideShowAndToggleParkAndUnparkASessionWideIDE() throws {
+        let fixture = try makeFixture()
+        let store = fixture.store, session = fixture.session
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        var heard: [Bool] = []
+        RebasedOverlayReleases.shared.onHiddenChange = { _, _, hidden in heard.append(hidden) }
+        defer { RebasedOverlayReleases.shared.onHiddenChange = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: true) == nil)
+        #expect(session.parkedRebased != nil && !session.overlayActive)
+        #expect(session.hiddenOverlayNames == ["session"] && !session.anyOverlayShown(nil))
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: false) == nil)
+        #expect(session.rebasedOverlayVisible && session.hiddenOverlayNames.isEmpty)
+        #expect(store.toggleOverlaysHidden(session.id, pane: nil) == nil)
+        #expect(session.parkedRebased != nil)
+        #expect(store.applyOverlayVisibility(session.id, pane: nil, mode: .toggle) == nil)
+        #expect(session.rebasedOverlayVisible)
+        #expect(heard == [true, false, true, false])
+    }
+
+    @Test func aBareHideWhileParkedLeavesTheBitClearAndAPickerOpens() throws {
+        let fixture = try makeFixture()
+        let store = fixture.store, session = fixture.session
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: true) == nil)
+        #expect(!session.overlayHidden && session.hiddenOverlayNames == ["session"])
+        #expect(store.openOverlay(session.id, command: "picker"))
+        #expect(session.programOverlayVisible && session.hiddenOverlayNames.isEmpty)
+        #expect(session.anyOverlayShown(nil))
+    }
+
+    @Test func withAPickerInTheSlotABareShowActsOnThePickerOnly() throws {
+        let fixture = try makeFixture()
+        let store = fixture.store, session = fixture.session
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(store.openOverlay(session.id, command: "picker"))
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: true) == nil)
+        #expect(session.overlayHidden && session.hiddenOverlayNames == ["session"])
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: false) == nil)
+        #expect(session.programOverlayVisible && session.overlayCommand == "picker")
+        #expect(session.parkedRebased?.overlay.id == overlay.id)
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: false) == nil)
+        #expect(session.parkedRebased != nil)
+    }
+
+    @Test func aBareShowAppliesEverySlotBeforeRefusingTheUnpark() throws {
+        let fixture = try makeFixture()
+        let store = fixture.store, session = fixture.session
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(store.openPaneOverlay(session.id, pane: .left, command: "reader") == nil)
+        #expect(store.setOverlaysHidden(session.id, pane: .left, hidden: true) == nil)
+        session.remoteOverlays.reserve(RemoteOverlaySlot(job: "job", pane: nil, owner: 1, sizePercent: nil))
+        let failure = store.setOverlaysHidden(session.id, pane: nil, hidden: false)
+        #expect(failure == .rebased(.alreadyOpen))
+        #expect(failure?.message == "overlay already open")
+        #expect(session.paneOverlayVisible(.left))
+        #expect(session.parkedRebased != nil && session.hiddenOverlayNames == ["session"])
+    }
 }

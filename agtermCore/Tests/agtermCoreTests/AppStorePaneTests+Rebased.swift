@@ -61,11 +61,8 @@ extension AppStorePaneTests {
         defer { RebasedOverlayReleases.shared.onHiddenChange = nil }
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
         #expect(store.toggleOverlaysHidden(session.id, pane: nil) == nil)
-        #expect(session.rebasedHidden)
-        if pane != nil {
-            #expect(session.hiddenOverlayNames == [slot])
-            #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: true) == nil)
-        }
+        #expect(session.rebasedHidden && session.hiddenOverlayNames == [slot])
+        #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: true) == nil)
         #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
         #expect(!session.rebasedHidden)
         #expect(heard == [true, false])

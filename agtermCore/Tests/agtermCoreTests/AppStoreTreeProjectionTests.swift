@@ -31,7 +31,7 @@ struct AppStoreTreeProjectionTests {
         #expect(hidden.rebasedOverlay?.view == shown.rebasedOverlay?.view)
         #expect(hidden.rebasedOverlay?.onClose == true)
         #expect(hidden.overlay == false)
-        if pane != nil { #expect(hidden.hiddenOverlays == [slot]) }
+        #expect(hidden.hiddenOverlays == [slot])
     }
 
     @Test func unsetRebasedReadbackFieldsAreOmitted() throws {
