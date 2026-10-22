@@ -28,9 +28,8 @@ public protocol ControlActions {
     func moveWorkspace(_ target: String?, window: String?, direction: ReorderDirection) -> ControlResponse
     /// Move a workspace to another window. Async because a new or closed destination opens a window first.
     func transferWorkspace(_ target: String?, window: String?, toWindow: String, windowName: String?) async -> ControlResponse
-    /// Move sessions to another window, into the workspace `workspace` (id) or `workspaceName` names there.
-    func transferSessions(_ targets: [String], window: String?, toWindow: String, workspace: String?,
-                          workspaceName: String?, windowName: String?) async -> ControlResponse
+    /// Move sessions to another window, into the workspace `transfer` names there by id or by name.
+    func transferSessions(_ targets: [String], window: String?, transfer: ControlSessionTransfer) async -> ControlResponse
     func focusWorkspace(_ target: String?, window: String?, mode: ControlWorkspaceFocusMode) -> ControlResponse
     /// Turn a window's workspace focus filter on/off WITHOUT touching the marked set. Window-scoped, so
     /// it takes no workspace target — the host resolves the store from `window` (frontmost when nil).

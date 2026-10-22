@@ -996,10 +996,9 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
         return ControlResponse(ok: true)
     }
 
-    func transferSessions(_ targets: [String], window: String?, toWindow: String, workspace: String?,
-                          workspaceName: String?, windowName: String?) async -> ControlResponse {
-        calls.append(.sessionTransfer(targets: targets, window: window, toWindow: toWindow, workspace: workspace,
-                                      workspaceName: workspaceName, windowName: windowName))
+    func transferSessions(_ targets: [String], window: String?, transfer: ControlSessionTransfer) async -> ControlResponse {
+        calls.append(.sessionTransfer(targets: targets, window: window, toWindow: transfer.toWindow, workspace: transfer.workspace,
+                                      workspaceName: transfer.workspaceName, windowName: transfer.windowName))
         return ControlResponse(ok: true)
     }
 }

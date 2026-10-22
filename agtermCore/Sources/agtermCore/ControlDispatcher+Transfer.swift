@@ -26,7 +26,8 @@ extension ControlDispatcher {
         guard !targets.isEmpty else {
             return ControlResponse(ok: false, error: "session.move requires at least one --target")
         }
-        return await actions.transferSessions(targets, window: args.window, toWindow: toWindow, workspace: args.workspace,
+        let transfer = ControlSessionTransfer(toWindow: toWindow, workspace: args.workspace,
                                               workspaceName: args.workspaceName, windowName: args.windowName)
+        return await actions.transferSessions(targets, window: args.window, transfer: transfer)
     }
 }

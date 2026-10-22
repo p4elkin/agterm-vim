@@ -9,8 +9,7 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("workspace.move --to-window"))
     }
 
-    func transferSessions(_: [String], window _: String?, toWindow _: String, workspace _: String?,
-                          workspaceName _: String?, windowName _: String?) async -> ControlResponse {
+    func transferSessions(_: [String], window _: String?, transfer _: ControlSessionTransfer) async -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.move --to-window"))
     }
 

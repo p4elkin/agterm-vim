@@ -152,6 +152,22 @@ public enum ControlWorkspaceFocusMode: String, CaseIterable, Equatable, Sendable
 }
 
 /// The mutually exclusive move forms accepted by `session.move`.
+/// Where `session.move --to-window` sends its sessions: the destination window, and the workspace there by id
+/// (`workspace`) or by name (`workspaceName`); `windowName` names a window `toWindow == "new"` creates.
+public struct ControlSessionTransfer: Equatable, Sendable {
+    public var toWindow: String
+    public var workspace: String?
+    public var workspaceName: String?
+    public var windowName: String?
+
+    public init(toWindow: String, workspace: String? = nil, workspaceName: String? = nil, windowName: String? = nil) {
+        self.toWindow = toWindow
+        self.workspace = workspace
+        self.workspaceName = workspaceName
+        self.windowName = windowName
+    }
+}
+
 public enum ControlSessionMove: Equatable, Sendable {
     case reorder(ReorderDirection)
     case workspace(String)
