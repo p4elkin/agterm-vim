@@ -1046,7 +1046,7 @@ public final class AppStore {
         return nil
     }
 
-    private func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
+    func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
         workspaces.flatMap(\.sessions).map(\.id).filter { ids.contains($0) }
     }
 
