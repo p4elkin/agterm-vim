@@ -24,6 +24,7 @@ Written on branch `remote-row-names`, based on `origin/main` `303bf332`.
 6. [Tasks](#tasks)
 7. [Final gates](#final-gates)
 8. [Decisions](#decisions)
+9. [Review rounds](#review-rounds)
 
 ## What is true today
 
@@ -274,3 +275,16 @@ the Mac (`make test`). App tests run on the Mac (`make test-app`).
 - Conflict at reconnect: the origin wins, except a Mac rename the origin never received is pushed once
   first (Sasha, 2026-10-22).
 - Transport: the presentation stream only, no ssh command (Sasha, 2026-10-22).
+
+## Review rounds
+
+Round `01-initial` (revmux, `codex-claude`, 4 of 4 sources, none degraded) found four; all fixed:
+
+- An older echo could end a newer rename (rename to x, y, x before the first echo). The viewer now keeps
+  `namesInFlight` and matches echoes in order; a snapshot push resets it to the one value pushed.
+- Closing a window inside the row book's debounce lost a pending rename, since a closed window keeps its
+  last written records. `WindowLibrary.onWindowClosing` fires while the store is loaded, and
+  `RemoteRowBookWriter` writes on it.
+- A name over the 256 KiB frame limit would end the stream on every reconnect. `Session.nameByteLimit`
+  (1024 UTF-8 bytes) is enforced by `session.rename`, `session.new --name` and `renameSession`.
+- The relaunch test did not catch a stale `namesSupported`; it now checks `rename` before the new hello.

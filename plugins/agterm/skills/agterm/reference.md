@@ -542,7 +542,8 @@ buys nothing. A caller with no tree uses `version`.
   several sessions in the same window/store. Batch close honors the GUI grace-undo setting: one grouped
   undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.
 - `session select [--target] [--window W]`.
-- `session rename <name> [--target] [--window W]`.
+- `session rename <name> [--target] [--window W]`. A name over 1024 UTF-8 bytes (after trimming) is
+  rejected, here and in `session new --name`.
 - `session reveal [--target] [--window W]` — select the target session's focused-pane working
   directory in Finder. Errors when that directory no longer exists.
 - `session go --to next|prev|first|last|next-attention|prev-attention [--window W]` — move the

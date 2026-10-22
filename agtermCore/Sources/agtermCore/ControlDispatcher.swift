@@ -418,6 +418,7 @@ public struct ControlDispatcher {
         if args?.createWorkspace == true, args?.workspaceName == nil {
             return "--create-workspace requires --workspace-name"
         }
+        if let error = Session.nameLimitError(args?.name) { return error }
         // --wait holds the surface after the command exits, so it is meaningless without a command.
         if args?.wait == true, args?.command == nil {
             return "--wait requires --command"
@@ -469,6 +470,7 @@ public struct ControlDispatcher {
             guard let name = request.args?.name else {
                 return ControlResponse(ok: false, error: "session.rename requires a name")
             }
+            if let error = Session.nameLimitError(name) { return ControlResponse(ok: false, error: error) }
             return actions.renameSession(request.target, window: request.args?.window, name: name)
         case .sessionReveal:
             return actions.revealSession(request.target, window: request.args?.window)

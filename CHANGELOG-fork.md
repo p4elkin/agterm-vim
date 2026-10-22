@@ -26,6 +26,8 @@ publishes an empty body with only a warning on stderr.
   on the Mac renames the session on the origin, and a rename on the origin (for example by a script that
   names a new session) reaches every Mac attached to it. A rename made while disconnected is sent when the
   stream returns. A row the origin never named no longer keeps the origin's cwd basename as a fixed name.
+  `session rename` and `session new --name` now reject a name over 1024 UTF-8 bytes, which no stream frame
+  could carry.
   Both the Mac and the origin need this build. A name set only on the Mac before the upgrade is not carried
   over: the older build never saved it, so rename such rows on the origin before upgrading.
 

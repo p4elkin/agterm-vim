@@ -437,6 +437,21 @@ struct ControlDispatcherTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test func aSessionNameOverTheByteLimitIsRejectedWithoutCallingActions() async {
+        let actions = MockControlActions()
+        let dispatcher = ControlDispatcher(actions: actions)
+        let long = String(repeating: "é", count: Session.nameByteLimit / 2 + 1)
+        let refusal = ControlResponse(ok: false, error: "session name must be at most 1024 UTF-8 bytes")
+
+        let rename = await dispatcher.dispatch(ControlRequest(cmd: .sessionRename, target: "session",
+                                                              args: ControlArgs(name: long)))
+        let new = await dispatcher.dispatch(ControlRequest(cmd: .sessionNew, args: ControlArgs(name: long)))
+
+        #expect(rename == refusal)
+        #expect(new == refusal)
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func workspaceCommandsRouteThroughActions() async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

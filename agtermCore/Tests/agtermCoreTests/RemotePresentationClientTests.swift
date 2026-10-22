@@ -744,6 +744,10 @@ struct RemotePresentationClientTests {
         transport.close("gone")
         clock.now = clock.now.addingTimeInterval(1)
         client.tick()
+        // the replacement link is up and its peer has not answered yet
+        #expect(transport.links.count == 2)
+        #expect(!client.rename("x"))
+        #expect(!transport.links[1].sent.contains { $0.body == .rename("x") })
 
         connect(client, snapshot: PresentationSnapshot(status: nil, hud: nil, name: "stale"), gen: 8)
 

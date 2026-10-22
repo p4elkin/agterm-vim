@@ -185,6 +185,73 @@ struct AppStoreRemoteNameTests {
         #expect(session.remotePresentation?.namePending == false)
     }
 
+    @Test func anEarlierEchoOfTheSameNameDoesNotEndALaterRename() throws {
+        let (store, session) = try attached()
+        store.renameSession(session.id, to: "x")
+        store.renameSession(session.id, to: "y")
+        store.renameSession(session.id, to: "x")
+
+        store.applyRemoteName("x", forSession: session.id)
+        store.applyRemoteName("y", forSession: session.id)
+        #expect(session.customName == "x")
+        #expect(session.remotePresentation?.namePending == true)
+
+        // the stream drops before the last rename reaches the origin; the next snapshot sends it again
+        #expect(store.applyRemoteSnapshotName("y", forSession: session.id))
+        store.applyRemoteName("x", forSession: session.id)
+
+        #expect(session.customName == "x")
+        #expect(session.remotePresentation?.namePending == false)
+    }
+
+    @Test func aSnapshotCarryingThePendingNameEndsItWhateverWasInFlight() throws {
+        let (store, session) = try attached()
+        store.renameSession(session.id, to: "x")
+        store.renameSession(session.id, to: "y")
+
+        #expect(!store.applyRemoteSnapshotName("y", forSession: session.id))
+        #expect(session.remotePresentation?.namePending == false)
+
+        store.applyRemoteName("z", forSession: session.id)
+        #expect(session.customName == "z")
+    }
+
+    @Test func aPendingRenameRestoredFromTheBookEndsOnItsEcho() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/tmp", name: "mine", remoteHost: "buildbox"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [session.paneIdentity: "s1-left"],
+                                       presentationVersion: 1), forSession: session.id, namePending: true)
+
+        store.applyRemoteName("theirs", forSession: session.id)
+        #expect(session.remotePresentation?.namePending == true)
+        store.applyRemoteName("mine", forSession: session.id)
+
+        #expect(session.customName == "mine")
+        #expect(session.remotePresentation?.namePending == false)
+    }
+
+    @Test func aNameOverTheByteLimitIsRefusedAndNotSent() throws {
+        let (store, session) = try attached(name: "kept")
+        store.onRemoteSessionRenamed = { _, _ in Issue.record("a refused name must not reach the origin") }
+
+        #expect(!store.renameSession(session.id, to: String(repeating: "é", count: Session.nameByteLimit / 2 + 1)))
+        #expect(session.customName == "kept")
+        #expect(session.remotePresentation?.namePending == false)
+
+        store.onRemoteSessionRenamed = nil
+        #expect(store.renameSession(session.id, to: String(repeating: "a", count: Session.nameByteLimit)))
+    }
+
+    @Test func theOriginEchoesItsOwnNameForARenameOverTheLimit() throws {
+        let (store, session, sink) = try origin(name: "kept")
+
+        #expect(!store.renameFromViewer(session.id, to: String(repeating: "a", count: Session.nameByteLimit + 1)))
+
+        #expect(session.customName == "kept")
+        #expect(sink.names == ["kept"])
+    }
+
     @Test func theOriginsNameIsNeverSentBack() throws {
         let (store, session) = try attached()
         store.onRemoteSessionRenamed = { _, _ in Issue.record("an applied name is the origin's own") }

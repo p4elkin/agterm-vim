@@ -84,6 +84,23 @@ final class WindowLibraryTests {
         #expect(loaded == [window])
     }
 
+    @Test func windowClosingFiresWhileTheStoreIsStillLoaded() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.activeWindowID)
+        var closing: [UUID] = []
+        library.onWindowClosing = { id in
+            #expect(library.store(for: id) != nil)
+            closing.append(id)
+        }
+        defer { library.onWindowClosing = nil }
+
+        library.closeWindow(window)
+        library.closeWindow(window)
+
+        #expect(closing == [window])
+        #expect(library.store(for: window) == nil)
+    }
+
     private let directory: URL
 
     init() throws {

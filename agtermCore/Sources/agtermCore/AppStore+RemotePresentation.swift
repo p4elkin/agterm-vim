@@ -30,14 +30,20 @@ extension AppStore {
         if previous != session.effectiveContext { scheduleTreeChanged() }
     }
 
-    /// Applies the origin's custom name, nil when it has none. While a rename made here is pending, only its
-    /// echo is taken, and it changes nothing but the flag: any other name is older than ours, which the
-    /// origin has yet to apply and will echo after it. Never goes through `renameSession`, which would send
-    /// the origin's own name back to it.
+    /// Applies the origin's custom name, nil when it has none. While a rename made here is pending, only
+    /// echoes are taken, and they change nothing but the flag, which ends with the echo of the last rename
+    /// sent: any other name is older than ours, which the origin has yet to apply and will echo after it.
+    /// Never goes through `renameSession`, which would send the origin's own name back to it.
     public func applyRemoteName(_ name: String?, forSession id: UUID) {
         guard let session = session(withID: id), let state = session.remotePresentation else { return }
         let value = Self.remoteName(name)
         if state.namePending {
+            // a pending flag restored from the row book has nothing in flight; the snapshot settles it
+            if let head = state.namesInFlight.first {
+                guard value == head else { return }
+                session.remotePresentation?.namesInFlight.removeFirst()
+                guard session.remotePresentation?.namesInFlight.isEmpty == true else { return }
+            }
             guard value == session.customName else { return }
             session.remotePresentation?.namePending = false
             scheduleTreeChanged()
@@ -50,11 +56,21 @@ extension AppStore {
 
     /// Applies the name a snapshot carries. True when a rename made here is still pending and the snapshot
     /// does not carry it yet: the row keeps its name, and the caller sends it to the origin. A snapshot comes
-    /// with every reconnect, which is how a rename made while the stream was down reaches the origin.
+    /// with every reconnect, which is how a rename made while the stream was down reaches the origin. What was
+    /// in flight on the old stream is forgotten: the push is now the only rename an echo can answer.
     public func applyRemoteSnapshotName(_ name: String?, forSession id: UUID) -> Bool {
         guard let session = session(withID: id), let state = session.remotePresentation else { return false }
-        if state.namePending, Self.remoteName(name) != session.customName { return true }
-        applyRemoteName(name, forSession: id)
+        guard state.namePending else {
+            applyRemoteName(name, forSession: id)
+            return false
+        }
+        if Self.remoteName(name) != session.customName {
+            session.remotePresentation?.namesInFlight = [session.customName]
+            return true
+        }
+        session.remotePresentation?.namesInFlight = []
+        session.remotePresentation?.namePending = false
+        scheduleTreeChanged()
         return false
     }
 
