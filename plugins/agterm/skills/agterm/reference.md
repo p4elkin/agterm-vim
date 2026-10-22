@@ -410,6 +410,11 @@ buys nothing. A caller with no tree uses `version`.
   or invalid `--to` errors. Note: `--target active` resolves to the current workspace — a
   foreground-created workspace that still holds the target, else the selected session's, else
   the last one; address a specific workspace by id to step the same one.
+- `workspace move --to-window <new|name|id> [--window-name N] [--target] [--window W]` — move the workspace
+  to another window, or to a new one (`new`; `--window-name` names it, else it takes the workspace's name).
+  Both panes of every row keep running; scratch, overlays, HUD and search close. Refuses the window's last
+  workspace and any realized pane that is not zmx-backed. Exactly one of `--to`, `--to-window`. Returns the
+  destination window id as `result.id` and the moved session count as `result.affected`.
 - `workspace focus [on|off|toggle|add] [--target] [--window W]` — mark or unmark ONE workspace in the
   sidebar's focus SET; returns the workspace id. The sidebar renders the marked workspaces when the
   filter is applied, all of them when it is not. `on` sets the marked set to just this workspace and
@@ -549,6 +554,11 @@ buys nothing. A caller with no tree uses `version`.
   else all sessions (clearing the flag / suspending the filter restores the full set). next/prev wrap around at the ends (last→first,
   first→last); first/last jump to the ends of that set; next-attention/prev-attention step only through the filtered
   sessions needing attention (status blocked/completed), wrapping. Returns the newly selected id.
+- `session move --to-window <new|name|id> [<workspace> | --workspace-name N] [--window-name N] [--target ...]`
+  — move the session(s) to another window: into `<workspace>` (an id in the destination, not with `new`), or
+  the workspace named N (reused or created), else one named after the first session's workspace. Not
+  combinable with `--to`, `--after`, `--before`. Same survival rules and result fields as
+  `workspace move --to-window`.
 - `session move <workspace> [--target] [--window W]` — relocate the session to another workspace
   (appends). OR `session move --to up|down|top|bottom [--target]` — reorder within its workspace. OR
   `session move --after SID | --before SID [--target]` — place the session directly after / before an

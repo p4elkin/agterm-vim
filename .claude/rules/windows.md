@@ -264,6 +264,31 @@ session drag are out of scope.
   while an explicit session/workspace ID resolves across all open stores and returns its owning store.
 - For exact coverage names and command inventory, see [[control-api]]; do not duplicate its audit here.
 
+## Transfer between windows
+
+- `workspace move --to-window` and `session move --to-window` re-home the live `Session` objects into another
+  window's store. Destination: `new`, an exact window name (sanitized and trimmed like stored names, open or
+  closed windows), then `active`/id/prefix. A name that is also another window's id prefix is ambiguous; a
+  window named `new` is reachable only by id; `active` normally ends in `same window`.
+- Both panes survive because their zmx daemons are named after `paneIdentity` / `splitPaneIdentity`, which move
+  with the session; the destination rebuilds surfaces through the normal factories, which attach. Overlay,
+  scratch, HUD and search are closed (`AppStore.releaseForTransfer`). The shell inside a moved daemon keeps the
+  `AGTERM_WINDOW_ID` / `AGTERM_WORKSPACE_ID` it started with.
+- Order (`WindowLibrary+Transfer.swift`): validate with no side effects (a closed destination from its file,
+  never `loadStore`), attach to the destination, `saveChecked()` it; on failure withdraw, close a loaded
+  destination again, drop an unsaved new window, and leave the source untouched. Only then release the source
+  surfaces, detach, save the source. Releasing earlier would strand a dead primary pane on rollback: the deck
+  keys the primary host by surface revision, and a nil slot does not rebuild it.
+- Destination first means a crash between the saves leaves the rows in both files, never an unclaimed daemon
+  for the launch reap. Both copies then share pane identities: close the duplicate with its window, not the row,
+  since closing a row finalizes the daemon the other copy still shows.
+- Refused: the last workspace of a window, a workspace a pending close names as its undo target, and a realized
+  pane that is not zmx-backed (`Session.canSurviveTransfer`; remote rows count as surviving).
+- `session move --to-window` places the batch in `<workspace>` (an id in the destination; not with `new`) or
+  `--workspace-name N`, which reuses or creates, unlike `session new --workspace-name`, which needs
+  `--create-workspace`. With neither, the first moved session's workspace name is used.
+- The headless origin refuses both through `ForwardPolicy`.
+
 ## Finder open
 
 - Warm `open -a agterm /path` (Discussion #230) resolves folders to themselves and files to parents,

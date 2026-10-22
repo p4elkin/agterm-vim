@@ -294,6 +294,11 @@ whichever workspace you choose, instead of always in the current one.
   a create rather than a dead end. The row is offered even when a title matches partially.
 - Bound as a single chord, and reachable from `nmap` like any other built-in.
 
+## Move a workspace or sessions to another window
+
+`workspace move --to-window <new|name|id>` and `session move --to-window …` move rows to another window, both
+panes still running. Details and limits: `.claude/rules/windows.md`, "Transfer between windows".
+
 ## An attention-counts pill
 
 The title-bar bell says something needs you, never how much or of what kind — and it is opt-in and off by

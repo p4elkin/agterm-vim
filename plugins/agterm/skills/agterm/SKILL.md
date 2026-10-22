@@ -23,6 +23,7 @@ when_to_use: >
   flag every session in a workspace, run my custom command, tell me when the selected session changes,
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
+  move this workspace or session to another window,
   attach a session from another Mac, copy this to the clipboard, was agterm upgraded under the running app,
   upgrade agterm without losing sessions, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)

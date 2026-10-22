@@ -31,6 +31,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
+  sessions to another window, or to a new one, keeping both panes of each row running through zmx.
+
 - Rebased can cover one split pane for a live review, leaving the other terminal usable.
   Open commit or tracked working-tree diffs, files at a line, or an exact project folder.
   `session rebased show` updates the view; close-by-overlay-id protects another review from a stale close.

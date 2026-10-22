@@ -470,16 +470,16 @@ depends: 4, 6
 - Modify: `plugins/agterm/skills/agterm/reference.md`
 - Modify: `plugins/agterm/skills/agterm/SKILL.md`
 
-- [ ] `.claude/rules/windows.md`: what a transfer keeps (both panes, ids, name, status) and closes (scratch,
+- [x] `.claude/rules/windows.md`: what a transfer keeps (both panes, ids, name, status) and closes (scratch,
       overlays, HUD, search), the attach-save-detach order and rollback, the refusals, destination name rules
       (`new`, `active`, sanitizing), `--workspace-name` reuse-or-create, the stale `AGTERM_WINDOW_ID` inside a
       moved shell, the duplicate after a crash between saves
-- [ ] `FORK-NOTES.md`: one or two lines and a pointer to `.claude/rules/windows.md`
-- [ ] `CHANGELOG-fork.md`: one entry for the two commands
-- [ ] `reference.md`: the new flags on `workspace move` and `session move`; `SKILL.md`: a trigger for moving a
+- [x] `FORK-NOTES.md`: one or two lines and a pointer to `.claude/rules/windows.md`
+- [x] `CHANGELOG-fork.md`: one entry for the two commands
+- [x] `reference.md`: the new flags on `workspace move` and `session move`; `SKILL.md`: a trigger for moving a
       workspace or session to another window, in the `when_to_use:` block or the command summary, never in
       `description` (1020 of 1024 characters, enforced by `SkillInstallTests`)
-- [ ] no `CHANGELOG.md` change
+- [x] no `CHANGELOG.md` change
 
 Check: `bash -lc "grep -q -- '--to-window' .claude/rules/windows.md && grep -q -- '--to-window' FORK-NOTES.md && grep -q -- '--to-window' CHANGELOG-fork.md && grep -q -- '--to-window' plugins/agterm/skills/agterm/reference.md && git diff --quiet 28c169b3 -- CHANGELOG.md && source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter SkillInstallTests"`
 
