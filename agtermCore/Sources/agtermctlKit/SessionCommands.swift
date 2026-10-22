@@ -144,8 +144,10 @@ struct Session: ParsableCommand {
     struct Move: RequestCommand {
         static let configuration = CommandConfiguration(
             abstract: "Move a session: to another workspace or window, reorder with --to, or place relative to an anchor with --after/--before.")
-        @Argument(help: "Destination workspace id/prefix (relocate). Omit with --to or --after/--before.") var workspace: String?
-        @Option(name: .customLong("to-window"), help: "Move to another window: new, a window name, an id or a prefix. Lands in the workspace argument, --workspace-name, or one named like the session's own.") var toWindow: String?
+        @Argument(help: "Destination workspace id/prefix (relocate; with --to-window, one in that window). Omit with --to, --after/--before, --to-window.") var workspace: String?
+        @Option(name: .customLong("to-window"),
+                help: "Move to another window: new, a window name, an id or a prefix. Lands in the workspace argument, --workspace-name, or one named like the session's own.")
+        var toWindow: String?
         @Option(name: .customLong("workspace-name"), help: "With --to-window: the destination workspace by name, reused or created.") var workspaceName: String?
         @Option(name: .customLong("window-name"), help: "Name of the window --to-window new creates.") var windowName: String?
         @Option(name: .long, help: "Reorder within the workspace: up, down, top, or bottom.") var to: String?
@@ -154,9 +156,10 @@ struct Session: ParsableCommand {
         @OptionGroup var target: BatchTargetOptions
         @OptionGroup var options: ClientOptions
 
-        // exactly one placement intent among {workspace positional (relocate), --to (reorder), --after/--before
-        // (anchor-relative)}; reject empty/conflicting cases at parse time as a clean usage error, unit-testable
-        // without a socket. the anchor carries its own workspace, so placement excludes --to and a workspace.
+        // exactly one placement intent among {--to-window (another window; the workspace positional or
+        // --workspace-name then names a workspace there), workspace positional (relocate), --to (reorder),
+        // --after/--before (anchor-relative)}; reject empty/conflicting cases at parse time as a clean usage error,
+        // unit-testable without a socket. the anchor carries its own workspace, so placement excludes --to and a workspace.
         func validate() throws {
             try validateWindowName(windowName, toWindow: toWindow)
             if toWindow != nil {

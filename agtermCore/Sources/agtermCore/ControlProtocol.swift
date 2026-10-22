@@ -179,7 +179,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `all` clears the exception set and applies the mode everywhere, absent drives the window flag.
     public var workspace: String?
     /// Target workspace BY NAME for `session.new` (mutually exclusive with `workspace`). Reuses the first
-    /// workspace with this exact name; an absent name is an error unless `createWorkspace` is set.
+    /// workspace with this exact name; an absent name is an error unless `createWorkspace` is set. For
+    /// `session.move` with `toWindow` it names the destination workspace, reused or created without `createWorkspace`.
     public var workspaceName: String?
     /// For `session.new` with `workspaceName`: create the named workspace when none exists (idempotent
     /// reuse-or-create). An error without `workspaceName` — there is nothing to create by id.
@@ -312,7 +313,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// The destination window of `workspace.move`/`session.move`: `new`, a window name, an id or a prefix.
     /// Exclusive with `to` and, for `session.move`, with `after`/`before`.
     public var toWindow: String?
-    /// The name of the window `toWindow == "new"` creates; nil names it after the moved workspace.
+    /// The name of the window `toWindow == "new"` creates; nil names it after the moved or target workspace.
     public var windowName: String?
     /// Anchor session (id / unique prefix / `active`) to place a session right AFTER, for the placement form
     /// of `session.new`/`session.move`. The anchor carries its own workspace (resolved across the whole

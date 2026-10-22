@@ -180,6 +180,40 @@ final class WindowLibraryTransferTests {
         #expect(destinationStore.workspaces.last?.sessions.map(\.id) == [moving.id])
     }
 
+    @Test func aNameTargetIsTrimmedBeforeTheLookup() throws {
+        let fixture = try makeFixture()
+        let moving = try fixture.workspace("project").sessions[0]
+        let destination = fixture.library.newWindow(name: "dest").id
+        let destinationStore = try #require(fixture.library.store(for: destination))
+        let shared = destinationStore.addWorkspace(name: "shared")
+        let before = destinationStore.workspaces.map(\.id)
+
+        _ = try fixture.library.transferSessions([moving.id], from: fixture.source, to: .window(destination),
+                                                 workspace: .name("  shared ")).get()
+
+        #expect(destinationStore.workspaces.map(\.id) == before)
+        #expect(destinationStore.workspaces.first { $0.id == shared.id }?.sessions.map(\.id) == [moving.id])
+    }
+
+    @Test func aBlankNameTargetIsRefused() throws {
+        let fixture = try makeFixture()
+        let moving = try fixture.workspace("project").sessions[0]
+        let destination = fixture.library.newWindow(name: "dest").id
+        let destinationStore = try #require(fixture.library.store(for: destination))
+        let before = destinationStore.workspaces.map(\.id)
+
+        for blank in ["", "   ", "\u{07}"] {
+            let result = fixture.library.transferSessions([moving.id], from: fixture.source, to: .window(destination),
+                                                          workspace: .name(blank))
+            #expect(throws: TransferRefusal.self) { try result.get() }
+            let newResult = fixture.library.transferSessions([moving.id], from: fixture.source, to: .new,
+                                                             workspace: .name(blank))
+            #expect(throws: TransferRefusal.self) { try newResult.get() }
+        }
+        #expect(destinationStore.workspaces.map(\.id) == before)
+        #expect(try fixture.workspace("project").sessions.contains { $0.id == moving.id })
+    }
+
     @Test func noTargetUsesTheFirstMovedSessionsWorkspaceName() throws {
         let fixture = try makeFixture()
         let moving = try fixture.workspace("project").sessions[1]

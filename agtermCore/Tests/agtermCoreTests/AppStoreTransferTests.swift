@@ -106,6 +106,35 @@ final class AppStoreTransferTests {
         #expect(writtenFiles().isEmpty)
     }
 
+    @Test func attachWorkspaceIntoAFilteredWindowMarksItAndKeepsTheFilter() {
+        let (store, home) = destination()
+        store.focusedWorkspaceIDs = [home.id]
+        store.focusEnabled = true
+        let moved = Session(initialCwd: "/moved")
+        let workspace = Workspace(name: "moved", sessions: [moved])
+
+        store.attachWorkspace(workspace, selecting: moved.id)
+
+        #expect(store.focusEnabled)
+        #expect(store.focusedWorkspaceIDs == [home.id, workspace.id])
+    }
+
+    @Test func withdrawOfACreatedWorkspaceLeavesNoFocusMember() {
+        let (store, home) = destination()
+        store.focusedWorkspaceIDs = [home.id]
+        store.focusEnabled = true
+        let previous = store.selectedSessionID
+        let moved = Session(initialCwd: "/moved")
+        let workspace = Workspace(name: "moved", sessions: [moved])
+        store.attachWorkspace(workspace, selecting: moved.id)
+
+        store.withdrawTransferred(sessionIDs: [moved.id], workspaceID: workspace.id, createdWorkspace: true,
+                                  previousSelection: previous)
+
+        #expect(store.focusEnabled)
+        #expect(store.focusedWorkspaceIDs == [home.id])
+    }
+
     @Test func attachWorkspaceWithoutSelectionKeepsTheCurrentOne() {
         let (store, home) = destination()
         let before = store.selectedSessionID

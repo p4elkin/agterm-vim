@@ -94,9 +94,11 @@ extension AppStore {
 
     // MARK: - Destination
 
-    /// No `sessionCreated`: the sessions already exist in another window.
+    /// No `sessionCreated`: the sessions already exist in another window. The new workspace joins an applied
+    /// focus filter like `addWorkspace`'s; selecting it from outside the marked set would switch the filter off.
     func attachWorkspace(_ workspace: Workspace, selecting sessionID: UUID?) {
         workspaces.append(workspace)
+        revealNewFocusMember(workspace.id)
         if let sessionID, workspace.sessions.contains(where: { $0.id == sessionID }) { selectAttached(sessionID) }
         scheduleTreeChanged()
     }
@@ -123,6 +125,7 @@ extension AppStore {
         if createdWorkspace, let workspaceID {
             workspaces.removeAll { $0.id == workspaceID }
             forgetFreshWorkspace(workspaceID)
+            dropFocusMember(workspaceID)
         }
         for index in workspaces.indices { workspaces[index].sessions.removeAll { gone.contains($0.id) } }
         sessionIDs.forEach(removeFromRecency)

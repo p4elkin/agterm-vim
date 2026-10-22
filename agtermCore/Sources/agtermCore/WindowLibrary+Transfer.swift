@@ -94,7 +94,11 @@ extension WindowLibrary {
             }
             targetName = ""
         case .name(let name):
-            (targetID, targetName) = (nil, TerminalText.sanitized(name))
+            // trimmed like `AppStore.workspace(named:)`, or " build " creates a second workspace beside `build`
+            guard let trimmed = TerminalText.sanitized(name).trimmedOrNil else {
+                return .failure(TransferRefusal("blank workspace name"))
+            }
+            (targetID, targetName) = (nil, trimmed)
         case .none:
             (targetID, targetName) = (nil, sourceStore.workspace(forSession: sessions[0].id)?.name ?? "")
         }
@@ -108,7 +112,7 @@ extension WindowLibrary {
         case .window(let id):
             guard case let (store, kind)? = destinationStore(id) else { return .failure(Self.missing("window", id)) }
             var attached = TransferLanding(windowID: id, store: store, kind: kind, previousSelection: store.selectedSessionID)
-            if let existing = targetID ?? store.workspaces.first(where: { $0.name == targetName })?.id {
+            if let existing = targetID ?? store.workspace(named: targetName)?.id {
                 // `attachSessions(_:toWorkspace:)` ignores an unknown id, and the source would then drop the sessions
                 guard store.workspaces.contains(where: { $0.id == existing }) else {
                     if kind == .loaded { closeWindow(id) }
