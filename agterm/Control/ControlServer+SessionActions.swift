@@ -102,17 +102,30 @@ extension ControlServer: ControlActions {
         return openSessionOverlay(id.uuidString, window: nil, options: options).ok
     }
 
-    // a page never takes the remote program-job path: the store refuses it while a presenter owns the session
+    // a page the placement rule hands to the presenting Mac is stored, rendered and followed there, so none of
+    // the local persistent store check, page build or `--follow` happens here
     private func openHtmlOverlay(in store: AppStore, sessionID id: UUID, page: HtmlSource,
                                  options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        let alreadyOpen = options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen
+        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
+                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
+        switch store.openRemotePage(id, overlay: overlay, options: options) {
+        case .opened:
+            if case .file = page { schedulePageClaimExpiry(after: AppStore.pageClaimWindow) }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, pageID: overlay.id.uuidString))
+        case .slotTaken: return ControlResponse(ok: false, error: alreadyOpen)
+        case .paneMissing: return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+        case .unsupported: return ControlResponse(ok: false, error: OverlayHtmlError.presenter)
+        case .loopback: return ControlResponse(ok: false, error: OverlayHtmlError.remoteLoopback)
+        case .tooLarge: return ControlResponse(ok: false, error: OverlayHtmlError.remoteTooLarge)
+        case .local: break
+        }
         if store.session(withID: id)?.remoteOverlays.slot(options.pane) != nil {
-            return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
+            return ControlResponse(ok: false, error: alreadyOpen)
         }
         if options.persistent, let failure = HtmlOverlayRegistry.shared.persistentStoreFailure() {
             return ControlResponse(ok: false, error: "session.overlay.open: \(failure)")
         }
-        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
-                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
         if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: overlay,
                                                sizePercent: options.sizePercent, backgroundColor: options.backgroundColor) {
             return ControlResponse(ok: false, error: failure.message(pane: options.pane))
@@ -137,6 +150,9 @@ extension ControlServer: ControlActions {
 
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.reloadRemotePage(id, pane: pane, current: current), session: id) {
+                return response
+            }
             if let failure = HtmlOverlayRegistry.shared.reload(sessionID: id, pane: pane,
                                                                target: current ? .current : .original, store: store) {
                 return ControlResponse(ok: false, error: failure.message)
@@ -148,6 +164,10 @@ extension ControlServer: ControlActions {
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.navigateRemotePage(id, pane: pane, navigation: navigation),
+                                                      session: id) {
+                return response
+            }
             if let failure = store.htmlOverlayCommandFailure(id, pane: pane) {
                 return ControlResponse(ok: false, error: failure.message)
             }
@@ -159,6 +179,15 @@ extension ControlServer: ControlActions {
                 return ControlResponse(ok: false, error: error)
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    // nil sends the command on to the page in this Mac's own slot
+    private static func remotePageResponse(_ command: RemotePageCommand, session: UUID) -> ControlResponse? {
+        switch command {
+        case .local: return nil
+        case .sent: return ControlResponse(ok: true, result: ControlResult(id: session.uuidString))
+        case .refused(let error): return ControlResponse(ok: false, error: error)
         }
     }
 
@@ -265,6 +294,9 @@ extension ControlServer: ControlActions {
         resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session")
+            }
+            if session.remoteOverlays.slot(pane)?.page != nil {
+                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
             }
             if let slot = session.remoteOverlays.slot(pane), !slot.ended {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)

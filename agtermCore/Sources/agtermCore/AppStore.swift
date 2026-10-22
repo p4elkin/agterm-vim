@@ -154,6 +154,8 @@ public final class AppStore {
     @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
     /// Told when an attached session is seen here, so its origin clears its own count and auto-reset status.
     @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
+    /// onReplicaPageChanged is told the local id of a page shown for an origin whose reported state changed.
+    @ObservationIgnored public var onReplicaPageChanged: ((UUID) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which

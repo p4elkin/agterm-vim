@@ -605,7 +605,7 @@ extension Session {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
             subcommands: [Open.self, Close.self, Hide.self, Show.self, Toggle.self, Resize.self, Reload.self, Navigate.self,
-                          Result.self, Submit.self, Copy.self, Text.self, RunJob.self]
+                          Result.self, Submit.self, Copy.self, Text.self, RunJob.self, PageServe.self]
         )
 
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared

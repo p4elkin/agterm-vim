@@ -117,6 +117,7 @@ enum HeadlessRequests {
         request(.browserLinks),
         request(.rebasedMirrorList),
         request(.rebasedMirrorPrune),
+        request(.sessionOverlayPageServe, target: "t"),
         request(.recentList),
         request(.recentOpen, target: "r"),
         request(.recentClear),

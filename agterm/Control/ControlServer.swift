@@ -79,6 +79,11 @@ final class ControlServer {
     var overlayJobStreams: [String: OverlayJobStream] = [:]
     /// Jobs cancelled between their claim and the adoption of the helper's connection.
     var pendingJobCancels: Set<String> = []
+    /// pageServeStreams are the channels presenters opened for pages this Mac handed over, by page id.
+    var pageServeStreams: [UUID: PageServeStream] = [:]
+    /// pendingPageClaims are pages whose claim was answered ok and whose connection is not adopted yet, with the
+    /// source each serves.
+    var pendingPageClaims: [UUID: HtmlSource] = [:]
     var presentationHeartbeat: Task<Void, Never>?
     /// How long an adopted stream may stay silent before its first hello.
     var presentationHelloDeadline: TimeInterval = 10
@@ -93,6 +98,12 @@ final class ControlServer {
     /// Whether someone is at this Mac; a Mac nobody is at never takes the presenter role. Injectable for tests.
     var userPresent: @MainActor () -> Bool = UserPresence.isPresent
     var presenceObservers: [NSObjectProtocol] = []
+    /// replicaPages are the pages this Mac shows for origins, by local page id; `ControlServer+RemotePage` owns them.
+    var replicaPages: [UUID: ReplicaPageRecord] = [:]
+    /// pageLauncher starts a file page's channel helper; injectable so a hosted test needs no ssh.
+    var pageLauncher: RemotePageLauncher = RemotePageProcess()
+    var pendingReplicaStates: Set<UUID> = []
+    var replicaFlushScheduled = false
 
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }
@@ -479,6 +490,20 @@ final class ControlServer {
             runBlocking { await server.adoptOverlayJobStream(descriptor: conn, job: job) }
             return
         }
+        // a claimed page's helper keeps its connection the same way, and a claim whose reply never reached
+        // the helper leaves nobody to load the page
+        if request.cmd == .sessionOverlayPageServe {
+            let response = runBlocking { await server.dispatch(request) }
+            let written = server.responseWriter(conn, response)
+            guard response.ok, let page = response.result?.id.flatMap(UUID.init(uuidString:)) else { return }
+            guard written else {
+                runBlocking { await server.pageClaimUnanswered(page) }
+                return
+            }
+            handedOff = true
+            runBlocking { await server.adoptPageServeStream(descriptor: conn, page: page) }
+            return
+        }
 
         // `zmx tree <this machine>` would otherwise deadlock against itself: the far side's own agtermctl
         // waits in this server's backlog while this connection holds the only accept thread.
@@ -618,7 +643,7 @@ final class ControlServer {
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version,
+                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .sessionOverlayPageServe, .dashboard, .version,
                 .rebasedMirrorList, .rebasedMirrorPrune, .recentList, .recentOpen, .recentClear:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:

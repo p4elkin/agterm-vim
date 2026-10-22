@@ -37,6 +37,10 @@ public struct RemotePresentationEffects {
     public var overlayResize: @MainActor (PresentationOverlayChange) -> Void
     /// Runs a request the origin forwarded and calls back with its answer. Nil leaves `forward` out of the hello.
     public var controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)?
+    /// pageRequest shows a page the origin handed over; nil when shown, otherwise the reason sent as a refusal.
+    public var pageRequest: @MainActor (PresentationPage) -> String?
+    public var pageClose: @MainActor (PresentationPageChange) -> Void
+    public var pageCommand: @MainActor (PresentationPageCommand) -> Void
     public var warn: @MainActor (String) -> Void
 
     public init(status: @escaping @MainActor (PresentationStatus?) -> Void,
@@ -54,6 +58,9 @@ public struct RemotePresentationEffects {
                 controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)? = nil,
                 sound: @escaping @MainActor (PresentationSound) -> Void = { _ in },
                 layout: @escaping @MainActor (PresentationLayout) -> Void = { _ in },
+                pageRequest: @escaping @MainActor (PresentationPage) -> String? = { _ in RemotePresentationClient.pagesUnsupported },
+                pageClose: @escaping @MainActor (PresentationPageChange) -> Void = { _ in },
+                pageCommand: @escaping @MainActor (PresentationPageCommand) -> Void = { _ in },
                 warn: @escaping @MainActor (String) -> Void) {
         self.status = status
         self.snapshotStatus = snapshotStatus
@@ -70,6 +77,9 @@ public struct RemotePresentationEffects {
         self.overlayClose = overlayClose
         self.overlayResize = overlayResize
         self.controlForward = controlForward
+        self.pageRequest = pageRequest
+        self.pageClose = pageClose
+        self.pageCommand = pageCommand
         self.warn = warn
     }
 }
@@ -83,6 +93,8 @@ public struct RemotePresentationEffects {
 public final class RemotePresentationClient {
     /// The origin pings every 10 seconds, so three missed is a dead link and not a quiet one.
     static let staleAfter: TimeInterval = 30
+    /// pagesUnsupported is the refusal a host that shows no handed-over pages answers with.
+    public static let pagesUnsupported = "pages are not shown on this Mac"
 
     private let argv: [String]
     private let presentationVersion: Int?
@@ -238,8 +250,15 @@ public final class RemotePresentationClient {
             }
             let launch = launchCount
             run(forward.request) { [weak self] response in self?.replyForwarded(forward.id, response, launch: launch) }
+        case .pageRequest(let page):
+            if let reason = effects.pageRequest(page) {
+                send(.pageRejected(PresentationPageChange(page: page.page, reason: reason)), on: link)
+            }
+        case .pageClose(let change): effects.pageClose(change)
+        case .pageCommand(let command): effects.pageCommand(command)
         case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed,
-             .controlForwarded, .unknown: break
+             .controlForwarded, .unknown, .pageRejected, .pageClosed, .pageState:
+            break
         }
     }
 
