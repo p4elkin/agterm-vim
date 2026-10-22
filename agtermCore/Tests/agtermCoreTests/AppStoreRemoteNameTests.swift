@@ -255,6 +255,22 @@ struct AppStoreRemoteNameTests {
         #expect(fits.customName?.utf8.count == Session.nameByteLimit)
     }
 
+    @Test func aRestoredNameOverTheByteLimitIsDroppedSoTheSnapshotStillEncodes() throws {
+        let store = makeStore()
+        let saved = SessionSnapshot(id: UUID(), customName: String(repeating: "a", count: 300_000), cwd: "/repo")
+        let fits = SessionSnapshot(id: UUID(), customName: "deploy box", cwd: "/repo")
+
+        let restored = store.session(from: saved)
+        #expect(restored.customName == nil)
+        #expect(store.session(from: fits).customName == "deploy box")
+
+        let ws = store.addWorkspace(name: "work")
+        let index = try #require(store.workspaces.firstIndex { $0.id == ws.id })
+        store.workspaces[index].sessions.append(restored)
+        let frame = PresentationFrame(gen: 1, rev: 1, body: .snapshot(store.presentationSnapshot(forSession: restored.id)))
+        #expect(throws: Never.self) { try PresentationCodec.encode(frame) }
+    }
+
     @Test func theOriginEchoesItsOwnNameForARenameOverTheLimit() throws {
         let (store, session, sink) = try origin(name: "kept")
 

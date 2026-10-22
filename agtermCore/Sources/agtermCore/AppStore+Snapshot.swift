@@ -83,7 +83,9 @@ extension AppStore {
     /// focus is intentionally not persisted and therefore returns to the primary pane.
     func session(from snapshot: SessionSnapshot, launchRestore: Bool = false) -> Session {
         let hasSplit = (snapshot.isSplit ?? false) || (snapshot.hasSplit ?? false)
-        let session = Session(id: snapshot.id, initialCwd: snapshot.cwd, customName: snapshot.customName,
+        // a build before the name limit saved any length; the snapshot it rides would outgrow a frame
+        let customName = Session.nameTooLong(snapshot.customName) ? nil : snapshot.customName
+        let session = Session(id: snapshot.id, initialCwd: snapshot.cwd, customName: customName,
                               paneIdentity: snapshot.paneIdentity ?? UUID(),
                               splitPaneIdentity: hasSplit ? (snapshot.splitPaneIdentity ?? UUID()) : nil)
         session.isSplit = snapshot.isSplit ?? false

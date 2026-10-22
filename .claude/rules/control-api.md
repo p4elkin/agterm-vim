@@ -1849,7 +1849,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the first snapshot replaces it with the origin's custom name or none.
   A custom name is at most `Session.nameByteLimit` (1024 UTF-8 bytes): `session.rename`,
   `session.new --name` and `zmx.new --name` reject a longer one, `renameSession` refuses it, and
-  `addSession` drops it, so the snapshot that carries it stays far inside a frame.
+  `addSession` and snapshot restore (`session(from:)`, for a name an older build saved) drop it, so the
+  presentation snapshot that carries it stays far inside a frame.
 - Seeing an attached row here (`AppStore.clearUnseen`, reached by selection, pane focus and the zoom refocus)
   sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
   session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count
