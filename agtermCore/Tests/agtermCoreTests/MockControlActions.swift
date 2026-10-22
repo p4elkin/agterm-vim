@@ -28,6 +28,9 @@ class MockControlActionsBase {
         case sessionMove(target: String?, window: String?, ControlSessionMove)
         case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
         case workspaceMove(target: String?, window: String?, ReorderDirection)
+        case workspaceTransfer(target: String?, window: String?, toWindow: String, windowName: String?)
+        case sessionTransfer(targets: [String], window: String?, toWindow: String, workspace: String?,
+                             workspaceName: String?, windowName: String?)
         case workspaceFocus(target: String?, window: String?, ControlWorkspaceFocusMode)
         case workspaceFilter(window: String?, ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
@@ -985,6 +988,18 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
 
     func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse {
         calls.append(.rebasedMirrorPrune(olderThanDays: olderThanDays, dryRun: dryRun))
+        return ControlResponse(ok: true)
+    }
+
+    func transferWorkspace(_ target: String?, window: String?, toWindow: String, windowName: String?) async -> ControlResponse {
+        calls.append(.workspaceTransfer(target: target, window: window, toWindow: toWindow, windowName: windowName))
+        return ControlResponse(ok: true)
+    }
+
+    func transferSessions(_ targets: [String], window: String?, toWindow: String, workspace: String?,
+                          workspaceName: String?, windowName: String?) async -> ControlResponse {
+        calls.append(.sessionTransfer(targets: targets, window: window, toWindow: toWindow, workspace: workspace,
+                                      workspaceName: workspaceName, windowName: windowName))
         return ControlResponse(ok: true)
     }
 }

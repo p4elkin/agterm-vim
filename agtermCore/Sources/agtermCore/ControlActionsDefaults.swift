@@ -5,6 +5,15 @@ import Foundation
 // Mac-only commands refuse by name rather than answering an empty success, and compatibility overloads
 // delegate to the older form.
 public extension ControlActions {
+    func transferWorkspace(_: String?, window _: String?, toWindow _: String, windowName _: String?) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("workspace.move --to-window"))
+    }
+
+    func transferSessions(_: [String], window _: String?, toWindow _: String, workspace _: String?,
+                          workspaceName _: String?, windowName _: String?) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.move --to-window"))
+    }
+
     func showRebasedView(_: String?, window _: String?, view _: RebasedView) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.rebased.show"))
     }

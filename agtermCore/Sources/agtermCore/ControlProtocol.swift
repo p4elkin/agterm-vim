@@ -309,6 +309,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// reorder form of `session.move` / `workspace.move` (`up`|`down`|`top`|`bottom`), and for
     /// `session.search` (`next`|`prev`|`close`), and `session.overlay.navigate` (`back`|`forward`|`browser`|`finder`).
     public var to: String?
+    /// The destination window of `workspace.move`/`session.move`: `new`, a window name, an id or a prefix.
+    /// Exclusive with `to` and, for `session.move`, with `after`/`before`.
+    public var toWindow: String?
+    /// The name of the window `toWindow == "new"` creates; nil names it after the moved workspace.
+    public var windowName: String?
     /// Anchor session (id / unique prefix / `active`) to place a session right AFTER, for the placement form
     /// of `session.new`/`session.move`. The anchor carries its own workspace (resolved across the whole
     /// store), so it names the destination — mutually exclusive with `to`, `before`, and the workspace param.
@@ -519,7 +524,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 query: String? = nil, allowCustom: Bool? = nil, selection: String? = nil,
                 buttons: [ControlAskButton]? = nil, defaultButton: String? = nil,
                 destructiveButton: String? = nil, style: String? = nil, align: String? = nil, window: String? = nil,
-                pane: String? = nil, paneID: String? = nil, to: String? = nil,
+                pane: String? = nil, paneID: String? = nil, to: String? = nil, toWindow: String? = nil, windowName: String? = nil,
                 after: String? = nil, before: String? = nil, run: String? = nil,
                 kinds: [String]? = nil, limit: Int? = nil,
                 title: String? = nil, body: String? = nil,
@@ -586,6 +591,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.pane = pane
         self.paneID = paneID
         self.to = to
+        self.toWindow = toWindow
+        self.windowName = windowName
         self.after = after
         self.before = before
         self.run = run

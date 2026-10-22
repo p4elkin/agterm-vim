@@ -26,6 +26,11 @@ public protocol ControlActions {
     func moveSession(_ target: String?, window: String?, move: ControlSessionMove) -> ControlResponse
     func moveSessions(_ targets: [String], window: String?, move: ControlSessionMove) -> ControlResponse
     func moveWorkspace(_ target: String?, window: String?, direction: ReorderDirection) -> ControlResponse
+    /// Move a workspace to another window. Async because a new or closed destination opens a window first.
+    func transferWorkspace(_ target: String?, window: String?, toWindow: String, windowName: String?) async -> ControlResponse
+    /// Move sessions to another window, into the workspace `workspace` (id) or `workspaceName` names there.
+    func transferSessions(_ targets: [String], window: String?, toWindow: String, workspace: String?,
+                          workspaceName: String?, windowName: String?) async -> ControlResponse
     func focusWorkspace(_ target: String?, window: String?, mode: ControlWorkspaceFocusMode) -> ControlResponse
     /// Turn a window's workspace focus filter on/off WITHOUT touching the marked set. Window-scoped, so
     /// it takes no workspace target — the host resolves the store from `window` (frontmost when nil).
@@ -328,7 +333,7 @@ public struct ControlDispatcher {
         case .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete,
                 .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
                 .workspaceFlag:
-            return dispatchWorkspaceCommand(request)
+            return await dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarFlaggedLayout,
                 .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear,
@@ -473,6 +478,7 @@ public struct ControlDispatcher {
         case .sessionReveal:
             return actions.revealSession(request.target, window: request.args?.window)
         case .sessionMove:
+            if request.args?.toWindow != nil { return await dispatchSessionTransfer(request) }
             let args = request.args
             if args?.after != nil, args?.before != nil {
                 return ControlResponse(ok: false, error: "use either --after or --before, not both")
@@ -680,7 +686,7 @@ public struct ControlDispatcher {
         return actions.moveSessions(targets, window: window, move: move)
     }
 
-    private func dispatchWorkspaceCommand(_ request: ControlRequest) -> ControlResponse {
+    private func dispatchWorkspaceCommand(_ request: ControlRequest) async -> ControlResponse {
         switch request.cmd {
         case .workspaceNew:
             return actions.createWorkspace(window: request.args?.window, name: request.args?.name,
@@ -700,6 +706,7 @@ public struct ControlDispatcher {
         case .workspaceDelete:
             return actions.deleteWorkspace(request.target, window: request.args?.window)
         case .workspaceMove:
+            if request.args?.toWindow != nil { return await dispatchWorkspaceTransfer(request) }
             guard let to = request.args?.to else {
                 return ControlResponse(ok: false, error: "workspace.move requires --to")
             }
