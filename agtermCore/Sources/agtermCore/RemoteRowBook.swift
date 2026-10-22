@@ -14,6 +14,21 @@ public struct RemoteRowBook {
         public var transport: RemoteTransport
         public var daemonsByPane: [ZmxPaneRole: String]
         public var splitAxis: SplitAxis
+        /// The row's name as this Mac last showed it. Nil in a file an older build wrote, which kept only the
+        /// name the origin reported at attach (`sessionName`).
+        public var name: Name?
+
+        public struct Name: Codable, Equatable, Sendable {
+            /// The custom name, nil when the row shows its automatic one.
+            public var value: String?
+            /// A rename made here the origin has not confirmed yet.
+            public var pending: Bool
+
+            public init(value: String?, pending: Bool) {
+                self.value = value
+                self.pending = pending
+            }
+        }
 
         @MainActor
         public init?(session: Session, windowID: UUID, workspaceID: UUID, position: Int) {
@@ -33,6 +48,13 @@ public struct RemoteRowBook {
                 daemonsByPane[.right] = daemon
             }
             splitAxis = session.splitAxis
+            name = Name(value: session.customName, pending: session.remotePresentation?.namePending ?? false)
+        }
+
+        /// The name to create the row with, and whether a rename made here is still to reach the origin.
+        public var restoredName: (value: String?, pending: Bool) {
+            guard let name else { return (sessionName, false) }
+            return (name.value, name.pending)
         }
 
         public func binding(daemonsByLocalPane: [UUID: String]) -> RemoteBinding {

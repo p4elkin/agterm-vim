@@ -20,6 +20,15 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Fixed
+
+- A remote row keeps its name across a relaunch, and the name is shared with the origin: renaming the row
+  on the Mac renames the session on the origin, and a rename on the origin (for example by a script that
+  names a new session) reaches every Mac attached to it. A rename made while disconnected is sent when the
+  stream returns. A row the origin never named no longer keeps the origin's cwd basename as a fixed name.
+  Both the Mac and the origin need this build. A name set only on the Mac before the upgrade is not carried
+  over: the older build never saved it, so rename such rows on the origin before upgrading.
+
 ### Changed
 
 - Hide Overlays (⇧⌘J, View ▸ Hide Overlays, `session overlay hide|show|toggle`) hides and shows a Rebased or

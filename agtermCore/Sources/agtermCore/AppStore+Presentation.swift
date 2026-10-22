@@ -18,7 +18,7 @@ extension AppStore {
         guard let session = session(withID: id) else { return PresentationSnapshot(status: nil, hud: nil) }
         return PresentationSnapshot(status: presentationStatus(of: session),
                                     hud: presentationHud(of: session, now: now), context: session.context,
-                                    layout: presentationLayout(of: session))
+                                    layout: presentationLayout(of: session), name: session.customName)
     }
 
     func presentationLayout(of session: Session) -> PresentationLayout? {

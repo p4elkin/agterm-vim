@@ -3,15 +3,35 @@ import Foundation
 // MARK: - Naming
 
 extension AppStore {
-    /// Sets a session's custom name, with a blank value restoring its automatic display name.
-    public func renameSession(_ sessionID: UUID, to name: String) {
-        guard let session = session(withID: sessionID) else { return }
+    /// Sets a session's custom name, with a blank value restoring its automatic display name. Returns
+    /// whether it CHANGED. Viewers of the session hear the new name; on an attached row the name belongs to
+    /// the origin, so it is shown here at once and stays pending until the origin echoes it.
+    @discardableResult
+    public func renameSession(_ sessionID: UUID, to name: String) -> Bool {
+        guard let session = session(withID: sessionID) else { return false }
         // customName feeds {AGT_SESSION_NAME}; see TerminalText.
         let renamed = TerminalText.sanitized(name).trimmedOrNil
-        guard session.customName != renamed else { return }
+        guard session.customName != renamed else { return false }
         session.customName = renamed
+        presentationHub?.publish(.name(renamed), session: sessionID)
+        if session.remotePresentation != nil {
+            session.remotePresentation?.namePending = true
+            onRemoteSessionRenamed?(sessionID, renamed)
+        }
         scheduleTreeChanged()
         save()
+        return true
+    }
+
+    /// A viewer renamed the session over its presentation stream; nil clears the name. A rename that changes
+    /// nothing is echoed all the same, since the sender holds its rename pending until it hears the name
+    /// back. Returns whether the name changed.
+    @discardableResult
+    public func renameFromViewer(_ sessionID: UUID, to name: String?) -> Bool {
+        guard let session = session(withID: sessionID) else { return false }
+        if renameSession(sessionID, to: name ?? "") { return true }
+        presentationHub?.publish(.name(session.customName), session: sessionID)
+        return false
     }
 
     /// Renames a workspace. Blank and same-value names are structural no-ops.

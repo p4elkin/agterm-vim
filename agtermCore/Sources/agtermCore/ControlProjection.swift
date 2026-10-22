@@ -584,11 +584,14 @@ public struct ControlPresentationNode: Codable, Sendable, Equatable {
     public let state: String
     public let mode: String
     public let error: String?
+    /// True while a rename made here has not been confirmed by the origin; absent otherwise.
+    public let namePending: Bool?
 
-    public init(state: String, mode: String, error: String? = nil) {
+    public init(state: String, mode: String, error: String? = nil, namePending: Bool? = nil) {
         self.state = state
         self.mode = mode
         self.error = error
+        self.namePending = namePending
     }
 }
 

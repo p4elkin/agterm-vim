@@ -6,8 +6,11 @@ extension AppStore {
     /// Records what an attach learned about the origin. Set right after the row is created, not at
     /// construction like `remoteHost`: a remote session is never persisted, so no snapshot can catch it
     /// half-written.
-    public func bindRemote(_ binding: RemoteBinding, forSession id: UUID) {
-        session(withID: id)?.remotePresentation = RemotePresentationState(binding: binding)
+    /// `namePending` carries a rename the row book saved before the origin confirmed it.
+    public func bindRemote(_ binding: RemoteBinding, forSession id: UUID, namePending: Bool = false) {
+        var state = RemotePresentationState(binding: binding)
+        state.namePending = namePending
+        session(withID: id)?.remotePresentation = state
     }
 
     public func addRemotePane(local: UUID, daemon: String, forSession id: UUID) {
@@ -25,6 +28,39 @@ extension AppStore {
             session.mirroredContext = nil
         }
         if previous != session.effectiveContext { scheduleTreeChanged() }
+    }
+
+    /// Applies the origin's custom name, nil when it has none. While a rename made here is pending, only its
+    /// echo is taken, and it changes nothing but the flag: any other name is older than ours, which the
+    /// origin has yet to apply and will echo after it. Never goes through `renameSession`, which would send
+    /// the origin's own name back to it.
+    public func applyRemoteName(_ name: String?, forSession id: UUID) {
+        guard let session = session(withID: id), let state = session.remotePresentation else { return }
+        let value = Self.remoteName(name)
+        if state.namePending {
+            guard value == session.customName else { return }
+            session.remotePresentation?.namePending = false
+            scheduleTreeChanged()
+            return
+        }
+        guard session.customName != value else { return }
+        session.customName = value
+        scheduleTreeChanged()
+    }
+
+    /// Applies the name a snapshot carries. True when a rename made here is still pending and the snapshot
+    /// does not carry it yet: the row keeps its name, and the caller sends it to the origin. A snapshot comes
+    /// with every reconnect, which is how a rename made while the stream was down reaches the origin.
+    public func applyRemoteSnapshotName(_ name: String?, forSession id: UUID) -> Bool {
+        guard let session = session(withID: id), let state = session.remotePresentation else { return false }
+        if state.namePending, Self.remoteName(name) != session.customName { return true }
+        applyRemoteName(name, forSession: id)
+        return false
+    }
+
+    /// A name from the origin held to the rules `renameSession` applies, so its echo compares equal here.
+    private static func remoteName(_ name: String?) -> String? {
+        name.flatMap { TerminalText.sanitized($0).trimmedOrNil }
     }
 
     /// Applies the origin's status, nil for idle. Bypasses `applyControlStatus`: that rule arbitrates
@@ -198,12 +234,13 @@ extension AppStore {
     /// The `tree` read-back of this Mac's stream to `session`'s origin, nil for a local session.
     func presentationNode(of session: Session) -> ControlPresentationNode? {
         guard let state = session.remotePresentation else { return nil }
+        let pending: Bool? = state.namePending ? true : nil
         switch state.connection {
-        case .connecting: return ControlPresentationNode(state: "connecting", mode: state.mode.rawValue)
-        case .connected: return ControlPresentationNode(state: "connected", mode: state.mode.rawValue)
-        case .unsupported: return ControlPresentationNode(state: "unsupported", mode: state.mode.rawValue)
+        case .connecting: return ControlPresentationNode(state: "connecting", mode: state.mode.rawValue, namePending: pending)
+        case .connected: return ControlPresentationNode(state: "connected", mode: state.mode.rawValue, namePending: pending)
+        case .unsupported: return ControlPresentationNode(state: "unsupported", mode: state.mode.rawValue, namePending: pending)
         case .failed(let reason):
-            return ControlPresentationNode(state: "failed", mode: state.mode.rawValue, error: reason)
+            return ControlPresentationNode(state: "failed", mode: state.mode.rawValue, error: reason, namePending: pending)
         }
     }
 

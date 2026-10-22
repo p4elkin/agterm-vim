@@ -84,6 +84,49 @@ final class RemoteRowRestoreTests: XCTestCase {
         ZmxLeadBook.shared.forget(pane: row.paneIdentity)
     }
 
+    func testARecordWithoutANameRestoresTheAttachTimeName() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+
+        server.restoreRemoteRows([try record(window: window, workspace: workspace, position: 0)], windowID: window, store: store)
+
+        let row = try XCTUnwrap(remoteRows(store).first)
+        XCTAssertEqual(row.customName, "build")
+        XCTAssertEqual(row.remotePresentation?.namePending, false)
+        ZmxLeadBook.shared.forget(pane: row.paneIdentity)
+    }
+
+    func testASavedNameAndAPendingRenameComeBack() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        var record = try record(window: window, workspace: workspace, position: 0)
+        record.name = RemoteRowBook.Record.Name(value: "labels preservation", pending: true)
+
+        server.restoreRemoteRows([record], windowID: window, store: store)
+
+        let row = try XCTUnwrap(remoteRows(store).first)
+        XCTAssertEqual(row.customName, "labels preservation")
+        XCTAssertEqual(row.remotePresentation?.namePending, true)
+        XCTAssertEqual(row.remotePresentation?.binding.origin?.sessionName, "build")
+        ZmxLeadBook.shared.forget(pane: row.paneIdentity)
+    }
+
+    func testARowSavedWithoutACustomNameComesBackWithout() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        var record = try record(window: window, workspace: workspace, position: 0)
+        record.name = RemoteRowBook.Record.Name(value: nil, pending: false)
+
+        server.restoreRemoteRows([record], windowID: window, store: store)
+
+        let row = try XCTUnwrap(remoteRows(store).first)
+        XCTAssertNil(row.customName)
+        ZmxLeadBook.shared.forget(pane: row.paneIdentity)
+    }
+
     func testAMoshRecordRestoresAMoshRow() throws {
         let store = try XCTUnwrap(library.activeStore)
         let window = try XCTUnwrap(library.activeWindowID)

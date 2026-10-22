@@ -182,7 +182,9 @@ pane attachment state separately from the presentation stream; omitted for local
 origin must name as `--target`),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
 origin too old to stream, or `failed` with the reason in `error`, and `mode` is `presenter` when this
-row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not; it says whether the stream is up,
+row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not, and `namePending: true`
+while a rename made on this Mac has not been confirmed by the origin (it stays true against an origin too old
+to take names); it says whether the stream is up,
 never whether the panes' ssh connections are),
 `presenters` (on an origin session: `mirrors`, how many streams mirror it without presenting, one per
 attached row and not per Mac, and `presenter: true` when one presents it; omitted when none does),

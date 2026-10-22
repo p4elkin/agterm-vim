@@ -151,6 +151,8 @@ Every pane is one zmx daemon, named `ZmxSupport.daemonName(for:)` from its pane 
 `session.close` kills every pane's daemon, then closes the session whatever the kills answered, persists,
 and ends its presentation streams (`closeStreams(session:)`).
 `zmx.kill` kills one pane's daemon and closes that pane through `paneExited`; a failed kill changes nothing.
+A viewer's `rename` frame reaches `hub.onRename`, which runs `AppStore.renameFromViewer` and persists on a
+change; an unchanged name is still published, since the sender waits for that echo.
 `Headless.paneExited` is the one path for a pane whose daemon ended: the split closes, a primary with a
 split promotes the split, a lone primary closes the session.
 

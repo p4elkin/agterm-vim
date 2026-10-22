@@ -86,6 +86,9 @@ public struct RemotePresentationState: Equatable, Sendable {
     public var connection: RemotePresentationConnection
     public var mode: PresentationMode = .mirror
     public var rowState: RemoteRowState = .attached
+    /// True from a rename made on this Mac until the origin echoes it. The row book keeps it, so a rename
+    /// made while the stream was down goes out with the next snapshot, even after a relaunch.
+    public internal(set) var namePending = false
     var layout: PresentationLayout?
     var heldPanes: Set<UUID> = []
     /// Whether the glyph on the row is the bridge's. A flag and not a comparison of values: a pane swap

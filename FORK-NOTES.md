@@ -73,7 +73,10 @@ is the `.claude/rules` file that owns the design.
   origin grows on the Mac, and the presenter role follows the pane lead (`presenter.take`).
   On the origin, `agtermctl zmx attach <host> <id> --beside <row>` asks the Mac presenting that row to
   attach the session right after it, which is how a p4linux offload gets its Mac row.
-  Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch; a supervisor
+  The origin owns a remote row's name: a rename on either side reaches the other over the stream
+  (`name`, `rename`), and a rename made while disconnected is sent when the stream returns.
+  Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch, with the name the
+  row last showed; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
   `session type` clears a status by the `statusReset` in the server's own `settings.json`, read on every call.
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's

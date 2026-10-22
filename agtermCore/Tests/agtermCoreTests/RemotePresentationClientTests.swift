@@ -37,6 +37,8 @@ struct RemotePresentationClientTests {
         var snapshotStatuses: [PresentationStatus?] = []
         var huds: [PresentationHud?] = []
         var contexts: [String?] = []
+        var names: [String?] = []
+        var snapshotNames: [String?] = []
         var notifies: [PresentationNotify] = []
         var sounds: [PresentationSound] = []
         var connections: [RemotePresentationConnection] = []
@@ -89,6 +91,8 @@ struct RemotePresentationClientTests {
             overlayClose: { recorder.overlayCloses.append($0) },
             overlayResize: { recorder.overlayResizes.append($0) },
             sound: { recorder.sounds.append($0) },
+            name: { recorder.names.append($0) },
+            snapshotName: { recorder.snapshotNames.append($0) },
             warn: { recorder.warnings.append($0) })
         return RemotePresentationClient(argv: ["ssh", "buildbox", "present"], presentationVersion: version,
                                         transport: transport, effects: effects, leads: leads, now: { clock.now })
@@ -99,8 +103,8 @@ struct RemotePresentationClientTests {
     }
 
     func connect(_ client: RemotePresentationClient, snapshot: PresentationSnapshot? = nil, gen: Int = 7,
-                 mode: PresentationMode = .mirror) {
-        let answer = PresentationHello(version: 1, kinds: ["status", "hud", "notify"], mode: mode)
+                 mode: PresentationMode = .mirror, kinds: [String] = ["status", "hud", "notify"]) {
+        let answer = PresentationHello(version: 1, kinds: kinds, mode: mode)
         transport.deliver(line(.hello(answer), gen: gen, rev: 0))
         transport.deliver(line(.snapshot(snapshot ?? PresentationSnapshot(status: nil, hud: nil)), gen: gen, rev: 1))
     }
@@ -713,6 +717,74 @@ struct RemotePresentationClientTests {
         #expect(transport.links[1].sent.count == stoppedCount)
     }
 
+    @Test func namesReachTheAppOnlyFromAnOriginThatListedThem() {
+        let client = makeClient()
+        client.start()
+
+        connect(client, snapshot: PresentationSnapshot(status: nil, hud: nil, name: "deploy box"))
+        transport.deliver(line(.name("other"), rev: 2))
+        #expect(recorder.snapshotNames.isEmpty)
+        #expect(recorder.names.isEmpty)
+
+        transport.close("gone")
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, snapshot: PresentationSnapshot(status: nil, hud: nil), gen: 8, kinds: ["status", "name"])
+        transport.deliver(line(.name("deploy box"), gen: 8, rev: 2))
+        transport.deliver(line(.name(nil), gen: 8, rev: 3))
+
+        #expect(recorder.snapshotNames == [nil])
+        #expect(recorder.names == ["deploy box", nil])
+    }
+
+    @Test func aRelaunchForgetsThatTheEarlierOriginTookNames() {
+        let client = makeClient()
+        client.start()
+        connect(client, kinds: ["name"])
+        transport.close("gone")
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+
+        connect(client, snapshot: PresentationSnapshot(status: nil, hud: nil, name: "stale"), gen: 8)
+
+        #expect(recorder.snapshotNames == [nil])
+        #expect(!client.rename("x"))
+    }
+
+    @Test func renameGoesOutOnlyOnACurrentLinkToAnOriginTakingNames() {
+        let client = makeClient()
+        #expect(!client.rename("deploy box"))
+        client.start()
+        connect(client)
+        let count = transport.links[0].sent.count
+        #expect(!client.rename("deploy box"))
+        #expect(transport.links[0].sent.count == count)
+
+        transport.close("gone")
+        clock.now = clock.now.addingTimeInterval(1)
+        client.tick()
+        connect(client, gen: 8, kinds: ["name"])
+        #expect(client.rename("deploy box"))
+        #expect(client.rename(nil))
+        #expect(transport.links[1].sent.suffix(2).map(\.body) == [.rename("deploy box"), .rename(nil)])
+        #expect(transport.links[1].sent.last?.gen == 8)
+
+        transport.close("gone again")
+        #expect(!client.rename("later"))
+    }
+
+    @Test func anIncomingRenameIsIgnored() {
+        let client = makeClient()
+        client.start()
+        connect(client, kinds: ["name"])
+        let count = transport.links[0].sent.count
+
+        transport.deliver(line(.rename("x"), rev: 2))
+
+        #expect(transport.links[0].sent.count == count)
+        #expect(recorder.names.isEmpty)
+        #expect(recorder.warnings.isEmpty)
+    }
 }
 
 extension RemotePresentationClientTests {

@@ -332,6 +332,77 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
     }
 
+    private func connectedWithNames() throws -> (fix: (server: ControlServer, store: AppStore, session: Session),
+                                                 transport: Transport) {
+        let fix = try fixture()
+        let transport = Transport()
+        fix.server.remoteTransport = transport
+        fix.server.attachPresentationHub()
+        fix.server.startRemotePresentation(for: fix.session)
+        try transport.feed(.hello(PresentationHello(version: 1, kinds: ["status", "name"], mode: .mirror)), rev: 0)
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil, name: nil)), rev: 1)
+        return (fix, transport)
+    }
+
+    func testRenamingARemoteRowSendsTheNameToItsOriginAndTheEchoEndsThePending() throws {
+        let (fix, transport) = try connectedWithNames()
+
+        fix.store.renameSession(fix.session.id, to: "deploy box")
+
+        XCTAssertEqual(transport.links[0].sent.last, .rename("deploy box"))
+        XCTAssertEqual(fix.session.customName, "deploy box")
+        XCTAssertEqual(fix.session.remotePresentation?.namePending, true)
+        try transport.feed(.name("deploy box"), rev: 2)
+        XCTAssertEqual(fix.session.remotePresentation?.namePending, false)
+    }
+
+    func testTheOriginsRenameReachesTheRowAndIsNotSentBack() throws {
+        let (fix, transport) = try connectedWithNames()
+        let before = transport.links[0].sent
+
+        try transport.feed(.name("Agterm row label restart persistence"), rev: 2)
+
+        XCTAssertEqual(fix.session.customName, "Agterm row label restart persistence")
+        XCTAssertEqual(transport.links[0].sent, before)
+    }
+
+    func testARenameMadeBeforeTheStreamConnectedGoesOutWithTheSnapshot() throws {
+        let fix = try fixture()
+        let transport = Transport()
+        fix.server.remoteTransport = transport
+        fix.server.attachPresentationHub()
+        fix.server.startRemotePresentation(for: fix.session)
+        fix.store.renameSession(fix.session.id, to: "parking")
+        XCTAssertFalse(transport.links[0].sent.contains(.rename("parking")), "no hello answer yet, so no rename")
+
+        try transport.feed(.hello(PresentationHello(version: 1, kinds: ["name"], mode: .mirror)), rev: 0)
+        try transport.feed(.snapshot(PresentationSnapshot(status: nil, hud: nil, name: "sasha")), rev: 1)
+
+        XCTAssertEqual(transport.links[0].sent.last, .rename("parking"))
+        XCTAssertEqual(fix.session.customName, "parking")
+    }
+
+    func testAnOriginWithoutNamesIsSentNoRename() throws {
+        let (fix, transport) = try connected()
+        fix.server.attachPresentationHub()
+
+        fix.store.renameSession(fix.session.id, to: "deploy box")
+
+        XCTAssertFalse(transport.links[0].sent.contains { if case .rename = $0 { return true } else { return false } })
+        XCTAssertEqual(fix.session.customName, "deploy box")
+    }
+
+    func testAViewersRenameRenamesASessionThisMacIsTheOriginOf() throws {
+        let fix = try fixture()
+        fix.server.attachPresentationHub()
+        let workspace = try XCTUnwrap(fix.store.currentWorkspaceID)
+        let local = try XCTUnwrap(fix.store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory()))
+
+        fix.server.presentationHub.onRename?(local.id, "deploy box")
+
+        XCTAssertEqual(local.customName, "deploy box")
+    }
+
     func testSeeingARemoteRowTellsItsOriginOnce() throws {
         let (fix, transport) = try connected()
         fix.server.attachPresentationHub()

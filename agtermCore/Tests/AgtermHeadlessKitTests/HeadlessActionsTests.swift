@@ -368,6 +368,55 @@ struct HeadlessActionsTests {
         #expect(fixture.runner.calls.isEmpty)
     }
 
+    @Test(arguments: [PresentationMode.presenter, .mirror])
+    func aRenameFrameRenamesTheSessionAndEveryViewerHearsIt(mode: PresentationMode) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let sender = try HeadlessAskTests.Sink(fixture, mode: mode)
+        let other = try HeadlessAskTests.Sink(fixture, mode: .mirror)
+        if mode == .presenter { sender.send(.presenterAcquire) }
+
+        sender.send(.rename(" deploy box "))
+
+        #expect(fixture.session.customName == "deploy box")
+        #expect(try await fixture.node().name == "deploy box")
+        #expect(sender.bodies.last == .name("deploy box"))
+        #expect(other.bodies.last == .name("deploy box"))
+        #expect(fixture.runner.calls.isEmpty)
+    }
+
+    @Test func aRenameThatChangesNothingIsStillEchoed() throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        fixture.store.renameSession(fixture.session.id, to: "deploy box")
+        let viewer = try HeadlessAskTests.Sink(fixture, mode: .mirror)
+
+        viewer.send(.rename("deploy box"))
+        #expect(viewer.bodies.last == .name("deploy box"))
+
+        viewer.send(.rename(nil))
+        #expect(fixture.session.customName == nil)
+        #expect(viewer.bodies.last == .name(nil))
+        let count = viewer.bodies.count
+        viewer.send(.rename("   "))
+        #expect(viewer.bodies.count == count + 1)
+        #expect(viewer.bodies.last == .name(nil))
+    }
+
+    @Test func aSnapshotCarriesTheSessionsCustomName() throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        fixture.store.renameSession(fixture.session.id, to: "deploy box")
+
+        let viewer = try HeadlessAskTests.Sink(fixture, mode: .mirror)
+
+        guard case .snapshot(let snapshot)? = viewer.bodies.dropFirst().first else {
+            Issue.record("hello is followed by the snapshot")
+            return
+        }
+        #expect(snapshot.name == "deploy box")
+    }
+
     @Test func sessionSeenClearsTheCountButLeavesTheStatus() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }

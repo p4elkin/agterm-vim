@@ -48,8 +48,9 @@ public final class PresentationHub {
     }
 
     /// The frame kinds this origin can produce.
-    public static let supportedKinds = ["status", "hud", "notify", "context", "layout", "sound", askFormKind, askOtherKind]
-        + pageKinds
+    /// `name` is both directions: an origin listing it publishes `name` and accepts a viewer's `rename`.
+    public static let supportedKinds = ["status", "hud", "notify", "context", "layout", "sound", askFormKind, askOtherKind,
+                                        "name"] + pageKinds
     /// pageKinds are the presentation kinds a presenter must speak to be handed a page.
     public static let pageKinds = ["page.request", "page.rejected", "page.close", "page.closed", "page.command",
                                    "page.state"]
@@ -79,6 +80,10 @@ public final class PresentationHub {
 
     /// Called when any subscribed viewer marks its session seen.
     public var onSeen: (@MainActor (UUID) -> Void)?
+
+    /// Called when any subscribed viewer renames its session; nil asks to clear the name. The handler
+    /// publishes `name` back even when nothing changed, which is the sender's confirmation.
+    public var onRename: (@MainActor (UUID, String?) -> Void)?
 
     public init(staleTimeout: TimeInterval, now: @escaping () -> Date = Date.init) {
         self.staleTimeout = staleTimeout
@@ -151,6 +156,7 @@ public final class PresentationHub {
         switch frame.body {
         case .ack: subscriber.lastAck = now()
         case .seen: onSeen?(subscriber.session)
+        case .rename(let name): onRename?(subscriber.session, name)
         case .ping: send(.ack, to: id)
         case .presenterAcquire:
             let previous = grant.holder(of: subscriber.session)

@@ -156,6 +156,8 @@ public final class AppStore {
     @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
     /// onReplicaPageChanged is told the local id of a page shown for an origin whose reported state changed.
     @ObservationIgnored public var onReplicaPageChanged: ((UUID) -> Void)?
+    /// Called when an attached row is renamed here, with the name to send its origin; nil clears it.
+    @ObservationIgnored public var onRemoteSessionRenamed: ((UUID, String?) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
