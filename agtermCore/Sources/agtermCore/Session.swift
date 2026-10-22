@@ -230,6 +230,16 @@ public final class Session: Identifiable {
         zmxBacking(for: .primary) == true && (!hasSplit || zmxBacking(for: .split) == true)
     }
 
+    /// Whether every pane keeps its program across a move to another window. Reads each slot itself, unlike
+    /// `zmxBacking(for:)`, which answers an unrealized slot from its sibling: an unrealized slot has nothing to
+    /// lose, while a realized plain pane would die with its surface. A remote row's rebuilt surface re-runs its
+    /// attach to the far daemon.
+    public var canSurviveTransfer: Bool {
+        if remoteHost != nil { return true }
+        let slots = hasSplit ? [surface, splitSurface] : [surface]
+        return slots.allSatisfy { $0?.backedByZmx ?? true }
+    }
+
     /// Where the split (right) pane re-spawns on restore (the split factory reads it), from the persisted
     /// `SessionSnapshot.splitCwd`, so each pane keeps its own cwd across a relaunch; nil for a fresh split,
     /// which seeds from `effectiveCwd`.
