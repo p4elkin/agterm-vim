@@ -53,6 +53,21 @@ public struct WindowsIndex: Codable, Equatable, Sendable {
     }
 }
 
+/// Where a workspace or session transfer lands: a window created for it, or an existing one, open or closed.
+public enum TransferDestination: Equatable, Sendable {
+    case new
+    case window(UUID)
+}
+
+/// A refused transfer; `message` is the control error answer.
+public struct TransferRefusal: Error, Equatable, Sendable {
+    public let message: String
+
+    public init(_ message: String) {
+        self.message = message
+    }
+}
+
 /// The app-global owner of the window set: ordered window metadata, lazily-loaded per-window `AppStore`s,
 /// the open-set, the frontmost id, and per-window + index persistence. `@Observable` so SwiftUI tracks the
 /// window list + frontmost id; all access is main-actor isolated. A window is "open" iff its `AppStore` is
@@ -1013,5 +1028,36 @@ public final class WindowLibrary {
 
     func log(_ message: @autoclosure () -> String) {
         NSLog("agterm: %@", message())
+    }
+}
+
+extension WindowLibrary {
+    /// Resolves a `--to-window` value: `new`, then an exact window name (open or closed), then an id,
+    /// `active` or id prefix. A name that is also another window's id prefix is ambiguous, so a
+    /// hex-looking name never silently shadows an id.
+    public func resolveTransferDestination(_ raw: String, source: UUID) -> Result<TransferDestination, TransferRefusal> {
+        if raw == "new" { return .success(.new) }
+        let ids = windows.map(\.id)
+        let resolved: UUID
+        if let name = TerminalText.sanitized(raw).trimmedOrNil,
+           case let named = windows.filter({ $0.name == name }), !named.isEmpty {
+            guard named.count == 1 else {
+                let listed = named.map(\.id.uuidString).joined(separator: ", ")
+                return .failure(TransferRefusal("ambiguous window name: \(raw) (\(listed))"))
+            }
+            let needle = raw.lowercased()
+            if ids.contains(where: { $0 != named[0].id && $0.uuidString.lowercased().hasPrefix(needle) }) {
+                return .failure(TransferRefusal("ambiguous window: \(raw) matches a name and an id prefix"))
+            }
+            resolved = named[0].id
+        } else {
+            let resolution = ControlResolve.resolve(raw, candidates: ids, active: activeWindowID)
+            guard case .resolved(let id) = resolution else {
+                return .failure(TransferRefusal(ControlResolve.errorMessage(noun: "window", target: raw,
+                                                                            resolution: resolution)))
+            }
+            resolved = id
+        }
+        return resolved == source ? .failure(TransferRefusal("same window")) : .success(.window(resolved))
     }
 }
