@@ -2,6 +2,12 @@ import ArgumentParser
 import Foundation
 import agtermCore
 
+func validateWindowName(_ windowName: String?, toWindow: String?) throws {
+    if windowName != nil, toWindow != "new" {
+        throw ValidationError("--window-name needs --to-window new")
+    }
+}
+
 /// Shared `--pane` validation for session type, text, status, restore, and font. Accepts role and position
 /// aliases through `StatusPane`; the stable rejection names the canonical read-back values.
 func validatePaneArgument(_ pane: String?) throws {
@@ -137,8 +143,11 @@ struct Session: ParsableCommand {
 
     struct Move: RequestCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Move a session: to another workspace, reorder with --to, or place relative to an anchor with --after/--before.")
+            abstract: "Move a session: to another workspace or window, reorder with --to, or place relative to an anchor with --after/--before.")
         @Argument(help: "Destination workspace id/prefix (relocate). Omit with --to or --after/--before.") var workspace: String?
+        @Option(name: .customLong("to-window"), help: "Move to another window: new, a window name, an id or a prefix. Lands in the workspace argument, --workspace-name, or one named like the session's own.") var toWindow: String?
+        @Option(name: .customLong("workspace-name"), help: "With --to-window: the destination workspace by name, reused or created.") var workspaceName: String?
+        @Option(name: .customLong("window-name"), help: "Name of the window --to-window new creates.") var windowName: String?
         @Option(name: .long, help: "Reorder within the workspace: up, down, top, or bottom.") var to: String?
         @Option(name: .long, help: "Place right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace (relocates + positions in one shot).") var after: String?
         @Option(name: .long, help: "Place right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
@@ -149,6 +158,19 @@ struct Session: ParsableCommand {
         // (anchor-relative)}; reject empty/conflicting cases at parse time as a clean usage error, unit-testable
         // without a socket. the anchor carries its own workspace, so placement excludes --to and a workspace.
         func validate() throws {
+            try validateWindowName(windowName, toWindow: toWindow)
+            if toWindow != nil {
+                if to != nil || after != nil || before != nil {
+                    throw ValidationError("--to-window cannot be combined with --to, --after or --before")
+                }
+                if workspace != nil, workspaceName != nil {
+                    throw ValidationError("provide a destination workspace or --workspace-name, not both")
+                }
+                return
+            }
+            if workspaceName != nil {
+                throw ValidationError("--workspace-name needs --to-window")
+            }
             if after != nil, before != nil {
                 throw ValidationError("use either --after or --before, not both")
             }
@@ -173,7 +195,9 @@ struct Session: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             let args: ControlArgs
-            if let after {
+            if let toWindow {
+                args = ControlArgs(workspace: workspace, workspaceName: workspaceName, toWindow: toWindow, windowName: windowName)
+            } else if let after {
                 args = ControlArgs(after: after)
             } else if let before {
                 args = ControlArgs(before: before)

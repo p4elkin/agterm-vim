@@ -68,13 +68,26 @@ struct Workspace: ParsableCommand {
     }
 
     struct Move: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Reorder a workspace among its siblings.")
-        @Option(name: .long, help: "Direction: up, down, top, or bottom.") var to: String
+        static let configuration = CommandConfiguration(
+            abstract: "Reorder a workspace among its siblings, or move it to another window with --to-window.")
+        @Option(name: .long, help: "Direction: up, down, top, or bottom.") var to: String?
+        @Option(name: .customLong("to-window"), help: "Move to another window: new, a window name, an id or a prefix.") var toWindow: String?
+        @Option(name: .customLong("window-name"), help: "Name of the window --to-window new creates (default: the workspace's name).") var windowName: String?
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
 
+        func validate() throws {
+            try validateWindowName(windowName, toWindow: toWindow)
+            switch (to, toWindow) {
+            case (nil, nil): throw ValidationError("provide --to or --to-window")
+            case (.some, .some): throw ValidationError("use either --to or --to-window, not both")
+            default: break
+            }
+        }
+
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .workspaceMove, target: target.target, args: options.withWindow(ControlArgs(to: to)))
+            ControlRequest(cmd: .workspaceMove, target: target.target,
+                           args: options.withWindow(ControlArgs(to: to, toWindow: toWindow, windowName: windowName)))
         }
     }
 
