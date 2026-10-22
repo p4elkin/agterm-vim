@@ -265,8 +265,8 @@ overlay resize` for a record-then-restore zoom), `paneOverlays` (the panes cover
 `["left"]`, `["right"]` or `["left","right"]`, omitted when neither is; the read side of `session overlay
 open --pane`, independent of the session-wide `overlay` flag),
 `hiddenOverlays` (the hidden slots — `session`, `left`, `right` — omitted when none is hidden; the read
-side of `session overlay hide`; a hidden session-wide Rebased IDE leaves its slot, so it reads `overlay:
-false` with `session` listed),
+side of `session overlay hide`; a hidden session-wide Rebased IDE leaves its slot, so with nothing else
+open it reads `overlay: false` with `session` listed),
 `hud` (the message panel occupying the session-wide slot — `{message, detail?, spinner, backgroundColor?,
 textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}`, the two percents being the panel's width and height
 shares and `hideAfter` the configured auto-hide in seconds, 0 for a panel that stays — omitted when none is

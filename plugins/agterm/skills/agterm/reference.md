@@ -216,7 +216,7 @@ independently of the session-wide `overlay` flag, which a pane overlay never set
 `rebasedOverlay` (fork only: `{project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`),
 where `state` is `fetching`, `starting`, `shown` or `failed`; `pane` is absent for a session-wide holder.
 It remains present while hidden, and a held pane remains in `paneOverlays`.
-A hidden session holder reads `overlay: false` but still reserves its slot.
+A hidden session-wide holder frees the slot, so another overlay can open; with none open the session reads `overlay: false`.
 `view` is `{request, kind, target, state, detail?}`: kind `diff`, `working-tree` or `file`, state `queued`, `sent`, `opened` or `failed`.
 `diff` is the last normalized range asked for; `view.state: opened` confirms the view, with a file count or path in `detail`.
 `onClose: true` means a callback is armed; `source` is the remote `host:path` mirrored by `project`.
@@ -1094,8 +1094,9 @@ error keeps those names for compatibility.
   `toggle` hides them all while any is shown, else shows them all, and `result.text` says `hidden` or
   `shown`. A hidden program keeps running, `--block` keeps waiting and `session overlay result` still
   answers. Showing restores visibility; the slot stays occupied until the overlay closes. A session-wide
-  Rebased IDE is the exception: hiding it frees the slot for another overlay, and showing it again fails
-  with `overlay already open` until that one closes. Opening another
+  Rebased IDE is the exception: hiding it frees the slot for another overlay. A bare `show` then acts on
+  that overlay and leaves the IDE hidden; `session rebased toggle` fails with `overlay already open` until
+  it closes. Opening another
   overlay into a hidden slot, or a HUD while the session-wide slot is hidden, fails with `overlay hidden`. A HUD or a dialog cannot be hidden (`no overlay`), nor a program overlay
   shown on another Mac (`overlay is shown on another Mac`); a page shown there takes the request, and the
   reply does not wait for that Mac. From a page, a bare call acts on the page's pane, or on

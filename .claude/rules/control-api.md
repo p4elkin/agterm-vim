@@ -569,11 +569,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the occupant's interactivity, a hidden program staying interactive behind its own hiding gates; and
   `overlay.result`'s running check reads occupancy.
   A Rebased overlay (fork only, [[rebased-overlay]]) occupies the session slot or one
-  `PaneOverlay.rebased` slot, and hides through that slot's bit like any other occupant.
+  `PaneOverlay.rebased` slot. A pane IDE hides through its slot's bit; a session-wide one parks out of the slot.
   `rebasedPlacement` locates the single holder by id; `paneOverlayIsProgram` excludes pages and
   Rebased from terminal-surface paths.
   `rebasedOverlayActive` is occupancy and `rebasedOverlayVisible` its visible twin; `rebasedHidden` reads
-  the holder's slot bit. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
+  the pane slot's bit or the parked state. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
   to the IDE instead of its terminal.
   A shown IDE has no terminal focus target or font size; `htmlHidesTerminal` stays false because the
   IDE holds its keys.
