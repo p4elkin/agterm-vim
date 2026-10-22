@@ -499,24 +499,38 @@ worktree that follows the repo's symlink rule for `GhosttyKit.xcframework` and t
 
 ### Mac step 2: App adapter
 
-- [ ] `GhosttySurfaceView.prepareForTransfer()`: `claimProcessExit()` then `teardown()`
-- [ ] `ControlServer` implements `transferWorkspace` / `transferSessions`: resolve the source window, call the
+- [x] `GhosttySurfaceView.prepareForTransfer()`: `claimProcessExit()` then `teardown()`
+- [x] `ControlServer` implements `transferWorkspace` / `transferSessions`: resolve the source window, call the
       library, open the destination through `actions.openWindow` when it is new or `needsOpen` and wait for
       `WindowRegistry` as `windowNew` does, raise it, answer with the `TransferResult` control answer; map a
       `TransferRefusal` to an error answer with its message
-- [ ] confirm by reading `makeSurface` / `makeSplitSurface` that a rebuilt surface for an existing daemon only
+      ➕ In `ControlServer+Transfer.swift`. Every destination goes through `actions.openWindow`, which raises an
+      open window and opens a new or loaded one, then `takeFrontmost`. `pollUntil` and `resolveBatchSessions`
+      lost `private` to be shared. A raw request naming both a workspace and `workspaceName` answers
+      `a workspace and --workspace-name are exclusive` (the CLI already rejects it; the dispatcher does not).
+- [x] confirm by reading `makeSurface` / `makeSplitSurface` that a rebuilt surface for an existing daemon only
       attaches; no factory change expected
-- [ ] `make build`, `make lint`
+      ➕ Confirmed, no change: both build `ZmxLaunch.configuration(paneIdentity:)` from the session's persisted
+      identity, and `ZmxSupport.attachCommand` attaches; creation arguments run only for a missing daemon.
+- [x] `make build`, `make lint`
 
 ### Mac step 3: Hosted and UI tests
 
-- [ ] hosted test: `prepareForTransfer()` on a live surface does not call `handlePaneExit`
-- [ ] `ControlAPIUITests`: two windows on an isolated instance (`AGTERM_STATE_DIR`), with
+- [x] hosted test: `prepareForTransfer()` on a live surface does not call `handlePaneExit`
+      ➕ `agtermTests/ControlServerTransferTests`, plus four tests that call the two `ControlServer` witnesses
+      through `any ControlActions` (new window, refusal, named window and workspace, the exclusive error).
+- [x] `ControlAPIUITests`: two windows on an isolated instance (`AGTERM_STATE_DIR`), with
       `AGTERM_UITEST_ENABLE_ZMX=1` and teardown that kills its exact daemons; extend `.claude/rules/ui-tests.md`
       to name this second zmx test. A workspace with a split row moves to the second window; afterwards
       `zmx list` shows both `agterm-<pane identity>` daemons with the same pids and one client each, and
       `tree --window <dest>` holds the same session ids. A refused move (last workspace) changes nothing.
+      ➕ Landed as `ZmxLiveUITests.testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons`:
+      `ControlAPIUITests.swift` is at the 2000-line test-file limit, and `ZmxLiveUITests` already holds the
+      zmx opt-in and the exact-daemon reap. Pids are the `zmx list` `leaderPID` of both rows, equal before
+      and after, with `clients == 1` and the destination `windowID`.
 - [ ] run each new test alone with `-only-testing`
+      ➕ Hosted tests pass alone. ⚠️ The UI test cannot run over ssh from a delegated agent: `Timed out while
+      enabling automation mode` (`.claude/rules/ui-tests.md`). Run it from a Mac driver session.
 
 ### Mac step 4: Remote rows
 
