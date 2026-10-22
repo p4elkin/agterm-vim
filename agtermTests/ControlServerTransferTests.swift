@@ -56,12 +56,12 @@ final class ControlServerTransferTests: XCTestCase {
         }
 
         view.prepareForTransfer()
+        XCTAssertFalse(view.claimProcessExit(), "the exit is claimed before the surface is freed")
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         view.handleProcessExit()
 
         XCTAssertFalse(view.isRealized)
         XCTAssertFalse(exitHandled)
-        XCTAssertFalse(view.claimProcessExit(), "the exit is claimed before the surface is freed")
         XCTAssertNotNil(store.session(withID: sessionID))
     }
 
