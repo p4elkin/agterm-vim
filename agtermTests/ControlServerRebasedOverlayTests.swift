@@ -331,18 +331,22 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertTrue(opened.ok)
         let id = try XCTUnwrap(opened.result?.overlay)
         frameOpened(session)
+        let project = RebasedHost.canonical(stateDir.path)
         XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "hidden")
+        XCTAssertEqual(runtime.calls.last, "hide \(project)")
         let program = server.openSessionOverlay(session.id.uuidString, window: nil,
                                                 options: ControlSessionOverlayOpenOptions(command: "true", cwd: nil, wait: false,
                                                                                           sizePercent: nil, backgroundColor: nil))
         XCTAssertTrue(program.ok, program.error ?? "")
         XCTAssertTrue(session.programOverlayActive)
+        XCTAssertEqual(runtime.calls.last, "hide \(project)")
         XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).error, "overlay already open")
         XCTAssertTrue(session.rebasedHidden)
         XCTAssertTrue(store.closeOverlay(session.id))
         let shown = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
         XCTAssertEqual(shown.result?.text, "shown")
         XCTAssertEqual(shown.result?.overlay, id)
+        XCTAssertEqual(runtime.calls.last, "show \(project)")
         XCTAssertTrue(session.rebasedOverlayVisible)
         XCTAssertEqual(session.overlaySizePercent, 60)
     }
