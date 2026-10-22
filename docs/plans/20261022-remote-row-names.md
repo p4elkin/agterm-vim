@@ -299,3 +299,5 @@ Round `02-after-fix` (same profile, 4 of 4 sources, none degraded) confirmed the
 Round `03-final` (4 of 4 sources) found one, raised by every source: snapshot restore copied a name an
 older build saved without a limit, and this branch puts that name into the presentation snapshot. Restore
 (`session(from:)`) now drops an over-long name, with a test that the snapshot still encodes.
+
+Round `04-final` (4 of 4 sources, none degraded): no findings.
