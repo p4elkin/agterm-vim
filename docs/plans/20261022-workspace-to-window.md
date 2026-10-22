@@ -374,27 +374,30 @@ depends: 1, 2
 - Create: `agtermCore/Sources/agtermCore/WindowLibrary+Transfer.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/WindowLibraryTransferTests.swift`
 
-- [ ] write failing tests: workspace to a new window (store holds only the moved workspace, no `$HOME` session,
+- [x] write failing tests: workspace to a new window (store holds only the moved workspace, no `$HOME` session,
       name defaults to the workspace name, `windowName` overrides, index and frontmost written after the window
       file); to an open window; to a closed window (loaded, `needsOpen`); same session ids and pane identities in
       the destination; the source no longer holds them; `TransferResult` answers `id` and `affected`
-- [ ] write failing tests for session moves: `.id` in an existing window; `.id` with `.new` refused; `.name`
+- [x] write failing tests for session moves: `.id` in an existing window; `.id` with `.new` refused; `.name`
       reusing an existing workspace; `.name` creating one; `.none` using the first moved session's workspace name;
       a batch from two source workspaces lands in one workspace in tree order; a single target
-- [ ] write failing tests for ordering: a destination save failure (make `windows/` mode `0o555` and restore it
+- [x] write failing tests for ordering: a destination save failure (make `windows/` mode `0o555` and restore it
       afterwards; `WindowLibraryRecentClosedTests` shows the read-only-directory technique) leaves the source store and file unchanged (surface slots
       still set, `prepareForTransfer` never called), the destination without the moved items or a created
       workspace, no new window in the index, and a closed destination closed again with `windows.json` unchanged
-- [ ] write failing tests for claims: after a successful move, a second
+- [x] write failing tests for claims: after a successful move, a second
       `WindowLibrary(directory:paneFinalizer:launchInventorySink:)` on the same directory reports every moved local
       pane identity as claimed (remote rows are never in snapshots, so they are left out)
-- [ ] write a failing test that `RemoteRowBook.records(from:previous:)` for a moved remote row names the
+- [x] write a failing test that `RemoteRowBook.records(from:previous:)` for a moved remote row names the
       destination window
-- [ ] write failing tests for refusals: each refusal from Tasks 1–3 changes no file and no store; a refused `.id`
+- [x] write failing tests for refusals: each refusal from Tasks 1–3 changes no file and no store; a refused `.id`
       into a closed window leaves `windows.json` and `isOpen` unchanged
-- [ ] add `newWindow(name:seed:)`, `closedSnapshot(for:)`, `TransferWorkspaceTarget`, `TransferResult`,
+- [x] add `newWindow(name:seed:)`, `closedSnapshot(for:)`, `TransferWorkspaceTarget`, `TransferResult`,
       `transferWorkspace`, `transferSessions` as in Technical Details
-- [ ] run the check
+      ➕ Landed as `newWindow(name:seed:selecting:)` (a workspace move selects its active session) and
+      `dropUnsavedWindow(_:)`; the control answer is `TransferResult.controlResult`; an empty session list
+      answers `no sessions to move`; an unknown source window, workspace or session answers `no such <noun>: <id>`.
+- [x] run the check
 
 Check: `bash -lc "source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter WindowLibraryTransferTests"`
 

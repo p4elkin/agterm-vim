@@ -1060,4 +1060,27 @@ extension WindowLibrary {
         }
         return resolved == source ? .failure(TransferRefusal("same window")) : .success(.window(resolved))
     }
+
+    /// A window whose only workspace is `seed`. Unlike `newWindow(name:)` it neither writes the index nor
+    /// takes frontmost: both wait for the window file to save, and `dropUnsavedWindow` undoes it otherwise.
+    func newWindow(name: String?, seed: Workspace, selecting sessionID: UUID?) -> (id: UUID, store: AppStore) {
+        let info = WindowInfo(name: name.map(TerminalText.sanitized)?.trimmedOrNil ?? defaultWindowName)
+        let store = makeStore(for: info.id, persistence: persistenceStore(for: info.id))
+        store.attachWorkspace(seed, selecting: sessionID)
+        windows.append(info)
+        stores[info.id] = store
+        openSetVersion += 1
+        return (info.id, store)
+    }
+
+    func dropUnsavedWindow(_ id: UUID) {
+        stores[id] = nil
+        windows.removeAll { $0.id == id }
+        openSetVersion += 1
+    }
+
+    /// A closed window's tree read without `loadStore`, which writes the index and emits `sessionCreated`.
+    func closedSnapshot(for id: UUID) -> Snapshot {
+        persistenceStore(for: id).load()
+    }
 }
