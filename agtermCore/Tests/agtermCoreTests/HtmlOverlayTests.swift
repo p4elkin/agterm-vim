@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct HtmlOverlayTests {
-    @Test func hiddenRebasedSessionRetainsItsSlotAndRestoresTerminalFocus() throws {
+    @Test func hiddenRebasedSessionParksOutOfItsSlotAndRestoresTerminalFocus() throws {
         session.surface = SpySurface()
         let callback = RebasedOnClose(command: "/bin/flush", cwd: "/tmp", environment: [:])
         let overlay = RebasedOverlay(project: "/tmp/repo", view: RebasedViewRequest(view: .file(path: "/tmp/repo/a", line: 1)), onClose: callback)
@@ -12,23 +12,20 @@ struct HtmlOverlayTests {
         RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
         defer { RebasedOverlayReleases.shared.onRelease = nil }
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
-        #expect(!store.setRebasedHidden(session.id, id: UUID(), true))
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
-        #expect(session.overlayActive)
-        #expect(session.overlayHidden && session.rebasedHidden)
-        #expect(session.rebasedOverlay?.id == overlay.id)
-        #expect(session.rebasedOverlay?.view == overlay.view)
-        #expect(session.rebasedOverlay?.onClose == callback)
-        #expect(session.rebasedOverlayActive && !session.rebasedOverlayVisible)
-        #expect(session.coverOverlayActive && !session.coverOverlayVisible)
+        #expect(store.setRebasedHidden(session.id, id: UUID(), true) == .noOverlay)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(!session.overlayActive && !session.overlayHidden && session.rebasedHidden)
+        #expect(session.rebasedOverlay == nil)
+        #expect(session.rebasedPlacement?.overlay.view == overlay.view)
+        #expect(session.rebasedPlacement?.overlay.onClose == callback)
+        #expect(!session.rebasedOverlayActive && !session.rebasedOverlayVisible)
+        #expect(!session.coverOverlayActive && !session.coverOverlayVisible)
         #expect(!session.fullOverlayVisible)
         #expect(!session.programOverlayActive)
         #expect(session.topmostSurface === session.surface)
         #expect(session.focusTarget(wantSplit: false) === session.surface)
-        #expect(!store.openOverlay(session.id, command: "other"))
-        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page(), sizePercent: nil) == .alreadyOpen)
         #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil) == .alreadyOpen)
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
         #expect(session.rebasedOverlayVisible)
         #expect(session.coverOverlayVisible)
         #expect(session.fullOverlayVisible)
@@ -36,7 +33,7 @@ struct HtmlOverlayTests {
         #expect(session.focusTarget(wantSplit: false) == nil)
         #expect(releases.isEmpty)
         #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
-        #expect(!store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == .noOverlay)
         #expect(releases == [overlay.id])
     }
 
@@ -134,6 +131,23 @@ struct HtmlOverlayTests {
         let failure = store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil)
         #expect(failure == .presenter)
         #expect(failure?.message == "a viewer presents this session: a Rebased overlay would open where nobody sees it")
+    }
+
+    @Test func aPresenterRefusesToShowAParkedIDE() throws {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        let hub = PresentationHub(staleTimeout: 30)
+        let presenter = Sink()
+        store.presentationHub = hub
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        #expect(!store.sessionSlotFree(session))
+        let failure = store.setRebasedHidden(session.id, id: overlay.id, false)
+        #expect(failure == .unpark(.presenter))
+        #expect(failure?.message == RebasedOverlayOpenFailure.presenter.message)
+        #expect(session.rebasedHidden)
     }
 
     @Test func rebasedOpenPreservesAProgramPageOrRebasedOccupant() {

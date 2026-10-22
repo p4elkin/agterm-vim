@@ -5,7 +5,7 @@ import Testing
 @MainActor
 struct AppStoreRemoteOverlayTests {
     @Test(arguments: ["session", "left", "right"])
-    func aHiddenRebasedHolderStillReservesItsSlotAgainstRemoteJobs(slot: String) throws {
+    func aHiddenPaneIDEReservesItsSlotAgainstRemoteJobsAndAParkedOneDoesNot(slot: String) throws {
         let (session, _) = try origin(split: true)
         let pane = OverlayPane(rawValue: slot)
         let overlay = RebasedOverlay(project: "/tmp/repo")
@@ -15,10 +15,16 @@ struct AppStoreRemoteOverlayTests {
             session.rebasedOverlay = overlay
             session.overlayActive = true
         }
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
-        #expect(open(session, pane: pane) == .slotTaken)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        let result = open(session, pane: pane)
         #expect(session.rebasedPlacement?.overlay.id == overlay.id)
-        #expect(session.remoteOverlays.slots.isEmpty)
+        if pane == nil {
+            _ = try job(of: result)
+            #expect(session.remoteOverlays.slot(nil) != nil)
+        } else {
+            #expect(result == .slotTaken)
+            #expect(session.remoteOverlays.slots.isEmpty)
+        }
     }
 
     final class Sink: PresentationSink {

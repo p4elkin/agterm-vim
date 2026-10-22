@@ -270,9 +270,9 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertTrue(session.openAsk(ask))
         XCTAssertFalse(visible())
         session.cancelPendingAsk()
-        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        XCTAssertNil(store.setRebasedHidden(session.id, id: overlay.id, true))
         XCTAssertFalse(visible())
-        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, false))
+        XCTAssertNil(store.setRebasedHidden(session.id, id: overlay.id, false))
         XCTAssertTrue(visible())
     }
 
@@ -445,7 +445,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         let before = frames.log.filter { $0 == "makeKey frame" }.count
         actions.focusSplitPane(session, wantSplit: false)
         XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before + 1)
-        XCTAssertTrue(store.setRebasedHidden(session.id, id: opened.overlay, true))
+        XCTAssertNil(store.setRebasedHidden(session.id, id: opened.overlay, true))
         actions.focusSplitPane(session, wantSplit: false)
         XCTAssertEqual(frames.log.filter { $0 == "makeKey frame" }.count, before + 1)
         XCTAssertTrue(session.focusTarget(wantSplit: false) === surface)
@@ -536,7 +536,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         let (store, session) = try addSession()
         let overlay = RebasedOverlay(project: "/repo")
         XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: 60))
-        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        XCTAssertNil(store.setRebasedHidden(session.id, id: overlay.id, true))
         XCTAssertFalse(OverlayPanelStyle.resolve(session).backdrop)
         XCTAssertFalse(session.coverOverlayVisible)
         XCTAssertFalse(RebasedSlot.isVisible(true, session: session))
@@ -545,7 +545,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         store.closeOverlay(session.id)
         store.toggleSplit(session.id)
         XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .left))
-        XCTAssertTrue(store.setRebasedHidden(session.id, id: overlay.id, true))
+        XCTAssertNil(store.setRebasedHidden(session.id, id: overlay.id, true))
         XCTAssertFalse(session.paneOverlayVisible(.left))
         XCTAssertFalse(RebasedSlot.isVisible(true, session: session, pane: .left))
     }

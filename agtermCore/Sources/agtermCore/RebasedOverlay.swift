@@ -70,6 +70,25 @@ public struct RebasedDiff: Equatable, Sendable {
     }
 }
 
+/// ParkedRebased is a hidden session-wide IDE out of the slot, with the slot size it is seated back at.
+public struct ParkedRebased: Equatable, Sendable {
+    public var overlay: RebasedOverlay
+    public let sizePercent: Int?
+}
+
+/// RebasedHideFailure is why `setRebasedHidden` changed nothing.
+public enum RebasedHideFailure: Equatable, Sendable {
+    case noOverlay
+    case unpark(RebasedOverlayOpenFailure)
+
+    public var message: String {
+        switch self {
+        case .noOverlay: "no Rebased overlay in this session"
+        case .unpark(let failure): failure.message
+        }
+    }
+}
+
 public enum RebasedOverlayOpenFailure: Equatable, Sendable {
     case unknownSession, alreadyOpen, paneNotVisible, presenter
 
@@ -89,7 +108,7 @@ public enum RebasedOverlayOpenFailure: Equatable, Sendable {
 public final class RebasedOverlayReleases {
     public static let shared = RebasedOverlayReleases()
     public var onRelease: ((UUID) -> Void)?
-    /// onHiddenChange hears every hide or show of a slot holding an IDE, whichever route flipped the slot bit:
+    /// onHiddenChange hears every hide or show of an IDE, whichever route flipped its slot bit or parked it:
     /// (session, overlay, hidden). The app moves the IDE window with it.
     public var onHiddenChange: ((UUID, UUID, Bool) -> Void)?
 
@@ -106,13 +125,20 @@ public final class RebasedOverlayReleases {
 }
 
 extension AppStore {
-    /// setRebasedHidden flips only the slot holding IDE `id`, through the bit `session.overlay.hide` flips.
+    /// setRebasedHidden flips a pane IDE's slot bit; a session-wide IDE parks on hide and is seated back on
+    /// show, which refuses while the slot is not free. Never acts on another occupant of the slot.
     @discardableResult
-    public func setRebasedHidden(_ sessionID: UUID, id: UUID, _ hidden: Bool) -> Bool {
+    public func setRebasedHidden(_ sessionID: UUID, id: UUID, _ hidden: Bool) -> RebasedHideFailure? {
         guard let session = session(withID: sessionID), let placement = session.rebasedPlacement,
-              placement.overlay.id == id else { return false }
-        setSlotHidden(session, slot: placement.pane, hidden)
-        return true
+              placement.overlay.id == id else { return .noOverlay }
+        if let pane = placement.pane {
+            setSlotHidden(session, slot: pane, hidden)
+        } else if hidden {
+            parkRebasedOverlay(session)
+        } else if session.parkedRebased != nil {
+            return unparkRebasedOverlay(session).map(RebasedHideFailure.unpark)
+        }
+        return nil
     }
 
     @discardableResult
@@ -120,7 +146,52 @@ extension AppStore {
         guard let session = session(withID: sessionID), let placement = session.rebasedPlacement,
               placement.overlay.id == id else { return false }
         if let pane = placement.pane { return closePaneOverlay(sessionID, pane: pane) }
-        return closeOverlay(sessionID)
+        guard let parked = session.parkedRebased else { return closeOverlay(sessionID) }
+        RebasedOverlayReleases.shared.release(parked.overlay)
+        session.parkedRebased = nil
+        scheduleTreeChanged()
+        return true
+    }
+
+    /// sessionSlotFree says an IDE may be seated in the session-wide slot: no program, page or IDE holds it, no
+    /// remote job reserves it and no viewer presents the session. A HUD does not count; seating closes it.
+    public func sessionSlotFree(_ session: Session) -> Bool { sessionSlotRefusal(session) == nil }
+
+    private func sessionSlotRefusal(_ session: Session) -> RebasedOverlayOpenFailure? {
+        if presentationHub?.hasPresenter(session: session.id) == true { return .presenter }
+        if session.coverOverlayActive || session.remoteOverlays.slot(nil) != nil { return .alreadyOpen }
+        return nil
+    }
+
+    func parkRebasedOverlay(_ session: Session) {
+        guard let overlay = session.rebasedOverlay else { return }
+        session.parkedRebased = ParkedRebased(overlay: overlay, sizePercent: session.overlaySizePercent)
+        // moved out first, so closing the slot releases nothing
+        session.rebasedOverlay = nil
+        closeOverlay(session.id)
+        RebasedOverlayReleases.shared.onHiddenChange?(session.id, overlay.id, true)
+    }
+
+    func unparkRebasedOverlay(_ session: Session) -> RebasedOverlayOpenFailure? {
+        guard let parked = session.parkedRebased else { return nil }
+        if let refusal = sessionSlotRefusal(session) { return refusal }
+        session.parkedRebased = nil
+        seatRebasedOverlay(session, parked.overlay, sizePercent: parked.sizePercent)
+        RebasedOverlayReleases.shared.onHiddenChange?(session.id, parked.overlay.id, false)
+        return nil
+    }
+
+    // the caller has checked that nothing but a HUD holds the slot
+    private func seatRebasedOverlay(_ session: Session, _ overlay: RebasedOverlay, sizePercent: Int?) {
+        if session.hudActive { closeOverlay(session.id) }
+        session.overlaySlotGeneration += 1
+        session.overlayExitCode = nil
+        session.remoteOverlays.clearFailure(nil)
+        session.overlaySizePercent = sizePercent
+        session.overlayBackgroundColor = nil
+        session.rebasedOverlay = overlay
+        session.overlayActive = true
+        scheduleTreeChanged()
     }
 
     public func openRebasedOverlay(_ sessionID: UUID, overlay: RebasedOverlay, sizePercent: Int?,
@@ -139,16 +210,8 @@ extension AppStore {
             scheduleTreeChanged()
             return nil
         }
-        if session.hudActive { closeOverlay(sessionID) }
-        guard !session.overlayActive else { return .alreadyOpen }
-        session.overlaySlotGeneration += 1
-        session.overlayExitCode = nil
-        session.remoteOverlays.clearFailure(nil)
-        session.overlaySizePercent = sizePercent.map { min(100, max(1, $0)) }
-        session.overlayBackgroundColor = nil
-        session.rebasedOverlay = overlay
-        session.overlayActive = true
-        scheduleTreeChanged()
+        guard !session.coverOverlayActive else { return .alreadyOpen }
+        seatRebasedOverlay(session, overlay, sizePercent: sizePercent.map { min(100, max(1, $0)) })
         return nil
     }
 }

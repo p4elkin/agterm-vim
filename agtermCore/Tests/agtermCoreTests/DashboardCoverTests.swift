@@ -30,10 +30,10 @@ struct DashboardCoverTests {
         let overlay = RebasedOverlay(project: "/tmp/repo")
         let pane = OverlayPane(rawValue: slot)
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
         #expect(session.dashboardCover(for: .left) == nil)
         #expect(session.dashboardCover(for: .right) == nil)
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
         #expect(session.dashboardCover(for: pane ?? .left) == .rebased(project: "/tmp/repo"))
     }
 

@@ -356,6 +356,8 @@ public final class Session: Identifiable {
     /// htmlOverlay is the page the session-wide slot shows instead of a program; see `HtmlOverlay`.
     public var htmlOverlay: HtmlOverlay?
     public var rebasedOverlay: RebasedOverlay?
+    /// parkedRebased is a hidden session-wide IDE moved out of the slot, so the slot takes other overlays.
+    public var parkedRebased: ParkedRebased?
 
     /// The percent of the pane an opaque framed panel occupies with the session still VISIBLE behind it; nil
     /// is the full-pane program overlay, which hides it and draws translucent. 1...100 for a floating PROGRAM

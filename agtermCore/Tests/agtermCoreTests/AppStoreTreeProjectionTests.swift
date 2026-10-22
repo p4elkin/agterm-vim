@@ -24,14 +24,14 @@ struct AppStoreTreeProjectionTests {
         #expect(shown.paneOverlays == pane.map { [$0.rawValue] })
         #expect(shown.rebasedOverlay?.view == ControlRebasedViewNode(request: view.id, kind: "file", target: "/repo/a.kt", state: "opened", detail: "/repo/a.kt"))
         #expect(shown.rebasedOverlay?.onClose == true)
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
         let hidden = try #require(store.controlTree().workspaces.first?.sessions.first)
         #expect(hidden.rebasedOverlay?.hidden == true)
         #expect(hidden.rebasedOverlay?.pane == pane?.rawValue)
         #expect(hidden.rebasedOverlay?.view == shown.rebasedOverlay?.view)
         #expect(hidden.rebasedOverlay?.onClose == true)
-        #expect(hidden.overlay == (pane == nil))
-        #expect(hidden.hiddenOverlays == [slot])
+        #expect(hidden.overlay == false)
+        if pane != nil { #expect(hidden.hiddenOverlays == [slot]) }
     }
 
     @Test func unsetRebasedReadbackFieldsAreOmitted() throws {

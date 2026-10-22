@@ -14,7 +14,7 @@ extension Session {
     public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
 
     public var rebasedPlacement: (overlay: RebasedOverlay, pane: OverlayPane?)? {
-        if let overlay = rebasedOverlay { return (overlay, nil) }
+        if let overlay = rebasedOverlay ?? parkedRebased?.overlay { return (overlay, nil) }
         for pane in OverlayPane.allCases {
             if let overlay = paneOverlay(pane)?.rebased { return (overlay, pane) }
         }
@@ -28,6 +28,11 @@ extension Session {
             rebasedOverlay = overlay
             return true
         }
+        if var parked = parkedRebased, parked.overlay.id == id {
+            change(&parked.overlay)
+            parkedRebased = parked
+            return true
+        }
         for pane in OverlayPane.allCases {
             guard var slot = paneOverlay(pane), var overlay = slot.rebased, overlay.id == id else { continue }
             change(&overlay)
@@ -38,8 +43,8 @@ extension Session {
         return false
     }
 
-    /// rebasedHidden is the hidden bit of the slot holding this session's IDE, false without one.
-    public var rebasedHidden: Bool { rebasedPlacement.map { overlayHidden($0.pane) } ?? false }
+    /// rebasedHidden is true for a parked IDE, else the hidden bit of the slot holding it; false without one.
+    public var rebasedHidden: Bool { parkedRebased != nil || (rebasedPlacement.map { overlayHidden($0.pane) } ?? false) }
 
     /// paneRebasedOverlayActive says `pane` holds a shown IDE.
     public func paneRebasedOverlayActive(_ pane: OverlayPane) -> Bool {
@@ -97,6 +102,8 @@ extension Session {
         htmlOverlay = nil
         RebasedOverlayReleases.shared.release(rebasedOverlay)
         rebasedOverlay = nil
+        RebasedOverlayReleases.shared.release(parkedRebased?.overlay)
+        parkedRebased = nil
     }
 
     // false when no slot of this session holds page `id`

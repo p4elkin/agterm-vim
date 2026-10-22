@@ -20,7 +20,7 @@ extension AppActions {
                 return .closed
             }
             let hidden = !session.rebasedHidden
-            guard store.setRebasedHidden(session.id, id: placement.overlay.id, hidden) else { return .refused("no Rebased overlay in this session") }
+            if let failure = store.setRebasedHidden(session.id, id: placement.overlay.id, hidden) { return .refused(failure.message) }
             return hidden ? .hidden : .shown
         }
         switch RebasedHost.shared.openOverlay(in: store, session: session.id, cwd: nil, sizePercent: nil) {

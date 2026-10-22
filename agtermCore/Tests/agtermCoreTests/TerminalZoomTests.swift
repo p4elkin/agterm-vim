@@ -13,7 +13,7 @@ struct TerminalZoomTests {
         session.splitFocused = pane == .right
         let overlay = RebasedOverlay(project: "/tmp/repo")
         #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, true))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
         #expect(pane.paneZoomSurface.isAvailable(in: session))
         #expect(pane.paneZoomSurface.isActive(in: session))
         #expect(pane.paneZoomSurface.isVisible(in: session))
@@ -21,7 +21,7 @@ struct TerminalZoomTests {
         #expect(!pane.zoomSurface.isActive(in: session))
         #expect(!pane.zoomSurface.isVisible(in: session))
         #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, pane.paneZoomSurface))
-        #expect(store.setRebasedHidden(session.id, id: overlay.id, false))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
         #expect(TerminalZoomController.resolveTarget(store: store) == nil)
     }
 
