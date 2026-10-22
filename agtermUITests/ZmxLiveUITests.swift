@@ -113,6 +113,83 @@ final class ZmxLiveUITests: ControlAPITestCase {
         XCTAssertEqual(self.paneID(sessionID, kind: "left"), paneID)
     }
 
+    func testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons() throws {
+        let sessionID = try activeSessionID()
+        let windowList = try sendControlCommand("window.list")["result"] as? [String: Any]
+        let source = try XCTUnwrap((windowList?["windows"] as? [[String: Any]])?.first?["id"] as? String)
+        let moved = try XCTUnwrap(workspaces(window: source).first?["id"] as? String)
+        XCTAssertEqual(try sendControlCommand("workspace.new", args: ["name": "stays", "window": source])["ok"] as? Bool, true)
+        XCTAssertEqual(try sendControlCommand("session.split", target: sessionID, args: ["mode": "on"])["ok"] as? Bool, true)
+        XCTAssertTrue(poll(until: self.isBacked(sessionID, expectedPanes: ["left", "right"]), timeout: 20))
+        let panes = try ["left", "right"].map { try XCTUnwrap(paneID(sessionID, kind: $0)) }
+        let daemons = try panes.map { try ZmxSupport.daemonName(for: XCTUnwrap(UUID(uuidString: $0))) }
+        let created = try sendControlCommand("window.new", args: ["name": "dest"])
+        let destination = try XCTUnwrap((created["result"] as? [String: Any])?["id"] as? String)
+        XCTAssertTrue(poll(until: self.paneDaemons(of: sessionID).map(\.clients) == [1, 1], timeout: 20))
+        let before = paneDaemons(of: sessionID)
+        XCTAssertEqual(before.map(\.daemon), daemons)
+        let sourceTree = sessionIDs(window: source)
+        let destinationTree = sessionIDs(window: destination)
+        let lastWorkspace = try XCTUnwrap(workspaces(window: destination).first?["id"] as? String)
+
+        let refused = try sendControlCommand("workspace.move", target: lastWorkspace,
+                                             args: ["window": destination, "toWindow": source])
+        XCTAssertEqual(refused["error"] as? String, "last workspace in window")
+        XCTAssertEqual(sessionIDs(window: source), sourceTree)
+        XCTAssertEqual(sessionIDs(window: destination), destinationTree)
+
+        let response = try sendControlCommand("workspace.move", target: moved, args: ["window": source, "toWindow": destination])
+        XCTAssertEqual(response["ok"] as? Bool, true, "\(response)")
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual((result["id"] as? String)?.uppercased(), destination.uppercased())
+        XCTAssertEqual(result["affected"] as? Int, 1)
+        XCTAssertEqual(sessionIDs(window: destination), destinationTree + [sessionID.uppercased()])
+        XCTAssertFalse(sessionIDs(window: source).contains(sessionID.uppercased()))
+        let settled = poll(until: self.paneDaemons(of: sessionID).map { "\($0.clients ?? 0) \($0.windowID?.uppercased() ?? "")" }
+            == Array(repeating: "1 \(destination.uppercased())", count: 2), timeout: 20)
+        let after = paneDaemons(of: sessionID)
+        XCTAssertTrue(settled, "each daemon should get one client back in the destination window: \(after)")
+        XCTAssertEqual(after.map(\.daemon), daemons)
+        XCTAssertEqual(after.map(\.leaderPID), before.map(\.leaderPID), "the same daemons, not new ones")
+        XCTAssertTrue(before.allSatisfy { $0.leaderPID != nil })
+        XCTAssertEqual(try ["left", "right"].map { try XCTUnwrap(paneID(sessionID, kind: $0, window: destination)) }, panes)
+    }
+
+    private struct PaneDaemon: CustomStringConvertible {
+        let pane: String
+        let daemon: String
+        let leaderPID: Int?
+        let clients: Int?
+        let windowID: String?
+
+        var description: String { "\(pane) \(daemon) pid=\(leaderPID ?? -1) clients=\(clients ?? -1) window=\(windowID ?? "-")" }
+    }
+
+    /// The session's running daemons from `zmx.list`, left before right.
+    private func paneDaemons(of sessionID: String) -> [PaneDaemon] {
+        guard let response = try? sendCommand(#"{"cmd":"zmx.list"}"#),
+              let zmx = (response["result"] as? [String: Any])?["zmx"] as? [String: Any],
+              let entries = zmx["entries"] as? [[String: Any]] else { return [] }
+        return entries.compactMap { entry -> PaneDaemon? in
+            guard (entry["sessionID"] as? String)?.caseInsensitiveCompare(sessionID) == .orderedSame,
+                  entry["observation"] as? String == "running",
+                  let pane = entry["pane"] as? String, let daemon = entry["daemon"] as? String else { return nil }
+            return PaneDaemon(pane: pane, daemon: daemon, leaderPID: entry["leaderPID"] as? Int,
+                              clients: entry["clients"] as? Int, windowID: entry["windowID"] as? String)
+        }.sorted { $0.pane < $1.pane }
+    }
+
+    private func workspaces(window: String) -> [[String: Any]] {
+        guard let response = try? sendControlCommand("tree", args: ["window": window]),
+              let tree = (response["result"] as? [String: Any])?["tree"] as? [String: Any] else { return [] }
+        return tree["workspaces"] as? [[String: Any]] ?? []
+    }
+
+    private func sessionIDs(window: String) -> [String] {
+        workspaces(window: window).flatMap { $0["sessions"] as? [[String: Any]] ?? [] }
+            .compactMap { ($0["id"] as? String)?.uppercased() }
+    }
+
     private func restart(_ sessionID: String, paneID: String, command: String) throws -> (oldPid: Int, newPid: Int) {
         let request = try JSONSerialization.data(withJSONObject: [
             "cmd": "session.restart", "target": sessionID, "args": ["command": command, "paneID": paneID],
@@ -125,8 +202,8 @@ final class ZmxLiveUITests: ControlAPITestCase {
         return (try XCTUnwrap(receipt["oldPid"] as? Int), try XCTUnwrap(receipt["newPid"] as? Int))
     }
 
-    private func paneID(_ sessionID: String, kind: String) -> String? {
-        guard let response = try? sendCommand(#"{"cmd":"tree"}"#),
+    private func paneID(_ sessionID: String, kind: String, window: String? = nil) -> String? {
+        guard let response = try? sendControlCommand("tree", args: window.map { ["window": $0] }),
               let tree = (response["result"] as? [String: Any])?["tree"] as? [String: Any],
               let workspaces = tree["workspaces"] as? [[String: Any]],
               let session = workspaces.flatMap({ $0["sessions"] as? [[String: Any]] ?? [] })
