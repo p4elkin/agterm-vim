@@ -153,10 +153,10 @@ extension AppStore {
         return true
     }
 
-    /// sessionSlotFree says an IDE may be seated in the session-wide slot: no program, page or IDE holds it, no
-    /// remote job reserves it and no viewer presents the session. A HUD does not count; seating closes it.
     public func sessionSlotFree(_ session: Session) -> Bool { sessionSlotRefusal(session) == nil }
 
+    /// sessionSlotRefusal is why an IDE cannot be seated in the session-wide slot: a presenting viewer, or a
+    /// program, page, IDE or remote job holding it. A HUD does not count; seating closes it.
     private func sessionSlotRefusal(_ session: Session) -> RebasedOverlayOpenFailure? {
         if presentationHub?.hasPresenter(session: session.id) == true { return .presenter }
         if session.coverOverlayActive || session.remoteOverlays.slot(nil) != nil { return .alreadyOpen }
