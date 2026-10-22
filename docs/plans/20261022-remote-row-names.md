@@ -288,3 +288,10 @@ Round `01-initial` (revmux, `codex-claude`, 4 of 4 sources, none degraded) found
 - A name over the 256 KiB frame limit would end the stream on every reconnect. `Session.nameByteLimit`
   (1024 UTF-8 bytes) is enforced by `session.rename`, `session.new --name` and `renameSession`.
 - The relaunch test did not catch a stale `namesSupported`; it now checks `rename` before the new hello.
+
+Round `02-after-fix` (same profile, 4 of 4 sources, none degraded) confirmed the four fixes and found two:
+
+- `zmx.new --name` skipped the name limit (raised by two sources). The `zmx.new` arm now rejects it, and
+  `addSession` drops an over-long name as a backstop.
+- The changelog said no frame could carry a name over 1024 bytes; it is the application's limit, not the
+  frame's. Reworded.

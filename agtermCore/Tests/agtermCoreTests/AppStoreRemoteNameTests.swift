@@ -243,6 +243,18 @@ struct AppStoreRemoteNameTests {
         #expect(store.renameSession(session.id, to: String(repeating: "a", count: Session.nameByteLimit)))
     }
 
+    @Test func aNewSessionDropsANameOverTheByteLimit() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let long = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo",
+                                                 name: String(repeating: "a", count: Session.nameByteLimit + 1)))
+        let fits = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo",
+                                                 name: String(repeating: "a", count: Session.nameByteLimit)))
+
+        #expect(long.customName == nil)
+        #expect(fits.customName?.utf8.count == Session.nameByteLimit)
+    }
+
     @Test func theOriginEchoesItsOwnNameForARenameOverTheLimit() throws {
         let (store, session, sink) = try origin(name: "kept")
 

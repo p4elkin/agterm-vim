@@ -9,6 +9,7 @@ extension ControlDispatcher {
             if let name = request.args?.name, name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) {
                 return ControlResponse(ok: false, error: "zmx.new name must not contain control characters")
             }
+            if let error = Session.nameLimitError(request.args?.name) { return ControlResponse(ok: false, error: error) }
             let workspace = request.args?.workspace?.trimmedOrNil
             let options = ControlZmxNewOptions(name: request.args?.name, command: request.args?.command, cwd: request.args?.cwd,
                                                workspace: workspace)

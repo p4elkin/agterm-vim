@@ -519,8 +519,10 @@ public final class AppStore {
         // both reach a custom command's expansion — cwd through initialCwd, name through customName — so
         // both are sanitized here. See TerminalText.
         // `remoteHost` arrives here rather than being assigned after, because this call saves.
+        // an over-long name is dropped rather than seeded; the control requests reject it before this
+        let seeded = name.map(TerminalText.sanitized)?.trimmedOrNil
         let session = Session(initialCwd: TerminalText.sanitized(cwd),
-                              customName: name.map(TerminalText.sanitized)?.trimmedOrNil,
+                              customName: Session.nameTooLong(seeded) ? nil : seeded,
                               remoteHost: remoteHost)
         session.initialCommand = command
         session.commandWait = wait

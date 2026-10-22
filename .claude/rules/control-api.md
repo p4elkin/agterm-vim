@@ -1847,8 +1847,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   older origin gets no `rename` and its snapshot's missing name is not read as a clear. The name survives
   the stream ending. Attach seeds the row with the origin tree's `name`, which may be an automatic one;
   the first snapshot replaces it with the origin's custom name or none.
-  A custom name is at most `Session.nameByteLimit` (1024 UTF-8 bytes): `session.rename` and
-  `session.new --name` reject a longer one, and `renameSession` refuses it, so no name outgrows a frame.
+  A custom name is at most `Session.nameByteLimit` (1024 UTF-8 bytes): `session.rename`,
+  `session.new --name` and `zmx.new --name` reject a longer one, `renameSession` refuses it, and
+  `addSession` drops it, so the snapshot that carries it stays far inside a frame.
 - Seeing an attached row here (`AppStore.clearUnseen`, reached by selection, pane focus and the zoom refocus)
   sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
   session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count

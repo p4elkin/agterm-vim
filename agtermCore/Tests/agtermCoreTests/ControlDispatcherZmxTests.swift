@@ -595,6 +595,17 @@ struct ControlDispatcherZmxTests {
         #expect(actions.calls.isEmpty)
     }
 
+    @Test(arguments: [nil, "p4linux"] as [String?])
+    func zmxNewRefusesANameOverTheByteLimitBeforeAnyAction(_ host: String?) async throws {
+        let actions = MockControlActions()
+        let name = String(repeating: "a", count: Session.nameByteLimit + 1)
+        let response = try #require(await dispatch(ControlRequest(cmd: .zmxNew, args: ControlArgs(name: name, host: host)),
+                                                   actions))
+
+        #expect(response.error == "session name must be at most 1024 UTF-8 bytes")
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test(arguments: [nil, "", "   "] as [String?])
     func zmxNewWithoutAUsableHostIsLocal(_ host: String?) async throws {
         let actions = MockControlActions()
