@@ -158,7 +158,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertTrue(session.rebasedHidden)
         let queued = server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/a", line: 0))
         XCTAssertTrue(queued.ok)
-        XCTAssertEqual(session.rebasedOverlay?.view?.state, .queued)
+        XCTAssertEqual(session.rebasedPlacement?.overlay.view?.state, .queued)
         let shown = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
         XCTAssertEqual(shown.result?.text, "shown")
         XCTAssertEqual(shown.result?.overlay, id)
@@ -325,6 +325,28 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(session.overlaySizePercent, 55)
     }
 
+    func testAProgramOverlayOpensOverAHiddenIDE() throws {
+        let (store, session) = try addSession()
+        let opened = openRebased(session, sizePercent: 60)
+        XCTAssertTrue(opened.ok)
+        let id = try XCTUnwrap(opened.result?.overlay)
+        frameOpened(session)
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "hidden")
+        let program = server.openSessionOverlay(session.id.uuidString, window: nil,
+                                                options: ControlSessionOverlayOpenOptions(command: "true", cwd: nil, wait: false,
+                                                                                          sizePercent: nil, backgroundColor: nil))
+        XCTAssertTrue(program.ok, program.error ?? "")
+        XCTAssertTrue(session.programOverlayActive)
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).error, "overlay already open")
+        XCTAssertTrue(session.rebasedHidden)
+        XCTAssertTrue(store.closeOverlay(session.id))
+        let shown = server.toggleRebasedOverlay(session.id.uuidString, window: nil)
+        XCTAssertEqual(shown.result?.text, "shown")
+        XCTAssertEqual(shown.result?.overlay, id)
+        XCTAssertTrue(session.rebasedOverlayVisible)
+        XCTAssertEqual(session.overlaySizePercent, 60)
+    }
+
     func testToggleHidesAndShowsTheSameHolder() throws {
         let (store, session) = try addSession()
         store.selectSession(session.id)
@@ -332,7 +354,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         let id = try XCTUnwrap(session.rebasedPlacement?.overlay.id)
         frameOpened(session)
         XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden)
-        XCTAssertTrue(session.overlayActive)
+        XCTAssertFalse(session.overlayActive)
         XCTAssertEqual(session.rebasedPlacement?.overlay.id, id)
         XCTAssertEqual(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.hidden, true)
         XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
@@ -540,9 +562,9 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertFalse(OverlayPanelStyle.resolve(session).backdrop)
         XCTAssertFalse(session.coverOverlayVisible)
         XCTAssertFalse(RebasedSlot.isVisible(true, session: session))
-        XCTAssertNil(RebasedSlot.message(for: try XCTUnwrap(session.rebasedOverlay), shownElsewhere: true,
+        XCTAssertNil(RebasedSlot.message(for: try XCTUnwrap(session.rebasedPlacement?.overlay), shownElsewhere: true,
                                          visible: RebasedSlot.isVisible(true, session: session)))
-        store.closeOverlay(session.id)
+        XCTAssertTrue(store.closeRebasedOverlay(session.id, id: overlay.id))
         store.toggleSplit(session.id)
         XCTAssertNil(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .left))
         XCTAssertNil(store.setRebasedHidden(session.id, id: overlay.id, true))

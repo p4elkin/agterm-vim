@@ -351,7 +351,7 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertNil(store.setRebasedHidden(first.id, id: id, true))
         host.hide(overlay: id)
         let request = host.requestView(overlay: id, view: .file(path: "/tmp/a", line: 0))
-        XCTAssertEqual(first.rebasedOverlay?.view?.state, .queued)
+        XCTAssertEqual(first.rebasedPlacement?.overlay.view?.state, .queued)
         XCTAssertFalse(timers.contains { $0.delay == RebasedHost.viewDeadline })
         XCTAssertNil(store.setRebasedHidden(first.id, id: id, false))
         host.show(overlay: id)
