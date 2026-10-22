@@ -40,7 +40,33 @@ extension ControlServer {
                           _ move: (UUID, TransferDestination) -> Result<TransferResult, TransferRefusal>)
         -> Result<TransferResult, TransferRefusal> {
         guard let source = library.windowID(for: store) else { return .failure(TransferRefusal("no open window")) }
-        return library.resolveTransferDestination(raw, source: source).flatMap { move(source, $0) }
+        let outcome = library.resolveTransferDestination(raw, source: source).flatMap { move(source, $0) }
+        if case .success(let result) = outcome {
+            renewRemoteAttachments(result)
+            // the debounced write would leave a crash in its gap restoring the row in the source window
+            remoteRowBook?.write()
+        }
+        return outcome
+    }
+
+    /// Before the destination mounts: a remote pane's first line carries its last attachment's nonce, whose
+    /// reports the lead book drops, and a user attach's claim. A fresh one, as `PaneReattach` builds.
+    private func renewRemoteAttachments(_ result: TransferResult) {
+        guard let store = library.store(for: result.windowID) else { return }
+        for session in result.sessionIDs.compactMap(store.session(withID:)) {
+            guard let binding = session.remotePresentation?.binding else { continue }
+            let left = ZmxLeadAttachment(claim: false)
+            if let command = binding.attachPaneCommand(forLocalPane: session.paneIdentity, pane: .left, lead: left) {
+                session.initialCommand = command
+                ZmxLeadBook.shared.begin(left, pane: session.paneIdentity)
+            }
+            guard session.hasSplit, let split = session.splitPaneIdentity else { continue }
+            let right = ZmxLeadAttachment(claim: false)
+            if let command = binding.attachPaneCommand(forLocalPane: split, pane: .right, lead: right) {
+                session.splitInitialCommand = command
+                ZmxLeadBook.shared.begin(right, pane: split)
+            }
+        }
     }
 
     /// Opens a new or loaded destination, raises an open one. The poll gates on the registry for the reason

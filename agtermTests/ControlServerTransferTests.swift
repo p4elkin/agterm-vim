@@ -22,11 +22,39 @@ final class ControlServerTransferTests: XCTestCase {
     }
 
     /// Through the protocol, so a signature drift that falls back to the unsupported default fails here.
-    private func makeActions() -> any ControlActions {
-        ControlServer(library: library, actions: AppActions(library: library),
-                      settingsModel: SettingsModel(library: library, settingsStore: SettingsStore(directory: stateDir)),
-                      identity: AppIdentity(version: "test", commit: "test"), zmxClient: nil,
-                      socketPath: stateDir.appendingPathComponent("control.sock").path)
+    private func makeActions(rowBook: RemoteRowBookWriter? = nil) -> any ControlActions {
+        let server = ControlServer(library: library, actions: AppActions(library: library),
+                                   settingsModel: SettingsModel(library: library, settingsStore: SettingsStore(directory: stateDir)),
+                                   identity: AppIdentity(version: "test", commit: "test"), zmxClient: nil,
+                                   socketPath: stateDir.appendingPathComponent("control.sock").path)
+        server.remoteRowBook = rowBook
+        return server
+    }
+
+    /// A user-attached remote row with a split, as `insertRemoteRow` leaves it.
+    private func remoteRow(in store: AppStore) throws -> (session: Session, leads: [UUID: ZmxLeadAttachment]) {
+        let endpoint = ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/zmx-p4linux")
+        let origin = RemoteBinding.Origin(host: "p4linux", endpoint: endpoint, sessionName: "build")
+        let daemons = (left: ZmxSupport.daemonName(for: UUID()), right: ZmxSupport.daemonName(for: UUID()))
+        let leads = (left: ZmxLeadAttachment(claim: true), right: ZmxLeadAttachment(claim: true))
+        let primary = try RemoteSession.attachPaneCommand(host: origin.host, endpoint: endpoint, daemon: daemons.left,
+                                                          session: origin.sessionName, pane: .left, lead: leads.left)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: try XCTUnwrap(store.currentWorkspaceID), cwd: "/tmp",
+                                                     command: primary, wait: true, remoteHost: origin.host))
+        session.splitInitialCommand = try RemoteSession.attachPaneCommand(
+            host: origin.host, endpoint: endpoint, daemon: daemons.right, session: origin.sessionName, pane: .right,
+            lead: leads.right)
+        session.splitCommandWait = true
+        store.setSplitVisibility(session.id, shown: true, axis: .leftRight)
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [session.paneIdentity: daemons.left, split: daemons.right],
+                                       presentationVersion: 1, origin: origin),
+                         forSession: session.id)
+        ZmxLeadBook.shared.begin(leads.left, pane: session.paneIdentity)
+        ZmxLeadBook.shared.begin(leads.right, pane: split)
+        let panes = [session.paneIdentity, split]
+        addTeardownBlock { panes.forEach { ZmxLeadBook.shared.forget(pane: $0) } }
+        return (session, [session.paneIdentity: leads.left, split: leads.right])
     }
 
     private func realizedView(session: Session) -> GhosttySurfaceView {
@@ -124,5 +152,44 @@ final class ControlServerTransferTests: XCTestCase {
 
         XCTAssertEqual(response.error, "a workspace and --workspace-name are exclusive")
         XCTAssertNotNil(store.session(withID: session.id))
+    }
+
+    func testAMovedRemoteRowAttachesWithAFreshNonceAndNoClaim() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let (session, before) = try remoteRow(in: store)
+        let other = library.newWindow(name: "other")
+
+        let response = await makeActions().transferSessions(
+            [session.id.uuidString], window: nil, transfer: ControlSessionTransfer(toWindow: "other"))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertNotNil(library.store(for: other.id)?.session(withID: session.id))
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        let commands = [session.paneIdentity: session.initialCommand, split: session.splitInitialCommand]
+        for (pane, old) in before {
+            let command = try XCTUnwrap(commands[pane] ?? nil)
+            let lead = try XCTUnwrap(ZmxLeadBook.shared.states[pane]?.attachment)
+            XCTAssertNotEqual(lead.nonce, old.nonce)
+            XCTAssertFalse(lead.claim)
+            XCTAssertTrue(command.contains("\(ZmxLeadAttachment.nonceVariable)=\(lead.nonce)"), command)
+            XCTAssertFalse(command.contains(old.nonce), command)
+            XCTAssertFalse(command.contains(ZmxLeadAttachment.claimVariable), command)
+        }
+    }
+
+    func testAMovedRemoteRowIsBookedInItsNewWindowAtOnce() async throws {
+        let book = RemoteRowBook(directory: stateDir)
+        let writer = RemoteRowBookWriter(library: library, book: book, delay: 60)
+        let sourceID = try XCTUnwrap(library.activeWindowID)
+        let (session, _) = try remoteRow(in: try XCTUnwrap(library.store(for: sourceID)))
+        writer.write()
+        XCTAssertEqual(book.load().map(\.windowID), [sourceID])
+        let other = library.newWindow(name: "other")
+
+        let response = await makeActions(rowBook: writer).transferSessions(
+            [session.id.uuidString], window: nil, transfer: ControlSessionTransfer(toWindow: "other"))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(book.load().map(\.windowID), [other.id])
     }
 }

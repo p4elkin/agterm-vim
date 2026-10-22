@@ -282,6 +282,14 @@ session drag are out of scope.
 - Destination first means a crash between the saves leaves the rows in both files, never an unclaimed daemon
   for the launch reap. Both copies then share pane identities: close the duplicate with its window, not the row,
   since closing a row finalizes the daemon the other copy still shows.
+- A remote row's rebuilt panes cannot reuse their first lines, which carry the last attachment's lead nonce and
+  a user attach's claim: `ControlServer+Transfer` rewrites `initialCommand` / `splitInitialCommand` with a fresh
+  unclaimed attach and begins it in `ZmxLeadBook` before the destination mounts, then writes the remote-row book
+  at once instead of on its debounce.
+- Moving a remote row cancels a replica ask it shows (`releaseLeavingSession`), which the origin gets as
+  `ask.rejected`.
+- A remote pane waiting in `RemoteReconnectBook` keeps its entry: the moved row's fresh surface swallows keys
+  until the probe answers, then reattaches once more, unclaimed, and ends correct.
 - Refused: the last workspace of a window, a workspace a pending close names as its undo target, and a realized
   pane that is not zmx-backed (`Session.canSurviveTransfer`; remote rows count as surviving).
 - `session move --to-window` places the batch in `<workspace>` (an id in the destination; not with `new`) or

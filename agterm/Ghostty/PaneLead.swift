@@ -97,11 +97,8 @@ struct PaneReattach {
             return PaneReattach(command: CommandRestore.shellQuotedLine(zmx.attachArguments + ["/bin/sh", "-c", gone]),
                                 wait: false, environment: zmx.environment, workingDirectory: old.workingDirectory)
         }
-        guard let binding = session.remotePresentation?.binding, let origin = binding.origin,
-              let daemon = binding.daemon(forLocalPane: identity),
-              let command = try? RemoteSession.attachPaneCommand(
-                  host: origin.host, endpoint: origin.endpoint, daemon: daemon, session: origin.sessionName,
-                  pane: old.isSplitPane ? .right : .left, lead: lead, transport: origin.transport)
+        guard let command = session.remotePresentation?.binding.attachPaneCommand(
+            forLocalPane: identity, pane: old.isSplitPane ? .right : .left, lead: lead)
         else { return nil }
         return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
     }
