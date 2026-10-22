@@ -888,8 +888,8 @@ extension ControlServer: ControlActions {
         }
     }
 
-    private func resolveBatchSessions(_ targets: [String], window: String?,
-                                      _ body: (AppStore, [UUID]) -> ControlResponse) -> ControlResponse {
+    func resolveBatchSessions(_ targets: [String], window: String?,
+                              _ body: (AppStore, [UUID]) -> ControlResponse) -> ControlResponse {
         guard let first = targets.first else {
             return ControlResponse(ok: false, error: "session command requires at least one --target")
         }

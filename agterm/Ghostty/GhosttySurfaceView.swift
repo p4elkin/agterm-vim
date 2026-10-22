@@ -931,6 +931,12 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         destroySurface()
     }
 
+    /// The daemon outlives the move, so the client's exit is claimed first, as `replacePane` does.
+    func prepareForTransfer() {
+        claimProcessExit()
+        teardown()
+    }
+
     /// `TerminalSurface.isRealized`: the libghostty surface — and with it the spawned program — exists. False
     /// while `createSurface` is still deferred on a zero backing size (`pendingSurfaceCreation`) and after
     /// `destroySurface`, both of which leave `surface` nil.

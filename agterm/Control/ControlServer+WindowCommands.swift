@@ -113,7 +113,7 @@ extension ControlServer {
     /// dispatch, so the library flag flips a beat later. 30 × 0.05 s (≈1.5 s) of `Task.sleep` yields the main
     /// actor between checks, never blocking the accept loop. Returns when `done()` holds or the budget is
     /// spent — the caller replies ok either way, so the poll only narrows the race.
-    private func pollUntil(_ done: () -> Bool) async {
+    func pollUntil(_ done: () -> Bool) async {
         for _ in 0..<30 {
             if done() { return }
             try? await Task.sleep(nanoseconds: 50_000_000)
