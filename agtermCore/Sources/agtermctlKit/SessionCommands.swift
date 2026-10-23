@@ -635,6 +635,18 @@ extension Session {
                           Result.self, Submit.self, Copy.self, Text.self, RunJob.self, PageServe.self]
         )
 
+        static let widthHelp: ArgumentHelp = "Panel content width in points, in place of --size-percent's width (at most 80% of the session)."
+        static let heightHelp: ArgumentHelp = """
+            Panel content height in points, in place of --size-percent's height (at most 80% of the session); \
+            a page's title strip is added on top.
+            """
+
+        static func validatePoints(width: Int?, height: Int?) throws {
+            if [width, height].contains(where: { ($0 ?? 1) <= 0 }) {
+                throw ValidationError("--width/--height must be positive")
+            }
+        }
+
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
         /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and
         /// reusing it would send `scratch` to the socket instead of failing as a usage error.
@@ -679,6 +691,8 @@ extension Session {
             @Flag(name: .long, help: Open.blockHelp) var block = false
             @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
             @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
+            @Option(name: .long, help: Overlay.widthHelp) var width: Int?
+            @Option(name: .long, help: Overlay.heightHelp) var height: Int?
             @Option(name: .long, help: "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.") var backgroundColor: String?
             @Option(name: .long, help: """
                 Scope the overlay to ONE split pane (primary/left/top or split/right/bottom), leaving the sibling pane live and \
@@ -721,7 +735,14 @@ extension Session {
                 if pane != nil, sizePercent != nil {
                     throw ValidationError("--pane cannot be combined with --size-percent (pane overlays are always full)")
                 }
+                if pane != nil, width != nil || height != nil {
+                    throw ValidationError("--pane cannot be combined with --width/--height (pane overlays are always full)")
+                }
                 try Session.validateSizePercent(sizePercent)
+                try Overlay.validatePoints(width: width, height: height)
+                if width != nil || height != nil, sizePercent == nil {
+                    throw ValidationError("--width/--height need --size-percent")
+                }
             }
 
             func makeRequest() throws -> ControlRequest {
@@ -730,7 +751,8 @@ extension Session {
                                                                      command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
                                                                      resolved: resolved ? true : nil,
-                                                                     pane: pane, color: backgroundColor,
+                                                                     pane: pane, width: width, height: height,
+                                                                     color: backgroundColor,
                                                                      html: html.map(Overlay.absolutePath),
                                                                      navigation: navigation ? true : nil, url: url,
                                                                      javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
@@ -778,23 +800,35 @@ extension Session {
         }
 
         struct Resize: RequestCommand {
-            static let configuration = CommandConfiguration(abstract: "Resize an open overlay: floating at a percent, or back to full-pane.")
+            static let configuration = CommandConfiguration(
+                abstract: "Resize an open overlay: floating at a percent or in points, or back to full-pane.",
+                discussion: """
+                    --size-percent re-sizes from that percent, keeping only the --width/--height given with it. \
+                    --width/--height alone change those axes of an overlay that is already floating.
+                    """)
             @Option(name: .long, help: "Resize to a floating, framed panel at PERCENT (1-100) of the pane.") var sizePercent: Int?
+            @Option(name: .long, help: Overlay.widthHelp) var width: Int?
+            @Option(name: .long, help: Overlay.heightHelp) var height: Int?
             @Flag(name: .long, help: "Resize to full-pane (translucent, hides the session).") var full = false
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
-            // require exactly one of --size-percent / --full at parse time (before any connection), so it is a
-            // clean usage error and unit-testable without a socket; the dispatcher re-checks the same rules.
+            // the dispatcher re-checks the same rules; here they are a clean usage error before any connection
             func validate() throws {
+                let points = width != nil || height != nil
                 if full && sizePercent != nil { throw ValidationError("--full cannot be combined with --size-percent") }
-                if !full && sizePercent == nil { throw ValidationError("provide --size-percent PERCENT or --full") }
+                if full && points { throw ValidationError("--full cannot be combined with --width/--height") }
+                if !full && sizePercent == nil && !points {
+                    throw ValidationError("provide --size-percent PERCENT, --width/--height POINTS or --full")
+                }
                 try Session.validateSizePercent(sizePercent)
+                try Overlay.validatePoints(width: width, height: height)
             }
 
             func makeRequest() throws -> ControlRequest {
                 ControlRequest(cmd: .sessionOverlayResize, target: target.target,
-                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil)))
+                               args: options.withWindow(ControlArgs(sizePercent: sizePercent, full: full ? true : nil,
+                                                                    width: width, height: height)))
             }
         }
 

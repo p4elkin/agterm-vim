@@ -114,6 +114,7 @@ class MockControlActionsBase {
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
+        case overlayPointResize(target: String?, window: String?, sizePercent: Int?, points: OverlayPointSize)
         case overlayResult(target: String?, window: String?, pane: OverlayPane?)
         case overlaySubmit(target: String?, window: String?, pane: OverlayPane?, value: String)
         case pageResult(UUID)
@@ -786,6 +787,12 @@ class MockControlActionsBase {
 
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {
         calls.append(.overlayResize(target: target, window: window, sizePercent: sizePercent))
+        return nextOverlayResizeResponse
+    }
+
+    func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?,
+                              points: OverlayPointSize) -> ControlResponse {
+        calls.append(.overlayPointResize(target: target, window: window, sizePercent: sizePercent, points: points))
         return nextOverlayResizeResponse
     }
 

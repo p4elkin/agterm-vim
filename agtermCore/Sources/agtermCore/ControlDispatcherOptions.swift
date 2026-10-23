@@ -19,6 +19,8 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let cwd: String?
     public let wait: Bool
     public let sizePercent: Int?
+    /// points overrides `sizePercent` per axis; the dispatcher refuses it without a percent.
+    public let points: OverlayPointSize
     public let backgroundColor: String?
     public let follow: Bool
     /// The pane to cover, nil for the session-wide overlay. A pane overlay is always full, so this and
@@ -44,11 +46,13 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
                 navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false,
                 persistent: Bool = false, browse: Bool = false, rebased: Bool = false, rebasedDiff: RebasedDiff? = nil,
-                rebasedView: RebasedView? = nil, rebasedProject: String? = nil, rebasedOnClose: String? = nil) {
+                rebasedView: RebasedView? = nil, rebasedProject: String? = nil, rebasedOnClose: String? = nil,
+                points: OverlayPointSize = OverlayPointSize()) {
         self.command = command
         self.cwd = cwd
         self.wait = wait
         self.sizePercent = sizePercent
+        self.points = points
         self.backgroundColor = backgroundColor
         self.follow = follow
         self.pane = pane

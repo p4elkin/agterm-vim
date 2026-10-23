@@ -744,7 +744,8 @@ final class ControlServerRemotePresentationTests: XCTestCase {
 
         private nonisolated static func relay(from source: Int32, to destination: Int32, record: Lines?, done: DispatchGroup) {
             done.enter()
-            Thread {
+            // bound first: a closure literal handed to `Thread` compiles as @MainActor here and traps on start
+            let body: @Sendable () -> Void = {
                 var pending = Data()
                 var chunk = [UInt8](repeating: 0, count: 16 * 1024)
                 while true {
@@ -766,7 +767,8 @@ final class ControlServerRemotePresentationTests: XCTestCase {
                 }
                 Darwin.shutdown(destination, SHUT_WR)
                 done.leave()
-            }.start()
+            }
+            Thread(block: body).start()
         }
     }
 
