@@ -520,6 +520,8 @@ public final class HeadlessActions: ControlActions {
                 return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
             case .tooLarge:
                 return ControlResponse(ok: false, error: OverlayResultError.tooLarge)
+            case .pointsUnsupported:
+                return ControlResponse(ok: false, error: OverlayPointError.remote)
             case .opened:
                 headless.scheduleOverlayJobExpiry(after: OverlayJobs.launchWindow)
                 return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))

@@ -32,8 +32,16 @@ extension ControlDispatcher {
             if pane != nil, request.args?.sizePercent != nil {
                 return ControlResponse(ok: false, error: PaneOverlayError.sizePercentConflict)
             }
+            let points = OverlayPointSize(width: request.args?.width, height: request.args?.height)
+            if pane != nil, !points.isEmpty {
+                return ControlResponse(ok: false, error: PaneOverlayError.pointsConflict)
+            }
             if let percent = request.args?.sizePercent, !(1...100).contains(percent) {
                 return ControlResponse(ok: false, error: "session.overlay.open: --size-percent must be 1...100")
+            }
+            if let failure = Self.overlayPointFailure(points) { return failure }
+            if !points.isEmpty, request.args?.sizePercent == nil {
+                return ControlResponse(ok: false, error: OverlayPointError.needsPercent)
             }
             return actions.openSessionOverlay(request.target, window: request.args?.window,
                                               options: ControlSessionOverlayOpenOptions(
@@ -55,7 +63,8 @@ extension ControlDispatcher {
                                                 rebasedDiff: rebasedDiff,
                                                 rebasedView: rebasedView,
                                                 rebasedProject: request.args?.project,
-                                                rebasedOnClose: request.args?.onClose
+                                                rebasedOnClose: request.args?.onClose,
+                                                points: points
                                               ))
         case .sessionOverlayReload:
             switch parseOverlayPane(request.args?.pane) {
@@ -96,17 +105,26 @@ extension ControlDispatcher {
             }
             let wantsFull = request.args?.full == true
             let percent = request.args?.sizePercent
+            let points = OverlayPointSize(width: request.args?.width, height: request.args?.height)
             if wantsFull, percent != nil {
                 return ControlResponse(ok: false, error: "session.overlay.resize: --full is mutually exclusive with --size-percent")
             }
-            if !wantsFull, percent == nil {
-                return ControlResponse(ok: false, error: "session.overlay.resize requires --size-percent or --full")
+            if wantsFull, !points.isEmpty {
+                return ControlResponse(ok: false, error: OverlayPointError.fullConflict)
+            }
+            if !wantsFull, percent == nil, points.isEmpty {
+                return ControlResponse(ok: false, error: "session.overlay.resize requires --size-percent, --width/--height or --full")
             }
             if let percent, !(1...100).contains(percent) {
                 return ControlResponse(ok: false, error: "session.overlay.resize: --size-percent must be 1...100")
             }
+            if let failure = Self.overlayPointFailure(points) { return failure }
+            if points.isEmpty {
+                return actions.resizeSessionOverlay(request.target, window: request.args?.window,
+                                                    sizePercent: wantsFull ? nil : percent)
+            }
             return actions.resizeSessionOverlay(request.target, window: request.args?.window,
-                                                sizePercent: wantsFull ? nil : percent)
+                                                sizePercent: percent, points: points)
         case .sessionOverlayResult:
             if let page = request.args?.page {
                 guard let id = UUID(uuidString: page) else { return ControlResponse(ok: false, error: OverlayHtmlError.invalidPageID) }
@@ -200,6 +218,13 @@ extension ControlDispatcher {
         case program
         case page(HtmlSource)
         case rebased
+    }
+
+    private static func overlayPointFailure(_ points: OverlayPointSize) -> ControlResponse? {
+        guard [points.width, points.height].allSatisfy({ ($0 ?? 1) > 0 }) else {
+            return ControlResponse(ok: false, error: OverlayPointError.notPositive)
+        }
+        return nil
     }
 
     private static func overlayContent(command: String, args: ControlArgs?) -> OverlayContent {

@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.38.1 - 2026-10-22
+
+### Improved
+
+- `session overlay open` and `session overlay resize` take `--width` and `--height` in points, each replacing `--size-percent` on its own axis, so a local floating program or page keeps its percent width and fits its height to what it shows. A `--js` page sizes itself through `agterm.request('session.overlay.resize', ...)`. A point-sized axis is capped at 80% of the session, and `tree` reports the laid-out size as `overlayWidth`/`overlayHeight` #798 @umputun
+
+## v0.38.0 - 2026-10-22
+
+### New Features
+
+- **HTML pages on a remote session.** A page opened with `session overlay open --html` or `--url` on a session another Mac presents now opens on that Mac, the way a program overlay already does. It used to be refused. A URL page loads on the presenting Mac with that Mac's `--persistent` storage, and a loopback URL is refused there because it names a server on the origin. A file page and the files its `--cwd` grants are served from the origin over ssh, and its `data-agterm` tags and `agterm.request` calls run on the origin. `result --page`, `--block`, `close`, `resize`, `reload` and `navigate` work as for a local page, and `tree` lists it with `remote: true`. A presenter running an older agterm keeps the refusal #793 @umputun
+- **Hide overlays without closing them.** ⇧⌘J, View ▸ Hide Overlays and a Hide button on the page strip hide every program and page overlay of the session, and the same keys show them again. A hidden program keeps running and keeps its exit status, a hidden page stays loaded, and neither takes focus or keys. A HUD and an ask are never hidden. `agtermctl session overlay hide|show|toggle [--pane left|right]` is the control form, read back as `hiddenOverlays` and `htmlOverlays[].hidden` in `tree`. Settings ▸ Interface ▸ Hide overlays adds a title-bar button, off by default. A keymap that already binds `cmd+shift+j` keeps it #790 @umputun
+- **Forms in `ask`.** `--input line` or `--input multiline` adds a text field, with `--value` and `--placeholder`, and the answer carries `text`. `--choice id=label`, up to 50 items, makes a radio list, or a checkbox list with `--multiple`, with `--choice-subtitle` and `--checked`; the answer carries `selected`. `--other PLACEHOLDER` adds a free-form line after the items. A form gets OK and Cancel without `--button`, and `--cancel id` names the button that acts like Esc. On a remote session a form goes to the presenting Mac only when its agterm supports forms #778 #779 @umputun
+- **fish as the login shell for Live sessions.** Live sessions required zsh and fell back to fresh shells under fish. A fish pane now gets agterm's bundled fish integration, and a restored command line is quoted for fish. A Live `session new --command` or `session restart --command` line uses the login shell's syntax, so fish rejects zsh constructs like `[[ ]]`. The session host now answers the terminal's startup device-attributes queries while a new pane is created, which cost fish about ten seconds before its first prompt; zsh panes start as before #761 #760 #768 @vshuraeff #780 @umputun
+- `agtermctl session wait --target S --until completed --until blocked [--timeout SEC]` blocks until a session's agent status is one of the given values and prints it. It returns at once when the status already matches, and it sees a `completed` that auto-reset clears right after. Exit 2 means the session left the tree, 124 the timeout #765 @umputun #758
+- a new `pane.focused` event fires when focus moves between a session's split panes, by a click, the focus keys, `session focus`, a new split or a closed one. It carries the session, `pane` and `paneID`, and works in `hooks.conf` too. A move and back within 100 ms is not reported #785 @umputun
+- **Flag All Sessions** on the workspace row menu flags every session of the workspace, including those the flagged tree layout hides, and reads Unflag All Sessions once all are flagged. `agtermctl workspace flag on|off|toggle [--target W]` is the control form #787 @umputun
+- **Mark for Attention** on a session's row menu gives an idle session a `completed` status that survives a visit, so it stays in attention navigation until it clears like any completed status. A session already showing a status is left alone #763 @umputun #755
+- the Ctrl-Tab switcher, the Ctrl-P session palette, the title-bar recent sessions and File ▸ Attach Remote show each session's agent status, and every session list draws it on the right like the sidebar. `pick` items accept `status`, `statusColor` and `statusShape`, and `zmx tree` rows carry them #774 @umputun
+- two cookbook recipes for the Antigravity CLI (`agy`). `antigravity-agent-status` sets the sidebar status from its hooks, and `antigravity-session-resume` reopens each pane's own conversation after a restart #786 @stn1slv
+- a new cookbook recipe, `scheduled-jobs`, lets a coding agent install cronn, manage its scheduled jobs and run jobs that open agterm sessions, with the cronn dashboard in a chromeless overlay #789 @umputun
+
+### Improved
+
+- the `html-doc-overlay` recipe gains a custom design the model lays out for the content, a collapsed markdown copy in every page, a filled page title with a link preview, and optional sharing of an approved snapshot on an expiring link through the reader's own Cloudflare tunnel. Pages open with `--navigation` and no longer switch sessions #766 434f7246 @umputun
+
+### Bug Fixes
+
+- a mouse selection replaced the system clipboard, because agterm wrote every selection to the general pasteboard. Selections now go to a private selection pasteboard, as in Ghostty, and middle-click pastes the last one. ⌘C and OSC 52 copy to the system clipboard as before. **Behavior change:** to keep every selection on the system clipboard, set `copy-on-select = clipboard` in the ghostty config #792 @umputun #791
+- Ctrl-C on a Live pane's restored command, or on the `--command` of a new Live session, closed the pane and ended its daemon instead of leaving a shell prompt #773 @umputun
+- on Dvorak - QWERTY ⌘ and 31 other layouts whose Command table differs from the plain one, a custom `command` cmd chord fired on a different key than a built-in `map` chord with the same spelling: `cmd+d` fired on physical H and took ⌘H from Hide. Custom commands now match cmd chords through the layout's Command table, as the menu does. A binding spelled with a non-Latin glyph under cmd, such as `cmd+ą`, no longer matches #796 @umputun
+- `brew upgrade` or `brew reinstall` of the cask failed when macOS refused to remove the quarantine attribute, as it can when run inside agterm. The cask now warns and finishes the install #784 @umputun #781
+- `agtermctl notify` shared its Notification Center slot with the session's OSC 9/777 banners, so the next terminal banner, Claude Code's "waiting for your input" for example, replaced the note #772 @umputun #770
+- `ask --hotkey` letters were dead on non-Latin layouts such as Ukrainian. Hotkeys now follow the keymap's rule: an ASCII-capable layout matches the typed letter, any other layout the US letter at that physical position #771 @umputun #769
+- the status sound, from `session status --sound` or the Settings blocked sound, played on the origin Mac for a session attached from another Mac. It now plays on the presenting Mac, which uses its own blocked-sound choice. A presenter on an older agterm keeps the old behavior #775 @umputun
+- `zmx tree` left out a Live session whose split stayed hidden across a relaunch, so another Mac could not attach it #764 @korjavin #762
+- a new Live session's daemon could keep running but become unreachable when the session list was read while it started, because zmx deletes a socket that refuses a connection as stale. The bundled zmx now publishes the socket only once it listens #793 @umputun
+- Esc on an HTML page that did not handle it took a full-screen window out of full screen #754 @umputun #753
+- the window-close sheet in Live sessions mode said closing ends the running sessions, where it only detaches them and the daemons keep running. It now says the window can be reopened from File ▸ Open Window #743 @umputun #741
+- the `two-agent-chat` recipe lost a `--message-file` message the target refused before typing. The message is now kept for a resend #783 @umputun #640
+- the `two-agent-chat` recipe withheld a long message to Codex once its first rows scrolled away, reading Codex's `↑` scroll indicator as message text #752 @Stuchalin #751
+
 ## v0.37.0 - 2026-10-15
 
 ### New Features
