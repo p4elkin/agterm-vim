@@ -4,6 +4,39 @@ import Testing
 
 @MainActor
 struct HtmlOverlayTests {
+    @Test func hiddenRebasedSessionParksOutOfItsSlotAndRestoresTerminalFocus() throws {
+        session.surface = SpySurface()
+        let callback = RebasedOnClose(command: "/bin/flush", cwd: "/tmp", environment: [:])
+        let overlay = RebasedOverlay(project: "/tmp/repo", view: RebasedViewRequest(view: .file(path: "/tmp/repo/a", line: 1)), onClose: callback)
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: UUID(), true) == .noOverlay)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(!session.overlayActive && !session.overlayHidden && session.rebasedHidden)
+        #expect(session.rebasedOverlay == nil)
+        #expect(session.rebasedPlacement?.overlay.view == overlay.view)
+        #expect(session.rebasedPlacement?.overlay.onClose == callback)
+        #expect(!session.rebasedOverlayActive && !session.rebasedOverlayVisible)
+        #expect(!session.coverOverlayActive && !session.coverOverlayVisible)
+        #expect(!session.fullOverlayVisible)
+        #expect(!session.programOverlayActive)
+        #expect(session.topmostSurface === session.surface)
+        #expect(session.focusTarget(wantSplit: false) === session.surface)
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil) == .alreadyOpen)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
+        #expect(session.rebasedOverlayVisible)
+        #expect(session.coverOverlayVisible)
+        #expect(session.fullOverlayVisible)
+        #expect(session.topmostSurface == nil)
+        #expect(session.focusTarget(wantSplit: false) == nil)
+        #expect(releases.isEmpty)
+        #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == .noOverlay)
+        #expect(releases == [overlay.id])
+    }
+
     final class Sink: PresentationSink {
         var frames: [PresentationFrame] = []
 
@@ -42,6 +75,141 @@ struct HtmlOverlayTests {
         var released: [UUID] = []
         HtmlOverlayReleases.shared.onRelease = { released.append($0) }
         return { released }
+    }
+
+    @Test func rebasedCoversWithoutATerminalOrPageFocusTarget() {
+        split()
+        session.scratchActive = true
+        session.scratchSurface = SpySurface(paneToken: "scratch")
+        #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
+        session.splitFocused = true
+        session.rebasedOverlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(!session.rebasedOverlayActive)
+        session.rebasedOverlay = nil
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: 60) == nil)
+        #expect(session.rebasedOverlayActive)
+        #expect(session.coverOverlayActive)
+        #expect(!session.programOverlayActive)
+        #expect(!session.htmlOverlayActive)
+        #expect(session.topmostSurface == nil)
+        #expect(session.focusTarget(wantSplit: false) == nil)
+        #expect(session.focusTarget(wantSplit: true) == nil)
+        session.scratchActive = false
+        #expect(session.topmostHtmlOverlay == nil)
+        #expect(!session.htmlCovers(nil))
+        #expect(StatusPane.allCases.allSatisfy { !session.htmlHidesTerminal($0) })
+        #expect(!session.htmlHidesTerminal(nil))
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+        #expect(!TerminalZoomSurface.overlay.isAvailable(in: session))
+        #expect(!TerminalZoomSurface.primary.isVisible(in: session))
+    }
+
+    @Test func rebasedOpenReplacesAHudAndResetsTheSlot() {
+        #expect(store.openOverlay(session.id, command: "true"))
+        store.recordOverlayExit(session.id, code: 3)
+        #expect(store.closeOverlay(session.id))
+        #expect(store.openHud(session.id, command: "hud", spec: HudSpec(message: "x"), file: "/tmp/h",
+                              size: HudPanelSize(widthPercent: 30, heightPercent: 10)))
+        let generation = session.overlaySlotGeneration
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: 60) == nil)
+        #expect(session.rebasedOverlay == overlay)
+        #expect(session.rebasedOverlay?.state == .starting)
+        #expect(session.overlaySizePercent == 60)
+        #expect(session.overlaySlotGeneration == generation + 1)
+        #expect(session.overlayExitCode == nil)
+        #expect(!session.hudActive)
+    }
+
+    @Test func rebasedPresenterRefusalNamesRebased() throws {
+        let hub = PresentationHub(staleTimeout: 30)
+        let presenter = Sink()
+        store.presentationHub = hub
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        let failure = store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil)
+        #expect(failure == .presenter)
+        #expect(failure?.message == "a viewer presents this session: a Rebased overlay would open where nobody sees it")
+    }
+
+    @Test func aPresenterRefusesToShowAParkedIDE() throws {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        let hub = PresentationHub(staleTimeout: 30)
+        let presenter = Sink()
+        store.presentationHub = hub
+        let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
+        let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
+        hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)
+        #expect(!store.sessionSlotFree(session))
+        let failure = store.setRebasedHidden(session.id, id: overlay.id, false)
+        #expect(failure == .unpark(.presenter))
+        #expect(failure?.message == RebasedOverlayOpenFailure.presenter.message)
+        #expect(session.rebasedHidden)
+    }
+
+    @Test func rebasedOpenPreservesAProgramPageOrRebasedOccupant() {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openOverlay(session.id, command: "htop"))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == .alreadyOpen)
+        #expect(session.overlayCommand == "htop")
+        #expect(session.rebasedOverlay == nil)
+        #expect(store.closeOverlay(session.id))
+        let html = page()
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: html, sizePercent: nil) == nil)
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == .alreadyOpen)
+        #expect(session.htmlOverlay == html)
+        #expect(store.closeOverlay(session.id))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil) == .alreadyOpen)
+        #expect(session.rebasedOverlay == overlay)
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: html, sizePercent: nil) == .alreadyOpen)
+        #expect(!store.openOverlay(session.id, command: "htop"))
+        #expect(store.openRebasedOverlay(UUID(), overlay: overlay, sizePercent: nil) == .unknownSession)
+        #expect(store.htmlOverlayCommandFailure(session.id, pane: nil) == .notHtml)
+    }
+
+    @Test(arguments: ["overlay", "session", "workspace", "pending", "window", "direct"])
+    func rebasedTeardownReleasesItsOccupantOnce(path: String) throws {
+        var released: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { released.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil) == nil)
+        switch path {
+        case "overlay":
+            #expect(store.closeOverlay(session.id))
+            #expect(!store.closeOverlay(session.id))
+        case "session": store.closeSession(session.id)
+        case "workspace":
+            store.addWorkspace(name: "other")
+            store.removeWorkspace(workspace.id)
+        case "pending":
+            #expect(store.softCloseSession(session.id, grace: 60))
+            #expect(released.isEmpty)
+            store.finalizeAllPendingCloses()
+        case "window":
+            for member in store.workspaces.flatMap(\.sessions) { member.teardownOverlaySlot() }
+        default: session.teardownOverlaySlot()
+        }
+        session.teardownOverlaySlot()
+        #expect(session.rebasedOverlay == nil)
+        #expect(released == [overlay.id])
+    }
+
+    @Test func rebasedDashboardCoverAndResizeFollowTheSlot() {
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"), sizePercent: nil) == nil)
+        #expect(session.dashboardCover(for: .left) == .rebased(project: "/tmp/repo"))
+        #expect(session.dashboardCover(for: .right) == .rebased(project: "/tmp/repo"))
+        #expect(store.resizeOverlay(session.id, sizePercent: 50))
+        #expect(session.overlaySizePercent == 50)
+        #expect(session.dashboardCover(for: .left) == nil)
+        #expect(session.coverOverlayActive)
+        let node = store.controlTree().workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }
+        #expect(node?.overlay == true)
+        #expect(node?.overlaySizePercent == 50)
     }
 
     @Test(arguments: [
@@ -127,6 +295,45 @@ struct HtmlOverlayTests {
     }
 
     @Test(arguments: [
+        ("http://localhost:5173/about", HtmlNavigationTarget.mainFrame, false, HtmlNavigationDecision.allow),
+        ("https://example.com/", .mainFrame, true, .allow),
+        ("https://example.com/", .mainFrame, false, .allow),
+        ("http://localhost:5174/", .mainFrame, false, .allow),
+        ("https://example.com/embed", .subframe, false, .allow),
+        ("https://example.com/", .newWindow, true, .openExternal),
+        ("https://example.com/", .newWindow, false, .cancel),
+        ("about:blank", .mainFrame, false, .allow),
+        ("file:///tmp/a/report.html", .mainFrame, true, .cancel),
+        ("file:///tmp/a/report.html", .subframe, false, .cancel),
+        ("mailto:a@example.com", .mainFrame, true, .cancel),
+        ("x-custom://open", .mainFrame, true, .cancel),
+        ("data:text/html,hi", .mainFrame, false, .cancel),
+    ])
+    func browsingPagePolicy(_ url: String, _ target: HtmlNavigationTarget, _ userActivated: Bool,
+                            _ decision: HtmlNavigationDecision) throws {
+        let action = HtmlNavigationAction(url: try #require(URL(string: url)), target: target, userActivated: userActivated)
+        let overlay = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/"))), browse: true)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == decision)
+    }
+
+    @Test(arguments: [
+        ("http://127.0.0.1:8792/frame.html", HtmlNavigationTarget.subframe, false, HtmlNavigationDecision.allow),
+        ("http://127.0.0.1:8792/next", .mainFrame, false, .allow),
+        ("https://example.com/embed", .subframe, false, .cancel),
+        ("https://example.com/embed", .subframe, true, .openExternal),
+        ("http://localhost:8792/frame.html", .subframe, false, .cancel),
+        ("http://127.0.0.1:8793/frame.html", .subframe, false, .cancel),
+        ("https://example.com/", .mainFrame, false, .cancel),
+        ("about:srcdoc", .subframe, false, .allow),
+    ])
+    func chromelessPagePolicyKeepsFramesOnItsOrigin(_ url: String, _ target: HtmlNavigationTarget, _ userActivated: Bool,
+                                                    _ decision: HtmlNavigationDecision) throws {
+        let action = HtmlNavigationAction(url: try #require(URL(string: url)), target: target, userActivated: userActivated)
+        let overlay = HtmlOverlay(source: .url(try #require(URL(string: "http://127.0.0.1:8792/"))), chromeless: true)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == decision)
+    }
+
+    @Test(arguments: [
         ("http://example.com/", "http://EXAMPLE.com:80/a", true),
         ("https://example.com/", "https://example.com:443/b", true),
         ("HTTPS://example.com/", "https://example.com/", true),
@@ -154,6 +361,24 @@ struct HtmlOverlayTests {
     }
 
     @Test(arguments: [
+        ("https://login.example/sso?next=1", "https://login.example"),
+        ("http://localhost:5173/other", "http://localhost:5173"),
+        ("about:blank", "about:blank"),
+    ])
+    func browsingIdentityIsTheOriginOfTheShownDocument(_ shown: String, _ identity: String) throws {
+        var overlay = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/app"))), browse: true)
+        #expect(overlay.identity == "http://localhost:5173")
+        overlay.current = HtmlPageInfo(page: shown, title: "https://bank.example", canGoBack: true, canGoForward: false)
+        #expect(overlay.identity == identity)
+    }
+
+    @Test func anOrdinaryUrlPageKeepsNamingItsSourceOrigin() throws {
+        var overlay = try web("http://localhost:5173/app")
+        overlay.current = HtmlPageInfo(page: "https://login.example/sso", title: nil, canGoBack: true, canGoForward: false)
+        #expect(overlay.identity == "http://localhost:5173")
+    }
+
+    @Test(arguments: [
         ("https://trusted.example@attacker.example/path", "https://attacker.example"),
         ("http://127.0.0.1:5173/", "http://127.0.0.1:5173"),
     ])
@@ -167,6 +392,50 @@ struct HtmlOverlayTests {
         #expect(HtmlOverlay(source: source, javascript: true).javascript)
         #expect(!HtmlOverlay(source: source).persistent)
         #expect(HtmlOverlay(source: source, persistent: true).persistent)
+    }
+
+    @Test(arguments: [
+        ("agterm-page://OWN/index.html", HtmlNavigationTarget.mainFrame, false, HtmlNavigationDecision.allow),
+        ("agterm-page://own/sub/b.html", .subframe, false, .allow),
+        ("agterm-page://\(UUID().uuidString)/index.html", .mainFrame, false, .cancel),
+        ("file:///tmp/a/index.html", .mainFrame, false, .cancel),
+        ("https://example.com/", .mainFrame, true, .openExternal),
+        ("https://example.com/", .mainFrame, false, .cancel),
+        ("about:blank", .mainFrame, false, .allow),
+    ])
+    func replicaPolicyAllowsOnlyItsOwnSchemeOrigin(_ url: String, _ target: HtmlNavigationTarget, _ userActivated: Bool,
+                                                   _ expected: HtmlNavigationDecision) throws {
+        let overlay = HtmlOverlay(source: .replica(path: "/origin/docs/index.html"), replicaOf: UUID())
+        let resolved = url.replacingOccurrences(of: "OWN", with: overlay.id.uuidString)
+            .replacingOccurrences(of: "own", with: overlay.id.uuidString.lowercased())
+        let action = HtmlNavigationAction(url: try #require(URL(string: resolved)), target: target, userActivated: userActivated)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == expected)
+    }
+
+    @Test func aReplicaIsNamedByItsFileAndReportsTheOriginPathAsReplica() throws {
+        let origin = UUID()
+        let overlay = HtmlOverlay(source: .replica(path: "/origin/docs/index.html"), replicaOf: origin)
+        #expect(overlay.identity == "index.html")
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: overlay, sizePercent: nil) == nil)
+
+        let node = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first)
+        #expect(node.file == "/origin/docs/index.html")
+        #expect(node.cwd == nil)
+        #expect(node.replica == true)
+        #expect(node.remote == nil)
+    }
+
+    @Test func aLocalPageNodeOmitsTheRemoteFields() throws {
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page(), sizePercent: nil) == nil)
+        let node = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first)
+        let json = try #require(String(data: try JSONEncoder().encode(node), encoding: .utf8))
+        #expect(!json.contains("\"remote\""))
+        #expect(!json.contains("\"replica\""))
+
+        let reservation = try JSONEncoder().encode(ControlRemoteOverlayNode(pane: nil, sizePercent: 60))
+        #expect(!String(decoding: reservation, as: UTF8.self).contains("pageID"))
+        let page = ControlRemoteOverlayNode(pane: "left", sizePercent: nil, pageID: "p1")
+        #expect(try JSONDecoder().decode(ControlRemoteOverlayNode.self, from: JSONEncoder().encode(page)) == page)
     }
 
     @Test func fileIdentityIsTheFileShownNeverTheTitle() {
@@ -192,6 +461,29 @@ struct HtmlOverlayTests {
     ])
     func webURLAcceptsOnlyAbsoluteHttpWithAHost(_ text: String, _ valid: Bool) {
         #expect((HtmlSource.webURL(text) != nil) == valid)
+    }
+
+    @Test(arguments: [
+        ("http://127.0.0.1:8792/", true),
+        ("https://127.0.0.1/app", true),
+        ("http://[::1]:8792/", true),
+        ("http://localhost:5173/", true),
+        ("http://LOCALHOST/", true),
+        ("http://127.0.0.2/", false),
+        ("http://127.1/", false),
+        ("http://2130706433/", false),
+        ("http://0.0.0.0:8792/", false),
+        ("http://[::ffff:127.0.0.1]/", false),
+        ("http://localhost./", false),
+        ("http://app.localhost/", false),
+        ("http://localhost.example.com/", false),
+        ("http://example.com/", false),
+        ("ftp://127.0.0.1/", false),
+        ("localhost:5173", false),
+        ("", false),
+    ])
+    func isLoopbackMatchesOnlyTheExactLoopbackHosts(_ text: String, _ loopback: Bool) {
+        #expect(HtmlSource.isLoopback(text) == loopback)
     }
 
     @Test func sessionWideOpenReplacesAHudAndClearsThePriorResult() throws {
@@ -258,10 +550,14 @@ struct HtmlOverlayTests {
         #expect(session.paneOverlayGeneration(.right) != programGeneration)
     }
 
-    @Test func openIsRefusedWhileAPresenterOwnsTheSession() throws {
+    @Test func openIsRefusedWhenAFollowingPaneBelongsToAPresenterWithoutPages() throws {
         let hub = PresentationHub(staleTimeout: 30)
         let presenter = Sink()
         store.presentationHub = hub
+        let attachment = ZmxLeadAttachment(claim: false)
+        ZmxLeadBook.shared.begin(attachment, pane: session.paneIdentity)
+        let notice = try #require(ZmxLeadNotice(title: "zmx-role;\(attachment.nonce):follower:1"))
+        _ = ZmxLeadBook.shared.apply(notice, pane: session.paneIdentity)
         let hello = PresentationHello(version: 1, kinds: [], mode: .presenter)
         let id = try hub.subscribe(session: session.id, hello: hello, sink: presenter) { PresentationSnapshot(status: nil, hud: nil) }
         hub.receive(PresentationFrame(gen: presenter.frames[0].gen, rev: 0, body: .presenterAcquire), from: id)

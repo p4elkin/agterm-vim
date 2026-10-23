@@ -149,10 +149,13 @@ struct Zmx: ParsableCommand {
         @Option(name: .long, help: "Command to run on the origin.") var command: String?
         @Option(name: .long, help: "Working directory on the origin.") var cwd: String?
         @Option(name: .long, help: "Local window to attach into when a host is given.") var window: String?
+        @Option(name: .long, help: "Local workspace (id, prefix or active) for the row; needs a host.") var workspace: String?
         @OptionGroup var options: BasicOptions
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .zmxNew, args: ControlArgs(name: name, cwd: cwd, host: host, command: command, window: window))
+            var args = ControlArgs(name: name, cwd: cwd, host: host, command: command, window: window)
+            args.workspace = workspace
+            return ControlRequest(cmd: .zmxNew, args: args)
         }
     }
 

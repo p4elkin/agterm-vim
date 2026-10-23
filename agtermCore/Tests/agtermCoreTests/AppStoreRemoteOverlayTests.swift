@@ -4,6 +4,29 @@ import Testing
 
 @MainActor
 struct AppStoreRemoteOverlayTests {
+    @Test(arguments: ["session", "left", "right"])
+    func aHiddenPaneIDEReservesItsSlotAgainstRemoteJobsAndAParkedOneDoesNot(slot: String) throws {
+        let (session, _) = try origin(split: true)
+        let pane = OverlayPane(rawValue: slot)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        if let pane {
+            session.setPaneOverlay(PaneOverlay(rebased: overlay), pane: pane)
+        } else {
+            session.rebasedOverlay = overlay
+            session.overlayActive = true
+        }
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        let result = open(session, pane: pane)
+        #expect(session.rebasedPlacement?.overlay.id == overlay.id)
+        if pane == nil {
+            _ = try job(of: result)
+            #expect(session.remoteOverlays.slot(nil) != nil)
+        } else {
+            #expect(result == .slotTaken)
+            #expect(session.remoteOverlays.slots.isEmpty)
+        }
+    }
+
     final class Sink: PresentationSink {
         var frames: [PresentationFrame] = []
 
@@ -23,7 +46,12 @@ struct AppStoreRemoteOverlayTests {
 
     static let context = OverlayLaunchContext(command: "revdiff", cwd: "/tmp", sessionEnvironment: [:])
 
-    let store = makeStore()
+    final class Drafts {
+        var kinds: [ControlEventKind] = []
+    }
+
+    let store: AppStore
+    let drafts = Drafts()
     let hub = PresentationHub(staleTimeout: 30)
     let clock = Clock()
     let jobs: OverlayJobs
@@ -31,7 +59,62 @@ struct AppStoreRemoteOverlayTests {
 
     init() {
         let clock = clock
+        let drafts = drafts
         jobs = OverlayJobs(now: { clock.now })
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        store = AppStore(persistence: PersistenceStore(directory: dir),
+                         controlEventSink: { drafts.kinds.append($0.kind) })
+    }
+
+    private func treeChanges(during action: () -> Void) -> Int {
+        let before = drafts.kinds.filter { $0 == .treeChanged }.count
+        action()
+        return drafts.kinds.filter { $0 == .treeChanged }.count - before
+    }
+
+    @Test func aRemoteOverlayInvalidatesTheTreeWhenItsSlotIsTakenAndFreed() throws {
+        let (session, _) = try origin()
+        var opened: RemoteOverlayOpen = .notPresented
+
+        #expect(treeChanges { opened = open(session) } == 1)
+        let job = try job(of: opened)
+        #expect(treeChanges { jobs.finish(job, .exited(0)) } == 1)
+    }
+
+    @Test func aHeldRemoteSlotInvalidatesTheTreeOnlyOnceItIsFreed() throws {
+        let (session, _) = try origin()
+        let job = try job(of: open(session, wait: true))
+
+        #expect(treeChanges { jobs.finish(job, .exited(0)) } == 0)
+        #expect(treeChanges { store.remoteOverlaySurfaceClosed(job, forSession: session.id) } == 1)
+    }
+
+    @Test func promotingTheSplitInvalidatesTheTreeForAReservationThatChangesPane() throws {
+        let (session, _) = try origin(split: true)
+        session.splitSurface = SpySurface()
+        _ = try job(of: open(session, pane: .right))
+
+        #expect(treeChanges { store.closePrimaryPane(session.id) } == 1)
+        #expect(session.remoteOverlays.slot(.left) != nil)
+    }
+
+    @Test func swappingPanesInvalidatesTheTreeForAReservationThatChangesPane() throws {
+        let (session, _) = try origin(split: true)
+        session.surface = SpySurface()
+        session.splitSurface = SpySurface()
+        _ = try job(of: open(session, pane: .right))
+
+        #expect(treeChanges { store.swapPanes(session.id) } == 1)
+        #expect(session.remoteOverlays.slot(.left) != nil)
+    }
+
+    @Test func aRefusedRemoteOverlayLeavesTheTreeAlone() throws {
+        let (session, _) = try origin()
+        _ = try job(of: open(session))
+        var second: RemoteOverlayOpen = .notPresented
+
+        #expect(treeChanges { second = open(session) } == 0)
+        #expect(second == .slotTaken)
     }
 
     private func origin(presented: Bool = true, split: Bool = false) throws -> (Session, PresentationHub.SubscriberID?) {
@@ -141,6 +224,18 @@ struct AppStoreRemoteOverlayTests {
         #expect(store.closeRemoteOverlay(session.id, pane: nil))
         #expect(presenter.bodies.last == .overlayClose(PresentationOverlayChange(job: job)))
         #expect(jobs.job(job)?.state == .finished(.canceled))
+    }
+
+    @Test func clearingAPanesOwnedStateClosesItsRemoteOverlayOnly() throws {
+        let (session, _) = try origin(split: true)
+        let right = try job(of: open(session, pane: .right))
+        let left = try job(of: open(session, pane: .left))
+
+        store.clearPaneOwnedState(session.id, pane: .right)
+
+        #expect(presenter.bodies.last == .overlayClose(PresentationOverlayChange(job: right)))
+        #expect(jobs.job(right)?.state == .finished(.canceled))
+        #expect(jobs.job(left)?.state != .finished(.canceled))
     }
 
     @Test func losingAPresenterLeavesALocalOverlayAlone() throws {

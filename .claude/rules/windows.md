@@ -85,6 +85,7 @@ session drag are out of scope.
   The reason is an attribute, not a param, despite `AERegistry.h` calling it a parameter: loginwindow
   writes it with `AEPutAttributePtr`. Never switch that read to `paramDescriptor`.
   The GUI-only prompt is keep-in-sync exempt and manually verified.
+- The window-close sheet takes its text from `QuitPrompt.windowCloseMessage` under the same mode rule.
 - A confirmed Live sessions reset (`LiveResetCoordinator.pending`) skips the quit alert, since its own
   dialog or `zmx.reset --force` was the confirmation. `AppDelegate.exitFlush` fixes the order: capture,
   finalize pending closes, then the CHECKED save; only a fully saved snapshot arms the marker and the
@@ -211,6 +212,12 @@ session drag are out of scope.
   A connected client waits up to 30 seconds for its turn before falling back to a bare attach,
   so a long enough queue of creations still yields an `app` pane.
 - Fresh shells and Re-run never stop a live host.
+- The host's files live under `/tmp`, where macOS deletes a regular file after three days untouched
+  (`/usr/libexec/tmp_cleaner`; sockets stay). The host touches its lock, log and pidfile at start and
+  hourly, on a clock that counts sleep, and publishes the pidfile again when it is missing or does not
+  hold the host's pid.
+  A deleted lock or log cannot be brought back, and a host started by an older build does none of this
+  until it is replaced.
 
 ## Attachment and cache
 
@@ -256,6 +263,39 @@ session drag are out of scope.
 - Global `--window` requires that window open. Without it, untargeted operations use active placement,
   while an explicit session/workspace ID resolves across all open stores and returns its owning store.
 - For exact coverage names and command inventory, see [[control-api]]; do not duplicate its audit here.
+
+## Transfer between windows
+
+- `workspace move --to-window` and `session move --to-window` re-home the live `Session` objects into another
+  window's store. Destination: `new`, an exact window name (sanitized and trimmed like stored names, open or
+  closed windows), then `active`/id/prefix. A name that is also another window's id prefix is ambiguous; a
+  window named `new` is reachable only by id; `active` normally ends in `same window`.
+- Both panes survive because their zmx daemons are named after `paneIdentity` / `splitPaneIdentity`, which move
+  with the session; the destination rebuilds surfaces through the normal factories, which attach. Overlay,
+  scratch, HUD and search are closed (`AppStore.releaseForTransfer`). The shell inside a moved daemon keeps the
+  `AGTERM_WINDOW_ID` / `AGTERM_WORKSPACE_ID` it started with.
+- Order (`WindowLibrary+Transfer.swift`): validate with no side effects (a closed destination from its file,
+  never `loadStore`), attach to the destination, `saveChecked()` it; on failure withdraw, close a loaded
+  destination again, drop an unsaved new window, and leave the source untouched. Only then release the source
+  surfaces, detach, save the source. Releasing earlier would strand a dead primary pane on rollback: the deck
+  keys the primary host by surface revision, and a nil slot does not rebuild it.
+- Destination first means a crash between the saves leaves the rows in both files, never an unclaimed daemon
+  for the launch reap. Both copies then share pane identities: close the duplicate with its window, not the row,
+  since closing a row finalizes the daemon the other copy still shows.
+- A remote row's rebuilt panes cannot reuse their first lines, which carry the last attachment's lead nonce and
+  a user attach's claim: `ControlServer+Transfer` rewrites `initialCommand` / `splitInitialCommand` with a fresh
+  unclaimed attach and begins it in `ZmxLeadBook` before the destination mounts, then writes the remote-row book
+  at once instead of on its debounce.
+- Moving a remote row cancels a replica ask it shows (`releaseLeavingSession`), which the origin gets as
+  `ask.rejected`.
+- A remote pane waiting in `RemoteReconnectBook` keeps its entry: the moved row's fresh surface swallows keys
+  until the probe answers, then reattaches once more, unclaimed, and ends correct.
+- Refused: the last workspace of a window, a workspace a pending close names as its undo target, and a realized
+  pane that is not zmx-backed (`Session.canSurviveTransfer`; remote rows count as surviving).
+- `session move --to-window` places the batch in `<workspace>` (an id in the destination; not with `new`) or
+  `--workspace-name N`, which reuses or creates, unlike `session new --workspace-name`, which needs
+  `--create-workspace`. With neither, the first moved session's workspace name is used.
+- The headless origin refuses both through `ForwardPolicy`.
 
 ## Finder open
 

@@ -10,11 +10,13 @@ private final class LoopbackServer: @unchecked Sendable {
         var status = 200
         var headers: [String: String] = [:]
         var body = ""
+        var hold = false
     }
 
     private let listener: NWListener
     private let queue = DispatchQueue(label: "agterm.test.loopback")
     private var routes: [String: Response]
+    private var held: [NWConnection] = []
 
     init(_ host: NWEndpoint.Host, routes: [String: Response]) throws {
         let parameters = NWParameters.tcp
@@ -50,6 +52,7 @@ private final class LoopbackServer: @unchecked Sendable {
             }
             let path = line.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let response = routes[path] ?? Response(status: 404, body: "not found")
+            if response.hold { return held.append(connection) }
             let headers = (["Content-Type": "text/html", "Content-Length": "\(response.body.utf8.count)",
                             "Connection": "close"].merging(response.headers) { $1 })
                 .map { "\($0): \($1)\r\n" }.joined()
@@ -94,6 +97,26 @@ private final class FakeDrag: NSObject, @preconcurrency NSDraggingInfo {
                                 searchOptions _: [NSPasteboard.ReadingOptionKey: Any] = [:],
                                 using _: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
     func resetSpringLoading() {}
+}
+
+@MainActor
+private final class KeyRecordingWindow: NSWindow {
+    var reached: [String] = []
+
+    override func cancelOperation(_ sender: Any?) {
+        reached.append("cancelOperation")
+        super.cancelOperation(sender)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        reached.append("keyDown")
+        super.keyDown(with: event)
+    }
+
+    override func noResponder(for eventSelector: Selector) {
+        reached.append("noResponder:\(NSStringFromSelector(eventSelector))")
+        super.noResponder(for: eventSelector)
+    }
 }
 
 @MainActor @Observable
@@ -477,6 +500,134 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         _ = registry.page(for: try openURL("http://127.0.0.1:\(port)/"), store: store)
         try await waitFor("failed") { self.current?.loadState == .failed }
         XCTAssertNotNil(current?.loadError)
+    }
+
+    func testABrowsingPageFollowsARedirectToAnotherOriginAndNamesIt() async throws {
+        let second = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>second</title>")])
+        let first = try await serve(.ipv4(.loopback), [
+            "/away": .init(status: 302, headers: ["Location": "http://127.0.0.1:\(second)/"]),
+        ])
+        _ = registry.page(for: try openURL("http://127.0.0.1:\(first)/away", browse: true), store: store)
+        try await waitFor("redirect followed") { self.current?.current?.title == "second" && self.current?.loadState == .loaded }
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(second)")
+        XCTAssertTrue(store.closeOverlay(session.id))
+
+        _ = registry.page(for: try openURL("http://127.0.0.1:\(first)/away"), store: store)
+        try await waitFor("ordinary page blocked") { self.current?.loadState == .failed }
+        XCTAssertEqual(current?.loadError, "navigation blocked: http://127.0.0.1:\(second)/")
+    }
+
+    func testABrowsingPageNamesTheSiteShownThroughNavigationAndBack() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let second = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>second</title>")])
+        let page = try openURL("http://127.0.0.1:\(first)/", browse: true)
+        let live = registry.page(for: page, store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(first)")
+
+        _ = try await live.webView.evaluateJavaScript("location.href = 'http://127.0.0.1:\(second)/'")
+        try await waitFor("second loaded") { self.current?.current?.title == "second" && self.current?.loadState == .loaded }
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(second)")
+
+        XCTAssertNil(registry.navigate(page.id, .back))
+        try await waitFor("back on first") { self.current?.current?.title == "first" }
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(first)")
+    }
+
+    func testABrowsingPageKeepsNamingTheShownSiteWhileAnotherSiteLoads() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let slow = try await serve(.ipv4(.loopback), ["/": .init(hold: true)])
+        let live = registry.page(for: try openURL("http://127.0.0.1:\(first)/", browse: true), store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+
+        _ = try await live.webView.evaluateJavaScript("location.href = 'http://127.0.0.1:\(slow)/'")
+        try await waitFor("second site loading") { self.current?.loadState == .loading }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(first)")
+        XCTAssertEqual(current?.current?.page, "http://127.0.0.1:\(first)/")
+    }
+
+    func testABrowsingPageSentBackToItsSourceNamesTheShownSiteUntilTheSourceCommits() async throws {
+        let server = try LoopbackServer(.ipv4(.loopback), routes: ["/": .init(body: "<title>first</title>")])
+        servers.append(server)
+        let first = try await server.start()
+        let second = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>second</title>")])
+        let page = try openURL("http://127.0.0.1:\(first)/", browse: true)
+        let live = registry.page(for: page, store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+        _ = try await live.webView.evaluateJavaScript("location.href = 'http://127.0.0.1:\(second)/'")
+        try await waitFor("second loaded") { self.current?.current?.title == "second" && self.current?.loadState == .loaded }
+
+        server.set("/", .init(hold: true))
+        XCTAssertNil(registry.reload(page.id, target: .original, store: store))
+        try await waitFor("source loading") { self.current?.loadState == .loading }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(second)")
+    }
+
+    func testABrowsingPageNamesItsSourceWhileItsFirstLoadRedirectsToASiteStillLoading() async throws {
+        let slow = try await serve(.ipv4(.loopback), ["/": .init(hold: true)])
+        let first = try await serve(.ipv4(.loopback), [
+            "/away": .init(status: 302, headers: ["Location": "http://127.0.0.1:\(slow)/"]),
+        ])
+        let live = registry.page(for: try openURL("http://127.0.0.1:\(first)/away", browse: true), store: store)
+        try await waitFor("redirect pending on the slow site") { live.webView.url?.port == Int(slow) }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(current?.loadState, .loading)
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(first)")
+    }
+
+    func testABrowsingPageOpensAndCopiesTheSiteShownWhileAnotherLoads() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let slow = try await serve(.ipv4(.loopback), ["/": .init(hold: true)])
+        let page = try openURL("http://127.0.0.1:\(first)/", browse: true)
+        let live = registry.page(for: page, store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+        _ = try await live.webView.evaluateJavaScript("location.href = 'http://127.0.0.1:\(slow)/'")
+        try await waitFor("second site pending") { live.webView.url?.port == Int(slow) }
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertNil(registry.navigate(page.id, .browser))
+        registry.copyLink(page.id)
+
+        XCTAssertEqual(browser.opened, [try XCTUnwrap(URL(string: "http://127.0.0.1:\(first)/"))])
+        XCTAssertEqual(sharing.copied, ["http://127.0.0.1:\(first)/"])
+    }
+
+    func testABrowsingPageOnABlankDocumentOpensItsSourceInTheBrowser() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let page = try openURL("http://127.0.0.1:\(first)/", browse: true)
+        let live = registry.page(for: page, store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+        _ = try await live.webView.evaluateJavaScript("location.href = 'about:blank'")
+        try await waitFor("blank shown") { self.current?.current?.page == "about:blank" }
+
+        XCTAssertNil(registry.navigate(page.id, .browser))
+
+        XCTAssertEqual(browser.opened, [try XCTUnwrap(URL(string: "http://127.0.0.1:\(first)/"))])
+    }
+
+    func testABrowsingPageNamesABlankDocumentAsBlank() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let live = registry.page(for: try openURL("http://127.0.0.1:\(first)/", browse: true), store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+
+        _ = try await live.webView.evaluateJavaScript("location.href = 'about:blank'")
+        try await waitFor("blank shown") { self.current?.current?.page == "about:blank" }
+        XCTAssertEqual(current?.identity, "about:blank")
+    }
+
+    func testABrowsingPageKeepsNamingTheShownSiteWhenALoadElsewhereFails() async throws {
+        let first = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>first</title>")])
+        let closed = try LoopbackServer(.ipv4(.loopback), routes: [:])
+        let dead = try await closed.start()
+        closed.stop()
+        let live = registry.page(for: try openURL("http://127.0.0.1:\(first)/", browse: true), store: store)
+        try await waitFor("first loaded") { self.current?.current?.title == "first" && self.current?.loadState == .loaded }
+
+        _ = try await live.webView.evaluateJavaScript("location.href = 'http://127.0.0.1:\(dead)/'")
+        try await waitFor("load elsewhere failed") { self.current?.loadState == .failed }
+        XCTAssertEqual(current?.identity, "http://127.0.0.1:\(first)")
     }
 
     func testCurrentReloadStaysOnTheNavigatedPageAndOriginalReturnsToTheUrl() async throws {
@@ -995,6 +1146,60 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         XCTAssertFalse(probe.messages.contains { $0.hasPrefix("file:") || $0.hasPrefix("paste:1") }, "\(probe.messages)")
     }
 
+    // #753: an Esc the page leaves unhandled reached the window's cancelOperation:, which exits full screen
+    func testEscapeOnAPageWithNoKeyHandlerNeverReachesTheWindow() async throws {
+        try write("plain.html", "<title>P</title><p>no handlers</p>")
+        let page = registry.page(for: try open(file: "plain.html"), store: store)
+        let window = try presentRecording(page.webView)
+        defer { window.orderOut(nil) }
+        try await waitFor("loaded") { self.current?.loadState == .loaded }
+
+        try sendEscape(to: window)
+        _ = try await page.webView.evaluateJavaScript("1")
+
+        XCTAssertEqual(window.reached, [])
+    }
+
+    func testEscapeStillReachesAPageListeningForItAndNeverReachesTheWindow() async throws {
+        try write("esc.html", """
+            <title>E</title><script>
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') webkit.messageHandlers.probe.postMessage('escape') })
+            </script>
+            """)
+        let probe = PageProbe()
+        let page = registry.page(for: try open(file: "esc.html", javascript: true), store: store)
+        page.webView.configuration.userContentController.add(probe, name: "probe")
+        let window = try presentRecording(page.webView)
+        defer { window.orderOut(nil) }
+        try await waitFor("loaded") { self.current?.loadState == .loaded }
+
+        try sendEscape(to: window)
+        try await waitFor("page saw escape") { probe.messages == ["escape"] }
+        _ = try await page.webView.evaluateJavaScript("1")
+
+        XCTAssertEqual(window.reached, [])
+    }
+
+    private func presentRecording(_ view: NSView) throws -> KeyRecordingWindow {
+        let window = KeyRecordingWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+                                        backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        view.frame = try XCTUnwrap(window.contentView).bounds
+        window.contentView?.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
+        return window
+    }
+
+    private func sendEscape(to window: NSWindow) throws {
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            window.sendEvent(try XCTUnwrap(NSEvent.keyEvent(
+                with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false, keyCode: 53)))
+        }
+    }
+
     func testPageScriptRunsOnlyWhenTheOverlayAllowsIt() async throws {
         let body = #"<title>S</title><p id="i">static</p><script>document.getElementById('i').textContent = 'inline'</script>"#
             + #"<script src="ext.js"></script><iframe srcdoc="<script>parent.document.documentElement.dataset.frame = 'ran'</script>"></iframe>"#
@@ -1043,6 +1248,64 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         try await waitFor("two loaded") { self.current?.loadState == .loaded && self.current?.current?.title == "two" }
         let afterNavigation = try await page.webView.evaluateJavaScript("document.getElementById('i').textContent")
         XCTAssertEqual(afterNavigation as? String, "static")
+    }
+
+    func testAPageClosingItsWindowClosesItsOverlayAsDismissed() async throws {
+        let port = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>done</title><script>window.close()</script>")])
+        let page = try openURL("http://127.0.0.1:\(port)/", javascript: true)
+        let live = registry.page(for: page, store: store)
+
+        try await waitFor("the page closed its overlay") { !self.session.overlayActive }
+        XCTAssertNil(session.htmlOverlay)
+        XCTAssertNil(registry.existing(page.id))
+        XCTAssertNil(live.webView.uiDelegate)
+        XCTAssertEqual(HtmlPageOutcomes.shared.outcome(for: page.id)?.outcome, .dismissed)
+    }
+
+    func testAPageWithScriptOffCannotCloseItsOverlay() async throws {
+        let port = try await serve(.ipv4(.loopback), ["/": .init(body: "<title>static</title><script>window.close()</script>")])
+        let page = try openURL("http://127.0.0.1:\(port)/")
+        _ = registry.page(for: page, store: store)
+
+        try await waitFor("loaded") { self.current?.loadState == .loaded }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(session.htmlOverlay?.id, page.id)
+        XCTAssertEqual(HtmlPageOutcomes.shared.outcome(for: page.id)?.outcome, .pending)
+    }
+
+    func testAPanePageClosingItsWindowAfterASwapClosesOnlyItsOwnSlot() async throws {
+        store.toggleSplit(session.id)
+        session.surface = StubSurface("left")
+        session.splitSurface = StubSurface("right")
+        let closing = try open(pane: .left, file: "a.html", javascript: true)
+        let staying = try open(pane: .right, file: "b.html")
+        let live = registry.page(for: closing, store: store)
+        _ = registry.page(for: staying, store: store)
+        try await waitFor("both loaded") {
+            self.session.paneOverlay(.left)?.html?.loadState == .loaded && self.session.paneOverlay(.right)?.html?.loadState == .loaded
+        }
+
+        XCTAssertNil(store.swapPanes(session.id))
+        _ = try await live.webView.evaluateJavaScript("window.close()")
+
+        try await waitFor("the swapped page closed") { self.session.paneOverlay(.right) == nil }
+        XCTAssertEqual(session.paneOverlay(.left)?.html?.id, staying.id)
+        XCTAssertNil(registry.existing(closing.id))
+    }
+
+    func testAPageThatClosedDuringAnUndoableCloseStaysClosedAfterUndo() async throws {
+        let page = try open()
+        let live = registry.page(for: page, store: store)
+        XCTAssertTrue(store.softCloseSession(session.id, grace: 60))
+
+        live.webViewDidClose(live.webView)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(registry.existing(page.id))
+
+        XCTAssertTrue(store.undoPendingClose())
+        live.apply(try XCTUnwrap(session.htmlOverlay))
+        try await waitFor("the restored page closed") { !self.session.overlayActive }
+        XCTAssertNil(registry.existing(page.id))
     }
 
     func testAPageKeepsTheZoomThroughNavigationAndReloadAndANewPageOpensAtIt() async throws {
@@ -1442,9 +1705,10 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         return overlay
     }
 
-    private func openURL(_ address: String, javascript: Bool = false, persistent: Bool = false) throws -> HtmlOverlay {
+    private func openURL(_ address: String, javascript: Bool = false, persistent: Bool = false,
+                         browse: Bool = false) throws -> HtmlOverlay {
         let overlay = HtmlOverlay(source: .url(try XCTUnwrap(URL(string: address))), javascript: javascript,
-                                  persistent: persistent)
+                                  persistent: persistent, browse: browse)
         XCTAssertNil(store.openHtmlOverlay(session.id, pane: nil, overlay: overlay, sizePercent: nil))
         return overlay
     }

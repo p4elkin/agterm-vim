@@ -2,6 +2,7 @@
 paths:
   - "scripts/release.sh"
   - "scripts/sign-local.sh"
+  - "packaging/agterm.rb"
 ---
 
 ## Release (`scripts/release.sh`)
@@ -13,8 +14,12 @@ paths:
   Without `--publish`, the dry run stops before upload. Upstream signs as
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
+- `release.sh` copies `packaging/agterm.rb` into the tap only when the tap has no cask, then rewrites
+  just `version` and `sha256`. Any other cask edit is made by hand in `umputun/homebrew-apps` too, and the
+  two files must stay identical apart from those two lines.
 - Developer ID signing is inside-out: `agtermctl`, zmx and `agterm-session-host` are signed first with no
-  entitlements, then the app is sealed with its TCC entitlements. The script rejects any helper carrying them.
+  entitlements, then the app is sealed with its entitlements: the TCC keys plus Rebased's `allow-jit` and
+  `disable-library-validation`. The script rejects any helper carrying them.
 - Before writing or committing a release section, put the exact `CHANGELOG-fork.md` text in a temp file and
   pass it through the `draft-approval` skill's `draft-review.sh`; address annotations and get explicit
   chat approval. `release_notes()` publishes that section as the GitHub release body.
@@ -110,3 +115,6 @@ Both were found by writing the catalog, not by any tooling.
 - Manually set `site/index.html`'s `SoftwareApplication.softwareVersion` in that same pre-release push;
   `release.sh` does not edit it. Cloudflare Pages deploys `site/` on push, and the DMG links already use
   GitHub's latest release.
+- Bump `version` in `.claude-plugin/marketplace.json` and both `plugins/agterm/{.claude,.codex}-plugin/plugin.json`
+  in that same commit.
+  Otherwise `release.sh` bumps them itself and exits before building, asking for a commit and a re-run.

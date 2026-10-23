@@ -30,6 +30,7 @@ struct PaletteCatalogTests {
             "Close Split",
             "Swap Panes",
             "Toggle Scratch",
+            "Toggle Overlays",
             "Toggle Terminal Zoom",
             "Toggle Sidebar",
             "Flag Session",
@@ -42,6 +43,7 @@ struct PaletteCatalogTests {
             "Decrease Font Size",
             "Actual Font Size",
             "Select Theme…",
+            "Attach Remote…",
             "Edit Keymap",
             "Reload Keymap",
             "Edit Hooks",
@@ -59,14 +61,16 @@ struct PaletteCatalogTests {
             "Collapse Workspace",
             "Focus Left Pane",
             "Focus Right Pane",
+            "Toggle Rebased",
         ])
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 55)
+        #expect(PaletteCommand.allCases.count == 58)
     }
 
     @Test func idsRoundTripThroughRawValue() {
+        #expect(PaletteCommand.toggleRebased.builtinAction == .rebasedToggle)
         for command in PaletteCommand.allCases {
             #expect(PaletteCommand(rawValue: command.rawValue) == command)
         }
@@ -207,7 +211,7 @@ struct PaletteCatalogTests {
                                              canStepWindows: true,
                                              activeSessionHasSplit: true, hasPendingClose: true,
                                              hasRecentClosed: true, hasActiveSession: true,
-                                             hasCurrentWorkspace: true)
+                                             hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
 
     /// The commands whose menu item carries no `modalActive` term at all.
     private static let coverProof: Set<PaletteCommand> = [
@@ -228,7 +232,7 @@ struct PaletteCatalogTests {
 
     private static let needSession: Set<PaletteCommand> = [
         .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit, .toggleHorizontalSplit,
-        .swapPanes, .toggleScratch, .find,
+        .swapPanes, .toggleScratch, .toggleRebased, .toggleOverlay, .find,
         .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
         .firstSession, .lastSession,
     ]
@@ -246,10 +250,20 @@ struct PaletteCatalogTests {
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
                                      hasRecentClosed: true, hasActiveSession: false,
-                                     hasCurrentWorkspace: true)
+                                     hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
         for command in PaletteCommand.allCases {
             #expect(command.isEnabled(in: context) == !Self.needSession.contains(command), "\(command)")
         }
+    }
+
+    @Test func attachRemoteNeedsAConfiguredRemote() {
+        let none = PaletteContext(hasCurrentWorkspace: true)
+        #expect(PaletteCommand.attachRemote.isVisible(in: none), "stays listed, inert")
+        #expect(!PaletteCommand.attachRemote.isEnabled(in: none))
+        #expect(PaletteCommand.attachRemote.isEnabled(in: PaletteContext(hasCurrentWorkspace: true, hasRemotes: true)))
+        #expect(!PaletteCommand.attachRemote.isEnabled(
+            in: PaletteContext(hasCurrentWorkspace: true, hasRemotes: true, pickerActive: true)))
+        #expect(PaletteCommand.attachRemote.builtinAction == .attachRemote)
     }
 
     @Test func workspacePresenceGatesTheWorkspaceEntries() {
@@ -259,9 +273,10 @@ struct PaletteCatalogTests {
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
                                      hasRecentClosed: true, hasActiveSession: true,
-                                     hasCurrentWorkspace: false)
+                                     hasCurrentWorkspace: false, hasRemotes: true, activeSessionHasOverlay: true)
         let needWorkspace: Set<PaletteCommand> = [.renameWorkspace, .focusWorkspace, .addWorkspaceToFocus,
-                                                  .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse]
+                                                  .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
+                                                  .attachRemote]
         for command in PaletteCommand.allCases {
             #expect(command.isEnabled(in: context) == !needWorkspace.contains(command), "\(command)")
         }
@@ -353,5 +368,16 @@ struct PaletteCatalogTests {
         #expect(PaletteCommand.clearFlagged.builtinAction == nil)
         #expect(PaletteCommand.addWorkspaceToFocus.builtinAction == nil)
         #expect(PaletteCommand.expandWorkspaces.builtinAction == nil)
+    }
+
+    @Test func toggleOverlayNeedsAnOverlayToHideOrShow() {
+        let without = PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true)
+        #expect(PaletteCommand.toggleOverlay.isVisible(in: without), "stays listed, inert")
+        #expect(!PaletteCommand.toggleOverlay.isEnabled(in: without))
+        #expect(PaletteCommand.toggleOverlay.isEnabled(
+            in: PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true, activeSessionHasOverlay: true)))
+        #expect(!PaletteCommand.toggleOverlay.isEnabled(
+            in: PaletteContext(hasActiveSession: true, hasCurrentWorkspace: true, pickerActive: true, activeSessionHasOverlay: true)))
+        #expect(PaletteCommand.toggleOverlay.builtinAction == .toggleOverlay)
     }
 }

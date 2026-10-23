@@ -246,6 +246,17 @@ struct AppStoreAutoFollowTests {
         #expect(store.selectedSessionID == blocked.id)
     }
 
+    @Test func isAutoFollowSuppressedHoldsUntilTheLastResume() {
+        let store = makeStore()
+        #expect(!store.isAutoFollowSuppressed)
+        store.suppressAutoFollow()
+        store.suppressAutoFollow()
+        store.resumeAutoFollow()
+        #expect(store.isAutoFollowSuppressed)
+        store.resumeAutoFollow()
+        #expect(!store.isAutoFollowSuppressed)
+    }
+
     // MARK: - noteUserActivity + idleMs
 
     @Test func noteUserActivityStampsLastActivity() {

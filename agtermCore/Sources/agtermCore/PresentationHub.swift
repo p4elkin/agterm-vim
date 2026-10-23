@@ -48,7 +48,17 @@ public final class PresentationHub {
     }
 
     /// The frame kinds this origin can produce.
-    public static let supportedKinds = ["status", "hud", "notify", "context", "layout"]
+    public static let supportedKinds = ["status", "hud", "notify", "context", "layout", "sound", askFormKind, askOtherKind]
+        + pageKinds
+    /// pageKinds are the presentation kinds a presenter must speak to be handed a page.
+    public static let pageKinds = ["page.request", "page.rejected", "page.close", "page.closed", "page.command",
+                                   "page.state"]
+    /// askFormKind is the capability of drawing an ask's text field, choice list and cancel role. It names no
+    /// frame body: an ask needing it travels as an ordinary `ask.request`, sent only to a presenter listing it.
+    public static let askFormKind = "ask.form"
+    /// askOtherKind is the capability of drawing a choice list's free-form row; a presenter with only
+    /// `ask.form` would drop the row, so such an ask needs both.
+    public static let askOtherKind = "ask.other"
 
     private let staleTimeout: TimeInterval
     private let now: () -> Date
@@ -110,10 +120,12 @@ public final class PresentationHub {
         if let session { release(id, session: session) }
     }
 
-    /// Sends `body` to `session`'s presenter alone. False when there is none, or it stalled and was dropped.
+    /// Sends `body` to `session`'s presenter alone. False when there is none, it stalled and was dropped, or
+    /// `body` is a negotiated kind its hello did not list, which an older presenter would skip.
     @discardableResult
     public func sendToPresenter(_ body: PresentationFrame.Body, session: UUID) -> Bool {
         guard let holder = grant.holder(of: session) else { return false }
+        if Self.supportedKinds.contains(body.kind), subscribers[holder]?.kinds.contains(body.kind) != true { return false }
         return send(body, to: holder)
     }
 
@@ -148,7 +160,8 @@ public final class PresentationHub {
                 onPresenterChanged?(subscriber.session)
             }
         case .presenterTake: takePresenter(id, session: subscriber.session)
-        case .askResolve, .askRejected, .overlayRejected, .overlayClosed, .controlForwarded:
+        case .askResolve, .askRejected, .overlayRejected, .overlayClosed, .controlForwarded, .pageRejected, .pageClosed,
+             .pageState:
             guard grant.holder(of: subscriber.session) == id else { return }
             onPresenterFrame?(subscriber.session, frame.body)
         default: break
@@ -183,7 +196,8 @@ public final class PresentationHub {
 
     /// Whether `session`'s presenter listed `kind` in its hello.
     public func presenterSupports(_ kind: String, session: UUID) -> Bool {
-        grant.holder(of: session).flatMap { subscribers[$0] }?.kinds.contains(kind) == true
+        guard let holder = grant.holder(of: session) else { return false }
+        return subscribers[holder]?.kinds.contains(kind) == true
     }
 
     /// Counts changes of `session`'s presenter, a grant and a loss alike.

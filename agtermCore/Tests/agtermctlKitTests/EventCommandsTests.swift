@@ -129,6 +129,97 @@ struct EventCommandsTests {
         #expect(outputSends == 1)
     }
 
+    @Test func aRefusedConnectBacksOffAndResumesFromTheSameCursor() throws {
+        var outcomes: [ControlResponse?] = Array(repeating: nil, count: 6) + [
+            ControlResponse(ok: true, result: ControlResult(events: ControlEventBatch(run: run, next: 9, items: []))),
+            nil,
+        ]
+        var requests: [ControlRequest] = []
+        var sleeps: [TimeInterval] = []
+        let dependencies = EventStreamDependencies(
+            send: { request in
+                requests.append(request)
+                guard let response = outcomes.removeFirst() else { throw refused() }
+                return response
+            },
+            sleep: { sleeps.append($0) },
+            writeLine: { _ in }
+        )
+        let command = try Events.parse(["--run", run.uuidString, "--after", "9"])
+        var state = command.makeState()
+
+        for _ in 0..<8 { try command.poll(state: &state, dependencies: dependencies) }
+
+        #expect(sleeps == [0.25, 0.5, 1, 2, 4, 4, 0.25, 0.25])
+        #expect(requests.allSatisfy { $0.args?.run == run.uuidString && $0.args?.after == "9" })
+    }
+
+    @Test func aRefusedConnectGivesUpOnceTheRetryBudgetIsSpent() throws {
+        var sleeps: [TimeInterval] = []
+        let dependencies = EventStreamDependencies(
+            send: { _ in throw refused() }, sleep: { sleeps.append($0) }, writeLine: { _ in }
+        )
+        let command = try Events.parse(["--run", run.uuidString, "--after", "9"])
+        var state = command.makeState()
+
+        let error = try #require(throws: SocketClientError.self) {
+            for _ in 0..<100 { try command.poll(state: &state, dependencies: dependencies) }
+        }
+
+        #expect(error.connectErrno == ECONNREFUSED)
+        let waited = sleeps.reduce(0, +)
+        #expect(waited >= EventStreamState.retryBudget)
+        #expect(waited < EventStreamState.retryBudget + EventStreamState.maxRetryDelay)
+    }
+
+    @Test func aResponseRenewsTheRetryBudget() throws {
+        let nearlySpent = 9
+        var outcomes: [ControlResponse?] = Array(repeating: nil, count: nearlySpent) + [
+            ControlResponse(ok: true, result: ControlResult(events: ControlEventBatch(run: run, next: 9, items: []))),
+        ] + Array(repeating: nil, count: nearlySpent)
+        var sleeps: [TimeInterval] = []
+        let dependencies = EventStreamDependencies(
+            send: { _ in
+                guard let response = outcomes.removeFirst() else { throw refused() }
+                return response
+            },
+            sleep: { sleeps.append($0) },
+            writeLine: { _ in }
+        )
+        let command = try Events.parse(["--run", run.uuidString, "--after", "9"])
+        var state = command.makeState()
+
+        for _ in 0..<(2 * nearlySpent + 1) { try command.poll(state: &state, dependencies: dependencies) }
+
+        let episode = Array(sleeps.prefix(nearlySpent))
+        #expect(episode.reduce(0, +) < EventStreamState.retryBudget)
+        #expect(sleeps.reduce(0, +) > EventStreamState.retryBudget + EventStreamState.maxRetryDelay)
+        #expect(Array(sleeps.suffix(nearlySpent)) == episode)
+    }
+
+    @Test func onlyARefusedConnectWithACursorIsRetried() throws {
+        let cursored = try Events.parse(["--run", run.uuidString, "--after", "9"])
+        let fatal: [(Events, Error)] = [
+            (try Events.parse([]), refused()),
+            (cursored, SocketClientError("connect failed", connectErrno: ENOENT)),
+            (cursored, SocketClientError("no response from /tmp/agterm.sock")),
+            (cursored, EventStreamError("transport failed")),
+        ]
+        for (command, failure) in fatal {
+            var state = command.makeState()
+            var sends = 0
+            #expect(throws: (any Error).self) {
+                try command.poll(state: &state, dependencies: EventStreamDependencies(
+                    send: { _ in
+                        sends += 1
+                        throw failure
+                    }, sleep: { _ in }, writeLine: { _ in }
+                ))
+            }
+            #expect(sends == 1)
+        }
+    }
+
     @Test func streamStatePreservesSuppliedCursorAndRejectsServerFailures() throws {
         var state = EventStreamState(cursor: ControlEventCursor(run: run, after: 9), kinds: nil, limit: nil)
         #expect(state.makeRequest().args?.after == "9")
@@ -170,6 +261,9 @@ struct EventCommandsTests {
             ControlEvent(seq: 17, ts: 0, kind: .status,
                          payload: ControlEventPayload(name: "api", status: "blocked", shape: "star",
                                                       note: #"ask: "main" or "dev""#)),
+            ControlEvent(seq: 18, ts: 0, kind: .appLaunched),
+            ControlEvent(seq: 19, ts: 0, kind: .paneFocused, payload: ControlEventPayload(name: "api", pane: "right", paneID: "tok")),
+            ControlEvent(seq: 20, ts: 0, kind: .paneFocused, payload: ControlEventPayload(name: "api", pane: "left")),
         ]
         let human = events.map { EventFormatter.human($0, timeZone: TimeZone(secondsFromGMT: 0)!) }
         #expect(human[0] == "00:00:00 status api blocked pane=right blink")
@@ -189,6 +283,9 @@ struct EventCommandsTests {
         #expect(human[14] == "00:00:00 session.selected api previous=before")
         #expect(human[15] == "00:00:00 session.selected win previous=-")
         #expect(human[16] == #"00:00:00 status api blocked shape=star note="ask: \"main\" or \"dev\"""#)
+        #expect(human[17] == "00:00:00 app.launched")
+        #expect(human[18] == "00:00:00 pane.focused api right pane-id=tok")
+        #expect(human[19] == "00:00:00 pane.focused api left pane-id=-")
 
         for event in events {
             let line = try EventFormatter.json(event)
@@ -196,4 +293,8 @@ struct EventCommandsTests {
             #expect(try JSONDecoder().decode(ControlEvent.self, from: Data(line.utf8)) == event)
         }
     }
+}
+
+private func refused() -> SocketClientError {
+    SocketClientError("connect failed: Connection refused", connectErrno: ECONNREFUSED)
 }

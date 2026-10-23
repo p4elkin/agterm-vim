@@ -431,6 +431,10 @@ struct CommandsTests {
         #expect(try request(["session", "scratch"]) == expected)
     }
 
+    @Test func sessionScratchFollow() throws {
+        #expect(try request(["session", "scratch", "on", "--follow"]).args?.follow == true)
+    }
+
     @Test func sessionScratchOff() throws {
         let expected = ControlRequest(cmd: .sessionScratch, target: "active", args: ControlArgs(mode: "off"))
         #expect(try request(["session", "scratch", "off"]) == expected)
@@ -1439,13 +1443,13 @@ struct CommandsTests {
         let input = Data("""
           [
             {"id":"one","label":"One","subtitle":"First"},
-            {"id":"two","label":"Two"}
+            {"id":"two","label":"Two","status":"blocked","statusColor":"#ff8800","statusShape":"star"}
           ]
         """.utf8)
 
         #expect(try Pick.Open.parseItems(input) == [
             ControlPickItem(id: "one", label: "One", subtitle: "First"),
-            ControlPickItem(id: "two", label: "Two")
+            ControlPickItem(id: "two", label: "Two", status: "blocked", statusColor: "#ff8800", statusShape: "star")
         ])
     }
 
@@ -1657,9 +1661,9 @@ struct CommandsTests {
             == ControlRequest(cmd: .sidebarFlaggedLayout, args: ControlArgs(mode: "toggle")))
     }
 
-    @Test func sidebarFlaggedLayoutTree() throws {
-        #expect(try request(["sidebar", "flagged-layout", "tree"])
-            == ControlRequest(cmd: .sidebarFlaggedLayout, args: ControlArgs(mode: "tree")))
+    @Test(arguments: ["flat", "plain", "tree"]) func sidebarFlaggedLayoutNamesALayout(_ layout: String) throws {
+        #expect(try request(["sidebar", "flagged-layout", layout])
+            == ControlRequest(cmd: .sidebarFlaggedLayout, args: ControlArgs(mode: layout)))
     }
 
     @Test func sidebarFlaggedLayoutRejectsBadLayoutAndAWindowTarget() {

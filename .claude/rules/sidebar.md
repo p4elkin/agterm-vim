@@ -71,8 +71,8 @@ paths:
   `rightMouseDown`, which ignores a left-button event; `SidebarControlClickTests` pins it on CI.
   The workspace row's `AddSessionButton` passes a Control-click up the responder chain to it, since NSButton
   would otherwise fire the "+" action.
-  `sidebarSelectionTargets` filters through the visible projection. Batch move, soft close, flag, and
-  clear-status operate on all targets.
+  `sidebarSelectionTargets` filters through the visible projection. Batch move, soft close, flag,
+  clear-status, and mark-for-attention operate on all targets.
 - Copy Name writes `Session.displayName`, or the workspace name, to `NSPasteboard.general`. A blank
   workspace name and a vanished row both count as absent, and nothing to copy leaves the pasteboard
   untouched rather than clearing it. No control form — see `control-api.md`.
@@ -83,13 +83,15 @@ paths:
   non-primary pane is focused.
 - `SidebarMode` is per-window `.tree` or `.flagged`. `flaggedSessions` is the derived tree-order
   projection; sessions keep one owning workspace and flags survive moves but not deletion.
-- Flagged mode has two layouts, chosen by the app-wide `FlaggedViewLayout` setting ([[settings]]), not per window.
+- Flagged mode has three layouts, chosen by the app-wide `FlaggedViewLayout` setting ([[settings]]), not per window.
   `flat` is one non-expandable outline labeled `session : workspace`.
+  `plain` is the same outline labeled by session name alone, so every `== .flat` test is about the suffix
+  and every `== .tree` test about workspace rows.
   `tree` renders workspace rows holding only their flagged sessions, omits workspaces with none, and drops the suffix.
-  Both use base terminal/split icons, status, and badge, ignore workspace focus, disable drag reorder, and show
+  All use base terminal/split icons, status, and badge, ignore workspace focus, disable drag reorder, and show
   the tinted non-scrolling hint `No flagged sessions. / Right-click a session → Flag.` when empty.
 - The layout is orthogonal to `SidebarMode`, never a third case: every `sidebarMode == .flagged` check in
-  `agtermCore` means "the flagged set is what is visible", which holds in both layouts.
+  `agtermCore` means "the flagged set is what is visible", which holds in every layout.
   `AppStore.rendersWorkspaceRows(flaggedLayout:)` is the one predicate for "the outline has workspace rows",
   taking the layout as a parameter because the store does not hold app-wide state.
 - `Coordinator.workspaceProjection` yields the workspace rows for the ordinary tree AND the flagged tree, so
@@ -102,6 +104,8 @@ paths:
   would make every script that reads it mode-aware.
 - Mode flips call `reselectIfSelectionHidden` only when the active session would disappear. Mutators
   no-op without saving on unknown/unchanged IDs and prune transient selection when rows disappear.
+- Workspace rows offer Flag All Sessions / Unflag All Sessions over every session of the workspace, hidden ones
+  included, disabled when it has none; `workspace.flag` is the control form.
 - GUI surfaces are `flagged-view-toggle`, row Flag/Unflag, View-menu Show Flagged/Show All, Flag Session,
   Clear Flagged, palette entries, and keyless built-ins `toggleFlaggedView`/`toggleFlag`. Clear Flagged
   is not a built-in and confirms unless under XCUITest.

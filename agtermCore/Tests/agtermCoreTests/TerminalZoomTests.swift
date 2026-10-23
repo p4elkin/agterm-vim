@@ -4,6 +4,46 @@ import Testing
 
 @MainActor
 struct TerminalZoomTests {
+    @Test(arguments: OverlayPane.allCases)
+    func hidingAPaneIDEOffersTheUnderlyingTerminalForZoom(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        session.splitFocused = pane == .right
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(pane.paneZoomSurface.isAvailable(in: session))
+        #expect(pane.paneZoomSurface.isActive(in: session))
+        #expect(pane.paneZoomSurface.isVisible(in: session))
+        #expect(!pane.zoomSurface.isAvailable(in: session))
+        #expect(!pane.zoomSurface.isActive(in: session))
+        #expect(!pane.zoomSurface.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, pane.paneZoomSurface))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+    }
+
+    @Test(arguments: OverlayPane.allCases)
+    func rebasedPaneHasNoTerminalZoomTarget(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        session.splitFocused = pane == .right
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"),
+                                        sizePercent: nil, pane: pane) == nil)
+        #expect(!pane.zoomSurface.isAvailable(in: session))
+        #expect(!pane.zoomSurface.isActive(in: session))
+        #expect(!pane.zoomSurface.isVisible(in: session))
+        #expect(!pane.paneZoomSurface.isVisible(in: session))
+        #expect(TerminalZoomController.resolveTarget(store: store) == nil)
+        #expect(!TerminalZoomController.isTargetValid(.session(session.id, pane.zoomSurface), in: store))
+        session.splitFocused.toggle()
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, session.focusedPane.paneZoomSurface))
+    }
+
     @Test func controlAliasesPreserveCanonicalSurfaceRoles() {
         for alias in ["left", "top", "primary"] {
             #expect(TerminalZoomSurface(controlName: alias) == .primary)
@@ -57,6 +97,27 @@ struct TerminalZoomTests {
 
         session.overlayActive = true
         #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, .overlay))
+    }
+
+    @Test func aHiddenOverlayIsNeitherTheTargetNorAvailable() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/a")!
+        store.toggleSplit(session.id)
+        session.splitSurface = SpySurface()
+        session.splitFocused = true
+        #expect(store.openOverlay(session.id, command: "less"))
+        #expect(store.openPaneOverlay(session.id, pane: .right, command: "htop") == nil)
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, .overlay))
+
+        session.setOverlayHidden(true, slot: nil)
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, .overlayRight))
+        #expect(!TerminalZoomController.isTargetValid(.session(session.id, .overlay), in: store))
+
+        store.setOverlaysHidden(session.id, pane: .right, hidden: true)
+        #expect(TerminalZoomController.resolveTarget(store: store) == .session(session.id, .split))
+        #expect(!TerminalZoomController.isTargetValid(.session(session.id, .overlayRight), in: store))
+        #expect(TerminalZoomSurface.split.isVisible(in: session))
     }
 
     /// The quick terminal is one detached panel per app, so no WINDOW's zoom can hold it: `.quick` is neither

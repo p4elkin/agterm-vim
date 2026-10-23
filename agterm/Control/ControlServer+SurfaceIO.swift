@@ -77,6 +77,9 @@ extension ControlServer {
             }
             // after the pane checks, so a missing pane keeps its error, and before the realized one, since a
             // page zooms without its terminal
+            if session.rebasedHidesTerminal(pane) {
+                return ControlResponse(ok: false, error: "Rebased overlay has no terminal font size")
+            }
             if session.htmlHidesTerminal(pane) {
                 self.settingsModel.stepHtmlOverlayZoom(action)
                 return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
@@ -142,8 +145,8 @@ extension ControlServer {
     /// session is fine, it is the cover that is not up. An overlay shown on another Mac is refused first, then
     /// a HUD, `overlayActive` alone being unable to tell the app's own painter from a caller's program.
     private func overlayReadSurface(_ session: Session, pane: OverlayPane?) -> OverlayReadSurface {
-        if session.remoteOverlays.slot(pane) != nil {
-            return .rejected(ControlResponse(ok: false, error: OverlayResultError.shownElsewhere))
+        if let slot = session.remoteOverlays.slot(pane) {
+            return .rejected(ControlResponse(ok: false, error: slot.page == nil ? OverlayResultError.shownElsewhere : OverlayHtmlError.noRead))
         }
         if session.htmlCovers(pane) {
             return .rejected(ControlResponse(ok: false, error: OverlayHtmlError.noRead))

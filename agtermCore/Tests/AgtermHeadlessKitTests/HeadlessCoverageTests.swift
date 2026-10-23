@@ -80,6 +80,21 @@ struct HeadlessCoverageTests {
         #expect(await fixture.actions.respond(to: bound(go, to: fixture)) == Self.unpresented(.sessionBookmarkGo))
     }
 
+    @Test(arguments: [Command.workspaceMove, .sessionMove])
+    func aMoveToAnotherWindowKeepsTheCatalogRefusal(_ command: Command) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let request = ControlRequest(cmd: command, target: fixture.session.id.uuidString, args: ControlArgs(toWindow: "new"))
+        guard case .refused(let reason) = ForwardPolicy.route(request, holdsJob: false) else {
+            Issue.record("\(command.rawValue) --to-window is not refused by ForwardPolicy")
+            return
+        }
+
+        let response = await fixture.actions.respond(to: request)
+
+        #expect(response.error == "\(command.rawValue) is not available on a headless origin: \(reason)")
+    }
+
     private static func unpresented(_ command: Command) -> ControlResponse {
         ControlResponse(ok: false, error: "\(command.rawValue) cannot be forwarded: no Mac is presenting this session")
     }

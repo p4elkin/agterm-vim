@@ -19,6 +19,10 @@ C-boundary concurrency before changing the bridge.
   meaningful to drive.
 - For each hideable titlebar/sidebar element, ask whether it should join host-free `InterfaceElement` and
   Settings > Interface. Never add that preference without approval.
+  A control enabled there stays visible and is disabled when it cannot act; never show or hide it by state.
+- A decline of a feature request that a custom command covers explains the extension model with the request
+  as the worked example: README's "bind X yourself", `site/docs.html#extend`, the agent skill, the cookbook.
+  It also points "can you add X" requests to Discussions ▸ Ideas instead of issues.
 - When adding a process that runs user commands or reparents a session, weigh its effect on macOS TCC
   attribution per service, up front. The responsible process is not always TCC's authorization subject:
   the #574 microphone test recorded `agterm-session-host` as responsible, `com.umputun.agterm` as the
@@ -40,7 +44,8 @@ C-boundary concurrency before changing the bridge.
   looks for `settings.json`, `workspaces.json`, or `windows` before the app writes anything.
   Leave the marker out only when the welcome itself is under test.
 - The control socket binds from the window scene's task, so a backgrounded `open -n -g` can leave the app
-  running with no socket until a window renders. Activate the instance when the socket never appears.
+  running with no socket until a window renders.
+  If the socket is still absent 10 s after launch, activate the instance; never leave a socket wait unbounded.
 - `agtermctl` never reads `AGTERM_SOCKET`; it resolves `--socket`, then `AGTERM_STATE_DIR`, then
   `~/Library/Application Support/agterm`. A shell inside the live terminal therefore defaults onto the
   live socket, and exporting a short `AGTERM_STATE_DIR` is what keeps inherited commands off it.
@@ -123,6 +128,9 @@ C-boundary concurrency before changing the bridge.
   changing the main checkout's branch. Squash/rebase makes removal report unmerged commits; after
   verification, discard the worktree safely. Native removal may leave a renamed branch, which must be
   deleted separately after checking the remote.
+- A worktree removed under a live session leaves that session's custom commands starting in HOME, so one
+  written with relative paths acts on HOME, not the repository. When ExitWorktree reports no active
+  session, leave the removal to a session started in the main checkout.
 - Before removing a worktree, and after any hosted or UI test run, run
   `lsappinfo list | grep -A4 agterm.debug`.
   An entry marked `exited-with-subordinates` that lists `relatedCoalitionPIDs` is held by those pids:
@@ -135,6 +143,10 @@ C-boundary concurrency before changing the bridge.
   logging uses `os.Logger`.
 - `scripts/run.sh` activates an existing instance instead of loading a rebuild. Use a distinct isolated
   launch for current code.
+- Stop an isolated Live-mode Debug instance and its daemons before rebuilding the same DerivedData.
+  Rewriting the bundle's `zmx` or `agterm-session-host` under running daemons can trigger
+  `SIGKILL (Code Signature Invalid)`; the reports go to `~/Library/Logs/DiagnosticReports/`.
+  Foreground programs can survive without a tty; stop any survivors by pid.
 - `make deploy` copies Release to `/Applications`, whose app, PATH CLI, and installed hooks shadow Debug.
   Test fresh CLI/hooks with the Debug binary or redeploy and reinstall them. Debug uses
   `com.umputun.agterm.debug`, distinct from Release.
@@ -144,15 +156,21 @@ C-boundary concurrency before changing the bridge.
   Config is not adopted: that launch reads the default config directory, `~/.config/agterm` unless the
   setting names another. Manual runs still pass a short `/tmp`
   directory: the adopted one is shared by every unisolated Debug launch and persists between them.
-- A second Release instance without `AGTERM_STATE_DIR` still shares state, but does not take the
-  running app's control socket. `ControlServer.init` takes an exclusive `flock` on `<socket>.lock` and
-  `start` refuses to bind while another live instance holds it, logging `already served by another
-  instance`. Ownership is settled at init so the launch window's first shell, whose environment is
-  snapshotted before `start` runs, cannot bake the owner's path.
+- A second instance on a state directory another process owns exits with status 1 before reading or
+  writing anything there. `agtermApp.init` first takes an exclusive `flock` on `<stateDir>/agterm.lock`
+  (`StateDirectoryLock`), and a lock it cannot take exits too. Every store save rewrites its whole file
+  from memory, so a second loader once overwrote the owner's newer sessions with its stale tree (#741);
+  `agterm --help` started one, since libghostty appends `Contents/MacOS` to every pane's PATH.
+  A running build predating the lock holds no `agterm.lock`, so the first fixed launch beside one is
+  unprotected: stop old instances before it.
+- Instances on different state directories that share one `AGTERM_CONTROL_SOCKET` are separated by the
+  socket lock instead. `ControlServer.init` takes an exclusive `flock` on `<socket>.lock` and `start`
+  refuses to bind while another live instance holds it, logging `already served by another instance`.
+  Ownership is settled at init so the launch window's first shell, whose environment is snapshotted
+  before `start` runs, cannot bake the owner's path.
   A refused instance advertises `<socket>.unavailable` in `AGTERM_SOCKET`, so a command passing
   `--socket "$AGTERM_SOCKET"` fails rather than reaching the owner. A BARE `agtermctl` still reaches it:
-  the CLI never reads that variable and resolves the default path. Isolate anyway — state is shared and
-  persisted session ids resolve in both instances, so an untargeted command lands on the live terminal.
+  the CLI never reads that variable and resolves the default path.
 - `lsof -p <pid> | grep agterm.sock` showing an fd on a socket path `ls` cannot find means an orphaned
   socket; a window scene that never bound one is a different fault. Reaching it now takes a build
   predating the lock, or the socket file being deleted by hand.
@@ -245,8 +263,8 @@ C-boundary concurrency before changing the bridge.
   Verify in a Release binary: the closure's demangled symbol must not say `@Swift.MainActor`.
 - The session-wide overlay slot holds a caller's program, an HTML page, or a HUD. Raw `overlayActive` answers
   only "the slot is occupied"; a layer asking "does a cover own this session's input" reads
-  `Session.coverOverlayActive`, and one asking about the covering terminal surface reads
-  `programOverlayActive`. Deck gates, focus routing, zoom, and scratch focus all turn on that distinction,
+  `Session.coverOverlayVisible`, and one asking about the covering terminal surface reads
+  `programOverlayVisible`; their `Active` forms answer occupancy, hidden or not. Deck gates, focus routing, zoom, and scratch focus all turn on that distinction,
   so never spell a predicate inline. `control-api.md` lists the sites.
 - A terminal ask has a separate slot on `Session`, independent of the HUD/program overlay slot; see [[control-api]].
 - A long-lived process spawned into a surface needs a stop condition of its own. A hard-killed app runs no
@@ -274,8 +292,8 @@ C-boundary concurrency before changing the bridge.
 - A state-setting command must expose its result on `ControlSessionNode`, window node, or tree top level.
   Examples include background, unseen, status and overrides, flag, split focus/ratio, overlay size,
   sidebar state/mode, workspace focus, quick visibility, geometry, fullscreen, zoom, and minimize.
-  A deliberate exemption is recorded where the command's own contract lives, never left implicit; the
-  captured restore slots are the one today, in `control-api.md`'s Restore section.
+  A deliberate exemption is recorded where the command's own contract lives, never left implicit; today
+  those are the captured restore slots and the Rebased mirrors, in `control-api.md`'s sections for each.
 - Event arguments must appear in `EventFormatter.human`, not only JSON payloads.
 - Control API, keymap, and model changes also update bundled
   `plugins/agterm/skills/agterm/`, the sole source for installed Claude/Codex copies.
@@ -345,3 +363,4 @@ spans intact, and format long catalogs as lists.
 - `overlay-redirect.md`: which machine an overlay opens on, the two pairing fields, the two-phase open.
 - `fork-merge.md`: merging upstream into this fork, the gate set, the files that keep colliding.
 - `headless-origin.md`: the Linux headless origin server, and the Linux test gate.
+- `rebased-overlay.md`: Rebased hosted in-process in the overlay slot: JVM, bridge plugin, frame, keys.

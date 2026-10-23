@@ -10,6 +10,8 @@ import AppKit
 enum PaneLead {
     /// Replaces a pane's surface with a fresh attach. Installed once by the app, which owns the factories.
     static var reattach: ((_ old: GhosttySurfaceView, _ claim: Bool) -> Void)?
+    /// replace swaps a pane's surface for one built from `launch`, uncovered. Installed once by the app.
+    static var replace: ((_ old: GhosttySurfaceView, _ launch: PaneReattach, _ lead: ZmxLeadAttachment) -> GhosttySurfaceView?)?
     /// Tells the pane's store that read-back changed.
     static var roleChanged: ((_ view: GhosttySurfaceView) -> Void)?
     /// Parks a pane whose ssh lost the connection until the host answers again. Installed by the app.
@@ -95,11 +97,8 @@ struct PaneReattach {
             return PaneReattach(command: CommandRestore.shellQuotedLine(zmx.attachArguments + ["/bin/sh", "-c", gone]),
                                 wait: false, environment: zmx.environment, workingDirectory: old.workingDirectory)
         }
-        guard let binding = session.remotePresentation?.binding, let origin = binding.origin,
-              let daemon = binding.daemon(forLocalPane: identity),
-              let command = try? RemoteSession.attachPaneCommand(
-                  host: origin.host, endpoint: origin.endpoint, daemon: daemon, session: origin.sessionName,
-                  pane: old.isSplitPane ? .right : .left, lead: lead, transport: origin.transport)
+        guard let command = session.remotePresentation?.binding.attachPaneCommand(
+            forLocalPane: identity, pane: old.isSplitPane ? .right : .left, lead: lead)
         else { return nil }
         return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
     }

@@ -48,8 +48,8 @@ final class ControlServer {
 
     /// The path spawned surfaces point `AGTERM_SOCKET` at. Once this instance has REFUSED the real path
     /// because another one owns it, this becomes an unbindable sibling: a shell here must not reach the
-    /// other app, which for a second instance sharing state is the user's live terminal (persisted session
-    /// ids resolve there too). Leaving the variable UNSET is worse than a dead value — the shipped status
+    /// other app, an instance on another state directory sharing this socket, where an untargeted command
+    /// would land. Leaving the variable UNSET is worse than a dead value — the shipped status
     /// hooks drop `--socket` when it is absent, and `agtermctl` then resolves the very default the other
     /// instance is serving. Not `boundSocketPath`: the launch window's surfaces can materialize BEFORE
     /// `start()` binds, and a nil there would leak `AGTERM_SOCKET` permanently. Equals it once bound.
@@ -79,6 +79,11 @@ final class ControlServer {
     var overlayJobStreams: [String: OverlayJobStream] = [:]
     /// Jobs cancelled between their claim and the adoption of the helper's connection.
     var pendingJobCancels: Set<String> = []
+    /// pageServeStreams are the channels presenters opened for pages this Mac handed over, by page id.
+    var pageServeStreams: [UUID: PageServeStream] = [:]
+    /// pendingPageClaims are pages whose claim was answered ok and whose connection is not adopted yet, with the
+    /// source each serves.
+    var pendingPageClaims: [UUID: HtmlSource] = [:]
     var presentationHeartbeat: Task<Void, Never>?
     /// How long an adopted stream may stay silent before its first hello.
     var presentationHelloDeadline: TimeInterval = 10
@@ -93,6 +98,12 @@ final class ControlServer {
     /// Whether someone is at this Mac; a Mac nobody is at never takes the presenter role. Injectable for tests.
     var userPresent: @MainActor () -> Bool = UserPresence.isPresent
     var presenceObservers: [NSObjectProtocol] = []
+    /// replicaPages are the pages this Mac shows for origins, by local page id; `ControlServer+RemotePage` owns them.
+    var replicaPages: [UUID: ReplicaPageRecord] = [:]
+    /// pageLauncher starts a file page's channel helper; injectable so a hosted test needs no ssh.
+    var pageLauncher: RemotePageLauncher = RemotePageProcess()
+    var pendingReplicaStates: Set<UUID> = []
+    var replicaFlushScheduled = false
 
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }
@@ -150,6 +161,8 @@ final class ControlServer {
     /// Which agterm this is, injected rather than read from `Bundle.main` here: the identity is the app's to
     /// know, and a hosted test would otherwise see its own host bundle.
     let identity: AppIdentity
+    /// The bundle whose on-disk metadata `version` reports as `installed`.
+    let bundleURL: URL
     /// Talks to the daemons behind the zmx commands. Present in every real launch, live mode or not —
     /// `list` and `prune` must still work after a launch in `none` or `rerun`, which is exactly when
     /// detached daemons are left over. Nil only in hosted tests, where the commands answer that the
@@ -180,6 +193,7 @@ final class ControlServer {
     var liveResetOutcome: () -> LiveReset.Outcome? = { GhosttyApp.shared.liveResetOutcome }
 
     init(library: WindowLibrary, actions: AppActions, settingsModel: SettingsModel, identity: AppIdentity,
+         bundleURL: URL = Bundle.main.bundleURL,
          launchRestoreMode: RestoreMode = GhosttyApp.shared.launchRestoreMode,
          zmxForegroundResolver: ZmxForegroundResolver? = nil, zmxClient: ZmxClient? = nil,
          zmxOutdatedBefore: Date? = nil,
@@ -200,6 +214,7 @@ final class ControlServer {
         self.zmxOutdatedBefore = zmxOutdatedBefore
         self.liveAttributionProbe = liveAttributionProbe
         self.identity = identity
+        self.bundleURL = bundleURL
         self.resolver = ControlTargetResolver(library: library)
         self.socketPath = socketPath ?? ControlServer.defaultSocketPath()
         AskRegistry.shared.resolveOwner = { [weak library] owner in
@@ -312,7 +327,9 @@ final class ControlServer {
 
         chmod(socketPath, 0o600)
 
-        guard listen(fd, 8) == 0 else {
+        // the accept loop is serial, so a main-thread stall queues every client here; a short backlog
+        // would refuse them, status hooks included.
+        guard listen(fd, SOMAXCONN) == 0 else {
             log("control listen() failed: \(String(cString: strerror(errno)))")
             close(fd)
             unlink(socketPath)
@@ -339,9 +356,9 @@ final class ControlServer {
     /// until `stop()`, and set `refused` when another live instance holds it.
     ///
     /// `connect` cannot answer the ownership question on Darwin. A live listener whose backlog is full
-    /// refuses with the same `ECONNREFUSED` a socket nobody listens on returns (measured: the app's
-    /// backlog is 8 and one stalled client parks the serial accept loop for up to `readDeadlineSeconds`,
-    /// so saturation is reachable), and a blocking `connect` against it returns immediately rather than
+    /// refuses with the same `ECONNREFUSED` a socket nobody listens on returns (one stalled client parks
+    /// the serial accept loop for up to `readDeadlineSeconds`, so enough clients saturate even a
+    /// `SOMAXCONN` backlog), and a blocking `connect` against it returns immediately rather than
     /// stalling. `flock` carries no such ambiguity, is atomic against a second instance launching in the
     /// same moment, and the kernel releases it when a force-quit kills the holder — which is the case the
     /// `unlink` in `start()` exists for.
@@ -473,6 +490,20 @@ final class ControlServer {
             runBlocking { await server.adoptOverlayJobStream(descriptor: conn, job: job) }
             return
         }
+        // a claimed page's helper keeps its connection the same way, and a claim whose reply never reached
+        // the helper leaves nobody to load the page
+        if request.cmd == .sessionOverlayPageServe {
+            let response = runBlocking { await server.dispatch(request) }
+            let written = server.responseWriter(conn, response)
+            guard response.ok, let page = response.result?.id.flatMap(UUID.init(uuidString:)) else { return }
+            guard written else {
+                runBlocking { await server.pageClaimUnanswered(page) }
+                return
+            }
+            handedOff = true
+            runBlocking { await server.adoptPageServeStream(descriptor: conn, page: page) }
+            return
+        }
 
         // `zmx tree <this machine>` would otherwise deadlock against itself: the far side's own agtermctl
         // waits in this server's backlog while this connection holds the only accept thread.
@@ -505,10 +536,13 @@ final class ControlServer {
         }
     }
 
-    /// Commands whose dispatch awaits an ssh round trip. `zmx.attach` re-resolves the remote first, so it
-    /// carries the same wait; local `zmx.list` blocks too, but bounded, and stays inline to keep cache order.
-    nonisolated private static func waitsOnNetwork(_ cmd: Command) -> Bool {
-        cmd == .zmxTree || cmd == .zmxAttach || cmd == .zmxNew
+    /// Commands whose dispatch awaits an ssh round trip, walks the disk, or waits on the mirror queue.
+    /// `zmx.attach` re-resolves the remote first, so it carries the same wait; local `zmx.list` blocks too,
+    /// but bounded, and stays inline to keep cache order.
+    /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
+    nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
+        cmd == .zmxTree || cmd == .zmxAttach || cmd == .zmxNew || cmd == .sessionRestart
+            || cmd == .rebasedMirrorList || cmd == .rebasedMirrorPrune
     }
 
     /// Read bytes from `conn` up to (and excluding) the first newline. Returns nil on EOF-before-newline, a
@@ -587,15 +621,15 @@ final class ControlServer {
                 .sessionReveal, .sessionMove,
                 .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
                 .workspaceFocus,
-                .workspaceFilter, .workspaceCollapse, .workspaceExpand,
-                .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionScratch, .sessionFocus,
+                .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
+                .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionRestart, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom,
                 .surfaceCursor,
                 .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
-                .sessionMark,
+                .sessionMark, .sessionRebasedShow, .sessionRebasedToggle,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
-                .browserClear,
+                .browserClear, .browserLinks,
                 .configReload, .themeSet, .themeList,
                 .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarParked, .sidebarExpand, .sidebarCollapse,
                 .sidebarWidth, .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
@@ -603,12 +637,14 @@ final class ControlServer {
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
                 .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
+                .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle,
                 .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect, .windowGo,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .dashboard, .version:
+                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .sessionOverlayPageServe, .dashboard, .version,
+                .rebasedMirrorList, .rebasedMirrorPrune, .recentList, .recentOpen, .recentClear:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
@@ -889,7 +925,9 @@ final class ControlServer {
             liveReset: liveResetReadback(), indexUnsaved: library.indexUnsaved,
             // the mirror the sidebars render from, so the read-back names what is on screen.
             flaggedLayout: GhosttyApp.shared.flaggedViewLayout,
-            htmlZoom: HtmlOverlayRegistry.shared.zoom
+            htmlZoom: HtmlOverlayRegistry.shared.zoom,
+            linkOpenMode: settingsModel.settings.effectiveLinkOpenMode,
+            rebased: RebasedStatusProvider.readback
         )
     }
 

@@ -180,6 +180,30 @@ struct SocketClientTests {
         #expect(SocketClient.formatResponse(response).hasPrefix("hooks: /tmp/hooks.conf"))
     }
 
+    @Test func formatsRecentRowsWithFullIdsAndAnEmptyList() {
+        let session = ControlRecentItem(id: "R1", kind: "session", title: "api", subtitle: "project", closedAt: 1,
+                                        workspaceID: "W1", sessionIDs: ["S1"])
+        let workspace = ControlRecentItem(id: "R2", kind: "workspace", title: "project", subtitle: nil, closedAt: 2,
+                                          workspaceID: "W1", sessionIDs: ["S1", "S2"])
+
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recent: [session, workspace])))
+            == "R1  session  api (project)\nR2  workspace  project")
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recent: [])))
+            == "no recently closed items")
+    }
+
+    @Test func formatsRecentOpenAndSaysWhenTheEntryStays() {
+        let item = ControlRecentItem(id: "R1", kind: "session", title: "api", subtitle: nil, closedAt: 1,
+                                     workspaceID: "W1", sessionIDs: ["S1"])
+        let complete = ControlRecentOpen(item: item, window: "WIN", complete: true)
+        let partial = ControlRecentOpen(item: item, window: "WIN", complete: false)
+
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recentOpen: complete)))
+            == "reopened session api")
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(recentOpen: partial)))
+            == "reopened session api (incomplete: the entry stays in the list)")
+    }
+
     @Test func formatsKeymapWithEveryActionAndTheLiveMenu() {
         let keymap = Keymap(builtinOverrides: [.closeSession: Chord(mods: [.command], key: "e")], commands: [])
         let payload = ControlKeymap.project(
@@ -325,6 +349,7 @@ struct SocketClientTests {
             toggle_horizontal_split     cmd+shift+d
             toggle_scratch              cmd+j
             toggle_terminal_zoom        cmd+shift+return
+            toggle_overlay              cmd+shift+j
             toggle_search               cmd+f
           * toggle_sidebar              t
             select_theme                -
@@ -353,6 +378,8 @@ struct SocketClientTests {
             normal_mode                 -
             overlay_redirect_toggle     -
             new_session_in_workspace    -
+            rebased_toggle              -
+            attach_remote               cmd+shift+r
 
         commands:
             Deploy  cmd+shift+y
@@ -1040,6 +1067,27 @@ struct SocketClientTests {
         #expect(lines[1] == "  * shell (split hidden)  [s1]  /tmp")
     }
 
+    @Test(arguments: [([String]?.none, " (overlay)"), (["session"], " (overlay hidden)"), (["left"], " (overlay)")])
+    func formatTreeTagsAHiddenSessionOverlay(hidden: [String]?, tag: String) {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, overlay: true, hiddenOverlays: hidden)
+        let workspace = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])
+        let tree = ControlTree(workspaces: [workspace])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "  * shell\(tag)  [s1]  /tmp")
+    }
+
+    @Test func formatTreeTagsAParkedIDEWithAnEmptySlotAsAHiddenOverlay() {
+        let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, overlay: false, hiddenOverlays: ["session"])
+        let workspace = ControlWorkspaceNode(id: "w1", name: "work", active: true, sessions: [session])
+        let tree = ControlTree(workspaces: [workspace])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: tree)))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "  * shell (overlay hidden)  [s1]  /tmp")
+    }
+
     @Test func formatTreeTagsAnUnrealizedSession() {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
                                          realized: false)
@@ -1158,6 +1206,21 @@ struct SocketClientTests {
         }
     }
 
+    @Test func formatsInstalledIdentityOnlyWhenItDiffersFromTheRunningOne() {
+        let app = AppIdentity(version: "0.34.0", commit: "a1b2c3d")
+        func format(installed: AppIdentity?) -> String {
+            SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(app: app, installed: installed)))
+        }
+
+        #expect(format(installed: nil) == "0.34.0 (a1b2c3d)")
+        #expect(format(installed: app) == "0.34.0 (a1b2c3d)")
+        #expect(format(installed: AppIdentity(version: "0.35.1", commit: "def5678"))
+            == "0.34.0 (a1b2c3d)\ninstalled: 0.35.1 (def5678)")
+        #expect(format(installed: AppIdentity(version: "0.34.0", commit: "def5678"))
+            == "0.34.0 (a1b2c3d)\ninstalled: 0.34.0 (def5678)")
+        #expect(format(installed: AppIdentity(version: "0.35.1")) == "0.34.0 (a1b2c3d)\ninstalled: 0.35.1")
+    }
+
     @Test func versionJSONCarriesTheRawResponseWithoutTheClientPath() throws {
         let line = "{\"ok\": true, \"result\": {\"app\": {\"version\": \"0.24.0\", \"commit\": \"a1b2c3d\\u0020\"}}} "
         let server = StubServer(line: Data(line.utf8))
@@ -1201,6 +1264,7 @@ struct SocketClientTests {
         #expect(error.description.contains("agterm may be stopped or unable to accept connections"))
         // the absent lock file sets errno to ENOENT inside the probe, after the connect error is read
         #expect(error.description.contains("Connection refused"))
+        #expect(error.connectErrno == ECONNREFUSED)
     }
 
     #if canImport(Darwin)
@@ -1224,6 +1288,7 @@ struct SocketClientTests {
         let error = try #require(throws: SocketClientError.self) { _ = try SocketClient(path: path).connect() }
         #expect(error.description.contains("agterm may be stopped or unable to accept connections"))
         #expect(error.description.contains("No such file or directory"))
+        #expect(error.connectErrno == ENOENT)
     }
 
     @Test func probingTheOwnershipLockLeavesItAcquirable() throws {
@@ -1317,7 +1382,7 @@ private final class EventReadScript: @unchecked Sendable {
 
 /// An in-process unix-socket server for the round-trip tests: binds a short temp path, accepts one
 /// connection, reads the request line, records it, and writes back a canned `ControlResponse`.
-private final class StubServer: @unchecked Sendable {
+final class StubServer: @unchecked Sendable {
     let path: String
     private let canned: Data
     private var listenFD: Int32 = -1

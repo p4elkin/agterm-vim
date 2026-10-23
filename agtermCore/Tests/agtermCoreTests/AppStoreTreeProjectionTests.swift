@@ -6,6 +6,96 @@ import Testing
 // reports. Split out of `AppStoreTests.swift` for the file size limit.
 @MainActor
 struct AppStoreTreeProjectionTests {
+    @Test(arguments: ["session", "left", "right"])
+    func testRebasedNodeProjectsPaneHiddenViewAndOnClose(slot: String) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        store.toggleSplit(session.id)
+        let pane = OverlayPane(rawValue: slot)
+        var view = RebasedViewRequest(view: .file(path: "/repo/a.kt", line: 3))
+        view.sent()
+        _ = view.apply(event: .opened("/repo/a.kt"), request: view.id)
+        let overlay = RebasedOverlay(project: "/repo", view: view, onClose: RebasedOnClose(command: "/bin/flush", cwd: "/repo", environment: [:]))
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        let shown = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(shown.rebasedOverlay?.pane == pane?.rawValue)
+        #expect(shown.rebasedOverlay?.hidden == false)
+        #expect(shown.paneOverlays == pane.map { [$0.rawValue] })
+        #expect(shown.rebasedOverlay?.view == ControlRebasedViewNode(request: view.id, kind: "file", target: "/repo/a.kt", state: "opened", detail: "/repo/a.kt"))
+        #expect(shown.rebasedOverlay?.onClose == true)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        let hidden = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(hidden.rebasedOverlay?.hidden == true)
+        #expect(hidden.rebasedOverlay?.pane == pane?.rawValue)
+        #expect(hidden.rebasedOverlay?.view == shown.rebasedOverlay?.view)
+        #expect(hidden.rebasedOverlay?.onClose == true)
+        #expect(hidden.overlay == false)
+        #expect(hidden.hiddenOverlays == [slot])
+    }
+
+    @Test func unsetRebasedReadbackFieldsAreOmitted() throws {
+        let overlay = RebasedOverlay(project: "/repo")
+        let node = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(overlay.controlNode)) as? [String: Any])
+        #expect(node["hidden"] as? Bool == false)
+        for field in ["pane", "view", "onClose", "error", "diff", "source"] { #expect(node[field] == nil) }
+        let unknownPort = ControlRebasedNode(jvm: "running")
+        let status = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(unknownPort)) as? [String: Any])
+        #expect(status["port"] == nil)
+        let knownPort = ControlRebasedNode(jvm: "running", port: 63342)
+        #expect(try JSONDecoder().decode(ControlRebasedNode.self, from: JSONEncoder().encode(knownPort)).port == 63342)
+        #expect(makeStore().controlTree(paneForeground: { _ in nil }, rebased: knownPort).rebased?.port == 63342)
+    }
+
+    @Test(arguments: [RebasedOverlay.State.fetching, .starting, .shown, .failed("missing Rebased app")])
+    func rebasedOverlayProjectsItsStateAndError(_ state: RebasedOverlay.State) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/repo", state: state), sizePercent: 60) == nil)
+        let tree = store.controlTree()
+        let node = try #require(tree.workspaces.first?.sessions.first)
+        let rebasedOverlay = try #require(node.rebasedOverlay)
+        #expect(rebasedOverlay.project == "/repo")
+        #expect(node.overlaySizePercent == 60)
+        switch state {
+        case .fetching: #expect(rebasedOverlay.state == "fetching" && rebasedOverlay.error == nil)
+        case .starting: #expect(rebasedOverlay.state == "starting" && rebasedOverlay.error == nil)
+        case .shown: #expect(rebasedOverlay.state == "shown" && rebasedOverlay.error == nil)
+        case .failed(let error): #expect(rebasedOverlay.state == "failed" && rebasedOverlay.error == error)
+        }
+        #expect(tree.rebased == nil)
+        #expect(try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree)) == tree)
+    }
+
+    @Test func rebasedFieldsAreAbsentWhenNotSuppliedAndOlderPeersDecode() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        _ = store.addSession(toWorkspace: workspace.id, cwd: "/repo")
+        let tree = store.controlTree()
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(tree)) as? [String: Any])
+        #expect(object["rebased"] == nil)
+        let node = try #require(tree.workspaces.first?.sessions.first)
+        let sessionObject = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(node)) as? [String: Any])
+        #expect(sessionObject["rebasedOverlay"] == nil)
+        let old = Data(#"{"id":"x","name":"n","cwd":"/","active":false,"split":false,"overlay":false,"scratch":false,"flagged":false}"#.utf8)
+        #expect(try JSONDecoder().decode(ControlSessionNode.self, from: old).rebasedOverlay == nil)
+        #expect(try JSONDecoder().decode(ControlTree.self, from: Data(#"{"workspaces":[]}"#.utf8)).rebased == nil)
+    }
+
+    @Test func rebasedJVMStatusProjectsAtTheTreeTopLevel() throws {
+        let store = makeStore()
+        let status = ControlRebasedNode(jvm: "failed", error: "missing Rebased app", projects: ["/repo", "/other"])
+        let tree = store.controlTree(paneForeground: { _ in nil }, rebased: status)
+        #expect(tree.rebased == status)
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(tree)) as? [String: Any])
+        let rebased = try #require(object["rebased"] as? [String: Any])
+        #expect(rebased["jvm"] as? String == "failed")
+        #expect(rebased["error"] as? String == "missing Rebased app")
+        #expect(rebased["projects"] as? [String] == ["/repo", "/other"])
+        #expect(try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree)) == tree)
+    }
+
     @Test(arguments: [RemoteRowState.attached, .disconnected, .endedOnHost])
     func remoteRowStateIsReadBackAndRoundTrips(state: RemoteRowState) throws {
         let store = makeStore()
@@ -109,6 +199,44 @@ struct AppStoreTreeProjectionTests {
         #expect(!node.split)
         let decoded = try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree))
         #expect(decoded.workspaces.first?.sessions.first == node)
+    }
+
+    @Test(arguments: [true, false])
+    func hiddenUnrealizedSplitTakesThePrimarysBacking(_ backed: Bool) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface(backedByZmx: backed)
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitPaneIdentity = UUID()
+        let node = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(node.backedByZmx == backed)
+        #expect(node.surfaces?.first { $0.kind == "right" }?.backedByZmx == backed)
+    }
+
+    @Test func hiddenUnrealizedPrimaryTakesTheFocusedSplitsBacking() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitFocused = true
+        session.splitPaneIdentity = UUID()
+        session.splitSurface = SpySurface(backedByZmx: true)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.backedByZmx == true)
+    }
+
+    @Test func realizedUnbackedSplitStillClearsTheSessionBacking() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "live")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface(backedByZmx: true)
+        session.hasSplit = true
+        session.isSplit = false
+        session.splitPaneIdentity = UUID()
+        session.splitSurface = SpySurface(backedByZmx: false)
+        #expect(store.controlTree().workspaces.first?.sessions.first?.backedByZmx == false)
     }
 
     @Test func paneBackgroundsProjectOverridesOnlyNeverTheInheritedDefault() throws {
@@ -702,7 +830,8 @@ struct AppStoreTreeProjectionTests {
         #expect(store.controlTree().workspaces[0].sessions[0].htmlOverlays == nil)
 
         let wide = HtmlOverlay(source: .file(path: "/tmp/a/wide.html", grantRoot: "/tmp/a"), navigation: true, javascript: true)
-        let right = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/"))), persistent: true)
+        let right = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/"))), persistent: true,
+                                browse: true)
         let left = HtmlOverlay(source: .file(path: "/tmp/a/bare.html", grantRoot: nil), chromeless: true)
         #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: wide, sizePercent: 70) == nil)
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: right, sizePercent: nil) == nil)
@@ -721,7 +850,7 @@ struct AppStoreTreeProjectionTests {
             ControlHtmlOverlayNode(pane: "left", file: "/tmp/a/bare.html", state: "loading", error: nil, chromeless: true,
                                    id: left.id.uuidString),
             ControlHtmlOverlayNode(pane: "right", url: "http://localhost:5173/", state: "failed", error: "not found",
-                                   javascript: false, id: right.id.uuidString, persistent: true),
+                                   javascript: false, id: right.id.uuidString, persistent: true, browse: true),
         ])
         let decoded = try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(store.controlTree()))
         #expect(decoded.workspaces[0].sessions[0] == node)
@@ -731,6 +860,55 @@ struct AppStoreTreeProjectionTests {
         #expect(json.contains(#""chromeless":true"#))
         #expect(json.contains(#""persistent":false"#))
         #expect(json.contains(#""persistent":true"#))
+        #expect(json.contains(#""browse":false"#))
+        #expect(json.contains(#""browse":true"#))
+    }
+
+    @Test func aPageNodeFromAnOlderServerDecodesAsNotBrowsing() throws {
+        let node = try JSONDecoder().decode(ControlHtmlOverlayNode.self, from: Data(
+            #"{"url":"http://localhost:5173/","state":"loaded","javascript":false}"#.utf8))
+        #expect(!node.browse)
+        #expect(node.hidden == nil)
+    }
+
+    @Test func hiddenOverlaysReportHiddenSlotsWhileOccupancyStays() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        session.surface = SpySurface(paneToken: "left")
+        session.splitSurface = SpySurface(paneToken: "right")
+        let page = HtmlOverlay(source: .file(path: "/tmp/a/p.html", grantRoot: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        #expect(store.openPaneOverlay(session.id, pane: .right, command: "htop") == nil)
+        #expect(store.controlTree().workspaces[0].sessions[0].hiddenOverlays == nil)
+
+        #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: true) == nil)
+
+        let node = store.controlTree().workspaces[0].sessions[0]
+        #expect(node.hiddenOverlays == ["session", "right"])
+        #expect(node.overlay)
+        #expect(node.paneOverlays == ["right"])
+        #expect(node.htmlOverlays?.first?.hidden == true)
+        let decoded = try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(store.controlTree()))
+        #expect(decoded.workspaces[0].sessions[0] == node)
+    }
+
+    @Test func aSessionNodeFromAnOlderServerDecodesWithNoHiddenOverlays() throws {
+        let node = try JSONDecoder().decode(ControlSessionNode.self, from: Data(
+            #"{"id":"x","name":"n","cwd":"/","active":true,"split":false,"overlay":true,"scratch":false,"flagged":false}"#.utf8))
+        #expect(node.hiddenOverlays == nil)
+        #expect(node.overlay)
+    }
+
+    @Test func controlTreeReportsThePassedLinkOpenMode() throws {
+        let store = makeStore()
+        #expect(store.controlTree().linkOpenMode == nil)
+        for mode in LinkOpenMode.allCases {
+            let tree = store.controlTree(paneForeground: { _ in nil }, linkOpenMode: mode)
+            #expect(tree.linkOpenMode == mode.rawValue)
+            #expect(try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(tree)).linkOpenMode == mode.rawValue)
+        }
     }
 
     @Test func htmlOverlaysReportTheAppZoom() throws {

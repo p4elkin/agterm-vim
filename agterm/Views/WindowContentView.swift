@@ -82,6 +82,8 @@ struct WindowContentView: View {
     @State var notificationBadgeEnabled: Bool = WindowContentView.resolvedNotificationBadgeEnabled()
     /// The title-bar / sidebar-footer chrome the user hid in Settings ▸ Interface, read by `shows(_:)`.
     @State var hiddenInterfaceElements: Set<InterfaceElement> = WindowContentView.resolvedHiddenInterfaceElements()
+    /// The Settings new-session host, mirrored because `AppActions` is not observable; see `bottomBar`.
+    @State var newSessionHost: String?
     /// Whether the recent-sessions popover (the mouse form of the Ctrl-Tab switcher) is shown, anchored on
     /// the title-bar clock button. Non-private so `+RecentSessions`'s button/rows can toggle it.
     @State var recentSessionsShown = false
@@ -597,6 +599,11 @@ struct WindowContentView: View {
     /// `frontmostWindowID`, and is observed, so this reacts.
     private var isFrontmost: Bool { library.activeWindowID == windowID }
 
+    /// agterm UI drawn inside this window that a Rebased frame, a child window, would sit on top of.
+    var rebasedCovered: Bool {
+        (isFrontmost && palette.mode != nil) || pick.pending != nil || dashboard.isOpen || terminalZoom.target != nil
+    }
+
     /// Where the terminal area starts ON SCREEN: the sidebar column plus its 1pt divider, or 0 whenever no
     /// sidebar is showing. The palette and switcher center their panel over THAT area rather than the whole
     /// window, which otherwise reads as off-center whenever the sidebar is up. The palette's scrim stays
@@ -656,14 +663,17 @@ struct WindowContentView: View {
                 actions: actions,
                 terminalAreaInset: terminalAreaInset,
                 items: pending.items.enumerated().map { index, item in
-                    PaletteItem(id: item.id, title: item.label, subtitle: item.subtitle) {
+                    let indicator = item.indicator
+                    return PaletteItem(id: item.id, title: item.label, subtitle: item.subtitle,
+                                       indicator: { indicator },
+                                       run: {
                         pick.resolve(ControlPickResult(
                             result: .picked,
                             id: item.id,
                             label: item.label,
                             index: index
                         ))
-                    }
+                    })
                 },
                 prompt: pending.prompt,
                 initialQuery: pending.query,
@@ -687,12 +697,8 @@ struct WindowContentView: View {
                     if let frame = askAnchorFrame(ask.anchor, anchors: anchors, proxy: proxy), valid {
                         AskDialogView(ask: ask, anchorFrame: frame, font: askFont,
                                       foreground: chromeText, background: terminalColor, focusAllowed: isFrontmost,
-                                      onAnswer: { index in
-                                          guard pick.pendingAsk?.id == ask.id else { return }
-                                          let button = ask.buttons[index]
-                                          pick.resolveAsk(ControlAskResult(result: .answered, id: button.id,
-                                                                           label: button.label, index: index))
-                                      },
+                                      draft: pick.askDraft, updateDraft: { pick.updateAskDraft(id: ask.id, $0) },
+                                      onAnswer: { pick.answerAsk(id: ask.id, buttonAt: $0) },
                                       onDismiss: {
                                           guard pick.pendingAsk?.id == ask.id else { return }
                                           actions.escapePendingAsk(for: windowID)
@@ -776,7 +782,15 @@ struct WindowContentView: View {
 
             if shows(.newSession) {
                 Menu {
-                    Button("New Session") { actions.newSession() }
+                    Button("New Session") {
+                        if let workspace = store.currentWorkspaceID { actions.newSessionFromButton(workspaceID: workspace, in: store) }
+                    }
+                    .disabled(RemoteCreatePending.shared.contains(windowID))
+                    if newSessionHost != nil {
+                        Button("New Local Session") {
+                            if let workspace = store.currentWorkspaceID { actions.newLocalSession(workspaceID: workspace, in: store) }
+                        }
+                    }
                     Button("Open Directory…") { actions.openDirectory() }
                 } label: {
                     Image(systemName: "plus.rectangle")
@@ -788,7 +802,7 @@ struct WindowContentView: View {
                 .tint(chromeText)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help(helpHint("New Session", .newSession))
+                .help(newSessionHost.map { "New Session on \($0)" } ?? helpHint("New Session", .newSession))
                 .accessibilityLabel("Add session")
                 .accessibilityIdentifier("add-session")
             }
@@ -845,6 +859,11 @@ struct WindowContentView: View {
         .foregroundStyle(chromeText)
         // no explicit background: the sidebar is transparent (the window's terminal color shows through),
         // so a `.bar` material here would paint a mismatched darker strip.
+        // here, not on the root body chain, which is at the type checker's limit (see `FullscreenEdgeObserver`)
+        .onAppear { newSessionHost = actions.settingsModel?.settings.effectiveNewSessionHost }
+        .onReceive(NotificationCenter.default.publisher(for: .agtermNewSessionHostChanged)) { _ in
+            newSessionHost = actions.settingsModel?.settings.effectiveNewSessionHost
+        }
     }
 
 }

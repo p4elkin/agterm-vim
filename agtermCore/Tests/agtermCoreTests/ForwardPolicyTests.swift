@@ -3,6 +3,29 @@ import Testing
 @testable import agtermCore
 
 struct ForwardPolicyTests {
+    @Test(arguments: [Command.sessionRebasedShow, .sessionRebasedToggle])
+    func rebasedCommandsAreForwarded(command: Command) {
+        #expect(ForwardPolicy.kind(of: command) == .forwarded)
+        #expect(ForwardPolicy.route(ControlRequest(cmd: command), holdsJob: true) == .forwarded)
+    }
+
+    @Test(arguments: [false, true])
+    func aForwardedRebasedOpenCannotRunAnOriginChosenCallback(holdsJob: Bool) {
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true, onClose: "/bin/flush"))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .refused("--on-close works on a local row only"))
+        let close = ControlRequest(cmd: .sessionOverlayClose, args: ControlArgs(overlay: UUID().uuidString))
+        #expect(ForwardPolicy.route(close, holdsJob: holdsJob) == .forwarded)
+    }
+
+    @Test(arguments: [false, true])
+    func rebasedIsForwardedBeforeTheProgramJobRoute(_ holdsJob: Bool) {
+        #expect(ForwardPolicy.kind(of: .sessionOverlayOpen) == .routed)
+        let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .forwarded)
+        let page = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(html: "/tmp/r.html", rebased: true))
+        #expect(ForwardPolicy.route(page, holdsJob: holdsJob) == .refused("an --html page is a file on the origin; use --url"))
+    }
+
     static let served: Set<String> = [
         "tree", "events.read", "version", "window.list", "zmx.new", "zmx.tree", "zmx.present", "zmx.list",
         "notify", "session.status", "session.context", "session.seen", "session.new", "session.mark",
@@ -12,10 +35,11 @@ struct ForwardPolicyTests {
     ]
     static let forwarded: Set<String> = [
         "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit", "session.overlay.copy",
-        "session.overlay.text", "pick.open", "pick.result", "pick.cancel",
+        "session.overlay.text", "session.rebased.show", "session.rebased.toggle", "pick.open", "pick.result", "pick.cancel",
         "session.flag", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
+        "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",
     ]
     static let routed: Set<String> = [
         "session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result",
@@ -53,6 +77,7 @@ struct ForwardPolicyTests {
         ("hooks.reload", "a Mac feature"), ("session.restore", "a Mac feature"), ("session.pairing", "a Mac feature"),
         ("zmx.prune", "a Mac feature"), ("zmx.reset", "a Mac feature"),
         ("browser.clear", "a Mac feature"), ("zmx.screen", "a Mac feature"), ("keymap.run", "no windows or UI"),
+        ("rebased.mirror.list", "a Mac feature"), ("rebased.mirror.prune", "a Mac feature"),
     ])
     func refusalsCarryTheirReason(_ name: String, _ reason: String) throws {
         let command = try #require(Command(rawValue: name))

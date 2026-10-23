@@ -41,6 +41,7 @@ extension WorkspaceSidebar.Coordinator {
         applyBadge(toCell: cell, count: 0)
         cell.setAddButtonVisible(false)
         cell.parked = false
+        cell.newSessionPending = false
         switch node.kind {
         case .workspace:
             let workspace = store.workspaces.first(where: { $0.id == node.id })
@@ -59,6 +60,7 @@ extension WorkspaceSidebar.Coordinator {
             let parkedCount = workspace.flatMap { store.parkedCount(in: $0) } ?? 0
             cell.parkedSuffix?.stringValue = parkedCount > 0 ? "⏸ \(parkedCount)" : ""
             cell.parkedSuffix?.font = .systemFont(ofSize: GhosttyApp.shared.sidebarFontSize)
+            cell.newSessionPending = newSessionPending
             // a workspace in the focus set draws the SAME grid glyph at BLACK weight, keyed on MEMBERSHIP
             // alone and NOT on `focusEnabled` — so the marked set stays legible with the filter off, while
             // looking at the whole tree.
@@ -263,7 +265,7 @@ extension WorkspaceSidebar.Coordinator {
     }
 
     /// The row's label: the session `displayName` in tree mode, or `session : workspace` (the session
-    /// name then its owning workspace name) in the flat flagged view, so a flagged row from a different
+    /// name then its owning workspace name) in the `flat` flagged layout, so a flagged row from a different
     /// workspace stays distinguishable. The cell path (`cellForRow`) only has the node id, so it resolves
     /// the session by id (and the workspace only in flagged mode, where the name is shown — tree mode
     /// skips that O(n) scan); the reconcile path passes the already-loaded session + name (see

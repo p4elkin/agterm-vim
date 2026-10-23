@@ -83,6 +83,18 @@ final class StockMenuChordTests: XCTestCase {
         assertNoChord(menu.stock, "the stock Close must not compete for ⌘W")
     }
 
+    // agterm's menu is never swapped for Rebased's (SwiftUI rewrites any installed main menu), so the
+    // reconcile runs as usual while an IDE window is key.
+    func testReconcileIsUnaffectedByARebasedKeyWindow() {
+        RebasedHost.shared.isIDEKeyWindowOverride = true
+        defer { RebasedHost.shared.isIDEKeyWindowOverride = nil }
+        let menu = makeFileMenu(oursKey: "", stockKey: "w")
+        AppDelegate.applyStockMenuChords(keymap(), in: menu.menu)
+
+        assertOwnsCommandW(menu.ours, "Close Session should get ⌘W back while Rebased is key")
+        assertNoChord(menu.stock, "the stock Close should have released ⌘W")
+    }
+
     func testRecoversFromSwiftUIUnbindingOurItem() {
         let menu = makeFileMenu(oursKey: "", stockKey: "w")
         AppDelegate.applyStockMenuChords(keymap(), in: menu.menu)

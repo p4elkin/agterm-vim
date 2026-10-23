@@ -16,6 +16,8 @@ paths:
   manifest path, and agreement among the three versions. A skill/manifest-only release preflight commit
   must run the four Swift jobs.
 - `test` runs `swift test --enable-code-coverage` in `agtermCore`, exports lcov, and uploads it.
+  It installs fish with Homebrew and sets `AGTERM_REQUIRE_FISH=1`, so a fish test fails rather than skips
+  when fish is missing.
   It runs under `scripts/watchdog.sh`: past 600s the watchdog tries, within a 120s budget, to save the test
   processes' tree, open files and stacks, kills the tree, and the `test-hang` artifact carries what it got.
   A hang otherwise reaches only the job timeout, which records nothing.
@@ -27,30 +29,35 @@ paths:
   app builds: Release exercises the whole-module optimizer and its SIL-deserializer failure. Debug provides
   `ENABLE_TESTABILITY` for `DockMenuTests`'s `@testable import agterm`. Do not enable testability in the
   notarized Release app.
+- `build` sets the runner account's login shell to zsh, installs fish, and passes
+  `TEST_RUNNER_AGTERM_REQUIRE_FISH=1` to `scripts/test-app.sh`. Its last step switches the login shell to
+  fish with `dscl` and runs only `SessionHostFishSeamTests/testPlainLoginShellStartsIntegratedFish`, with
+  `TEST_RUNNER_AGTERM_REQUIRE_FISH_LOGIN_SHELL=1`. Keep that order: switching before the hosted tests
+  silently skips the zsh plain-login seam (#574), and the fish seam fails its login-shell check before the
+  switch.
 - Three entitlement assertions run, all because a wrong entitlement set stays green. The first two read
   the built Release app. The first guards issue #396: `--deep` with `--entitlements` stamps the app's TCC
   entitlements onto bundled helpers. `scripts/release.sh` repeats it after its
   Developer ID re-sign, which runs after CI's copy and is not covered by it.
   The helper check covers `agtermctl`, zmx and `agterm-session-host` and also verifies their signatures. Use
   `codesign -d --entitlements -`; the `:-` spelling is deprecated and warns.
-- The second pins the app's own Release set to the seven TCC keys, so neither a Debug-only hardened-runtime
-  exception nor a dropped TCC key can ship. It ignores `com.apple.security.get-task-allow`, which the
+- The second pins Release to the seven TCC keys plus `allow-jit` and `disable-library-validation` for Rebased.
+  `allow-unsigned-executable-memory` stays Debug-only. It ignores `com.apple.security.get-task-allow`, which the
   ad-hoc "Sign to Run Locally" identity adds and the Developer ID re-sign drops. It compares `key=value`
   through `jq ... tojson`, not key names: a key set to `<false/>` is not granted and macOS treats it as
   absent, and codesign accepts `<string>true</string>`, which is not a Boolean and renders identically to
   one without `tojson`. Changing the set means editing that list in the same commit.
 - The third reads the two entitlements files rather than a build, and derives Debug's expected content
-  from the shipping file: Debug must be the shipping set plus exactly the three exceptions. Without it a
+  from the shipping file: Debug adds only `allow-unsigned-executable-memory`. Without it a
   TCC key added to the shipping file and missed in the Debug one leaves every job green, and Debug
   silently unable to prompt for that permission.
-- Debug and Release sign from different entitlements files. `agterm/agterm-debug.entitlements` adds
-  `disable-library-validation`, `allow-jit` and `allow-unsigned-executable-memory`: Debug is ad-hoc signed
-  and split into a stub plus `agterm.debug.dylib`, and `agtermTests` loads an ad-hoc `.xctest` into that
-  app, so library validation would reject both on a Team-ID mismatch. The Release bundle holds no dylib
-  and JIT-links nothing, so `agterm/agterm.entitlements` carries none of the three. The re-sign in
+- Debug and Release sign from different entitlements files. Both allow Rebased's differently signed
+  `libjvm` and its JIT through `disable-library-validation` and `allow-jit`.
+  Debug adds `allow-unsigned-executable-memory` for Xcode previews. Its ad-hoc dylib and hosted test bundle
+  also use the shipping library-validation exception. The re-sign in
   `project.yml` reads `$CODE_SIGN_ENTITLEMENTS` rather than a literal path, so it follows the
   configuration. Restoring a literal path there would re-sign Debug from the shipping file, stripping the
-  three exceptions and breaking the ad-hoc `.xctest` load in `make test-app`.
+  preview exception.
 - A separate `cookbook: ["cookbook/**"]` filter gates the Linux `cookbook` job. Recipe-only changes run
   no macOS jobs. Keep `.github/workflows/ci.yml` in both filters: the inline cookbook checks must run when
   changed; its Swift membership also runs macOS jobs.

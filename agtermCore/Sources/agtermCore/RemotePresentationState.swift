@@ -54,6 +54,14 @@ public struct RemoteBinding: Equatable, Sendable {
 
     public func daemon(forLocalPane identity: UUID) -> String? { daemonsByLocalPane[identity] }
 
+    /// A fresh attach line for local pane `identity`, nil without an origin, a daemon for it, or an address.
+    public func attachPaneCommand(forLocalPane identity: UUID, pane: ZmxPaneRole, lead: ZmxLeadAttachment) -> String? {
+        guard let origin, let daemon = daemon(forLocalPane: identity) else { return nil }
+        return try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
+                                                    session: origin.sessionName, pane: pane, lead: lead,
+                                                    transport: origin.transport)
+    }
+
     func remotePane(forLocal identity: UUID) -> UUID? {
         localByRemotePane.first { $0.value == identity }?.key
     }

@@ -20,18 +20,84 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Changed
+
+- Hide Overlays (⇧⌘J, View ▸ Hide Overlays, `session overlay hide|show|toggle`) hides and shows a Rebased or
+  IntelliJ overlay too, and takes its window off the screen. The Rebased toggle and the overlay hide now
+  share one hidden state, so `tree` reports a hidden IDE in `hiddenOverlays`.
+- A hidden session-wide Rebased or IntelliJ overlay no longer blocks other overlays: a picker, page or HUD
+  opens while it is hidden. Showing it again answers `overlay already open` until that overlay closes, and
+  the chord beeps. `tree` reads `overlay: false` for it, with `session` still in `hiddenOverlays`.
+
+### Added
+
+- `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
+  sessions to another window, or to a new one, keeping both panes of each row running through zmx.
+
+- Rebased can cover one split pane for a live review, leaving the other terminal usable.
+  Open commit or tracked working-tree diffs, files at a line, or an exact project folder.
+  `session rebased show` updates the view; close-by-overlay-id protects another review from a stale close.
+  `--on-close COMMAND` runs once when the holder is released, including after a failed start or confirmed quit.
+
+### Changed
+
+- Toggle Rebased and `session rebased toggle` now hide and show the same IDE, keeping the view and callback.
+  On an IDE that failed to start, they close it, so the next press retries.
+  Close the overlay explicitly to end the review. Command-W confirms before ending a held Rebased review.
+- A `--diff` in the session-wide Rebased overlay opens as an editor tab with side-by-side diffs, as in a pane,
+  instead of the changes dialog.
+- Upstream's `Open links in` setting decides who opens a web link clicked in a pane. `Browser`, the default,
+  keeps `agterm-open-link` and its Jira and merge request views; `Session overlay` shows every web link as a
+  page over the session instead. File paths, forge refs and xchat links work the same under both.
+
 ### Fixed
 
+- On a split row, an open question (`completed` without `--auto-reset`) is no longer replaced by the other
+  pane's `active`, `completed` or `idle`; only its `blocked` or the owning pane changes it. The refusal now reads
+  `status owned by pane <pane>`, without the word `blocked`.
 - `zmx new HOST` with an empty `--command`, `--name` or `--cwd` leaves that option out on the far side instead of
   failing there with `Missing value for '--command <command>'`.
 - A Mac that wakes in the background no longer takes a headless row's presenter role from the Mac in use, and the
   origin drops a presenter that leaves a forwarded request unanswered, so opens and other forwarded commands stop
   failing with `the presenting Mac left` after the other laptop sleeps again.
+- Text typed into a headless origin's pane (`agtermctl session type`) clears a blocked or completed status by the
+  Status reset mode in `settings.json` in the server's state directory, read on every call. It always used
+  `first key` before, so an arrow key sent to a question picker cleared the pending question even with Return set
+  on the Mac. Only `statusReset` is read; without the file the mode stays `first key`.
 
 ### Added
 
+- IntelliJ IDEA can run in the Rebased overlay. Set Settings > General > IDE app to its bundle and restart
+  agterm. Each product has separate state. On the first IDEA start, agterm copies selected standalone settings,
+  licence and IDE Services state, plus IdeaVim and claude-remarks. Its isolated `config/idea.vmoptions` can be
+  edited for later starts; deleting the product root repeats the seed.
+- Rebased removes the mirrors of remote repositories that nobody has used for 14 days, with the IDE's data for
+  them, when the IDE starts. A mirror counts as used whenever its overlay is shown, not only when it is opened,
+  and one in use is never removed. `rebasedMirrorMaxAgeDays` in `settings.json` sets the days, 0 for never; a
+  hand edit applies at the next launch. `agtermctl rebased mirror list` shows each mirror's age and size, and
+  `agtermctl rebased mirror prune [--older-than DAYS] [--dry-run]` removes them on demand. Mirror fetches now
+  run one at a time, so a second remote row's open, or a prune, waits behind a running fetch, minutes at worst.
+- Rebased opens on a remote row too, from a p4linux shell or the Mac: the Mac fetches the host's commits,
+  branches and `origin/*` branches over ssh into a local mirror, then shows it, so `--diff main...HEAD` or
+  `--diff origin/main...origin/feature` works on a repository that
+  lives on the other machine. Uncommitted work there is not shown. `tree` reports `rebasedOverlay.state`
+  `fetching` meanwhile and `rebasedOverlay.source` as `host:path`.
+- `session overlay open --rebased --diff RANGE` opens the changes of a commit range in Rebased: `A..B`,
+  `A...B` from the merge base, or `A` for `A..HEAD`. With Rebased already open on that repository, the
+  range goes to it. `tree` reports the range as `rebasedOverlay.diff`.
+- Rebased, the IntelliJ-platform git client, opens in a session's overlay slot for that session's
+  repository: `agtermctl session overlay open --rebased`, the `rebased_toggle` keymap action, or Toggle
+  Rebased in the action palette. The IDE runs inside agterm and stays docked to the window; switching
+  sessions, the dashboard and the palette hide it. Needs Rebased in `/Applications` (Settings > General
+  names another path). `tree` reports `rebasedOverlay` per session and `rebased` for the IDE itself.
 - `tree` reports each held remote overlay's `job` and `command` in `remoteOverlays`, the command exactly as the
   open received it, so a launcher can find the overlay it started on a headless row.
+- the "+" new-session buttons can create the session on another machine. Set Settings ▸ Sessions ▸ "New
+  sessions are created on" to a host such as `p4linux`, and the sidebar workspace "+", its "New Session"
+  item and the footer "New Session" create there and attach the row in the clicked workspace. The buttons
+  dim while it runs, and a failure shows an alert instead of quietly opening a local session. The footer
+  menu gains "New Local Session", and ⌘N stays local. `agtermctl zmx new HOST --workspace <id>` places a
+  scripted session the same way.
 - `agtermctl session overlay open --html <file>` works from a session on the headless origin. The
   server serves the file's folder (or `--cwd`) over HTTP on its Tailscale name, under a random token, and
   the presenting Mac loads it as a `--url` page, CSS and images included; reload re-reads the file.

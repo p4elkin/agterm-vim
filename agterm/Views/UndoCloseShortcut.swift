@@ -20,7 +20,8 @@ final class UndoCloseShortcut {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        if RebasedHost.shared.isIDEKeyWindow { return false }
         guard actions.store?.pendingCloseSummary != nil else { return false }
         guard NSApp.keyWindow?.firstResponder is NSText == false else { return false }
         guard let chord = chord(from: event), matchesUndoCloseChord(chord) else { return false }
@@ -38,22 +39,11 @@ final class UndoCloseShortcut {
     }
 
     func chord(from event: NSEvent) -> Chord? {
-        var mods: Modifier = []
-        let flags = event.modifierFlags
-        if flags.contains(.control) { mods.insert(.control) }
-        if flags.contains(.command) { mods.insert(.command) }
-        if flags.contains(.option) { mods.insert(.option) }
-        if flags.contains(.shift) { mods.insert(.shift) }
-
-        // a layout that cannot type ASCII resolves to the Latin key at the same physical position, so ⌘Z still
-        // reopens a closed item on a Cyrillic layout (where that key types `я`). unlike
-        // `CustomCommandRunner.chord(from:)` the produced character here KEEPS shift (`shift+/` reports `?`),
-        // so a shifted-symbol chord does not match on a Latin layout — pre-existing, and why this monitor's
-        // `NSEvent` seam is the testable one (a synthesized event reports this accessor verbatim).
-        let key = namedKey(forKeyCode: event.keyCode)
-            ?? chordKey(forKeyCode: event.keyCode, produced: event.charactersIgnoringModifiers,
-                        layoutIsASCIICapable: KeyboardLayout.isASCIICapable)
-        guard let key, key.count == 1 || bindableNamedKeys.contains(key) else { return nil }
-        return Chord(mods: mods, key: key)
+        // unlike `CustomCommandRunner.chord(from:)` the produced character here KEEPS shift (`shift+/` reports
+        // `?`), so a shifted-symbol chord does not match on a Latin layout — pre-existing, and why this
+        // monitor's `NSEvent` seam is the testable one (a synthesized event reports this accessor verbatim).
+        guard let chord = event.keymapChord(produced: event.charactersIgnoringModifiers),
+              chord.key.count == 1 || bindableNamedKeys.contains(chord.key) else { return nil }
+        return chord
     }
 }

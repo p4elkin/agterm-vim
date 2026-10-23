@@ -3,6 +3,11 @@ import agtermCore
 import AgtermHeadlessKit
 
 struct HeadlessCatalogTests {
+    @Test(arguments: [Command.sessionRebasedShow, .sessionRebasedToggle])
+    func rebasedCommandsUseThePresentingMac(command: Command) {
+        #expect(HeadlessCatalog.support(for: command) == .forwarded)
+    }
+
     @Test(arguments: [
         "tree", "events.read", "version", "window.list", "zmx.new", "zmx.tree", "zmx.present", "zmx.list",
         "notify", "session.status", "session.context", "session.seen", "session.new", "session.mark",
@@ -22,11 +27,11 @@ struct HeadlessCatalogTests {
         "window.resize", "window.move", "window.zoom", "window.fullscreen", "window.minimize",
         "workspace.new", "workspace.rename", "workspace.delete", "workspace.select", "workspace.go",
         "workspace.move", "workspace.focus", "workspace.filter", "workspace.collapse", "workspace.expand",
-        "sidebar", "sidebar.mode", "sidebar.flagged-layout", "sidebar.expand", "sidebar.collapse",
+        "workspace.flag", "sidebar", "sidebar.mode", "sidebar.flagged-layout", "sidebar.expand", "sidebar.collapse",
         "sidebar.parked", "sidebar.width", "mode", "theme.set", "theme.list", "font.inc", "font.dec",
         "font.reset", "keymap.reload", "keymap.list", "keymap.run", "config.reload", "quick", "quick.type", "quick.text",
         "dashboard", "debug.appearance", "session.go", "session.move",
-        "session.duplicate", "session.park", "session.resize",
+        "session.duplicate", "session.park", "session.resize", "recent.list", "recent.open", "recent.clear",
     ])
     func windowAndUICommandsAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "no windows or UI")
@@ -42,6 +47,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
         "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.screen", "browser.clear",
+        "rebased.mirror.list", "rebased.mirror.prune",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")
@@ -53,6 +59,7 @@ struct HeadlessCatalogTests {
         "session.flag", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
+        "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",
     ])
     func macUICommandsAreForwarded(_ name: String) throws {
         #expect(HeadlessCatalog.support(for: try #require(Command(rawValue: name))) == .forwarded)

@@ -70,12 +70,20 @@ public struct PaneOverlay: Equatable, Sendable {
     public var replica: OverlayReplica?
     /// html is the page this overlay shows instead of running `command`, which is then empty and never read.
     public var html: HtmlOverlay?
+    public var rebased: RebasedOverlay?
+    /// hidden keeps the overlay running while it covers nothing; a new occupant starts shown.
+    public var hidden = false
 
     public init(command: String, cwd: String? = nil, backgroundColor: String? = nil, wait: Bool = false) {
         self.command = command
         self.cwd = cwd
         self.backgroundColor = backgroundColor
         self.wait = wait
+    }
+
+    public init(rebased: RebasedOverlay) {
+        self.init(command: "")
+        self.rebased = rebased
     }
 
     public init(html: HtmlOverlay, backgroundColor: String? = nil) {
@@ -209,16 +217,27 @@ public final class Session: Identifiable {
     /// hiding the split keeps the shell alive. Freed only on `closeSplit`/`closeSession`.
     @ObservationIgnored public var splitSurface: (any TerminalSurface)?
 
+    /// A pane hidden since launch has no surface yet, so its realized sibling answers for the shared launch disposition.
     public func zmxBacking(for surface: TerminalZoomSurface) -> Bool? {
         switch surface {
-        case .primary: self.surface?.backedByZmx ?? false
-        case .split: splitSurface?.backedByZmx ?? false
+        case .primary: (self.surface ?? splitSurface)?.backedByZmx ?? false
+        case .split: (splitSurface ?? self.surface)?.backedByZmx ?? false
         default: nil
         }
     }
 
     public var allPanesBackedByZmx: Bool {
-        (surface?.backedByZmx ?? false) && (!hasSplit || (splitSurface?.backedByZmx ?? false))
+        zmxBacking(for: .primary) == true && (!hasSplit || zmxBacking(for: .split) == true)
+    }
+
+    /// Whether every pane keeps its program across a move to another window. Reads each slot itself, unlike
+    /// `zmxBacking(for:)`, which answers an unrealized slot from its sibling: an unrealized slot has nothing to
+    /// lose, while a realized plain pane would die with its surface. A remote row's rebuilt surface re-runs its
+    /// attach to the far daemon.
+    public var canSurviveTransfer: Bool {
+        if remoteHost != nil { return true }
+        let slots = hasSplit ? [surface, splitSurface] : [surface]
+        return slots.allSatisfy { $0?.backedByZmx ?? true }
     }
 
     /// Where the split (right) pane re-spawns on restore (the split factory reads it), from the persisted
@@ -315,12 +334,13 @@ public final class Session: Identifiable {
     @ObservationIgnored public var pendingSplitForegroundCommand: [String]?
 
     /// overlayActive says the session-wide slot is occupied, by a covering program or page or by a passive HUD.
-    /// Where focus, coverage or input is decided, ask `coverOverlayActive`, `programOverlayActive` or
+    /// Where focus, coverage or input is decided, ask `coverOverlayVisible`, `programOverlayVisible` or
     /// `hudActive` instead. Ephemeral and control-channel only.
     public var overlayActive: Bool = false
+    /// overlayHidden keeps the session-wide program or page running while it covers nothing.
+    public var overlayHidden: Bool = false
 
-    /// The overlay's surface, created on open and torn down when its `overlayCommand` exits or the control
-    /// channel closes it — unlike the split, never kept alive while hidden.
+    /// The overlay's surface, created on open and kept, hidden or not, until the overlay closes.
     @ObservationIgnored public var overlaySurface: (any TerminalSurface)?
 
     /// The command the overlay runs as its process (e.g. `revdiff`), read by the overlay factory at creation.
@@ -345,20 +365,27 @@ public final class Session: Identifiable {
 
     /// htmlOverlay is the page the session-wide slot shows instead of a program; see `HtmlOverlay`.
     public var htmlOverlay: HtmlOverlay?
+    public var rebasedOverlay: RebasedOverlay?
+    /// parkedRebased is a hidden session-wide IDE moved out of the slot, so the slot takes other overlays.
+    public var parkedRebased: ParkedRebased?
 
     /// The percent of the pane an opaque framed panel occupies with the session still VISIBLE behind it; nil
     /// is the full-pane program overlay, which hides it and draws translucent. 1...100 for a floating PROGRAM
     /// overlay, which takes it on BOTH axes and is always centered; a HUD shares the field for its WIDTH
-    /// only, bounded by `HudLayout.clampSizePercent` and placed by its own `HudSpec.position`, and sizes its
-    /// height through `hudHeightPercent`. Cleared on close, never persisted.
+    /// only, bounded by `HudLayout.clampSizePercent(_:for:)` and placed by its own `HudSpec.position`, and
+    /// sizes its height through `hudHeightPoints`. Cleared on close, never persisted.
     public var overlaySizePercent: Int?
 
     /// The percent of the pane's HEIGHT a HUD panel occupies, measured from its message rather than set by
     /// the caller (`HudLayout.heightPercent`); nil for an empty slot and for a program overlay, which takes
     /// `overlaySizePercent` on both axes. A HUD is two or three lines of text, so sharing one percent across
-    /// both axes made every panel as tall as it was wide. Observed — the deck reads it to frame the panel.
-    /// Cleared with the rest of the HUD state, never persisted.
+    /// both axes made every panel as tall as it was wide. The read-back, and what the deck frames with
+    /// when no points were measured. Cleared with the rest of the HUD state, never persisted.
     public var hudHeightPercent: Int?
+
+    /// The height a HUD panel is laid out at, in points and already capped; nil over an unmeasured pane,
+    /// which falls back to `hudHeightPercent`. Cleared with the rest of the HUD state, never persisted.
+    public var hudHeightPoints: Double?
 
     /// hudFontSize is the point size the live HUD's surface was created at: the caller's `HudSpec.fontSize`
     /// or the session's size at open. Measuring reads it, so a session zoom after open cannot change the
@@ -383,6 +410,8 @@ public final class Session: Identifiable {
 
     /// The session's pending terminal ask, independent of the HUD/program overlay slot.
     public private(set) var askPending: PendingAsk?
+    /// The pending ask's unsubmitted text or selection, kept while its dialog is hidden.
+    public internal(set) var askDraft: AskDraft?
     /// Stable identity of the covered pane; nil covers the whole session.
     public private(set) var askPaneIdentity: UUID?
     /// The presenter generation the pending ask was handed to, nil while this Mac draws it. A remotely
@@ -404,11 +433,6 @@ public final class Session: Identifiable {
     /// Sends a replica's outcome to its origin. Run once when it resolves; a dismissal skips it.
     @ObservationIgnored var onReplicaResolved: (@MainActor (ControlAskResult) -> Void)?
 
-    /// The anchored pane's current role, nil for session-wide placement or a destroyed pane.
-    public var askTargetPane: OverlayPane? {
-        askPaneIdentity.flatMap(paneRole(forIdentity:))
-    }
-
     /// Reserves the session ask slot and its placement, refusing replacement of a pending ask.
     @discardableResult
     public func openAsk(_ ask: PendingAsk, paneIdentity: UUID? = nil, remoteOwner: Int? = nil) -> Bool {
@@ -416,6 +440,7 @@ public final class Session: Identifiable {
         askPaneIdentity = paneIdentity
         askRemoteOwner = remoteOwner
         askPending = ask
+        askDraft = AskDraft(form: ask.form)
         return true
     }
 
@@ -437,6 +462,7 @@ public final class Session: Identifiable {
     /// Empties the slot without an outcome, for an ask that moves to another owner rather than ending.
     public func releaseAsk() {
         askPending = nil
+        askDraft = nil
         askPaneIdentity = nil
         askReplica = false
         onReplicaResolved = nil
@@ -453,6 +479,7 @@ public final class Session: Identifiable {
         let ended = onRemoteAskEnded
         let replicaResolved = onReplicaResolved
         askPending = nil
+        askDraft = nil
         askPaneIdentity = nil
         askReplica = false
         onReplicaResolved = nil
@@ -461,15 +488,6 @@ public final class Session: Identifiable {
         replicaResolved?(result)
         return true
     }
-
-    /// Cancels the current ask only when its id matches.
-    @discardableResult
-    public func cancelAsk(id: String) -> Bool {
-        resolveAsk(id: id, ControlAskResult(result: .cancelled))
-    }
-
-    /// Cancels the session's pending ask, if any.
-    public func cancelPendingAsk() { if let ask = askPending { cancelAsk(id: ask.id) } }
 
     /// Last live bounds emitted by each deck pane host. Ignored by observation because the drawing path takes
     /// the current preference value directly; control commands use this cache only for message measurement.
@@ -509,6 +527,7 @@ public final class Session: Identifiable {
         hudPaneIdentity = nil
         hudFile = nil
         hudHeightPercent = nil
+        hudHeightPoints = nil
         hudFontSize = nil
         hudExpiresAt = nil
         hudResizedWidthPercent = nil
@@ -519,6 +538,8 @@ public final class Session: Identifiable {
 
     /// What this Mac keeps about a session attached from another one; nil for a local session.
     @ObservationIgnored public internal(set) var remotePresentation: RemotePresentationState?
+    /// remoteConnectionRevision changes with the connection, so an observer of `remoteConnection` is told.
+    var remoteConnectionRevision = 0
 
     /// Tells attached viewers the panel is gone. Set when the HUD is published, so a panel whose body was
     /// never written, and so never published, withdraws nothing.
@@ -527,9 +548,9 @@ public final class Session: Identifiable {
     /// When the app hides the published panel, nil for a persistent one.
     @ObservationIgnored var hudExpiresAt: Date?
 
-    /// The width an `overlay.resize` forced on the published panel, until the next open or update resolves
-    /// the size from its own spec. A viewer sizes from its own pane, so only a forced width travels.
-    @ObservationIgnored var hudResizedWidthPercent: Int?
+    /// The width an `overlay.resize` forced on the panel, until the next open or update resolves the size
+    /// from its own spec. A viewer sizes from its own pane, so only a forced width travels.
+    @ObservationIgnored public internal(set) var hudResizedWidthPercent: Int?
 
     /// Counts publications of the panel. Frame order is what keeps a stale close off a later panel; a
     /// viewer does not read this.
@@ -539,20 +560,20 @@ public final class Session: Identifiable {
     /// that drops a HUD already routes through that one method, which is why the hook hangs there.
     public var onHudDiscarded: (() -> Void)?
 
-    /// onHudGeometryChange tells the app the live HUD panel's measured size changed, so it can rewrite the
-    /// grid in the body header; `discardHudBody` clears it with the rest of the HUD state.
+    /// onHudGeometryChange tells the app the bounds the live HUD is laid out in, or its surface's grid,
+    /// changed, so it can measure the panel again; `discardHudBody` clears it with the rest of the HUD state.
     @ObservationIgnored public var onHudGeometryChange: (() -> Void)?
 
     /// hudActive says the slot holds a passive HUD; the one predicate separating it from the covers.
     public var hudActive: Bool { overlayActive && hudSpec != nil }
 
     /// programOverlayActive: the slot runs a CALLER'S PROGRAM, either coverage variant, the terminal-surface
-    /// question. Neither a HUD nor a page counts; "a session-wide cover owns input" is `coverOverlayActive`.
-    public var programOverlayActive: Bool { overlayActive && !hudActive && htmlOverlay == nil }
+    /// question, hidden or not. Neither a HUD nor a page counts; "a cover owns input" is `coverOverlayVisible`.
+    public var programOverlayActive: Bool { overlayActive && !hudActive && htmlOverlay == nil && rebasedOverlay == nil }
 
-    /// fullOverlayActive says a program or page covers the whole session, with no size percent. It hides the
-    /// panes and a shown scratch, since under window translucency anything left visible would bleed through.
-    /// A HUD never counts, whatever its size.
+    /// fullOverlayActive says a program or page fills the whole session slot, with no size percent. Shown
+    /// (`fullOverlayVisible`), it hides the panes and a shown scratch, since under window translucency anything
+    /// left visible would bleed through. A HUD never counts, whatever its size.
     public var fullOverlayActive: Bool { overlayActive && !hudActive && overlaySizePercent == nil }
 
     /// The left pane's overlay, covering that pane only and leaving the sibling live; nil means none is up,
@@ -596,6 +617,11 @@ public final class Session: Identifiable {
     /// kept alive across hides — non-nil means "alive, maybe hidden". Freed only on `closeScratch` (explicit
     /// close, the shell's own `exit`, or session/workspace/window teardown), after which a show spawns fresh.
     @ObservationIgnored public var scratchSurface: (any TerminalSurface)?
+
+    /// Bumped on every `closeScratch` so the deck keys the scratch view's identity on it. A `--command`
+    /// respawn closes and re-shows inside one store call, so `scratchActive` never dips where SwiftUI can
+    /// see it and the torn-down view would otherwise stay mounted. Observed, never persisted.
+    public var scratchGeneration: Int = 0
 
     /// The scratch analogue of `initialCommand` (`session.scratch --command`). RUN-ONCE: the scratch factory
     /// reads and clears it on spawn, so the next show is a plain shell. Never persisted.
@@ -769,18 +795,18 @@ public final class Session: Identifiable {
         splitFocused && (isSplit || splitSurface != nil) ? .right : .left
     }
 
-    /// The focused pane's overlay pane, nil when that pane's slot is empty.
+    /// The focused pane's overlay pane, nil when that pane's slot is empty or its overlay hidden.
     public var focusedOverlayPane: OverlayPane? {
         let pane = focusedPane
-        return paneOverlay(pane) == nil ? nil : pane
+        return paneOverlayVisible(pane) ? pane : nil
     }
 
     /// Whether a caller's program or page is taking this session's keystrokes: the session-wide cover, or
     /// the FOCUSED pane's own overlay. An overlay on the sibling pane takes none, and a HUD is passive
-    /// (`coverOverlayActive`), so neither counts. A STATE, never "the mode yields": that is an event
+    /// (`coverOverlayVisible`), so neither counts. A STATE, never "the mode yields": that is an event
     /// derived from this one, owned by `NormalModeOverlayHandover`.
     public var programOverlayOwnsKeyboard: Bool {
-        coverOverlayActive || focusedOverlayPane != nil
+        coverOverlayVisible || focusedOverlayPane != nil
     }
 
     /// Whether the detail pane LAYS THIS PANE OUT at all — the precondition for realizing a surface in it,
@@ -819,12 +845,12 @@ public final class Session: Identifiable {
     /// that gap holds a view with no libghostty surface and no process. `teardownPaneOverlay` frees that
     /// stillborn view too, since a later open on the pane would otherwise reuse it — it is baked with the
     /// RETIRED overlay's command, cwd, and colors.
-    public func dropUnrealizedPaneOverlays() {
-        for pane in OverlayPane.allCases
-        where paneOverlay(pane) != nil && !paneOverlayIsHtml(pane) && paneOverlaySurface(pane)?.isRealized != true
-            && !paneOverlayHosted(pane) {
-            teardownPaneOverlay(pane)
+    @discardableResult public func dropUnrealizedPaneOverlays() -> Bool {
+        let stranded = OverlayPane.allCases.filter {
+            paneOverlayIsProgram($0) && paneOverlaySurface($0)?.isRealized != true && !paneOverlayHosted($0)
         }
+        stranded.forEach { teardownPaneOverlay($0) }
+        return !stranded.isEmpty
     }
 
     /// The pane whose overlay slot CURRENTLY holds `surface`, nil when neither does. Derived LIVE from slot
@@ -843,6 +869,7 @@ public final class Session: Identifiable {
     public func teardownPaneOverlay(_ pane: OverlayPane) {
         let replica = paneOverlay(pane)?.replica
         HtmlOverlayReleases.shared.release(paneOverlay(pane)?.html)
+        RebasedOverlayReleases.shared.release(paneOverlay(pane)?.rebased)
         paneOverlaySurface(pane)?.teardown()
         setPaneOverlay(nil, pane: pane)
         setPaneOverlaySurface(nil, pane: pane)
@@ -991,8 +1018,8 @@ public final class Session: Identifiable {
     /// helper would take first responder off the session the message is about — the deck's exemptions one
     /// layer down.
     public var topmostSurface: (any TerminalSurface)? {
-        if htmlOverlayActive { return nil }
-        if programOverlayActive { return overlaySurface }
+        if htmlOverlayVisible || rebasedOverlayVisible { return nil }
+        if programOverlayVisible { return overlaySurface }
         if scratchActive { return scratchSurface }
         if let pane = focusedOverlayPane { return paneOverlaySurface(pane) }
         return activeSurface
@@ -1004,9 +1031,9 @@ public final class Session: Identifiable {
     /// for a covering pane overlay whose surface has not realized yet, leaving the retry to re-resolve.
     /// A HUD is no cover, so the requested pane stays reachable while one is up.
     public func focusTarget(wantSplit: Bool) -> (any TerminalSurface)? {
-        if coverOverlayActive || scratchActive { return topmostSurface }
+        if coverOverlayVisible || scratchActive { return topmostSurface }
         let pane: OverlayPane = wantSplit ? .right : .left
-        if paneOverlay(pane) != nil { return paneOverlaySurface(pane) }
+        if paneOverlayVisible(pane) { return paneOverlaySurface(pane) }
         return wantSplit ? splitSurface : surface
     }
 
@@ -1015,7 +1042,7 @@ public final class Session: Identifiable {
     /// scratch, not the pane beneath. A program overlay routes via `topmostSurface`; this stays
     /// pane-vs-scratch, like `searchTarget`, and a HUD leaves the scratch on screen underneath it.
     public var onScreenSurface: (any TerminalSurface)? {
-        scratchActive && !coverOverlayActive ? topmostSurface : activeSurface
+        scratchActive && !coverOverlayVisible ? topmostSurface : activeSurface
     }
 
     /// The match counter for the search bar and `session.search`: empty before a query runs, `"no matches"` at
@@ -1037,14 +1064,5 @@ public final class Session: Identifiable {
         searchTotal = nil
         searchSelected = nil
         searchSurface = nil
-    }
-}
-
-extension String {
-    /// Trimmed of surrounding whitespace and newlines, nil if empty — the one normalizer for the
-    /// rename/displayName "blank after trim" rule.
-    var trimmedOrNil: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

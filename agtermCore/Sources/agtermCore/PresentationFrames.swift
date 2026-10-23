@@ -106,6 +106,16 @@ public struct PresentationNotify: Codable, Equatable, Sendable {
     }
 }
 
+/// PresentationSound is a status sound the origin hands its presenter to play instead of playing it itself.
+/// A nil `name` is the presenter's own Settings blocked sound, so each Mac's choice applies where it plays.
+public struct PresentationSound: Codable, Equatable, Sendable {
+    public var name: String?
+
+    public init(name: String?) {
+        self.name = name
+    }
+}
+
 /// PresentationAsk is an ask the origin hands its presenter to draw. `owner` is the presenter generation it
 /// was handed under, and every answer echoes it, so one arriving after a handback is recognisably stale.
 public struct PresentationAsk: Codable, Equatable, Sendable {
@@ -121,6 +131,10 @@ public struct PresentationAsk: Codable, Equatable, Sendable {
     /// The origin's pane the dialog covers, nil for the whole session.
     public var pane: PresentationPane?
     public var owner: Int
+    /// input and choices carry the ask's form; a presenter without `ask.form` never receives either.
+    public var input: AskInputForm?
+    public var choices: AskChoiceForm?
+    public var cancelID: String?
 
     public init(_ ask: PendingAsk, pane: PresentationPane?, owner: Int) {
         id = ask.id
@@ -134,20 +148,64 @@ public struct PresentationAsk: Codable, Equatable, Sendable {
         width = ask.width
         self.pane = pane
         self.owner = owner
+        cancelID = ask.cancelID
+        switch ask.form {
+        case .input(let form): input = form
+        case .choices(let form): choices = form
+        case nil: break
+        }
+    }
+
+    /// The form the request carries, input first should a malformed frame carry both.
+    public var form: AskForm? {
+        if let input { return .input(input) }
+        return choices.map(AskForm.choices)
+    }
+
+    /// Whether the presenter must understand `ask.form` to show this ask as the origin means it.
+    public var needsFormSupport: Bool { input != nil || choices != nil || cancelID != nil }
+
+    /// Whether the presenter must also understand `ask.other` to show the choice list's free-form row.
+    public var needsOtherSupport: Bool { choices?.other != nil }
+
+    /// Whether the request, and the largest answer it can produce, each fit one stream frame, measured through
+    /// the codec with the widest counters. A text answer is tried with every button and the text cap at twice
+    /// its bytes, the worst escaping the allowed characters reach; a selection alone names only ids the request
+    /// already carried, but a checkbox list's free-form text rides beside every id.
+    public func fitsFrames() -> Bool {
+        guard Self.fits(.askRequest(self)) else { return false }
+        let text = String(repeating: "\"", count: AskInputForm.maxTextBytes)
+        if input != nil {
+            return buttons.allSatisfy { Self.fits(.askResolve(PresentationAskAnswer(id: id, owner: owner, button: $0.id, text: text))) }
+        }
+        guard let choices, choices.other != nil else { return true }
+        let selected = choices.multiple ? choices.choices.map(\.id) : []
+        return buttons.allSatisfy {
+            Self.fits(.askResolve(PresentationAskAnswer(id: id, owner: owner, button: $0.id, text: text, selected: selected)))
+        }
+    }
+
+    private static func fits(_ body: PresentationFrame.Body) -> Bool {
+        (try? PresentationCodec.encode(PresentationFrame(gen: .max, rev: .max, body: body))) != nil
     }
 }
 
 /// PresentationAskAnswer is the presenter's answer: a button id, or nil for a dismissal with Esc or Command-W.
-/// Only the id travels; the origin derives label and index from the buttons it stored.
+/// The origin derives label and index from the buttons it stored and checks `text` and `selected` against
+/// the form it stored.
 public struct PresentationAskAnswer: Codable, Equatable, Sendable {
     public var id: String
     public var owner: Int
     public var button: String?
+    public var text: String?
+    public var selected: [String]?
 
-    public init(id: String, owner: Int, button: String?) {
+    public init(id: String, owner: Int, button: String?, text: String? = nil, selected: [String]? = nil) {
         self.id = id
         self.owner = owner
         self.button = button
+        self.text = text
+        self.selected = selected
     }
 }
 
@@ -218,6 +276,116 @@ public struct PresentationForwarded: Codable, Equatable, Sendable {
     }
 }
 
+/// PresentationPageSource is a handed-over page's full source on the origin: a file the viewer fetches over the
+/// page channel, with the grant that bounds which files it may ask for, or a complete URL it loads itself.
+public enum PresentationPageSource: Codable, Equatable, Sendable {
+    case file(path: String, grantRoot: String?)
+    case url(String)
+}
+
+/// PresentationPage asks the presenter to show a page the origin opened. `page` is the origin's page id, which
+/// the presenter never reuses as its own; `token` claims the page channel and is single-use.
+public struct PresentationPage: Codable, Equatable, Sendable {
+    public var page: String
+    public var token: String
+    public var source: PresentationPageSource
+    /// identity is the display text the identity strip shows, never used to load anything.
+    public var identity: String
+    public var chromeless: Bool
+    public var javascript: Bool
+    public var navigation: Bool
+    public var browse: Bool
+    public var persistent: Bool
+    public var backgroundColor: String?
+    /// pane is the origin's pane the page covers, nil for the session-wide slot.
+    public var pane: PresentationPane?
+    public var sizePercent: Int?
+    public var follow: Bool
+
+    public init(page: String, token: String, source: PresentationPageSource, identity: String, chromeless: Bool,
+                javascript: Bool, navigation: Bool, browse: Bool, persistent: Bool, backgroundColor: String?,
+                pane: PresentationPane?, sizePercent: Int?, follow: Bool) {
+        self.page = page
+        self.token = token
+        self.source = source
+        self.identity = identity
+        self.chromeless = chromeless
+        self.javascript = javascript
+        self.navigation = navigation
+        self.browse = browse
+        self.persistent = persistent
+        self.backgroundColor = backgroundColor
+        self.pane = pane
+        self.sizePercent = sizePercent
+        self.follow = follow
+    }
+}
+
+/// PresentationPageChange names one handed-over page by the origin's id, with a reason when the presenter
+/// refuses it.
+public struct PresentationPageChange: Codable, Equatable, Sendable {
+    public var page: String
+    public var reason: String?
+
+    public init(page: String, reason: String? = nil) {
+        self.page = page
+        self.reason = reason
+    }
+}
+
+/// PresentationPageAction is what the origin asks of a handed-over page.
+public enum PresentationPageAction: String, Codable, Sendable {
+    case hide, show, reloadOriginal, reloadCurrent, back, forward, browser, resize
+}
+
+/// PresentationPageCommand is one origin request for a handed-over page. `seq` grows per page, and the
+/// presenter echoes the last one it applied in `PresentationPageState.appliedSeq`.
+public struct PresentationPageCommand: Codable, Equatable, Sendable {
+    public var page: String
+    public var seq: Int
+    public var action: PresentationPageAction
+    public var sizePercent: Int?
+
+    public init(page: String, seq: Int, action: PresentationPageAction, sizePercent: Int? = nil) {
+        self.page = page
+        self.seq = seq
+        self.action = action
+        self.sizePercent = sizePercent
+    }
+}
+
+/// PresentationPageState is what a handed-over page shows on the presenter. `address` is the origin's logical
+/// address, never the presenter's own scheme URL. Strings are bounded before sending, since the page writes
+/// its title and a long one must not cost a frame.
+public struct PresentationPageState: Codable, Equatable, Sendable {
+    public static let maxTitle = 1024
+    public static let maxAddress = 8192
+    public static let maxError = 1024
+
+    public var page: String
+    public var title: String?
+    public var address: String?
+    public var load: HtmlLoadState
+    public var error: String?
+    public var canGoBack: Bool
+    public var canGoForward: Bool
+    public var hidden: Bool
+    public var appliedSeq: Int
+
+    public init(page: String, title: String?, address: String?, load: HtmlLoadState, error: String?,
+                canGoBack: Bool, canGoForward: Bool, hidden: Bool, appliedSeq: Int) {
+        self.page = page
+        self.title = title.map { String($0.prefix(Self.maxTitle)) }
+        self.address = address.map { String($0.prefix(Self.maxAddress)) }
+        self.load = load
+        self.error = error.map { String($0.prefix(Self.maxError)) }
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.hidden = hidden
+        self.appliedSeq = appliedSeq
+    }
+}
+
 /// PresentationSnapshot is the replaceable state a subscriber starts from.
 public struct PresentationSnapshot: Codable, Equatable, Sendable {
     public var status: PresentationStatus?
@@ -248,6 +416,7 @@ public struct PresentationFrame: Equatable, Sendable {
         case layout(PresentationLayout)
         case hud(PresentationHud?)
         case notify(PresentationNotify)
+        case sound(PresentationSound)
         /// A viewer asking to be the session's sole presenter. Sent only after the origin's hello offered it.
         case presenterAcquire
         /// Transfers the presenter role to this viewer, replacing any current holder.
@@ -270,6 +439,14 @@ public struct PresentationFrame: Equatable, Sendable {
         case overlayClosed(PresentationOverlayChange)
         case controlForward(PresentationForward)
         case controlForwarded(PresentationForwarded)
+        case pageRequest(PresentationPage)
+        /// pageRejected: the presenter cannot show the page, so the origin ends it without waiting for a claim.
+        case pageRejected(PresentationPageChange)
+        case pageClose(PresentationPageChange)
+        /// pageClosed: the presenter took the page down, so the origin ends it, keeping an answer it recorded.
+        case pageClosed(PresentationPageChange)
+        case pageCommand(PresentationPageCommand)
+        case pageState(PresentationPageState)
         /// A kind this build does not speak. Kept, with its ordering, so a newer peer does not break the stream.
         case unknown(String)
 
@@ -285,6 +462,7 @@ public struct PresentationFrame: Equatable, Sendable {
             case .layout: return "layout"
             case .hud: return "hud"
             case .notify: return "notify"
+            case .sound: return "sound"
             case .presenterAcquire: return "presenter.acquire"
             case .presenterTake: return "presenter.take"
             case .presenterGranted: return "presenter.granted"
@@ -300,6 +478,12 @@ public struct PresentationFrame: Equatable, Sendable {
             case .overlayClosed: return "overlay.closed"
             case .controlForward: return "control.forward"
             case .controlForwarded: return "control.forwarded"
+            case .pageRequest: return "page.request"
+            case .pageRejected: return "page.rejected"
+            case .pageClose: return "page.close"
+            case .pageClosed: return "page.closed"
+            case .pageCommand: return "page.command"
+            case .pageState: return "page.state"
             case .unknown(let kind): return kind
             }
         }
@@ -318,7 +502,7 @@ public struct PresentationFrame: Equatable, Sendable {
 
 extension PresentationFrame: Codable {
     private enum CodingKeys: String, CodingKey {
-        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, ask, overlay, forward
+        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, sound, ask, overlay, forward, page
     }
 
     public init(from decoder: Decoder) throws {
@@ -337,6 +521,7 @@ extension PresentationFrame: Codable {
         case "layout": body = .layout((try? container.decode(PresentationLayout.self, forKey: .layout)) ?? .invalid)
         case "hud": body = .hud(try container.decodeIfPresent(PresentationHud.self, forKey: .hud))
         case "notify": body = .notify(try container.decode(PresentationNotify.self, forKey: .notify))
+        case "sound": body = .sound(try container.decode(PresentationSound.self, forKey: .sound))
         case "presenter.acquire": body = .presenterAcquire
         case "presenter.take": body = .presenterTake
         case "presenter.granted": body = .presenterGranted
@@ -353,6 +538,12 @@ extension PresentationFrame: Codable {
         case "overlay.closed": body = .overlayClosed(try container.decode(PresentationOverlayChange.self, forKey: .overlay))
         case "control.forward": body = .controlForward(try container.decode(PresentationForward.self, forKey: .forward))
         case "control.forwarded": body = .controlForwarded(try container.decode(PresentationForwarded.self, forKey: .forward))
+        case "page.request": body = .pageRequest(try container.decode(PresentationPage.self, forKey: .page))
+        case "page.rejected": body = .pageRejected(try container.decode(PresentationPageChange.self, forKey: .page))
+        case "page.close": body = .pageClose(try container.decode(PresentationPageChange.self, forKey: .page))
+        case "page.closed": body = .pageClosed(try container.decode(PresentationPageChange.self, forKey: .page))
+        case "page.command": body = .pageCommand(try container.decode(PresentationPageCommand.self, forKey: .page))
+        case "page.state": body = .pageState(try container.decode(PresentationPageState.self, forKey: .page))
         default: body = .unknown(kind)
         }
     }
@@ -370,6 +561,7 @@ extension PresentationFrame: Codable {
         case .layout(let layout): try container.encode(layout, forKey: .layout)
         case .hud(let hud): try container.encodeIfPresent(hud, forKey: .hud)
         case .notify(let notify): try container.encode(notify, forKey: .notify)
+        case .sound(let sound): try container.encode(sound, forKey: .sound)
         case .askRequest(let ask): try container.encode(ask, forKey: .ask)
         case .askResolve(let answer): try container.encode(answer, forKey: .ask)
         case .askRejected(let ref), .askDismiss(let ref): try container.encode(ref, forKey: .ask)
@@ -379,6 +571,11 @@ extension PresentationFrame: Codable {
             try container.encode(change, forKey: .overlay)
         case .controlForward(let forward): try container.encode(forward, forKey: .forward)
         case .controlForwarded(let forwarded): try container.encode(forwarded, forKey: .forward)
+        case .pageRequest(let page): try container.encode(page, forKey: .page)
+        case .pageRejected(let change), .pageClose(let change), .pageClosed(let change):
+            try container.encode(change, forKey: .page)
+        case .pageCommand(let command): try container.encode(command, forKey: .page)
+        case .pageState(let state): try container.encode(state, forKey: .page)
         case .ping, .ack, .seen, .presenterAcquire, .presenterTake, .presenterGranted, .presenterRefused, .unknown: break
         }
     }

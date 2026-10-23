@@ -17,6 +17,26 @@ struct DashboardCoverTests {
         HtmlOverlay(source: .file(path: path, grantRoot: nil))
     }
 
+    @Test(arguments: OverlayPane.allCases)
+    func aPaneRebasedOverlayCoversOnlyItsPane(pane: OverlayPane) {
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/tmp/repo"),
+                                        sizePercent: nil, pane: pane) == nil)
+        #expect(session.dashboardCover(for: pane) == .rebased(project: "/tmp/repo"))
+        #expect(session.dashboardCover(for: pane == .left ? .right : .left) == nil)
+    }
+
+    @Test(arguments: ["session", "left", "right"])
+    func hidingAnIDELeavesNoDashboardCover(slot: String) {
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        let pane = OverlayPane(rawValue: slot)
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(session.dashboardCover(for: .left) == nil)
+        #expect(session.dashboardCover(for: .right) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
+        #expect(session.dashboardCover(for: pane ?? .left) == .rebased(project: "/tmp/repo"))
+    }
+
     @Test func anUncoveredPaneHasNoCover() {
         #expect(session.dashboardCover(for: .left) == nil)
         #expect(session.dashboardCover(for: .right) == nil)
@@ -26,6 +46,17 @@ struct DashboardCoverTests {
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
         #expect(session.dashboardCover(for: .right) == .page(identity: "report.html", title: nil))
         #expect(session.dashboardCover(for: .left) == nil)
+    }
+
+    @Test func aHiddenOverlayCoversNothing() {
+        #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: page(), sizePercent: nil) == nil)
+        #expect(store.openOverlay(session.id, command: "less"))
+        #expect(session.dashboardCover(for: .left) == .program(command: "less"))
+
+        store.setOverlaysHidden(session.id, pane: nil, hidden: true)
+
+        #expect(session.dashboardCover(for: .left) == nil)
+        #expect(session.dashboardCover(for: .right) == nil)
     }
 
     @Test func aPageCoverCarriesTheLoadedTitle() {
@@ -39,6 +70,14 @@ struct DashboardCoverTests {
         let overlay = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/app"))))
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: overlay, sizePercent: nil) == nil)
         #expect(session.dashboardCover(for: .right) == .page(identity: "http://localhost:5173", title: nil))
+    }
+
+    @Test func aBrowsingPageCoverNamesTheSiteShown() throws {
+        let overlay = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/app"))), browse: true)
+        #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: overlay, sizePercent: nil) == nil)
+        session.rightOverlay?.html?.current = HtmlPageInfo(page: "https://login.example/sso", title: nil,
+                                                           canGoBack: true, canGoForward: false)
+        #expect(session.dashboardCover(for: .right) == .page(identity: "https://login.example", title: nil))
     }
 
     @Test func aPaneProgramCoversItsPaneWithItsCommand() {

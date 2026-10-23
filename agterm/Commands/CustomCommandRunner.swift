@@ -208,6 +208,7 @@ final class CustomCommandRunner {
         if let chord = keymap.equivalent(for: .newSessionInWorkspace) {
             sequences[.newSessionInWorkspace, default: []].insert([chord], at: 0)
         }
+        if let chord = keymap.equivalent(for: .rebasedToggle) { sequences[.rebasedToggle, default: []].insert([chord], at: 0) }
         commandEngine = CustomCommandEngine(commands: keymap.commands, builtinSequences: sequences,
                                             builtinRepeating: keymap.builtinRepeating)
         normalMode.rebuild(binds: keymap.normalModeBinds)
@@ -390,11 +391,13 @@ final class CustomCommandRunner {
                 return true
             }
             // a focused page receives key equivalents before the menu, and one cancelling the keydown makes WebKit
-            // report it handled, so close_session's menu chord never reaches Close Session. Taken here while a
-            // page holds focus; the chord's other owners keep the menu path.
-            if Self.pageHoldsFocus(responder), chord == settings.keymap.equivalent(for: .closeSession) {
-                actions.perform(.closeSession, in: keyWindow)
-                return true
+            // report it handled, so close_session's and toggle_overlay's menu chords never reach their items.
+            // Taken here while a page holds focus; the chords' other owners keep the menu path.
+            if Self.pageHoldsFocus(responder) {
+                for action in [BuiltinAction.closeSession, .toggleOverlay] where chord == settings.keymap.equivalent(for: action) {
+                    actions.perform(action, in: keyWindow)
+                    return true
+                }
             }
             return false
         }
@@ -490,29 +493,12 @@ final class CustomCommandRunner {
         commandEngine.isRepeating && chord(from: event).map(commandEngine.isRepeatTail) == true
     }
 
-    /// Map an `NSEvent` key-down to an agtermCore `Chord`, or nil when it carries no usable base key. The base
-    /// key is the named special key, else what `chordKey` resolves — the unmodified character on a layout that
-    /// can type ASCII, the physical position on one that cannot.
     private func chord(from event: NSEvent) -> Chord? {
-        var mods: Modifier = []
-        let flags = event.modifierFlags
-        if flags.contains(.control) { mods.insert(.control) }
-        if flags.contains(.command) { mods.insert(.command) }
-        if flags.contains(.option) { mods.insert(.option) }
-        if flags.contains(.shift) { mods.insert(.shift) }
-
-        if let named = namedKey(forKeyCode: event.keyCode) {
-            return Chord(mods: mods, key: named)
-        }
         // `characters(byApplyingModifiers: [])` gives the UNSHIFTED base key (shift+/ → "/"), matching how
         // the keymap spells `shift+<base>`. `charactersIgnoringModifiers` instead KEEPS shift (shift+/ → "?")
         // and `.lowercased()` undoes that only for letters, so punctuation would land on the shifted glyph
-        // and never match a `shift+/` binding. `chordKey` then applies the layout rule, so `cmd+o` still
-        // fires on a Cyrillic layout (the key types `щ`).
-        let produced = event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers
-        guard let key = chordKey(forKeyCode: event.keyCode, produced: produced,
-                                 layoutIsASCIICapable: KeyboardLayout.isASCIICapable) else { return nil }
-        return Chord(mods: mods, key: key)
+        // and never match a `shift+/` binding.
+        event.keymapChord(produced: event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers)
     }
 
     private func startLeaderTimer(_ interval: TimeInterval = CustomCommandRunner.leaderTimeout) {
@@ -663,26 +649,33 @@ final class CustomCommandRunner {
     }
 
     /// Spawn for a session pane: the context carries the pane's reported cwd raw, while the process starts
-    /// where `Session.localWorkingDirectory` says, widened here to ANY row whose reported path is not a local
-    /// directory, not just a remote one. `Process.run()` validates `currentDirectoryURL` inside the spawn and
-    /// throws before `/bin/sh` is exec'd, so a local row whose directory was deleted or replaced by a file
-    /// loses the command exactly as a remote row did (measured 2026-09-09).
+    /// where `Session.localWorkingDirectory` says, or in HOME when that is not a directory here: a deleted
+    /// one, or a remote path reported through an `ssh` typed into a local session.
     @discardableResult
     private func spawn(_ command: CustomCommand, for session: Session, in store: AppStore,
                        selectionSurface: GhosttySurfaceView?, pane: CommandContext.Pane) -> String? {
         let context = self.context(for: session, in: store, selectionSurface: selectionSurface, pane: pane)
         let home = NSHomeDirectory()
-        var cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
+        let cwd = session.localWorkingDirectory(reported: context.sessionPWD, homeDirectory: home)
         var isDirectory: ObjCBool = false
-        let resolves = FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory) && isDirectory.boolValue
-        if !cwd.isEmpty, !resolves {
+        let usable = FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory) && isDirectory.boolValue
+        if !usable, !cwd.isEmpty {
             logger.notice("""
                 custom command "\(command.name, privacy: .public)" runs from home: \
                 \(cwd, privacy: .public) is not a local directory
                 """)
-            cwd = home
         }
-        return spawn(command, context: context, cwd: cwd)
+        return spawn(command, context: context, cwd: usable ? cwd : home)
+    }
+
+    func environment(for session: Session, in store: AppStore) -> [String: String] {
+        let pane: CommandContext.Pane = session.scratchActive ? .scratch : (session.focusedPane == .right ? .right : .left)
+        let context = context(for: session, in: store, selectionSurface: nil, pane: pane)
+        var environment = ProcessInfo.processInfo.environment.merging(context.environment()) { _, new in new }
+        environment["AGTERM_SOCKET"] = socketProvider()
+        environment["PATH"] = CommandPath.widened(environment["PATH"],
+                                                  bundledCLIDirectory: CLIInstaller.bundledTool?.deletingLastPathComponent().path)
+        return environment
     }
 
     /// Resolve every `{AGT_X}` token for the given session: ids + cwd + remote host from the model, names

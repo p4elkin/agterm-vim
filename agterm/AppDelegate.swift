@@ -392,8 +392,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // resolve in-memory pickers and asks before closing the socket: a client already polling may observe
         // cancellation, but a later poll can still race socket teardown at process exit.
         actions?.cancelAllPendingModals()
+        RebasedHost.shared.saveBeforeQuit()
+        RebasedHost.shared.releaseAllBeforeQuit()
         controlServer?.stop()
         customCommandRunner?.stop()
+        TerminalInputSource.shared.stop()
         // clear the OS-level Dock badge — it outlives the process while unseenCount is ephemeral, so a quit
         // with unseen > 0 pins a stale count (the willClose refresh() can't: isTerminating no-ops closeWindow).
         DockBadgeController.shared.clear()

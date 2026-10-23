@@ -31,6 +31,8 @@ final class WindowRegistry {
         NotificationCenter.default.post(name: .agtermWindowAttachmentChanged, object: nil)
     }
 
+    func window(for id: WindowInfo.ID) -> NSWindow? { windows[id] }
+
     func contains(_ window: NSWindow) -> Bool {
         windows.values.contains { $0 === window }
     }

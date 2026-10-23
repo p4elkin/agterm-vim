@@ -506,7 +506,8 @@ translucency (solid when off, blurred/translucent when on).
 A third per-session full-coverage shell. Hide keeps it alive; `exit` in it recreates on next show.
 
 ```bash
-agtermctl session scratch on        # show (selects the target)
+agtermctl session scratch on        # show; a --target that is not on screen stays unselected
+agtermctl session scratch on --target "$AGTERM_SESSION_ID" --follow   # show and switch to it
 agtermctl session scratch off       # hide, shell stays alive
 agtermctl session scratch toggle
 agtermctl session scratch on --command "zsh -lc 'lazygit'"   # run a program instead of a shell (run-once); login-shell wrap so Homebrew's PATH is found (bare "lazygit" exits 127)
@@ -529,8 +530,8 @@ agtermctl tree --json | jq '.result.tree.quickVisible'  # is it open right now?
 ## Flag a working set and view just the flagged sessions
 
 Flag a few sessions across workspaces, then flip the sidebar to the flagged view: one flat list with each
-row labeled `session : workspace`, or, under the tree layout, the flagged sessions nested under their
-workspace rows. The flag is durable (persisted per session); `sidebar mode` is per-window; the layout is
+row labeled `session : workspace` (or by session name alone under the `plain` layout), or, under the tree
+layout, the flagged sessions nested under their workspace rows. The flag is durable (persisted per session); `sidebar mode` is per-window; the layout is
 app-wide.
 
 ```bash
@@ -538,6 +539,7 @@ agtermctl session flag on --target "$AGTERM_SESSION_ID"   # flag this session
 agtermctl session flag on --target a1b2                   # flag another (any workspace)
 agtermctl sidebar mode flagged                            # show only the flagged sessions
 agtermctl sidebar flagged-layout tree                     # nest them under workspace rows, in every window
+agtermctl sidebar flagged-layout plain                    # or one flat list of session names, no workspace suffix
 agtermctl session go --to next                            # in flagged mode, nav steps the flagged set only
 agtermctl sidebar mode tree                               # back to the full tree
 agtermctl session flag clear                              # unflag everything in the window
@@ -765,18 +767,23 @@ agtermctl notify "tests failed" --target "$sid"               # a specific sessi
 
 ## Wait for a session status
 
-Subscribe before starting the work, then select the first matching status event. The initial read
-subscribes from now, so an old completed state is not mistaken for a new completion.
+From a project directory the agent already trusts, start a worker there and block until its agent
+finishes or asks for input, giving up after ten minutes:
 
 ```bash
-export target="$AGTERM_SESSION_ID"
-agtermctl events --json --kind status |
-  jq --unbuffered -e 'select(.session == env.target and .payload.status == "completed")' |
-  head -n 1
+id=$(agtermctl session new --cwd "$PWD" --command "zsh -lc 'claude \"fix the failing tests\"'" --no-select --json | jq -r '.result.id')
+status=$(agtermctl session wait --target "$id" --until completed --until blocked --timeout 600)
+case $? in
+  0) echo "worker $status" ;;
+  2) echo "worker session closed" ;;
+  124) echo "worker timed out" ;;
+  *) echo "wait failed" ;;
+esac
 ```
 
-The pipeline ends after the match. A transport or cursor failure makes `agtermctl events` exit
-non-zero; preserve pipeline status in automation that must distinguish a match from a failed stream.
+The wait returns at once when the status already matches, so a worker that finished before the call is
+not missed. That also means a reused session still showing the previous run's `completed` matches
+immediately: wait for `active` first when the session is not fresh.
 
 ## Relay accepted notifications
 
@@ -840,8 +847,9 @@ focus the tagged pane. An `active` tag is informational and preserves the curren
 Without `--pane` the status is treated as coming from the main (`left`) pane, so a block set from the split
 can be wiped by typing in the main pane and the reveal lands on the wrong surface.
 
-The tag also protects a block from the OTHER pane's agent: while the session is `blocked`, a status from a
-different pane that is not itself `blocked` is refused with `blocked status owned by pane <pane>`,
+The tag also protects a block from the OTHER pane's agent: while the session is `blocked`, or `completed`
+without `--auto-reset`, a status from a different pane that is not itself `blocked` is refused with
+`status owned by pane <pane>`,
 so an agent reporting `active` after every tool call cannot erase its neighbour's request for input. With
 an agent in each pane, tag both or the second one's ordinary work looks like it comes from the first.
 
@@ -880,6 +888,10 @@ surface=$(agtermctl tree --json |
     | .id')
 agtermctl surface zoom show --target "$surface"
 agtermctl surface zoom hide --target "$surface"
+
+# Look at the session under a running overlay and come back; the overlay keeps running meanwhile.
+# The explicit id matters: with an overlay open, a bare `surface zoom` zooms the overlay itself.
+agtermctl surface zoom toggle --target "surface:$sid:left"
 
 # Read the current zoom back (the zoomed surface's control id; null when nothing is zoomed).
 agtermctl tree --json | jq -r '.result.tree.zoomedSurface'
@@ -1081,7 +1093,8 @@ agtermctl session hud "gathering options…" --spinner --position bottom-right \
 ```
 
 The stable pane ID wins when it resolves. `--pane` is the fallback for older or unknown IDs. The selected
-pane supplies the size, 80% cap, anchor, and 10% edge margin. A hidden pane keeps its HUD and shows it again
+pane supplies the size, 80% cap, anchor, and 10% edge margin; `--sticky` drops the margin and, off center,
+lifts the WIDTH cap to 100. A hidden pane keeps its HUD and shows it again
 when restored; closing the pane closes its HUD.
 
 `session hud update` repaints in place, no re-spawn and no blink, and it replaces the whole spec: `--detail`,

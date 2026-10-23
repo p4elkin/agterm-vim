@@ -75,11 +75,22 @@ struct HtmlBridgeTests {
         #expect(workspace.args?.window == nil)
     }
 
-    @Test(arguments: ["hooks.reload", "hooks.list", "browser.clear"])
+    @Test(arguments: ["hooks.reload", "hooks.list", "browser.clear", "browser.links", "recent.list", "recent.clear"])
     func aCommandRefusingAnyWindowGetsNone(_ cmd: String) throws {
         let built = try request(#"{"cmd":"\#(cmd)"}"#)
         #expect(built.target == nil)
         #expect(built.args?.window == nil)
+    }
+
+    @Test func recentOpenReopensIntoThePagesWindow() throws {
+        let newest = try request(#"{"cmd":"recent.open"}"#)
+        #expect(newest.target == nil)
+        #expect(newest.args?.window == "W1")
+        let targeted = try request(#"{"cmd":"recent.open","target":"ab12"}"#)
+        #expect(targeted.target == "ab12")
+        #expect(targeted.args?.window == "W1")
+        #expect(try request(#"{"cmd":"recent.open","target":"ab12","args":{"window":"W2"}}"#).args?.window == "W2")
+        #expect(try request(#"{"cmd":"recent.open","args":{"window":"active"}}"#).args?.window == "active")
     }
 
     @Test(arguments: ["window.close", "window.select", "window.rename", "window.delete", "window.resize", "window.move",
@@ -127,7 +138,8 @@ struct HtmlBridgeTests {
     }
 
     @Test func thePaneIsFilledOnlyForThePagesOwnOverlayCommands() throws {
-        for cmd in ["session.overlay.close", "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit"] {
+        for cmd in ["session.overlay.close", "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit",
+                    "session.overlay.hide", "session.overlay.show", "session.overlay.toggle"] {
             let built = try request(#"{"cmd":"\#(cmd)"}"#)
             #expect(built.target == session.uuidString, "\(cmd)")
             #expect(built.args?.pane == "right", "\(cmd)")
@@ -146,7 +158,7 @@ struct HtmlBridgeTests {
         #expect(try request(#"{"cmd":"session.overlay.reload","args":{"current":false}}"#).args?.current == false)
     }
 
-    @Test(arguments: ["zmx.present", "session.overlay.job.run", "zmx.reset"])
+    @Test(arguments: ["zmx.present", "session.overlay.job.run", "session.overlay.page.serve", "zmx.reset"])
     func streamAndAfterReplyCommandsAreRefused(_ cmd: String) {
         guard case .failure(let error) = build(#"{"cmd":"\#(cmd)"}"#) else { Issue.record("\(cmd) must be refused"); return }
         #expect(error.message == HtmlBridgeError.unsupported(cmd).message)

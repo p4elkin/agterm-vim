@@ -70,7 +70,7 @@ paths:
   alternative, `alternative skipped`/`alternative dropped` with more), pinned by
   `KeymapTests.pipeFreeKeymapParsesExactlyAsItDidBeforeAlternatives`.
 - Pure types live in `Keybind.swift`, `KeybindMatcher`, `CustomCommand`/`CommandContext`,
-  `BuiltinAction` (48 cases, pinned by `BuiltinActionTests`), `Keymap`, and `ConfigPaths`.
+  `BuiltinAction` (50 cases, pinned by `BuiltinActionTests`), `Keymap`, and `ConfigPaths`.
   `CommandContext` owns the shared expansion/environment token table.
 - Built-ins use AppKit menu key equivalents from `keymap.equivalent(for:)`; apply only non-nil
   `KeyboardShortcut`s. SwiftUI rebuilds menu shortcuts lazily, on activation or key dispatch rather than on
@@ -290,7 +290,11 @@ paths:
   any cwd reports that shell emits. `AGT_SESSION_PWD` stays the pane's reported path, remote or not; the
   command's execution directory comes separately from `Session.localWorkingDirectory`, which returns
   that path for a local session and, for a remote one, only when it exists here as a directory, else
-  HOME. Scratch, overlay default, quick terminal, a local split (the first on an unsplit remote session
+  HOME.
+  The runner then applies the same existence rule to every session, so a local session whose directory
+  was deleted runs its commands in HOME; the other launches leave a missing path to libghostty, which
+  ignores it.
+  Scratch, overlay default, quick terminal, a local split (the first on an unsplit remote session
   or one after the attach-time split closes), Duplicate Session and a new session under the
   current-directory setting seed through the same helper.
 - `{AGT_PANE}`/`$AGT_PANE` is `left`, `right`, or `scratch`, derived from the firing surface for keybinds
@@ -341,17 +345,19 @@ paths:
   `CustomCommandRunner.rebuild` feeds `keymap.binding(for: .normalMode)` into `builtinSequences` and even a
   SINGLE-chord `map ctrl+space normal_mode` is dispatched by the sequence engine. All are absent from
   `keymap list`'s `menu` by design.
-  `close_session` keeps its menu item, but `CustomCommandRunner` also matches its chord while an
-  `HtmlOverlayWebView` holds focus: WebKit hands key equivalents to the page first and reports a cancelled
+  `close_session` and `toggle_overlay` keep their menu items, but `CustomCommandRunner` also matches their
+  chords while an `HtmlOverlayWebView` holds focus: WebKit hands key equivalents to the page first and reports a cancelled
   keydown as handled, so the menu would never see it.
 - ⚠️ **A KEYLESS built-in (nil `defaultChord`, no menu item) needs its own merge line in
   `CustomCommandRunner.rebuild()`** — `settings.keymap.binding(for: .theAction)` folded into
   `builtinSequences` — or a bound chord parses, resolves, and fires nothing. A single-chord `map` line to a
   keyless action lands in `builtinOverrides` (a would-be menu equivalent) and never in `builtinSequences`,
   which is the monitor's only table; only a 2+-chord leader lands there by itself. This is now a PATTERN,
-  not a one-off: the block holds THREE entries, `normal_mode`, `overlay_redirect_toggle` (fork only,
-  [[overlay-redirect]]) and `new_session_in_workspace` (fork only, [[menu-actions]]), each needing the
-  identical line for the identical reason. Grep that block before adding a fourth keyless action, and
+  not a one-off: the block holds FOUR entries, `normal_mode`, `overlay_redirect_toggle` (fork only,
+  [[overlay-redirect]]), `new_session_in_workspace` (fork only, [[menu-actions]]) and `rebased_toggle`
+  (fork only, [[rebased-overlay]]), each needing the identical line for the identical reason.
+  Over a Rebased IDE window only `rebased_toggle`'s direct chord fires, never a leader. Grep that block
+  before adding a fifth keyless action, and
   pin it with a runner-level test, not a keymap-level one — a keymap-level test passes either way.
 - Write shifted symbols as `shift+<base>`: `shift+/` for `?`, `shift+=` for `+`, `shift+5` for `%`, and
   `shift+.` for `>`. `CustomCommandRunner` uses `characters(byApplyingModifiers: [])` to recover that
@@ -363,7 +369,8 @@ paths:
   leader tail such as `ctrl+a>left`.
   Bare function keys may start commands, map alternatives/leaders, and global hotkeys.
   `global-hotkey f5` takes F5 machine-wide, including from local map/command bindings.
-- Host-free `namedKey(forKeyCode:)` is shared by `CustomCommandRunner` and `UndoCloseShortcut`.
+- `CustomCommandRunner` and `UndoCloseShortcut` build their chord through `NSEvent.keymapChord(produced:)`,
+  which applies host-free `namedKey(forKeyCode:)` and then `chordKey`; each passes its own accessor.
   `KeybindTests` pins its range exactly to `bindableNamedKeys`; keep
   `KeymapUITests.testCustomCommandArrowChordFires` because a private-use AppKit glyph can otherwise
   create an unspellable runtime chord.
@@ -414,9 +421,16 @@ paths:
   it to parse clean, and counts the chords that survive.
   Both verbs rot: `validateBindings` clears a custom shortcut a built-in has claimed just as
   `resolveBuiltinOverrides` drops the colliding `map`.
+- A new shipped default must also avoid the shortcuts macOS Services claim in every app while text is
+  selected. Terminal.app's `NSServices` take ⇧⌘A and ⇧⌘M, both enabled on a stock Mac;
+  `plutil -convert json -o - <App>/Contents/Info.plist | jq '.NSServices'` lists an app's.
+  It may shadow a Ghostty default on the same chord, which the menu claims first: ⌘J hides
+  `scroll_to_selection` and ⇧⌘J `write_screen_file:paste`.
 - New shipped defaults must not break a valid existing keymap. `parseKeymap` vacates the new horizontal
   split default when an old file explicitly uses `cmd+shift+d`, and vacates Dashboard's new default when
-  an old file explicitly uses `cmd+shift+g`. An explicit map for the new action opts into its new chord.
+  an old file explicitly uses `cmd+shift+g`, `attach_remote`'s when one uses `cmd+shift+r`, and
+  `toggle_overlay`'s when one uses `cmd+shift+j`.
+  An explicit map for the new action opts into its new chord.
 - **`{AGT_X}` interpolation is intentionally raw and unquoted.** Selection, OSC title, OSC 7 pwd, and the
   session/workspace/window names and `--cwd` a caller supplies over control or the GUI can all inject
   visible shell metacharacters. `TerminalText.sanitized` strips control characters, not `;`,

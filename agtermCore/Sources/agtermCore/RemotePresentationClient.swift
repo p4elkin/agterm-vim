@@ -23,6 +23,7 @@ public struct RemotePresentationEffects {
     public var snapshotStatus: @MainActor (PresentationStatus?) -> Void
     public var hud: @MainActor (PresentationHud?) -> Void
     public var notify: @MainActor (PresentationNotify) -> Void
+    public var sound: @MainActor (PresentationSound) -> Void
     public var connection: @MainActor (RemotePresentationConnection) -> Void
     public var context: @MainActor (String?) -> Void
     public var layout: @MainActor (PresentationLayout) -> Void
@@ -36,6 +37,10 @@ public struct RemotePresentationEffects {
     public var overlayResize: @MainActor (PresentationOverlayChange) -> Void
     /// Runs a request the origin forwarded and calls back with its answer. Nil leaves `forward` out of the hello.
     public var controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)?
+    /// pageRequest shows a page the origin handed over; nil when shown, otherwise the reason sent as a refusal.
+    public var pageRequest: @MainActor (PresentationPage) -> String?
+    public var pageClose: @MainActor (PresentationPageChange) -> Void
+    public var pageCommand: @MainActor (PresentationPageCommand) -> Void
     public var warn: @MainActor (String) -> Void
 
     public init(status: @escaping @MainActor (PresentationStatus?) -> Void,
@@ -51,12 +56,17 @@ public struct RemotePresentationEffects {
                 overlayClose: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
                 overlayResize: @escaping @MainActor (PresentationOverlayChange) -> Void = { _ in },
                 controlForward: (@MainActor (ControlRequest, @escaping @MainActor (ControlResponse) -> Void) -> Void)? = nil,
+                sound: @escaping @MainActor (PresentationSound) -> Void = { _ in },
                 layout: @escaping @MainActor (PresentationLayout) -> Void = { _ in },
+                pageRequest: @escaping @MainActor (PresentationPage) -> String? = { _ in RemotePresentationClient.pagesUnsupported },
+                pageClose: @escaping @MainActor (PresentationPageChange) -> Void = { _ in },
+                pageCommand: @escaping @MainActor (PresentationPageCommand) -> Void = { _ in },
                 warn: @escaping @MainActor (String) -> Void) {
         self.status = status
         self.snapshotStatus = snapshotStatus
         self.hud = hud
         self.notify = notify
+        self.sound = sound
         self.connection = connection
         self.context = context
         self.layout = layout
@@ -67,6 +77,9 @@ public struct RemotePresentationEffects {
         self.overlayClose = overlayClose
         self.overlayResize = overlayResize
         self.controlForward = controlForward
+        self.pageRequest = pageRequest
+        self.pageClose = pageClose
+        self.pageCommand = pageCommand
         self.warn = warn
     }
 }
@@ -80,6 +93,8 @@ public struct RemotePresentationEffects {
 public final class RemotePresentationClient {
     /// The origin pings every 10 seconds, so three missed is a dead link and not a quiet one.
     static let staleAfter: TimeInterval = 30
+    /// pagesUnsupported is the refusal a host that shows no handed-over pages answers with.
+    public static let pagesUnsupported = "pages are not shown on this Mac"
 
     private let argv: [String]
     private let presentationVersion: Int?
@@ -213,6 +228,7 @@ public final class RemotePresentationClient {
         case .layout(let layout): applyLayout(layout)
         case .hud(let hud): effects.hud(hud)
         case .notify(let notify): effects.notify(notify)
+        case .sound(let sound): effects.sound(sound)
         case .ping: send(.ack, on: link)
         // an origin that predates the role answers mirror, and nothing is asked of it
         case .hello(let answer) where answer.mode == .presenter:
@@ -234,8 +250,15 @@ public final class RemotePresentationClient {
             }
             let launch = launchCount
             run(forward.request) { [weak self] response in self?.replyForwarded(forward.id, response, launch: launch) }
+        case .pageRequest(let page):
+            if let reason = effects.pageRequest(page) {
+                send(.pageRejected(PresentationPageChange(page: page.page, reason: reason)), on: link)
+            }
+        case .pageClose(let change): effects.pageClose(change)
+        case .pageCommand(let command): effects.pageCommand(command)
         case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed,
-             .controlForwarded, .unknown: break
+             .controlForwarded, .unknown, .pageRejected, .pageClosed, .pageState:
+            break
         }
     }
 

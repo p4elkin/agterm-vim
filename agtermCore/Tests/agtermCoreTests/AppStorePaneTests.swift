@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct AppStorePaneTests {
+    @Test func rebasedPlacementTracksThePaneSlot() {
+        let session = Session(initialCwd: "/tmp")
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        session.leftOverlay = PaneOverlay(rebased: overlay)
+        #expect(session.rebasedPlacement?.overlay == overlay)
+        #expect(session.rebasedPlacement?.pane == .left)
+    }
+
     @Test(arguments: OverlayPane.allCases, ["session", "left", "right"])
     func paneCloseCancelsOnlyItsOwnAnchoredAsk(closingPane: OverlayPane, scope: String) throws {
         let store = makeStore()
@@ -1772,8 +1780,10 @@ struct AppStorePaneTests {
         #expect(session.scratchActive == false)
         #expect(session.scratchSurface == nil)
         #expect(scratch.teardownCount == 1)
+        #expect(session.scratchGeneration == 1)
         // closing again (no surface) is a no-op.
         #expect(store.closeScratch(session.id) == false)
+        #expect(session.scratchGeneration == 1)
     }
 
     @Test func closeScratchClearsStuckSearchWhenScratchOwnsIt() {

@@ -1,0 +1,4 @@
+module RebasedJNI {
+    header "RebasedJNI.h"
+    export *
+}

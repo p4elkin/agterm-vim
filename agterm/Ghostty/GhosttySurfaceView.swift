@@ -97,7 +97,9 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
     /// every teardown path like `overlayCodeFile`, which both removes the temp file and is how the helper
     /// learns to stop. `session.hud.open` writes it AFTER the store call, so a replacement's teardown
     /// cannot delete the body the incoming HUD just wrote at the same per-session path.
-    var hudBodyFile: String?
+    var hudBodyFile: String? {
+        didSet { HudLinkClick.track(self, hudBodyFile != nil) }
+    }
 
     /// For an OVERLAY surface: its own solid `#rrggbb` background (`session.overlay.open --background-color`),
     /// nil for the theme background. Applied in `createSurface`, which the session-watermark path skips
@@ -138,6 +140,8 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
     /// idle timer. Fires unconditionally, unlike `onUserInputClearsStatus`: ordinary typing in an idle
     /// session must count as activity or the user is yanked to a blocked session mid-type.
     var onUserInput: (() -> Void)?
+    /// Called after a size push and after a cell-size change; a HUD panel is measured from this surface.
+    var onGridChange: (() -> Void)?
 
     /// Called on the main actor with the current font size (points) when it changes (cmd +/-), so the app
     /// can persist it. Pane surfaces share a live-role-aware callback; scratch and overlays leave it unset.
@@ -468,6 +472,8 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
     func updateGhosttyFocus() {
         guard let surface else { return }
         ghostty_surface_set_focus(surface, liveFocus)
+        // a view can hold first responder before its surface exists; creation lands here.
+        TerminalInputSource.shared.requestRefresh()
         // `isAccessibilityFocused` mirrors `liveFocus`; AX must hear it move. This covers the key-window and
         // (re)attach paths only — the first-responder transitions post for themselves, since they run before
         // AppKit has updated `window.firstResponder` and never reach this method.
@@ -696,7 +702,7 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         }
         // an overlay surface with its own background color applies it here too — the overlay is sessionless,
         // so the watermark path above skips it.
-        if overlayBackgroundColorHex != nil { applyOverlayBackgroundColor() }
+        applyOverlayConfig()
 
         // the overlay grabs first responder itself (TerminalView's once-on-attach grab misses the deferred
         // overlay surface); a bounded run-loop retry beats the SwiftUI/AppKit responder race.
@@ -853,6 +859,7 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         windowVisibilityObservation = nil
         if let surface { ghostty_surface_free(surface) }
         surface = nil
+        TerminalInputSource.shared.requestRefresh()
         // release the custom layer libghostty installed and this view still retains. The current pin clears
         // its display callback in `IOSurfaceLayer.release`, so this defends builds predating that fix, where
         // the callback kept pointing at the freed renderer and the next CoreAnimation display locked a mutex
@@ -897,6 +904,7 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         onClearUnseen = nil
         onUserInputClearsStatus = nil
         onUserInput = nil
+        onGridChange = nil
         onFontSizeChange = nil
         onSearchStart = nil
         onSearchEnd = nil
@@ -921,6 +929,12 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
     /// `TerminalSurface` conformance: the model calls this when the owning session is closed.
     func teardown() {
         destroySurface()
+    }
+
+    /// The daemon outlives the move, so the client's exit is claimed first, as `replacePane` does.
+    func prepareForTransfer() {
+        claimProcessExit()
+        teardown()
     }
 
     /// `TerminalSurface.isRealized`: the libghostty surface — and with it the spawned program — exists. False
@@ -994,5 +1008,6 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         // the split re-parent invalidates the Metal drawable, and neither a same-grid set_size nor the tick
         // (dirty surfaces only) repaints it — force one or the re-hosted pane stays blank over a live buffer.
         ghostty_surface_refresh(surface)
+        onGridChange?()
     }
 }

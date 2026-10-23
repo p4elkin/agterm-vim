@@ -51,10 +51,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Install fish
+        run: brew install fish
+      - name: Verify fish
+        run: which fish && fish --version
       - name: swift test (with coverage)
         working-directory: agtermCore
         run: ../scripts/watchdog.sh swift test --enable-code-coverage
         env:
+          AGTERM_REQUIRE_FISH: "1"
           WATCHDOG_SECONDS: "600"
           DIAG_DIR: ${{ github.workspace }}/test-hang
       - name: upload hang diagnostics
@@ -181,9 +186,8 @@ jobs:
               exit 1
             fi
           done
-      # the Debug-only hardened-runtime exceptions (allow-jit, allow-unsigned-executable-memory,
-      # disable-library-validation) must never reach a shipped build, and the TCC set must not shrink
-      # either — losing one silently removes the user's only path to granting that permission (#396).
+      # Release needs allow-jit and disable-library-validation for Rebased. Unsigned executable memory
+      # stays Debug-only; dropping a TCC key removes the user's permission prompt (#396).
       # Pin the exact Release set; adding or dropping a key is a deliberate act that edits this list.
       - name: Verify the app's Release entitlements
         shell: bash
@@ -195,6 +199,8 @@ jobs:
           # accepts <string>true</string>, which renders as bare true without the tojson below.
           expected=$(printf '%s=true\n' \
             com.apple.security.automation.apple-events \
+            com.apple.security.cs.allow-jit \
+            com.apple.security.cs.disable-library-validation \
             com.apple.security.device.audio-input \
             com.apple.security.device.camera \
             com.apple.security.personal-information.addressbook \
@@ -216,28 +222,43 @@ jobs:
       # added to the shipping file and missed here leaves Debug unable to prompt for it, with every job
       # green — the failure surfaces only when someone verifies the new permission by hand in a Debug
       # instance. Derive Debug's expected content from the shipping file so the two cannot drift.
-      - name: Verify the Debug entitlements are the shipping set plus the exceptions
+      - name: Verify the Debug entitlements are the shipping set plus one exception
         shell: bash
         run: |
           keys() { plutil -convert json -o - -- "$1" | jq -r 'to_entries[] | "\(.key)=\(.value|tojson)"' | sort; }
           release=$(keys agterm/agterm.entitlements)
           debug=$(keys agterm/agterm-debug.entitlements)
-          exceptions=$(printf '%s=true\n' \
-            com.apple.security.cs.allow-jit \
-            com.apple.security.cs.allow-unsigned-executable-memory \
-            com.apple.security.cs.disable-library-validation | sort)
+          exceptions=$(printf '%s=true\n' com.apple.security.cs.allow-unsigned-executable-memory)
           expected=$(printf '%s\n%s\n' "$release" "$exceptions" | sort)
           if [ "$debug" != "$expected" ]; then
-            echo "agterm-debug.entitlements is not the shipping set plus the three exceptions." >&2
+            echo "agterm-debug.entitlements is not the shipping set plus allow-unsigned-executable-memory." >&2
             diff <(echo "$expected") <(echo "$debug") >&2 || true
             exit 1
           fi
-      # ZmxSupport requires a zsh password-database shell. Configure the disposable runner so the
-      # plain-shell seam test runs.
+      # The zsh plain-login seam needs zsh here; the fish seam switches the runner shell below.
       - name: Give the runner account a zsh login shell
         run: sudo dscl . -create "/Users/$(id -un)" UserShell /bin/zsh
+      - name: Install fish
+        run: brew install fish
+      - name: Verify fish
+        run: which fish && fish --version
+      # xcodebuild hands the test host only TEST_RUNNER_-prefixed variables, prefix stripped.
       - name: Application-hosted unit tests
+        env:
+          TEST_RUNNER_AGTERM_REQUIRE_FISH: "1"
         run: scripts/test-app.sh
+      - name: Plain fish login shell seam
+        env:
+          TEST_RUNNER_AGTERM_REQUIRE_FISH_LOGIN_SHELL: "1"
+          TEST_RUNNER_AGTERM_REQUIRE_FISH: "1"
+        run: |
+          sudo dscl . -create "/Users/$(id -un)" UserShell "$(which fish)"
+          xcodebuild test \
+            -project agterm.xcodeproj \
+            -scheme agtermTests \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            -only-testing:agtermTests/SessionHostFishSeamTests/testPlainLoginShellStartsIntegratedFish
 
   cookbook:
     name: Cookbook checks
@@ -313,8 +334,9 @@ jobs:
         run: find cookbook -type f -name '*.fish' -print0 | xargs -0 -r -n1 fish --no-execute
       - name: Install ruff
         # not on the ubuntu-latest image, unlike shellcheck. pipx, because the runner's
-        # python is externally managed and a bare pip install into it fails
-        run: pipx install ruff
+        # python is externally managed and a bare pip install into it fails. Pinned because a
+        # new ruff release can add rules that fail recipes nobody touched
+        run: pipx install ruff==0.16.10
       - name: ruff
         # the .py counterpart of shellcheck, so a recipe is linted rather than only parsed.
         # EXE001 is ignored because it fails a shebang on a non-executable file, which

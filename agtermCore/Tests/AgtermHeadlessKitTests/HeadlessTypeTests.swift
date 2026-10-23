@@ -132,4 +132,42 @@ extension HeadlessActionsTests {
         #expect(fixture.session.agentIndicator.status == .blocked)
         #expect(fixture.runner.calls.count == 2)
     }
+
+    private func writeSettings(_ json: String, _ fixture: HeadlessActionFixture) throws {
+        let directory = URL(fileURLWithPath: fixture.headless.config.stateDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try json.write(to: directory.appendingPathComponent("settings.json"), atomically: true, encoding: .utf8)
+    }
+
+    @Test(arguments: [
+        (nil, "y", AgentStatus.idle),
+        (#"{"statusReset": "enter"}"#, "y", .blocked),
+        (#"{"statusReset": "enter"}"#, "y\n", .idle),
+        (#"{"statusReset": "never"}"#, "y\n", .blocked),
+        ("not json", "y", .idle),
+    ])
+    func theStateDirectorysStatusResetDecidesWhatTypingClears(_ settings: String?, _ text: String, _ status: AgentStatus) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        if let settings { try writeSettings(settings, fixture) }
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "blocked" }.ok)
+
+        #expect(try await fixture.dispatch(.sessionType) { $0.text = text }.ok)
+
+        #expect(fixture.session.agentIndicator.status == status)
+    }
+
+    @Test func anEditedStatusResetAppliesToTheNextTypeCall() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        try writeSettings(#"{"statusReset": "never"}"#, fixture)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "blocked" }.ok)
+        #expect(try await fixture.dispatch(.sessionType) { $0.text = "y" }.ok)
+        #expect(fixture.session.agentIndicator.status == .blocked)
+
+        try writeSettings(#"{"statusReset": "firstKey"}"#, fixture)
+        #expect(try await fixture.dispatch(.sessionType) { $0.text = "y" }.ok)
+
+        #expect(fixture.session.agentIndicator.status == .idle)
+    }
 }

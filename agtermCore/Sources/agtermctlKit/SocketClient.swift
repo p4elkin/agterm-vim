@@ -11,7 +11,12 @@ import agtermCore
 /// `{"ok":false}` response (which is a valid decoded `ControlResponse`).
 struct SocketClientError: Error, CustomStringConvertible {
     let description: String
-    init(_ description: String) { self.description = description }
+    /// The errno of a failed `connect`, nil for every other failure.
+    let connectErrno: Int32?
+    init(_ description: String, connectErrno: Int32? = nil) {
+        self.description = description
+        self.connectErrno = connectErrno
+    }
 }
 
 /// A server response beside the bytes it arrived as. `--json` prints `raw` unchanged, so a field this
@@ -106,7 +111,8 @@ struct SocketClient {
             let failure = errno
             let message = String(cString: strerror(failure))
             close(fd)
-            throw SocketClientError("connect(\(path)) failed: \(message) — \(Self.hint(forConnect: failure, path: path))")
+            throw SocketClientError("connect(\(path)) failed: \(message) — \(Self.hint(forConnect: failure, path: path))",
+                                    connectErrno: failure)
         }
         return fd
     }
@@ -278,12 +284,22 @@ struct SocketClient {
         if let zmx = response.result?.zmx {
             return formatZmx(zmx)
         }
+        if let mirrors = response.result?.rebasedMirrors {
+            return formatRebasedMirrors(mirrors)
+        }
         if let restore = response.result?.restore {
             return formatRestoreStatus(restore)
         }
+        if let recent = response.result?.recent {
+            return formatRecent(recent)
+        }
+        if let open = response.result?.recentOpen {
+            let reopened = "reopened \(open.item.kind) \(open.item.title)"
+            return open.complete ? reopened : reopened + " (incomplete: the entry stays in the list)"
+        }
         if let app = response.result?.app {
-            guard let commit = app.commit, !commit.isEmpty else { return app.version }
-            return "\(app.version) (\(commit))"
+            guard let installed = response.result?.installed, installed != app else { return formatIdentity(app) }
+            return "\(formatIdentity(app))\ninstalled: \(formatIdentity(installed))"
         }
         if let text = response.result?.text {
             return text
@@ -331,6 +347,11 @@ struct SocketClient {
         return bookmarks.map { node in
             "\(node.needle) \(node.sessionName ?? node.session): \(node.prompt)"
         }.joined(separator: "\n")
+    }
+
+    static func formatIdentity(_ identity: AppIdentity) -> String {
+        guard let commit = identity.commit, !commit.isEmpty else { return identity.version }
+        return "\(identity.version) (\(commit))"
     }
 
     /// The restore policy as separate lines: "what the next launch will do" and "what this one did" are
@@ -416,6 +437,15 @@ struct SocketClient {
         guard sync else { return body }
         let header = "syncing with macOS appearance — light: \(light ?? "default ghostty"), dark: \(dark ?? "default ghostty")"
         return header + "\n" + body
+    }
+
+    /// Render `recent.list` one entry per row with its full id, which `recent open` takes as is.
+    static func formatRecent(_ items: [ControlRecentItem]) -> String {
+        guard !items.isEmpty else { return RecentClosedTarget.emptyError }
+        return items.map { item in
+            let subtitle = item.subtitle.map { " (\($0))" } ?? ""
+            return "\(item.id)  \(item.kind)  \(item.title)\(subtitle)"
+        }.joined(separator: "\n")
     }
 
     /// Render the `hooks.list` payload: one row per hook in file order, then parse diagnostics.
@@ -529,7 +559,10 @@ struct SocketClient {
                 // a session whose main pane has no terminal looks identical to a working one here, which is
                 // the whole complaint in #416 — it is listed, named, and does nothing.
                 let realizedTag = session.realized == false ? " (not realized)" : ""
-                let tags = splitTag + realizedTag + (session.overlay ? " (overlay)" : "")
+                let overlayHidden = session.hiddenOverlays?.contains("session") == true
+                // a parked IDE leaves `overlay` false but still names `session` hidden
+                let overlayTag = overlayHidden ? " (overlay hidden)" : session.overlay ? " (overlay)" : ""
+                let tags = splitTag + realizedTag + overlayTag
                     + (session.scratch ? " (scratch)" : "")
                 let splitCwdSuffix = session.splitCwd.map { $0 == session.cwd ? "" : "  split cwd: \($0)" } ?? ""
                 let titleSuffix = session.title.map { "  title: \($0)" } ?? ""

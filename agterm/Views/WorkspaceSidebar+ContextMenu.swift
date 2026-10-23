@@ -64,14 +64,25 @@ extension WorkspaceSidebar.Coordinator {
         let sessionTargets = node.kind == .session ? store.sidebarSelectionTargets(forContextSession: node.id) : []
         let sessionCount = sessionTargets.count
 
-        // "Clear Status" sits first for a session row with a status, the `agtermctl session status idle` effect.
-        if node.kind == .session, sessionTargets.contains(where: { store.session(withID: $0)?.agentIndicator.status != .idle }) {
-            let clearStatus = NSMenuItem(title: sessionCount == 1 ? "Clear Status" : "Clear Statuses",
-                                         action: #selector(menuClearStatus(_:)), keyEquivalent: "")
-            clearStatus.target = self
-            clearStatus.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
-            menu.addItem(clearStatus)
-            menu.addItem(.separator())
+        // "Clear Status" sits first for a session row with a status, the `agtermctl session status idle` effect;
+        // "Mark for Attention" is its idle-row counterpart, `session status completed` on the idle targets.
+        if node.kind == .session {
+            let statuses = sessionTargets.compactMap { store.session(withID: $0)?.agentIndicator.status }
+            if statuses.contains(where: { $0 != .idle }) {
+                let clearStatus = NSMenuItem(title: sessionCount == 1 ? "Clear Status" : "Clear Statuses",
+                                             action: #selector(menuClearStatus(_:)), keyEquivalent: "")
+                clearStatus.target = self
+                clearStatus.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+                menu.addItem(clearStatus)
+            }
+            if statuses.contains(.idle) {
+                let mark = NSMenuItem(title: "Mark for Attention", action: #selector(menuMarkForAttention(_:)),
+                                      keyEquivalent: "")
+                mark.target = self
+                mark.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+                menu.addItem(mark)
+            }
+            if !statuses.isEmpty { menu.addItem(.separator()) }
         }
 
         if node.kind == .workspace || sessionCount <= 1 {
@@ -142,6 +153,9 @@ extension WorkspaceSidebar.Coordinator {
             let newSession = NSMenuItem(title: "New Session", action: #selector(menuNewSession(_:)), keyEquivalent: "")
             newSession.target = self
             newSession.representedObject = node
+            // built fresh per right-click with autoenable off, so no `validateMenuItem`; an open menu keeps
+            // the state it opened with.
+            newSession.isEnabled = !newSessionPending
             menu.addItem(newSession)
             let openSession = NSMenuItem(title: "Open Directory…", action: #selector(menuOpenSession(_:)), keyEquivalent: "")
             openSession.target = self
@@ -165,6 +179,14 @@ extension WorkspaceSidebar.Coordinator {
             membership.target = self
             membership.representedObject = node
             menu.addItem(membership)
+            menu.addItem(.separator())
+            // targets every session of the workspace, including the ones the flagged tree layout hides.
+            let flagAll = NSMenuItem(title: store.allSessionsFlagged(inWorkspace: node.id) ? "Unflag All Sessions" : "Flag All Sessions",
+                                     action: #selector(menuToggleWorkspaceFlag(_:)), keyEquivalent: "")
+            flagAll.target = self
+            flagAll.representedObject = node
+            flagAll.isEnabled = store.workspaces.first { $0.id == node.id }?.sessions.isEmpty == false
+            menu.addItem(flagAll)
             menu.addItem(.separator())
             let delete = NSMenuItem(title: "Delete Workspace", action: #selector(menuDeleteWorkspace(_:)), keyEquivalent: "")
             delete.target = self
@@ -226,9 +248,19 @@ extension WorkspaceSidebar.Coordinator {
         for id in request.sessionIDs { store.setAgentIndicator(AgentIndicator(), forSession: id) }
     }
 
+    @objc private func menuMarkForAttention(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? SessionBatchRequest else { return }
+        store.markForAttention(request.sessionIDs)
+    }
+
     @objc private func menuToggleFlag(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest else { return }
         actions.toggleFlags(request.sessionIDs, in: store)
+    }
+
+    @objc private func menuToggleWorkspaceFlag(_ sender: NSMenuItem) {
+        guard let node = sender.representedObject as? SidebarNode else { return }
+        store.applyWorkspaceFlag(.toggle, to: node.id)
     }
 
     @objc private func menuDuplicate(_ sender: NSMenuItem) {
@@ -244,7 +276,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuNewSession(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
-        addNewSession(toWorkspace: node.id)
+        actions.newSessionFromButton(workspaceID: node.id, in: store)
     }
 
     /// Inline "+" button on a workspace row, the right-click "New Session" action. The button carries no
@@ -256,7 +288,7 @@ extension WorkspaceSidebar.Coordinator {
         guard let outline = outlineView else { return }
         let row = outline.row(for: sender)
         guard row >= 0, let node = outline.item(atRow: row) as? SidebarNode, node.kind == .workspace else { return }
-        addNewSession(toWorkspace: node.id)
+        actions.newSessionFromButton(workspaceID: node.id, in: store)
     }
 
     @objc private func menuDeleteWorkspace(_ sender: NSMenuItem) {
@@ -284,13 +316,6 @@ extension WorkspaceSidebar.Coordinator {
     @objc private func menuOpenSession(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
         openDirectoryAndAddSession(toWorkspace: node.id)
-    }
-
-    /// addNewSession shares the directory and placement settings of `AppActions.newSession()`
-    /// with the workspace row's New Session and "+".
-    private func addNewSession(toWorkspace workspaceID: UUID) {
-        addSession(toWorkspace: workspaceID, cwd: actions.resolvedNewSessionCwd(),
-                   at: actions.resolvedNewSessionIndex(in: workspaceID, store: store))
     }
 
     /// Adds a session to `workspaceID` at `cwd` and selects it; a nil `index` appends.

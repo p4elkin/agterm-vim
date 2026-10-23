@@ -72,10 +72,46 @@ private struct SettingHint: View {
     }
 }
 
-/// General tab: Mouse (scroll speed, right-click-pastes, workspace-row click), Sessions (new-session
-/// directory, restore mode, and the flagged view layout, here because the Interface tab is full) and the
-/// inherit-global-ghostty-config toggle; visual and
-/// notification settings have their own tabs.
+/// The host the "+" new-session buttons create on. A draft, committed on submit, on focus loss and when the
+/// view goes, so a keystroke never saves a half-typed host.
+private struct NewSessionHostField: View {
+    let model: SettingsModel
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("New sessions are created on", text: $draft, prompt: Text("this Mac"))
+            .focused($focused)
+            .onSubmit(commit)
+            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+            .onAppear { draft = model.settings.newSessionHost ?? "" }
+            .onDisappear(perform: commit)
+            .accessibilityIdentifier("settings-new-session-host")
+        if draftIsUnusable {
+            SettingHint("Not a usable ssh host, so new sessions stay on this Mac.")
+                .accessibilityIdentifier("settings-new-session-host-invalid")
+        } else {
+            SettingHint("The \"+\" buttons create the session there; ⌘N and New Local Session stay on this Mac.")
+        }
+    }
+
+    /// Checked against the text as typed, not the saved value, so the note shows before the field commits.
+    private var draftIsUnusable: Bool {
+        var probe = model.settings
+        probe.newSessionHost = draft
+        return !draft.trimmingCharacters(in: .whitespaces).isEmpty && probe.effectiveNewSessionHost == nil
+    }
+
+    private func commit() {
+        guard draft != (model.settings.newSessionHost ?? "") else { return }
+        model.setNewSessionHost(draft)
+    }
+}
+
+/// General tab: Mouse (scroll speed, right-click-pastes, link opening, workspace-row click) and Sessions
+/// (new-session directory, restore mode, the flagged view layout, here because the Interface tab is full,
+/// and the inherit-global-ghostty-config toggle, here because a section of its own made the tab scroll);
+/// visual and notification settings have their own tabs.
 private struct GeneralSettingsView: View {
     let model: SettingsModel
 
@@ -92,6 +128,11 @@ private struct GeneralSettingsView: View {
                 }
                 Toggle("Right-click pastes", isOn: rightClickPaste)
                     .accessibilityIdentifier("settings-right-click-paste")
+                Picker("Open links in", selection: linkOpenMode) {
+                    Text("Browser").tag(LinkOpenMode.browser)
+                    Text("Session overlay").tag(LinkOpenMode.overlay)
+                }
+                .accessibilityIdentifier("settings-link-open-mode")
                 Toggle("Click a workspace row to expand or collapse", isOn: workspaceRowClickExpands)
                     .accessibilityIdentifier("settings-workspace-row-click-expands")
             }
@@ -122,6 +163,7 @@ private struct GeneralSettingsView: View {
                     Text("After the current session").tag(AppSettings.NewSessionPlacement.afterCurrent)
                 }
                 .accessibilityIdentifier("settings-new-session-placement")
+                NewSessionHostField(model: model)
                 Picker("Restore sessions", selection: restoreMode) {
                     ForEach(RestoreMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
@@ -140,15 +182,17 @@ private struct GeneralSettingsView: View {
                     .accessibilityIdentifier("settings-close-grace-undo")
                 Picker("Flagged view layout", selection: flaggedViewLayout) {
                     Text("Flat list").tag(FlaggedViewLayout.flat)
+                    Text("Flat list, names only").tag(FlaggedViewLayout.plain)
                     Text("Workspace tree").tag(FlaggedViewLayout.tree)
                 }
                 .accessibilityIdentifier("settings-flagged-view-layout")
-            }
-
-            Section("Ghostty Config") {
+                TextField("IDE app", text: Binding(get: { model.settings.effectiveRebasedAppPath },
+                                                       set: { model.setRebasedAppPath($0) }))
+                    .accessibilityIdentifier("settings-rebased-app-path")
+                SettingHint("Changes apply after restarting agterm.")
                 Toggle("Use my global Ghostty config", isOn: inheritGlobalGhosttyConfig)
                     .accessibilityIdentifier("settings-inherit-global-ghostty")
-                SettingHint("Also loads ~/.config/ghostty/config on top of agterm's own. Edit ~/.config/agterm/ghostty.conf to customize.")
+                SettingHint("Also loads ~/.config/ghostty/config.")
             }
         }
         .formStyle(.grouped)
@@ -179,6 +223,11 @@ private struct GeneralSettingsView: View {
     private var rightClickPaste: Binding<Bool> {
         Binding(get: { model.settings.rightClickPaste ?? true },
                 set: { model.setRightClickPaste($0 ? nil : false) })
+    }
+
+    private var linkOpenMode: Binding<LinkOpenMode> {
+        Binding(get: { model.settings.effectiveLinkOpenMode },
+                set: { model.setLinkOpenMode($0) })
     }
 
     private var flaggedViewLayout: Binding<FlaggedViewLayout> {
@@ -477,9 +526,12 @@ private struct InterfaceSettingsView: View {
 
     var body: some View {
         Form {
-            twoColumnSection("Title Bar", elements: InterfaceElement.allCases.filter { $0.section == .titleBar })
-            twoColumnSection("Sidebar", elements: InterfaceElement.allCases.filter { $0.section == .sidebar })
-            Section("Multiple Windows") {
+            twoColumnSection("Title Bar", elements: InterfaceElement.allCases.filter { $0.section == .titleBar }) {
+                EmptyView()
+            }
+            // the multi-window toggle rides the Sidebar section: the tab is full at 540x680, and its own
+            // section header would push the quick-terminal Size off the bottom.
+            twoColumnSection("Sidebar", elements: InterfaceElement.allCases.filter { $0.section == .sidebar }) {
                 Toggle("Show sidebar only in the active window", isOn: autoHideSidebarInactiveWindows)
                     .accessibilityIdentifier("settings-auto-hide-inactive-sidebars")
             }
@@ -512,7 +564,8 @@ private struct InterfaceSettingsView: View {
     /// A section whose toggles lay out TWO per row, each filling half the row around a centered `Divider` so
     /// the columns read as EVEN and visibly separated; an odd final element pairs with an empty half.
     @ViewBuilder
-    private func twoColumnSection(_ title: String, elements: [InterfaceElement]) -> some View {
+    private func twoColumnSection(_ title: String, elements: [InterfaceElement],
+                                  @ViewBuilder trailing: () -> some View) -> some View {
         Section(title) {
             ForEach(Array(stride(from: 0, to: elements.count, by: 2)), id: \.self) { start in
                 HStack(spacing: 16) {
@@ -525,6 +578,7 @@ private struct InterfaceSettingsView: View {
                     }
                 }
             }
+            trailing()
         }
     }
 
@@ -840,6 +894,7 @@ private struct AgentStatusSettingsView: View {
 /// keymap and posts the change, updating the menu shortcuts, custom-command runner and action palette.
 private struct KeyMappingSettingsView: View {
     let model: SettingsModel
+    @State private var enabledInputSources = TerminalInputSource.enabledSources()
 
     /// configDirectoryPath is the directory shown in the field, matching `SettingsModel`'s own resolution.
     private var configDirectoryPath: String {
@@ -852,6 +907,21 @@ private struct KeyMappingSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Keyboard Layout") {
+                Picker("Lock in terminals", selection: terminalInputSource) {
+                    Text("Off").tag(String?.none)
+                    ForEach(inputSources, id: \.id) { source in
+                        Text(source.name).tag(String?.some(source.id))
+                    }
+                }
+                .accessibilityIdentifier("settings-terminal-input-source")
+                .onAppear { enabledInputSources = TerminalInputSource.enabledSources() }
+                // enabling a source means a trip to System Settings and back, so activation is the reload.
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    enabledInputSources = TerminalInputSource.enabledSources()
+                }
+            }
+
             Section("Config Directory") {
                 HStack {
                     Text(configDirectoryPath)
@@ -923,6 +993,21 @@ private struct KeyMappingSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    /// inputSources is what macOS can select, plus a saved source it no longer can, so the picker still
+    /// shows the stored choice.
+    private var inputSources: [KeyboardInputSource] {
+        let enabled = enabledInputSources
+        guard let saved = model.settings.terminalInputSource, !enabled.contains(where: { $0.id == saved }) else {
+            return enabled
+        }
+        return enabled + [KeyboardInputSource(id: saved, name: "\(saved) (unavailable)")]
+    }
+
+    private var terminalInputSource: Binding<String?> {
+        Binding(get: { model.settings.terminalInputSource },
+                set: { model.setTerminalInputSource($0) })
     }
 
     private var hooksDiagnosticsSummary: String {

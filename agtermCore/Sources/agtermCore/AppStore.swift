@@ -142,6 +142,9 @@ public final class AppStore {
     /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
     /// discards per-session state must hang off this, or an undone close silently loses it.
     @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
+    /// The settled selected-pane identity per session that `pane.focused` diffs against.
+    @ObservationIgnored var paneFocusBaseline: [UUID: UUID] = [:]
+    @ObservationIgnored let paneFocusDebouncer = Debouncer()
     /// Where this store publishes a session's presentation state for attached viewers. One hub serves every
     /// window, since a viewer subscribes by session id alone.
     @ObservationIgnored public var presentationHub: PresentationHub?
@@ -151,6 +154,8 @@ public final class AppStore {
     @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
     /// Told when an attached session is seen here, so its origin clears its own count and auto-reset status.
     @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
+    /// onReplicaPageChanged is told the local id of a page shown for an origin whose reported state changed.
+    @ObservationIgnored public var onReplicaPageChanged: ((UUID) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
@@ -224,6 +229,7 @@ public final class AppStore {
         self.sessionDidFinalize = sessionDidFinalize
         self.paneFinalizer = paneFinalizer
         self.launchPaneDrop = launchPaneDrop
+        observePaneFocus()
     }
 
     /// The currently selected session, derived from `selectedSessionID`.
@@ -316,7 +322,8 @@ public final class AppStore {
                             dashboardFontSize: () -> Double? = { nil },
                             dashboardFontMode: () -> String? = { nil }, app: AppIdentity? = nil,
                             liveReset: ControlLiveResetReadback? = nil, indexUnsaved: Bool = false,
-                            flaggedLayout: FlaggedViewLayout? = nil, htmlZoom: Double? = nil) -> ControlTree {
+                            flaggedLayout: FlaggedViewLayout? = nil, htmlZoom: Double? = nil,
+                            linkOpenMode: LinkOpenMode? = nil, rebased: ControlRebasedNode? = nil) -> ControlTree {
         let activeID = selectedSessionID
         // `currentWorkspaceID`, not the selected session's owner: an EMPTY destination selects nothing, so
         // deriving this from the selection alone made `tree` name the workspace `workspace.go` just left.
@@ -405,7 +412,9 @@ public final class AppStore {
                                               liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
                                               presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                               remoteOverlays: remoteOverlayNodes(of: session),
-                                              htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom))
+                                              htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom),
+                                              rebasedOverlay: session.rebasedPlacement.map { $0.overlay.controlNode(pane: $0.pane, hidden: session.rebasedHidden) },
+                                              hiddenOverlays: hiddenOverlaysNode(session))
                 if session.remoteHost != nil {
                     node.remoteState = session.remotePresentation?.rowState.rawValue
                     node.remoteSession = session.remotePresentation?.binding.remoteSessionID
@@ -432,7 +441,7 @@ public final class AppStore {
                            dashboardFontMode: dashboardFontMode(),
                            sessionRecency: controlSessionRecency(),
                            pickPending: pickPending(), askPending: askPending(), app: app, liveReset: liveReset,
-                           indexUnsaved: indexUnsaved ? true : nil)
+                           indexUnsaved: indexUnsaved ? true : nil, linkOpenMode: linkOpenMode?.rawValue, rebased: rebased)
     }
 
     /// The tree's `paneOverlays`: the panes covered by their own overlay, omitted when neither is.
@@ -451,7 +460,8 @@ public final class AppStore {
                               sizePercent: session.overlaySizePercent,
                               heightPercent: session.hudHeightPercent, position: spec.position.rawValue,
                               pane: session.hudTargetPane?.rawValue, hideAfter: spec.effectiveHideAfter,
-                              markdown: spec.markdown, fontSize: spec.fontSize)
+                              markdown: spec.markdown, fontSize: spec.fontSize,
+                              sticky: spec.sticky, frame: spec.frame)
     }
 
     /// Creates a workspace and appends it. With `revealNewWorkspace` (the default) and the filter ON, the new
@@ -1005,6 +1015,8 @@ public final class AppStore {
         recordRecencyNow()
         // LAST, after the recency stack is re-seeded: the pick is MRU, so earlier finds an empty stack.
         reselectIfSelectionHidden()
+        // a reload is not a pane selection either
+        paneFocusBaseline = selectedPaneIdentities()
     }
 
     func log(_ message: @autoclosure () -> String) {
@@ -1034,7 +1046,7 @@ public final class AppStore {
         return nil
     }
 
-    private func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
+    func orderedSessionIDs(matching ids: Set<UUID>) -> [UUID] {
         workspaces.flatMap(\.sessions).map(\.id).filter { ids.contains($0) }
     }
 

@@ -10,6 +10,16 @@ final class AppActions {
     /// The window library. Resolves the frontmost window's store per call rather than holding a fixed one,
     /// so menu bar / palette / control channel all drive the window the user is looking at.
     let library: WindowLibrary
+    var rebasedRefocus: (Session) -> Void = { HtmlOverlayRegistry.shared.refocus($0) }
+    var closeConfirmer: (String, String) -> Bool = { message, detail in
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
 
     /// The frontmost open window's store, the target of every mutating action. Nil only with all windows
     /// closed (quitting), where callers no-op.
@@ -65,6 +75,13 @@ final class AppActions {
     /// for a banner-clicked session whose window had closed. Nil before the scene `.task` runs.
     var openWindow: ((WindowInfo.ID) -> Void)?
 
+    /// Creates a session on a host for the "+" controls as (host, workspace, store, selection at the click);
+    /// wired by `agtermApp` to the control server, which is built after `actions`. Nil until the scene `.task` runs.
+    var createRemoteSession: ((String, UUID, AppStore, UUID?) async -> RemoteCreateOutcome)?
+
+    /// Shows a failed "+" remote create as (title, message, window). Nil uses a sheet on that window.
+    var presentRemoteCreateFailure: ((String, String, UUID) -> Void)?
+
     /// The settings model, holding the parsed keymap whose custom commands feed the action palette. It and
     /// `customCommandRunner` are built AFTER `actions` in `agtermApp.init`, so both are wired from the scene
     /// `.task` rather than passed to `init(library:)` — an init-order break. Nil until that `.task` runs.
@@ -95,6 +112,9 @@ final class AppActions {
 
     init(library: WindowLibrary) {
         self.library = library
+        RebasedOverlayReleases.shared.onHiddenChange = { [weak self] session, overlay, hidden in
+            self?.rebasedSlotHidden(session: session, overlay: overlay, hidden: hidden)
+        }
         // agtermCore can't call `focusActiveSession`, so `AppStore` posts and we resolve + focus here.
         autoFollowObserver = NotificationCenter.default.addObserver(
             forName: .agtermAutoFollowed, object: nil, queue: .main
@@ -140,7 +160,10 @@ final class AppActions {
     /// The cwd for a new session: the new-session-directory setting (home / the current session's cwd / a
     /// fixed custom dir) resolved against the active session's focused-pane cwd, home when `settingsModel`
     /// isn't wired. Read as the `addSession` argument, so it captures the cwd BEFORE the new session exists.
-    func resolvedNewSessionCwd() -> String {
+    func resolvedNewSessionCwd() -> String { resolvedNewSessionCwd(in: store) }
+
+    /// The same, against a given window's active session rather than the frontmost one.
+    func resolvedNewSessionCwd(in store: AppStore?) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let current = store?.activeSession.map { $0.localWorkingDirectory(reported: $0.focusedCwd, homeDirectory: home) }
         return settingsModel?.settings.resolveNewSessionCwd(currentSessionCwd: current, home: home) ?? home
@@ -251,12 +274,20 @@ final class AppActions {
         if terminalZoomActive { frontmostTerminalZoom?.clear(); return true }
         if let dashboard = frontmostDashboard, dashboard.isOpen { dashboard.close(); focusActiveSession(); return true }
         guard let store, let session = store.activeSession else { return false }
-        if session.overlayActive { store.closeOverlay(session.id); return true }
+        if session.hudActive || session.coverOverlayVisible {
+            if let review = session.rebasedOverlay, !ContentView.shouldBypassCloseConfirmation,
+               !closeConfirmer("End the Rebased review of \(review.project)?", "The session will stay open.") { return true }
+            store.closeOverlay(session.id)
+            return true
+        }
         if session.scratchActive { store.toggleScratch(session.id); return true }
         // the focused pane's own overlay is the last cover: without this rung ⌘W over one falls straight
         // through and closes the SESSION. An overlay on the other pane is not in front of the user, so it
         // does not intercept — that pane stays live and ⌘W keeps its ordinary meaning.
-        if let pane = session.focusedOverlayPane { store.closePaneOverlay(session.id, pane: pane); return true }
+        if let pane = session.focusedOverlayPane, session.paneOverlay(pane)?.rebased == nil {
+            store.closePaneOverlay(session.id, pane: pane)
+            return true
+        }
         // handled either way — returning true on cancel keeps the File menu from closing the whole window.
         guard confirmCloseSession(session) else { return true }
         closeSessionAfterConfirmation(session.id, in: store)
@@ -295,8 +326,8 @@ final class AppActions {
     }
 
     /// Close session `id` in `store` from a GUI surface (the sidebar row's Close), honoring the "Confirm
-    /// before closing a session" setting. `store` is passed in so a background window's sidebar closes ITS
-    /// session; ⌘W/menu/palette use `closeActiveSession`, and the control `session.close` never prompts.
+    /// before closing a session" setting and always confirming a Rebased review. `store` is passed in
+    /// so a background window's sidebar closes ITS session; ⌘W/menu/palette use `closeActiveSession`, and the control `session.close` never prompts.
     func closeSession(_ id: UUID, in store: AppStore) {
         guard uiActionsEnabled else { return }
         guard let session = store.session(withID: id) else { return }
@@ -331,20 +362,14 @@ final class AppActions {
         library.clearRecentClosedItems()
     }
 
-    /// A native warning confirm before closing `session`, gated by `AppSettings.confirmCloseSession`. Returns
-    /// whether to proceed: true with no prompt when the setting is off or under XCUITest (a modal hangs it).
     private func confirmCloseSession(_ session: Session) -> Bool {
-        guard settingsModel?.settings.confirmCloseSession == true,
-              !ContentView.shouldBypassCloseConfirmation else { return true }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Close “\(session.displayName)”?"
-        alert.informativeText = closeGraceUndoEnabled
-            ? "The session will close after a short undo window."
-            : "The session will close immediately and can be reopened from File > Open Recent."
-        alert.addButton(withTitle: "Close")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        guard !ContentView.shouldBypassCloseConfirmation else { return true }
+        let detail = closeConfirmationText(for: [session])
+        if let review = session.rebasedPlacement?.overlay {
+            return closeConfirmer("Close “\(session.displayName)” and end the Rebased review of \(review.project)?", detail)
+        }
+        guard settingsModel?.settings.confirmCloseSession == true else { return true }
+        return closeConfirmer("Close “\(session.displayName)”?", detail)
     }
 
     var closeGraceUndoEnabled: Bool {
@@ -385,6 +410,8 @@ final class AppActions {
         guard let store, let id = store.selectedSessionID, let path = settingsModel?.keymapPath else { return }
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: path), sizePercent: 95) {
             keymapEditOverlaySession = id
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -395,6 +422,7 @@ final class AppActions {
 
     /// The session whose open overlay is the hooks editor, so its close reloads the hooks. Nil when none.
     var hooksEditOverlaySession: UUID?
+    weak var remoteAttacher: (any RemoteAttaching)?
 
     /// Open `hooks.conf` in the user's editor in a 95% overlay over the active session, exactly like
     /// `editKeymap`; exiting reloads the hooks.
@@ -404,6 +432,8 @@ final class AppActions {
         settingsModel.ensureStarterHooks()
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: settingsModel.hooksPath), sizePercent: 95) {
             hooksEditOverlaySession = id
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -432,6 +462,8 @@ final class AppActions {
         if store.openOverlay(id, command: ConfigPaths.editorCommand(forPath: path), sizePercent: 95) {
             ghosttyEditOverlaySession = id
             ghosttyEditOverlaySnapshot = try? String(contentsOfFile: path, encoding: .utf8)
+        } else {
+            beepIfHiddenOverlayRefused(id)
         }
     }
 
@@ -713,7 +745,7 @@ final class AppActions {
     private func toggleSplit(axis: SplitAxis?) {
         guard uiActionsEnabled else { return }
         guard let store, let session = store.activeSession else { return }
-        guard !session.fullOverlayActive else { return }
+        guard !session.fullOverlayVisible else { return }
         // the deck's `scratchActive` onChange reclaims first responder for the pane, as it does for ⌘J.
         if session.scratchActive { store.toggleScratch(session.id); return }
         store.toggleSplit(session.id, axis: axis)
@@ -728,7 +760,7 @@ final class AppActions {
     func closeSplit() {
         guard uiActionsEnabled else { return }
         guard let store, let session = store.activeSession else { return }
-        guard session.hasSplit, !session.fullOverlayActive else { return }
+        guard session.hasSplit, !session.fullOverlayVisible else { return }
         if session.scratchActive { store.toggleScratch(session.id); return }
         store.closeSplit(session.id)
         focusSplitPane(session, wantSplit: false)
@@ -911,7 +943,7 @@ final class AppActions {
     /// searchable, else the active session's focused pane. Full overlay and quick terminal are unsearchable
     /// (blocked by `coverHidesActiveSession`); a FLOATING overlay leaves the pane visible, so it targets it.
     private func searchTarget() -> GhosttySurfaceView? {
-        if let session = store?.activeSession, session.scratchActive, !session.coverOverlayActive {
+        if let session = store?.activeSession, session.scratchActive, !session.coverOverlayVisible {
             return session.topmostSurface as? GhosttySurfaceView
         }
         // the focused pane hidden under its OWN overlay has no searchable target: the overlay is unsearchable
@@ -931,7 +963,7 @@ final class AppActions {
         if quickTerminal.holdsKey { return true }
         guard let session = store?.activeSession else { return false }
         // a FLOATING overlay leaves the session visible, so only a FULL overlay hides it (and is not searchable).
-        return session.fullOverlayActive
+        return session.fullOverlayVisible
     }
 
     /// Toggle the search bar for the active session; shared by the Find menu item, the palette, and ⌘F.

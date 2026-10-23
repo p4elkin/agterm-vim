@@ -42,11 +42,23 @@ paths:
   session exits, a pending close expires, control mutates the tree. The row asks it during body evaluation
   and `runIfEnabled()` asks it again at the keystroke, returning whether it ran — which is the only thing
   that dismisses the palette, so an inert row cannot close it on a keystroke that did nothing.
+  `PaletteItem.indicator` is a closure for the same reason: a session row reads its live `agentIndicator`
+  in the row body, so an agent finishing under an open ⌃P or attention palette updates its glyph.
 - `toggleQuickTerminal` gates on all `uiActionsEnabled`, including terminal zoom and dashboard.
   Control drives `QuickTerminalController.shared` directly, there being one panel per app. The titlebar
   button is replaced by dashboard chrome, which hides an open quick terminal before showing the grid.
 - Every new action must satisfy the control contract in [[control-api]]: protocol, dispatch, CLI, and
   protocol/end-to-end tests. Do not restate per-action audits here.
+- File ▸ Attach Remote… picks among `remotes.conf` entries (`destination [label]`, parsed by
+  `parseRemotesConf`) in the window picker, skipping the question for a single entry, and is disabled when
+  the file lists none (`PaletteContext.hasRemotes`). It is `BuiltinAction.attachRemote`, default
+  Command-Shift-R, with a palette row. `RemotesWatcher` re-reads on file and directory events
+  and banners once when an edit turns a clean file into one with bad lines or an unreadable one,
+  because SwiftUI rebuilds `Commands` on its own schedule and a read in the menu body would go stale.
+  `AppActions.attachRemote()` composes the existing `remoteTree`, window picker and `attachRemoteSession`
+  through `RemoteAttaching`, so it adds no control command: `zmx tree` + `pick` + `zmx attach` already
+  script it. A HUD over the starting session shows the two ssh waits and a failure, the latter hiding
+  itself after `remoteAttachErrorSeconds`; a window with no session falls back to `notifyCommandFailure`.
 
 ## Dock menu
 
@@ -82,6 +94,9 @@ paths:
   the `agterm-linux` fork's fold commands visible.
 - Dashboard uses Command-Shift-G, `BuiltinAction.dashboard`, and `toggleDashboard`; it toggles an MRU,
   auto-sized grid unless terminal zoom is active. Share `dashboardMembers` with control.
+- View ▸ Hide/Show Overlays, the palette's Toggle Overlays, the optional title-bar button and `toggle_overlay`
+  run `AppActions.toggleOverlays`, the store toggle `session.overlay.toggle` uses. The item's title follows the
+  active session's state; it is enabled through `PaletteContext.activeSessionHasOverlay`.
 - The View menu carries no fullscreen item of agterm's own, and `toggle_fullscreen` rides the key monitor
   rather than a menu shortcut; see [[windows]]. It remains rebindable and control-drivable.
 - `normal_mode` is the second such action: no menu item and no palette row, because it is entered from a
@@ -126,8 +141,8 @@ paths:
   command; `closeSplitPane` keeps primary when both exist and otherwise closes the session.
   `focusAfterReparent` restores focus after the surviving view changes host.
 - Pane focus actions, menu/palette, and `session.focus` gate on `hasSplit`, not `isSplit`, so they also swap
-  the maximized hidden pane. Ctrl-1/Ctrl-2 use an app-wide event monitor and always consume these reserved
-  keys, even when no split exists.
+  the maximized hidden pane. Ctrl-1/Ctrl-2 use an app-wide event monitor and consume these reserved
+  keys even when no split exists, except while a Rebased IDE window is key ([[rebased-overlay]]).
 - Swap Panes is a role-and-view exchange, exposed through View, the action palette, and `session.swap` with
   no default shortcut. It gates on `hasSplit`, including a hidden split, and stays available under terminal
   zoom and the dashboard. Focus follows the terminal; axis and ratio stay with the layout.
@@ -260,13 +275,18 @@ paths:
   leader and for every `nmap` — see [[keymap]].
 - Attention mode lists every open window's non-idle sessions (`WindowLibrary.attentionAcrossWindows`),
   ordered blocked, active, completed and then newest `statusChangedAt`, with nil last, as one combined
-  sort. Palette items carry status plus per-call color/shape, resolved by the same helpers as sidebar
-  glyphs, a subtitle naming the window once more than one is open, and `isEnabled` asking the OWNING
+  sort. Items carry a subtitle naming the window once more than one is open, and `isEnabled` asking the OWNING
   window's modal gate. A pick defers `AppActions.selectAttention` past the palette's close, which raises
   another window before selecting. Typed queries use fuzzy score.
 - Open attention through `show_attention` (Ctrl-Shift-I), Navigate > Go to Attention, or Show Attention
   in the action palette. The titlebar bell opens a popover, not this palette. Palette opening is
   keep-in-sync exempt.
+- Every session list draws the status glyph TRAILING, as the sidebar does, with per-call color/shape
+  through the sidebar's helpers and nothing for idle: ⌃P, attention, Ctrl-Tab, both titlebar popovers, and
+  a pick whose items carry status (Attach Remote).
+- Ctrl-J/Ctrl-K move the selection through `CommandPalette.selectionStep`, which resolves the key with
+  `chordKey` from `NSApp.currentEvent`; `KeyPress` carries only the typed character, which is not `j`/`k`
+  on a non-Latin layout. See [[keymap]] for the layout rule.
 - Keep the next-runloop `fieldFocused = true` retry: button-opened palettes otherwise lose first responder,
   even though no current titlebar button uses this path.
 - Rename actions post begin-edit notifications; the Coordinator edits the selected row asynchronously after
@@ -281,7 +301,7 @@ paths:
 
 - Keep clock and bell popovers in `WindowContentView+RecentSessions` so `WindowContentView.swift` remains
   below 1000 lines. They use
-  `SessionPopoverRow`: optional status glyph, hover selection color, full-row hit target, terminal
+  `SessionPopoverRow`: trailing status glyph, hover selection color, full-row hit target, terminal
   background, and chrome text.
 - Clock lists up to `maxCandidates` recent visible sessions excluding active and enables only with at
   least two sessions. Selection records activity, selects, and focuses.

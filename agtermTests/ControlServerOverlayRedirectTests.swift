@@ -9,6 +9,59 @@ import agtermCore
 /// remotely — so they assert the overlay REALLY opened (`overlayActive`), not merely that the response said ok.
 @MainActor
 final class ControlServerOverlayRedirectTests: XCTestCase {
+    func testRebasedSkipsTheRedirectDecision() throws {
+        let previous = RebasedHost.shared
+        let host = RebasedHost()
+        host.runtime = FakeRebasedRuntime()
+        host.frames = FakeRebasedFrames()
+        host.store = { [library] in library?.store(forSession: $0) }
+        host.after = { _, _ in }
+        host.offMain = { work, done in
+            work()
+            done()
+        }
+        host.onMirrorQueue = { work, done in
+            work()
+            done()
+        }
+        host.stateDirectory = stateDir
+        RebasedHost.shared = host
+        defer { RebasedHost.shared = previous }
+        let (_, session) = try makeSession()
+        session.viewer = freshViewer()
+        OverlayRedirectController.shared.setEnabled(true)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: "/repo", wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, rebased: true)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil, options: options)
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertNil(response.result?.overlayRedirect)
+        XCTAssertNotNil(session.rebasedOverlay)
+    }
+
+    func testRebasedOnARemoteRowFetchesTheHostsRepositoryInsteadOfRedirecting() throws {
+        let previous = RebasedHost.shared
+        let host = RebasedHost()
+        host.runtime = FakeRebasedRuntime()
+        host.store = { [library] in library?.store(forSession: $0) }
+        host.offMain = { _, _ in }
+        host.onMirrorQueue = { _, _ in }
+        host.stateDirectory = stateDir
+        RebasedHost.shared = host
+        defer { RebasedHost.shared = previous }
+        let store = try XCTUnwrap(library.activeStore)
+        let owner = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: owner, cwd: "/tmp", remoteHost: "origin"))
+        session.viewer = freshViewer()
+        OverlayRedirectController.shared.setEnabled(true)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: "/home/s/repo", wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, rebased: true)
+        let response = server.openSessionOverlay(session.id.uuidString, window: nil, options: options)
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertNil(response.result?.overlayRedirect)
+        XCTAssertEqual(session.rebasedOverlay?.state, .fetching)
+        XCTAssertEqual(session.rebasedOverlay?.source, "origin:/home/s/repo")
+    }
+
     private var stateDir: URL!
     private var library: WindowLibrary!
     private var server: ControlServer!

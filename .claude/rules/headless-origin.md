@@ -127,6 +127,9 @@ Only `zmx.tree` (async), `session.type` and `DaemonWatcher`'s listing run zmx of
 lane per daemon, and is never retried: the daemon may have queued input before failing. It is served, not
 forwarded to a Mac, because a session viewed only on a closed laptop, or made on p4linux and not attached yet,
 has no presenter while room delivery and the compact tools still type into it.
+Typed text clears a pane's `blocked` or `completed` status by `statusReset` in `<state dir>/settings.json`
+(`SettingsStore`), read on every call so an edit applies to the next one. It is the only key the server reads
+there, and a missing or unreadable file means `firstKey`. The Mac's own setting never reaches this server.
 
 ## The pane environment
 
@@ -264,8 +267,9 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
     three `HudTests` markdown bodies (the markdown fallback), `OverlayRedirectSshTests`' abandoned-directory
-    sweep (its fixture sets a creation date, which Linux cannot), and `SocketClientTests`' two
-    held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere).
+    sweep (its fixture sets a creation date, which Linux cannot), `SocketClientTests`' two
+    held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere), and the two
+    `RebasedMirrorCleanupTests` that spell a path through `/private` (a Darwin symlink).
 - Sockets on Linux: Glibc has no `SO_NOSIGPIPE`, so every write to the app's socket goes through
   `send(..., MSG_NOSIGNAL)` (`SocketClient.writeAll`, `StreamBridge.sendAll`). A plain `write` there kills
   the CLI with SIGPIPE when the app closes first.

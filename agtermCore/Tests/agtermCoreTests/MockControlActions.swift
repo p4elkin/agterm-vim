@@ -28,9 +28,13 @@ class MockControlActionsBase {
         case sessionMove(target: String?, window: String?, ControlSessionMove)
         case sessionMoveBatch(targets: [String], window: String?, ControlSessionMove)
         case workspaceMove(target: String?, window: String?, ReorderDirection)
+        case workspaceTransfer(target: String?, window: String?, toWindow: String, windowName: String?)
+        case sessionTransfer(targets: [String], window: String?, toWindow: String, workspace: String?,
+                             workspaceName: String?, windowName: String?)
         case workspaceFocus(target: String?, window: String?, ControlWorkspaceFocusMode)
         case workspaceFilter(window: String?, ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
+        case workspaceFlag(target: String?, window: String?, ControlToggleMode)
         case sessionFlag(target: String?, window: String?, String?)
         case sessionPark(target: String?, window: String?, ControlToggleMode)
         case sessionContext(target: String?, window: String?, context: String?)
@@ -41,11 +45,12 @@ class MockControlActionsBase {
         case sessionBookmarkList(target: String?, window: String?, all: Bool)
         case sessionBookmarkRemove(target: String?, window: String?, turn: Int)
         case sessionRestore(target: String?, window: String?, ControlSessionRestoreUpdate)
+        case sessionRestart(target: String?, window: String?, ControlSessionRestartOptions)
         case sessionSplit(target: String?, window: String?, String?, SplitAxis?, command: ControlSplitCommand?)
         case sessionSplitClose(target: String?, window: String?)
         case sessionSwap(target: String?, window: String?)
         case sessionLead(target: String?, window: String?, pane: StatusPane?)
-        case sessionScratch(target: String?, window: String?, String?, command: String?)
+        case sessionScratch(target: String?, window: String?, String?, command: String?, follow: Bool)
         case sessionFocus(target: String?, window: String?, String?)
         case sessionResize(target: String?, window: String?, ControlSplitResize)
         case surfaceZoom(target: String?, window: String?, ControlToggleMode)
@@ -57,7 +62,11 @@ class MockControlActionsBase {
         case keymapRun(name: String, target: String?, window: String?)
         case hooksReload
         case hooksList
+        case recentList
+        case recentClear
+        case recentOpen(target: String?, window: String?)
         case browserClear
+        case browserLinks(LinkOpenMode?)
         case version
         case configReload
         case notify(target: String?, window: String?, title: String?, body: String)
@@ -75,6 +84,8 @@ class MockControlActionsBase {
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
         case zmxPresent(session: String)
+        case rebasedMirrorList
+        case rebasedMirrorPrune(olderThanDays: Int?, dryRun: Bool)
         case claimOverlayJob(String)
         case sidebarVisibility(ControlToggleMode)
         case sidebarViewMode(ControlSidebarViewMode)
@@ -96,6 +107,10 @@ class MockControlActionsBase {
         case sessionSearch(target: String?, window: String?, text: String?, to: String?)
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
         case overlayClose(target: String?, window: String?, pane: OverlayPane?)
+        case overlayCloseID(target: String?, window: String?, overlay: UUID)
+        case rebasedShow(target: String?, window: String?, view: RebasedView)
+        case rebasedToggle(target: String?, window: String?)
+        case overlayVisibility(target: String?, window: String?, pane: OverlayPane?, mode: OverlayVisibilityMode)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
@@ -162,7 +177,9 @@ class MockControlActionsBase {
     var nextKeymapListResponse = ControlResponse(ok: true)
     var nextHooksReloadResponse = ControlResponse(ok: true)
     var nextBrowserClearResponse = ControlResponse(ok: true)
+    var nextBrowserLinksResponse = ControlResponse(ok: true)
     var nextHooksListResponse = ControlResponse(ok: true)
+    var nextRecentResponse = ControlResponse(ok: true)
     var nextVersionResponse = ControlResponse(ok: true)
     var nextKeymapResponse = ControlResponse(ok: true)
     var nextConfigResponse = ControlResponse(ok: true)
@@ -227,6 +244,7 @@ class MockControlActionsBase {
     /// supplied here, so a test must address sessions by full uuid.
     var markStore: AppStore?
     var nextSessionSwapResponse = ControlResponse(ok: true)
+    var nextSessionRestartResponse = ControlResponse(ok: true)
 
     func controlTree(window: String?) -> ControlResponse {
         calls.append(.tree(window: window))
@@ -342,6 +360,11 @@ class MockControlActionsBase {
         return ControlResponse(ok: true)
     }
 
+    func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.workspaceFlag(target: target, window: window, mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target))
+    }
+
     func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         calls.append(.sessionFlag(target: target, window: window, mode))
         return ControlResponse(ok: true)
@@ -400,6 +423,12 @@ class MockControlActionsBase {
         return nextSessionRestoreResponse
     }
 
+    func restartSessionPane(_ target: String?, window: String?,
+                            options: ControlSessionRestartOptions) async -> ControlResponse {
+        calls.append(.sessionRestart(target: target, window: window, options))
+        return nextSessionRestartResponse
+    }
+
     func splitSession(_ target: String?, window: String?, mode: String?) -> ControlResponse {
         splitSession(target, window: window, mode: mode, axis: nil)
     }
@@ -428,7 +457,12 @@ class MockControlActionsBase {
 
     func scratchSession(_ target: String?, window: String?, mode: String?,
                         command: String?) -> ControlResponse {
-        calls.append(.sessionScratch(target: target, window: window, mode, command: command))
+        scratchSession(target, window: window, mode: mode, command: command, follow: false)
+    }
+
+    func scratchSession(_ target: String?, window: String?, mode: String?, command: String?,
+                        follow: Bool) -> ControlResponse {
+        calls.append(.sessionScratch(target: target, window: window, mode, command: command, follow: follow))
         return ControlResponse(ok: true)
     }
 
@@ -492,9 +526,29 @@ class MockControlActionsBase {
         return nextHooksListResponse
     }
 
+    func listRecentClosed() -> ControlResponse {
+        calls.append(.recentList)
+        return nextRecentResponse
+    }
+
+    func clearRecentClosed() -> ControlResponse {
+        calls.append(.recentClear)
+        return nextRecentResponse
+    }
+
+    func openRecentClosed(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.recentOpen(target: target, window: window))
+        return nextRecentResponse
+    }
+
     func clearBrowser() async -> ControlResponse {
         calls.append(.browserClear)
         return nextBrowserClearResponse
+    }
+
+    func linkOpenMode(_ mode: LinkOpenMode?) -> ControlResponse {
+        calls.append(.browserLinks(mode))
+        return nextBrowserLinksResponse
     }
 
     func appIdentity() -> ControlResponse {
@@ -704,9 +758,30 @@ class MockControlActionsBase {
         return ControlResponse(ok: true)
     }
 
+    func showRebasedView(_ target: String?, window: String?, view: RebasedView) -> ControlResponse {
+        calls.append(.rebasedShow(target: target, window: window, view: view))
+        return ControlResponse(ok: true)
+    }
+
+    func toggleRebasedOverlay(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.rebasedToggle(target: target, window: window))
+        return ControlResponse(ok: true)
+    }
+
+    func closeSessionOverlay(_ target: String?, window: String?, overlay: UUID) -> ControlResponse {
+        calls.append(.overlayCloseID(target: target, window: window, overlay: overlay))
+        return nextOverlayCloseResponse
+    }
+
     func closeSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         calls.append(.overlayClose(target: target, window: window, pane: pane))
         return nextOverlayCloseResponse
+    }
+
+    func setSessionOverlayVisibility(_ target: String?, window: String?, pane: OverlayPane?,
+                                     mode: OverlayVisibilityMode) -> ControlResponse {
+        calls.append(.overlayVisibility(target: target, window: window, pane: pane, mode: mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "hidden"))
     }
 
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {
@@ -904,6 +979,27 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
                              transport: RemoteTransport) async -> ControlResponse {
         calls.append(.zmxAttach(host: host, session: session, window: window, transport: transport))
         return nextRemoteAttachResponse
+    }
+
+    func listRebasedMirrors() async -> ControlResponse {
+        calls.append(.rebasedMirrorList)
+        return ControlResponse(ok: true)
+    }
+
+    func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse {
+        calls.append(.rebasedMirrorPrune(olderThanDays: olderThanDays, dryRun: dryRun))
+        return ControlResponse(ok: true)
+    }
+
+    func transferWorkspace(_ target: String?, window: String?, toWindow: String, windowName: String?) async -> ControlResponse {
+        calls.append(.workspaceTransfer(target: target, window: window, toWindow: toWindow, windowName: windowName))
+        return ControlResponse(ok: true)
+    }
+
+    func transferSessions(_ targets: [String], window: String?, transfer: ControlSessionTransfer) async -> ControlResponse {
+        calls.append(.sessionTransfer(targets: targets, window: window, toWindow: transfer.toWindow, workspace: transfer.workspace,
+                                      workspaceName: transfer.workspaceName, windowName: transfer.windowName))
+        return ControlResponse(ok: true)
     }
 }
 

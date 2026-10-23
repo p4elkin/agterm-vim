@@ -3,6 +3,27 @@ import Testing
 @testable import agtermCore
 
 struct AppSettingsTests {
+    @Test func rebasedAppPathRoundTripsAndDefaultsForOlderSettings() throws {
+        let settings = AppSettings(rebasedAppPath: "/Applications/Rebased Custom.app")
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.rebasedAppPath == settings.rebasedAppPath)
+        #expect(decoded.effectiveRebasedAppPath == "/Applications/Rebased Custom.app")
+        #expect(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)).effectiveRebasedAppPath == "/Applications/Rebased.app")
+    }
+
+    @Test func rebasedMirrorMaxAgeDaysRoundTrips() throws {
+        let settings = AppSettings(rebasedMirrorMaxAgeDays: 30)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.rebasedMirrorMaxAgeDays == 30)
+        #expect(decoded.effectiveRebasedMirrorMaxAgeDays == 30)
+    }
+
+    @Test(arguments: [("{}", 14), (#"{"rebasedMirrorMaxAgeDays":-3}"#, 14), (#"{"rebasedMirrorMaxAgeDays":0}"#, 0),
+                      (#"{"rebasedMirrorMaxAgeDays":1}"#, 1)])
+    func rebasedMirrorMaxAgeDaysDefaultsTo14AndKeepsZeroAsNever(_ json: String, _ days: Int) throws {
+        #expect(try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).effectiveRebasedMirrorMaxAgeDays == days)
+    }
+
     @Test func jsonRoundTrips() throws {
         let original = AppSettings(fontFamily: "SF Mono", fontSize: 14, theme: "Adwaita Dark")
         let data = try JSONEncoder().encode(original)
@@ -506,6 +527,31 @@ struct AppSettingsTests {
         #expect(legacy.effectiveFlaggedViewLayout == .flat)
     }
 
+    @Test func terminalInputSourceDefaultsOffRoundTripsAndIsNotAGhosttyKey() throws {
+        #expect(AppSettings().terminalInputSource == nil)
+        let settings = AppSettings(terminalInputSource: "com.apple.keylayout.US")
+        #expect(settings.ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.terminalInputSource == "com.apple.keylayout.US")
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.terminalInputSource == nil)
+    }
+
+    @Test func linkOpenModeDefaultsToBrowserResolvesTolerantlyAndIsNotAGhosttyKey() throws {
+        #expect(AppSettings().effectiveLinkOpenMode == .browser)
+        #expect(AppSettings(linkOpenMode: "overlay").ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
+        for mode in LinkOpenMode.allCases {
+            let settings = AppSettings(linkOpenMode: mode.rawValue)
+            let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+            #expect(decoded.linkOpenMode == mode.rawValue)
+            #expect(decoded.effectiveLinkOpenMode == mode)
+        }
+        #expect(AppSettings(linkOpenMode: "tab").effectiveLinkOpenMode == .browser)
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{ "fontSize": 16 }"#.utf8))
+        #expect(legacy.linkOpenMode == nil)
+        #expect(legacy.effectiveLinkOpenMode == .browser)
+    }
+
     @Test func htmlOverlayZoomDefaultsToActualSizeRoundTripsAndIsNotAGhosttyKey() throws {
         #expect(AppSettings().effectiveHtmlOverlayZoom == 1)
         #expect(AppSettings(htmlOverlayZoom: 1.5).ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
@@ -704,7 +750,7 @@ struct AppSettingsTests {
         let settings = AppSettings()
         #expect(settings.hiddenInterfaceElements == nil)
         #expect(settings.shownInterfaceElements == nil)
-        #expect(settings.resolvedHiddenInterfaceElements == [.customCommands, .workspaceName])
+        #expect(settings.resolvedHiddenInterfaceElements == [.customCommands, .workspaceName, .overlayToggle])
         for element in InterfaceElement.allCases {
             #expect(settings.isInterfaceElementHidden(element) == element.hiddenByDefault)
         }
@@ -775,18 +821,18 @@ struct AppSettingsTests {
     @Test func customCommandsIsAHiddenByDefaultTitleBarInterfaceElement() throws {
         #expect(InterfaceElement.customCommands.section == .titleBar)
         #expect(InterfaceElement.customCommands.displayName == "Custom commands")
-        #expect(InterfaceElement.allCases.filter(\.hiddenByDefault) == [.workspaceName, .customCommands])
+        #expect(InterfaceElement.allCases.filter(\.hiddenByDefault) == [.workspaceName, .overlayToggle, .customCommands])
         let shown = AppSettings(shownInterfaceElements: ["customCommands"])
         #expect(!shown.isInterfaceElementHidden(.customCommands))
         #expect(!shown.isInterfaceElementHidden(.dashboard))
-        #expect(shown.resolvedHiddenInterfaceElements == [.workspaceName])
+        #expect(shown.resolvedHiddenInterfaceElements == [.workspaceName, .overlayToggle])
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(shown))
         #expect(decoded == shown)
         // the shown list alone governs a hidden-by-default element; an unknown name there is dropped too.
         let hidden = AppSettings(hiddenInterfaceElements: ["customCommands", "dashboard"], shownInterfaceElements: ["teleporter"])
         #expect(hidden.isInterfaceElementHidden(.customCommands))
         #expect(hidden.isInterfaceElementHidden(.dashboard))
-        #expect(hidden.resolvedHiddenInterfaceElements == [.workspaceName, .customCommands, .dashboard])
+        #expect(hidden.resolvedHiddenInterfaceElements == [.workspaceName, .overlayToggle, .customCommands, .dashboard])
     }
 
     @Test func statusResetDefaultsToFirstKeyAndResolvesKnownRawValues() throws {
@@ -808,7 +854,7 @@ struct AppSettingsTests {
             AppSettings.self,
             from: Data(#"{ "hiddenInterfaceElements": ["scratch", "teleporter"], "fontSize": 16 }"#.utf8))
         #expect(decoded.fontSize == 16)
-        #expect(decoded.resolvedHiddenInterfaceElements == [.workspaceName, .scratch, .customCommands])
+        #expect(decoded.resolvedHiddenInterfaceElements == [.workspaceName, .scratch, .overlayToggle, .customCommands])
         #expect(decoded.isInterfaceElementHidden(.scratch))
     }
 
@@ -841,5 +887,13 @@ struct AppSettingsTests {
         let dividers = InterfaceElement.titlebarGroupDividers(countA: countA, countB: countB, countC: countC)
         #expect(dividers.afterA == afterA)
         #expect(dividers.afterB == afterB)
+    }
+
+    @Test func overlayToggleIsAHiddenByDefaultTitleBarElement() {
+        #expect(InterfaceElement.overlayToggle.section == .titleBar)
+        #expect(InterfaceElement.overlayToggle.hiddenByDefault)
+        #expect(InterfaceElement.overlayToggle.displayName == "Hide overlays")
+        #expect(AppSettings().isInterfaceElementHidden(.overlayToggle))
+        #expect(!AppSettings(shownInterfaceElements: ["overlayToggle"]).isInterfaceElementHidden(.overlayToggle))
     }
 }

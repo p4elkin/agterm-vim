@@ -37,10 +37,14 @@ public struct PaletteContext: Sendable, Equatable {
     public let hasActiveSession: Bool
     /// Whether it has a current workspace — nil only with no store, since a window always keeps one.
     public let hasCurrentWorkspace: Bool
+    /// hasRemotes is whether `remotes.conf` lists a machine to attach from.
+    public let hasRemotes: Bool
     public let terminalZoomActive: Bool
     public let dashboardOpen: Bool
     /// pickerActive covers either a control picker or an ask dialog in the window.
     public let pickerActive: Bool
+    /// activeSessionHasOverlay says the active session holds a program or page that can be hidden or shown.
+    public let activeSessionHasOverlay: Bool
 
     /// Any cover over the deck. Behind it a keystroke or a menu pick must not mutate what it hides, so all
     /// but a handful of commands go dead; `PaletteCommand.isEnabled(in:)` owns which.
@@ -62,9 +66,11 @@ public struct PaletteContext: Sendable, Equatable {
                 hasRecentClosed: Bool = false,
                 hasActiveSession: Bool = false,
                 hasCurrentWorkspace: Bool = false,
+                hasRemotes: Bool = false,
                 terminalZoomActive: Bool = false,
                 dashboardOpen: Bool = false,
-                pickerActive: Bool = false) {
+                pickerActive: Bool = false,
+                activeSessionHasOverlay: Bool = false) {
         self.canRemoveWorkspace = canRemoveWorkspace
         self.hasFlaggedSessions = hasFlaggedSessions
         self.sidebarShowsWorkspaceTree = sidebarShowsWorkspaceTree
@@ -82,9 +88,11 @@ public struct PaletteContext: Sendable, Equatable {
         self.hasRecentClosed = hasRecentClosed
         self.hasActiveSession = hasActiveSession
         self.hasCurrentWorkspace = hasCurrentWorkspace
+        self.hasRemotes = hasRemotes
         self.terminalZoomActive = terminalZoomActive
         self.dashboardOpen = dashboardOpen
         self.pickerActive = pickerActive
+        self.activeSessionHasOverlay = activeSessionHasOverlay
     }
 }
 
@@ -96,14 +104,16 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
     case previousWorkspace, nextWorkspace
     case previousWindow, nextWindow
     case firstSession, lastSession, showAttention
-    case toggleSplit, toggleHorizontalSplit, closeSplit, swapPanes, toggleScratch, toggleTerminalZoom
+    case toggleSplit, toggleHorizontalSplit, closeSplit, swapPanes, toggleScratch, toggleOverlay, toggleTerminalZoom
     case toggleSidebar, toggleFlag, focusWorkspace
     case find, quickTerminal, dashboard, toggleFullscreen
     case increaseFontSize, decreaseFontSize, resetFontSize, selectTheme
+    case attachRemote
     case editKeymap, reloadKeymap, editHooks, reloadHooks, editGhosttyConfig, reloadConfig
     case deleteWorkspace, toggleFlaggedView, clearFlagged, clearFocus
     case addWorkspaceToFocus, toggleWorkspaceFilter
     case expandWorkspaces, collapseWorkspaces, toggleWorkspaceCollapse, focusLeftPane, focusRightPane
+    case toggleRebased
 
     /// Whether the command can RUN right now — the single owner of menu enablement, read by the menu item's
     /// `.disabled(…)`, by the palette row (which stays listed but renders inert) and by the key monitor's
@@ -113,12 +123,14 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         guard isVisible(in: context), !isCoveredByModal(context) else { return false }
         switch self {
         case .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit,
-             .toggleHorizontalSplit, .toggleScratch,
+             .toggleHorizontalSplit, .toggleScratch, .toggleRebased,
              .find, .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
              .firstSession, .lastSession:
             return context.hasActiveSession
         case .swapPanes:
             return context.hasActiveSession && context.activeSessionHasSplit
+        case .toggleOverlay:
+            return context.hasActiveSession && context.activeSessionHasOverlay
         case .renameWorkspace, .focusWorkspace, .addWorkspaceToFocus, .toggleWorkspaceCollapse:
             return context.hasCurrentWorkspace
         case .previousWorkspace, .nextWorkspace:
@@ -127,6 +139,8 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .previousWindow, .nextWindow:
             // same rule one level up: a single open window has nowhere to step to
             return context.canStepWindows
+        case .attachRemote:
+            return context.hasRemotes && context.hasCurrentWorkspace
         default:
             return true
         }
@@ -223,6 +237,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .closeSplit: return "Close Split"
         case .swapPanes: return "Swap Panes"
         case .toggleScratch: return "Toggle Scratch"
+        case .toggleOverlay: return "Toggle Overlays"
         case .toggleTerminalZoom: return "Toggle Terminal Zoom"
         case .toggleSidebar: return "Toggle Sidebar"
         case .toggleFlag: return context.activeSessionFlagged ? "Unflag Session" : "Flag Session"
@@ -235,6 +250,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .decreaseFontSize: return "Decrease Font Size"
         case .resetFontSize: return "Actual Font Size"
         case .selectTheme: return "Select Theme…"
+        case .attachRemote: return "Attach Remote…"
         case .editKeymap: return "Edit Keymap"
         case .reloadKeymap: return "Reload Keymap"
         case .editHooks: return "Edit Hooks"
@@ -252,6 +268,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .toggleWorkspaceCollapse: return context.activeWorkspaceCollapsed ? "Expand Workspace" : "Collapse Workspace"
         case .focusLeftPane: return context.activeSplitAxis == .topBottom ? "Focus Top Pane" : "Focus Left Pane"
         case .focusRightPane: return context.activeSplitAxis == .topBottom ? "Focus Bottom Pane" : "Focus Right Pane"
+        case .toggleRebased: return "Toggle Rebased"
         }
     }
 
@@ -282,6 +299,8 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .toggleSplit: return .toggleSplit
         case .toggleHorizontalSplit: return .toggleHorizontalSplit
         case .toggleScratch: return .toggleScratch
+        case .toggleRebased: return .rebasedToggle
+        case .toggleOverlay: return .toggleOverlay
         case .toggleTerminalZoom: return .toggleTerminalZoom
         case .toggleSidebar: return .toggleSidebar
         case .toggleFlag: return .toggleFlag
@@ -299,6 +318,7 @@ public enum PaletteCommand: String, CaseIterable, Sendable {
         case .toggleWorkspaceFilter: return .toggleWorkspaceFilter
         case .focusLeftPane: return .focusLeftPane
         case .focusRightPane: return .focusRightPane
+        case .attachRemote: return .attachRemote
         case .editKeymap, .reloadKeymap, .editHooks, .reloadHooks, .editGhosttyConfig, .reloadConfig,
              .clearFlagged, .clearFocus, .addWorkspaceToFocus, .expandWorkspaces, .collapseWorkspaces,
              .closeSplit, .swapPanes:

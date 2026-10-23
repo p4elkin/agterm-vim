@@ -62,8 +62,12 @@ paths:
 
 - Chrome reads background/foreground through `ghostty_config_get`. It cannot read optional
   `selection-*` keys, even when set, so `resolveSelectionColors` parses the same last-wins config sources
-  and named bundled theme file. Selected rows use selection background/foreground, with black/white
-  luminance fallback. Tint borderless New Session through `.tint`; its label ignores foreground style.
+  and the theme file, found as libghostty finds it: a leading `~/` expanded, an absolute path directly,
+  a name in the user themes directory and then the bundled one.
+  `GhosttyConfigText` owns ghostty's quote, empty-reset and last-valid-wins rules for those keys.
+  Selected rows use selection background/foreground, black/white luminance text over a background with no
+  foreground, and the theme foreground for both when neither is set.
+  Tint borderless New Session through `.tint`; its label ignores foreground style.
 - Pass `theme = light:X,dark:Y` raw. The pinned libghostty supports conditional themes, but
   `set_color_scheme` only changes conditional state and emits an unhandled soft reload. agterm must set
   app and surface schemes, then call `update_config`.
@@ -253,7 +257,9 @@ paths:
   `openFilePath` hands either to `agterm-open-path` with the pane's cwd. What `LinkPolicy` accepts, and why, is in
   `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 - `.open` of an `http`/`https` link from a pane goes to `agterm-open-link` when it is installed, which shows
-  a Jira issue or merge request over the pane or opens the browser; `NSWorkspace` is the fallback. A Jira
+  a Jira issue or merge request over the pane or opens the browser; upstream's `LinkOpener` is the fallback.
+  Only while Settings' `Open links in` is `Browser`: `Session overlay` hands every web link to `LinkOpener`,
+  and the fork's `.xchat`/`.openPath`/`.ref` never reach it (`openLink` dispatches them first). A Jira
   key reaches it as a URL through a user `link` rule; an MR URL through the built-in URL link. Overlay
   surfaces carry no session, so a link clicked inside a view still opens the browser; see
   `docs/plans/completed/20260930-clickable-links-spec.md`.
@@ -420,6 +426,10 @@ paths:
   `UNAVAILABLE` result never starts the request, so an OSC 52 reader would wait for a reply that never comes.
 - A write keeps every representation (`NSPasteboard.PasteboardType(mimeType:)` mapping): the callback is
   void and core reports `DONE` right after it, so a dropped representation is a false success.
+- Reads and writes follow the callback's clipboard location through `GhosttyCallbacks.pasteboard(for:)`:
+  selection (`copy-on-select = true`, OSC 52 `s`) is a private pasteboard named for the bundle id, as in
+  Ghostty.app, so selecting text never replaces the system clipboard. Primary stays on the general one,
+  because an OSC 52 `p` write reaches the embedder although `supportsClipboard` reports none.
 - Default ungated writes are synchronous so a same-tick read sees them. Read defaults to ask; write defaults
   allow and can be changed in agterm `ghostty.conf`.
 - Deferred completion captures `GhosttySurfaceView`, then rereads its live surface. If a pane closed while

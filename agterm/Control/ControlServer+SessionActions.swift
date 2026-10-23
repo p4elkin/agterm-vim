@@ -37,6 +37,10 @@ extension ControlServer: ControlActions {
     func openSessionOverlay(_ target: String?, window: String?,
                             options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if options.rebased { return openRebasedOverlay(in: store, sessionID: id, options: options) }
+            if store.session(withID: id)?.overlayHidden(options.pane) == true {
+                return ControlResponse(ok: false, error: OverlayVisibilityError.hidden)
+            }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }
@@ -85,17 +89,43 @@ extension ControlServer: ControlActions {
                                        now: Date().timeIntervalSince1970).redirect
     }
 
-    // a page never takes the remote program-job path: the store refuses it while a presenter owns the session
+    /// openLinkOverlay shows a clicked link as a browsing page over its session and says whether it did.
+    /// A HUD on the session and a zoomed terminal in its window both refuse it up front: the store would
+    /// accept the page, closing the HUD for good in one case and showing nothing in the other.
+    func openLinkOverlay(_ url: URL, session id: UUID) -> Bool {
+        guard let session = library.store(forSession: id)?.session(withID: id), !session.hudActive else { return false }
+        if let windowID = library.windowID(forSession: id),
+           TerminalZoomRegistry.shared.controller(for: windowID)?.target != nil { return false }
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, page: .url(url), navigation: true,
+                                                       javascript: true, persistent: true, browse: true)
+        return openSessionOverlay(id.uuidString, window: nil, options: options).ok
+    }
+
+    // a page the placement rule hands to the presenting Mac is stored, rendered and followed there, so none of
+    // the local persistent store check, page build or `--follow` happens here
     private func openHtmlOverlay(in store: AppStore, sessionID id: UUID, page: HtmlSource,
                                  options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        let alreadyOpen = options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen
+        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
+                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
+        switch store.openRemotePage(id, overlay: overlay, options: options) {
+        case .opened:
+            if case .file = page { schedulePageClaimExpiry(after: AppStore.pageClaimWindow) }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, pageID: overlay.id.uuidString))
+        case .slotTaken: return ControlResponse(ok: false, error: alreadyOpen)
+        case .paneMissing: return ControlResponse(ok: false, error: PaneOverlayError.paneNotVisible)
+        case .unsupported: return ControlResponse(ok: false, error: OverlayHtmlError.presenter)
+        case .loopback: return ControlResponse(ok: false, error: OverlayHtmlError.remoteLoopback)
+        case .tooLarge: return ControlResponse(ok: false, error: OverlayHtmlError.remoteTooLarge)
+        case .local: break
+        }
         if store.session(withID: id)?.remoteOverlays.slot(options.pane) != nil {
-            return ControlResponse(ok: false, error: options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen)
+            return ControlResponse(ok: false, error: alreadyOpen)
         }
         if options.persistent, let failure = HtmlOverlayRegistry.shared.persistentStoreFailure() {
             return ControlResponse(ok: false, error: "session.overlay.open: \(failure)")
         }
-        let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
-                                  chromeless: options.chromeless, persistent: options.persistent)
         if let failure = store.openHtmlOverlay(id, pane: options.pane, overlay: overlay,
                                                sizePercent: options.sizePercent, backgroundColor: options.backgroundColor) {
             return ControlResponse(ok: false, error: failure.message(pane: options.pane))
@@ -120,6 +150,9 @@ extension ControlServer: ControlActions {
 
     func reloadSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, current: Bool) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.reloadRemotePage(id, pane: pane, current: current), session: id) {
+                return response
+            }
             if let failure = HtmlOverlayRegistry.shared.reload(sessionID: id, pane: pane,
                                                                target: current ? .current : .original, store: store) {
                 return ControlResponse(ok: false, error: failure.message)
@@ -131,6 +164,10 @@ extension ControlServer: ControlActions {
     func navigateSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
                                 navigation: HtmlNavigation) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
+            if let response = Self.remotePageResponse(store.navigateRemotePage(id, pane: pane, navigation: navigation),
+                                                      session: id) {
+                return response
+            }
             if let failure = store.htmlOverlayCommandFailure(id, pane: pane) {
                 return ControlResponse(ok: false, error: failure.message)
             }
@@ -142,6 +179,15 @@ extension ControlServer: ControlActions {
                 return ControlResponse(ok: false, error: error)
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    // nil sends the command on to the page in this Mac's own slot
+    private static func remotePageResponse(_ command: RemotePageCommand, session: UUID) -> ControlResponse? {
+        switch command {
+        case .local: return nil
+        case .sent: return ControlResponse(ok: true, result: ControlResult(id: session.uuidString))
+        case .refused(let error): return ControlResponse(ok: false, error: error)
         }
     }
 
@@ -214,12 +260,9 @@ extension ControlServer: ControlActions {
     }
 
     /// A HUD resizes through the same slot and field as any floating panel, but never to FULL, which would
-    /// make the message cover the session it is about. The percent reaches its WIDTH only — its height stays
-    /// measured from the message, and the text wraps at `HudLayout.maxColumns` rather than at the panel, so
-    /// a resize cannot change how many rows it needs. A resized HUD also gets its body rewritten: the helper
-    /// centers on the grid in that file's header, so a new panel with the old header would paint the message
-    /// off-center until the next `session.hud.update`. A refused rewrite puts the size back rather than
-    /// leave the two disagreeing.
+    /// make the message cover the session it is about. The percent sets its WIDTH; `refreshHud` then
+    /// measures the height that width needs and rewrites the body, since the helper centers on the grid in
+    /// that file's header. A refused rewrite puts the size back rather than leave the two disagreeing.
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
             if let resized = store.resizeRemoteOverlay(id, sizePercent: sizePercent) {
@@ -231,14 +274,15 @@ extension ControlServer: ControlActions {
             if sizePercent == nil, hud {
                 return ControlResponse(ok: false, error: OverlayHudError.fullResize)
             }
-            let previousSize = session?.overlaySizePercent
+            let previousSize = session?.hudPanelSize
+            let previousForcedWidth = session?.hudResizedWidthPercent
             guard store.resizeOverlay(id, sizePercent: sizePercent) else {
                 return ControlResponse(ok: false, error: "no overlay")
             }
-            if hud, let session,
-               !self.writeHudBody(session, pane: self.paneMetrics(for: session, pane: session.hudTargetPane,
-                                                                  fontSize: self.liveHudFontSize(session))) {
-                store.resizeOverlay(id, sizePercent: previousSize)
+            if hud, let session, !self.refreshHud(session) {
+                if let previousSize {
+                    store.setHudSize(id, size: previousSize, forcedWidthPercent: previousForcedWidth)
+                }
                 return ControlResponse(ok: false, error: OverlayHudError.writeFailed)
             }
             if hud { store.publishHudResize(forSession: id, now: self.hudClock()) }
@@ -251,13 +295,16 @@ extension ControlServer: ControlActions {
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session")
             }
+            if session.remoteOverlays.slot(pane)?.page != nil {
+                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
+            }
             if let slot = session.remoteOverlays.slot(pane), !slot.ended {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
             }
             if session.htmlCovers(pane) {
                 return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
             }
-            let (running, exitCode) = pane.map { (session.paneOverlay($0) != nil, session.paneOverlayExitCode($0)) }
+            let (running, exitCode) = pane.map { (session.paneOverlayIsProgram($0), session.paneOverlayExitCode($0)) }
                 ?? (session.programOverlayActive, session.overlayExitCode)
             if running {
                 return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
@@ -493,8 +540,10 @@ extension ControlServer: ControlActions {
     /// against `scratchActive`, so both are idempotent; hiding keeps the shell alive, the `closeScratch`
     /// teardown being reserved for the shell's own `exit`. `command` (only when showing) runs that program
     /// instead of a login shell, run-once: a live scratch is torn down and respawned with it, else inert.
-    func scratchSession(_ target: String?, window: String?, mode: String?,
-                        command: String?) -> ControlResponse {
+    /// Showing selects only with `follow`: the deck mounts every session, and an unselected one's scratch
+    /// spawns without taking the keyboard.
+    func scratchSession(_ target: String?, window: String?, mode: String?, command: String?,
+                        follow: Bool) -> ControlResponse {
         return resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
@@ -512,16 +561,17 @@ extension ControlServer: ControlActions {
                 if session.scratchSurface != nil { store.closeScratch(id, emitVisibility: !respawningVisible) }
                 session.scratchCommand = command
             }
-            if want, store.selectedSessionID != id {
-                // the scratch is full-coverage and grabs focus on show, so select the target first — unlike
-                // the overlay (eager deck, no select), a non-active scratch would steal focus while hidden.
-                store.selectSession(id)
-            }
+            if want, follow, store.selectedSessionID != id { store.selectSession(id) }
             if want != session.scratchActive {
                 store.toggleScratch(id, emitVisibility: !respawningVisible)
             }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
+    }
+
+    /// Compatibility entry point: shows without selecting.
+    func scratchSession(_ target: String?, window: String?, mode: String?, command: String?) -> ControlResponse {
+        scratchSession(target, window: window, mode: mode, command: command, follow: false)
     }
 
     /// Move keyboard focus to a split session's pane: `pane` is `left`|`right`|`other` (`other` toggles).
@@ -577,14 +627,14 @@ extension ControlServer: ControlActions {
     /// (default false) clears to idle once the session is visited. A non-empty `sound` plays once on apply
     /// (`default`/`beep` = system alert, else a named system sound), validated up-front so an unknown name
     /// errors `unknown sound` leaving the status unchanged; empty counts as none, and with none given a
-    /// TRANSITION into `blocked` plays the Settings "Blocked sound" (`blockedStatusSoundName`).
+    /// TRANSITION into `blocked` plays the Settings "Blocked sound" (`blockedStatusSoundName`). Either sound
+    /// goes to an attached presenter instead when the status pane follows it (`presentStatusSoundRemotely`).
     /// `update.color` (`#rrggbb` glyph tint) and `update.shape` (silhouette) are dispatcher-validated and
     /// ride the EPHEMERAL indicator, lasting only until the next `session.status` without them.
     /// `update.pane` (`StatusPane`, dispatcher-validated, nil = `left`/main) records the pane that set the
     /// status, driving the pane-scoped keystroke-clear and pane-aware reveal. Renders on every non-idle one.
-    /// While a session is blocked, a write from ANOTHER pane that is neither `blocked` nor `idle` is refused
-    /// whole (`AppStore.applyControlStatus`) with a `blocked status owned by pane` error and no sound — one
-    /// pane's `active`/`completed` must not erase the other's block.
+    /// While a session is blocked or holds a `completed` without auto-reset, a non-`blocked` write from ANOTHER
+    /// pane is refused whole (`AppStore.applyControlStatus`) with a `status owned by pane` error and no sound.
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) async -> ControlResponse {
         // bind active/prefix targets before suspension, but preserve unknown-sound error precedence.
         let captured = resolver.resolveSessionTarget(target, window: window)
@@ -616,8 +666,14 @@ extension ControlServer: ControlActions {
                                        note: update.note)
         // rejected writes must return before playback: no status change means no sound.
         if case .refused(let owner) = store.applyControlStatus(indicator, forSession: id) {
-            return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue) " +
+            return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue) " +
                 "(write from that pane to change it)")
+        }
+        // the blocked marker goes even when this Mac has no blocked sound: the presenter plays its own setting
+        let explicit = prepared == nil ? nil : update.sound
+        if explicit != nil || (update.status == .blocked && !wasBlocked),
+           store.presentStatusSoundRemotely(PresentationSound(name: explicit), in: session, pane: resolvedPane) {
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
         if let name = update.sound, let prepared {
             statusSoundPlayer.play(name, using: prepared)
@@ -832,8 +888,8 @@ extension ControlServer: ControlActions {
         }
     }
 
-    private func resolveBatchSessions(_ targets: [String], window: String?,
-                                      _ body: (AppStore, [UUID]) -> ControlResponse) -> ControlResponse {
+    func resolveBatchSessions(_ targets: [String], window: String?,
+                              _ body: (AppStore, [UUID]) -> ControlResponse) -> ControlResponse {
         guard let first = targets.first else {
             return ControlResponse(ok: false, error: "session command requires at least one --target")
         }

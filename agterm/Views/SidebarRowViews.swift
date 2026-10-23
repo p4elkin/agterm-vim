@@ -40,6 +40,12 @@ final class SidebarCellView: NSTableCellView {
     /// Always false on a workspace cell.
     var parked = false
 
+    /// A "+" remote create is in flight for the window: the "+" is disabled and drawn dim, since an explicit
+    /// `contentTintColor` does not dim by itself. Set on every configure, because cells are recycled.
+    var newSessionPending = false {
+        didSet { addButton?.isEnabled = !newSessionPending }
+    }
+
     private static let addButtonWidth: CGFloat = 16
     /// Contrast of a parked row, unselected only. Low enough to read as switched off next to a live row,
     /// high enough to keep the name legible.
@@ -99,18 +105,15 @@ final class SidebarCellView: NSTableCellView {
         setAddButtonVisible(false)
     }
 
-    /// Colors row text/icon from the terminal theme: a selected row takes the selection foreground (over the
-    /// selection-background pill the row draws), or white over the soft wash when the theme exposes no
-    /// selection color; an unselected row takes the theme foreground, icons dimmed. Driven from the real
-    /// selection state, not `backgroundStyle` (AppKit flips that only while the table is first responder) —
-    /// `SidebarRowView` re-asserts it on attach and on every selection flip, the coordinator on theme changes.
+    /// setColors tints row text and icons from the theme for the row's real selection state. Never drive it
+    /// from `backgroundStyle`, which AppKit flips only while the table is first responder.
     ///
     /// A parked row draws at reduced contrast. Selection wins over that dim: the selection pill already
     /// recolors the row, and dimming on top of it would make the active row the hardest one to read.
     func setColors(selected: Bool) {
         let app = GhosttyApp.shared
         let color = selected
-            ? (app.terminalSelectionForegroundColor ?? .white)
+            ? (app.terminalSelectionForegroundColor ?? app.terminalForegroundColor ?? .white)
             : (app.terminalForegroundColor ?? .labelColor)
         let dimmed = parked && !selected
         textField?.textColor = dimmed ? color.withAlphaComponent(Self.parkedLabelAlpha) : color
@@ -119,7 +122,7 @@ final class SidebarCellView: NSTableCellView {
         parkedSuffix?.textColor = color.withAlphaComponent(Self.parkedLabelAlpha)
         let iconAlpha: CGFloat = dimmed ? Self.parkedIconAlpha : (selected ? 0.85 : 0.6)
         imageView?.contentTintColor = color.withAlphaComponent(iconAlpha)
-        addButton?.contentTintColor = color.withAlphaComponent(iconAlpha)
+        addButton?.contentTintColor = color.withAlphaComponent(newSessionPending ? iconAlpha * 0.4 : iconAlpha)
     }
 }
 
@@ -266,7 +269,6 @@ final class StatusIconView: NSImageView {
 /// moment it attaches. Otherwise pill and text color desync — and on the many themes where
 /// `foreground == selection-background` (the inverted-selection idiom), a stale tint renders the text invisible.
 final class SidebarRowView: NSTableRowView {
-    /// White-wash fallback opacity for themes with no selection color: brighter key, dimmer background.
     private static let keyAlpha: CGFloat = 0.13
     private static let inactiveAlpha: CGFloat = 0.07
 
@@ -303,7 +305,8 @@ final class SidebarRowView: NSTableRowView {
         if let selection = GhosttyApp.shared.terminalSelectionBackgroundColor {
             selection.withAlphaComponent(isEmphasized ? 1 : 0.55).setFill()
         } else {
-            NSColor(white: 1, alpha: isEmphasized ? Self.keyAlpha : Self.inactiveAlpha).setFill()
+            (GhosttyApp.shared.terminalForegroundColor ?? .white)
+                .withAlphaComponent(isEmphasized ? Self.keyAlpha : Self.inactiveAlpha).setFill()
         }
         NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 1.5), xRadius: 7, yRadius: 7).fill()
     }

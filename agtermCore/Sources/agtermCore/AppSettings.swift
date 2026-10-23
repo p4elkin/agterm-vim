@@ -11,12 +11,20 @@ public enum ToolbarMode: String, Codable, Sendable, CaseIterable {
     case hidden
 }
 
-/// How the sidebar's flagged view arranges its sessions: `flat` is one list labelled `session : workspace`,
-/// `tree` nests them under their workspace rows. App-wide, not per window. Raw-stored, resolved by
-/// `effectiveFlaggedViewLayout`.
+/// FlaggedViewLayout arranges the sidebar's flagged view: `flat` is one list labelled `session : workspace`,
+/// `plain` the same list labelled by session name alone, `tree` nests them under their workspace rows.
+/// App-wide, not per window. Raw-stored, resolved by `effectiveFlaggedViewLayout`.
 public enum FlaggedViewLayout: String, Codable, Sendable, CaseIterable {
     case flat
+    case plain
     case tree
+}
+
+/// Where a clicked web link from terminal output opens: the system `browser`, or a session web `overlay`.
+/// App-wide. Raw-stored, resolved by `effectiveLinkOpenMode`.
+public enum LinkOpenMode: String, Codable, Sendable, CaseIterable {
+    case browser
+    case overlay
 }
 
 /// How a delivered notification bounces the Dock icon (`requestUserAttention`): `off`, `once` (one
@@ -44,6 +52,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     case recentSessions
     case scratch
     case split
+    case overlayToggle
     case dashboard
     case quickTerminal
     case customCommands
@@ -66,7 +75,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
     }
 
     /// Whether the element starts hidden, so its toggle reads off until the user opts in.
-    public var hiddenByDefault: Bool { self == .customCommands || self == .workspaceName }
+    public var hiddenByDefault: Bool { self == .customCommands || self == .workspaceName || self == .overlayToggle }
 
     /// The human-facing toggle label shown in the Interface settings tab.
     public var displayName: String {
@@ -80,6 +89,7 @@ public enum InterfaceElement: String, Codable, Sendable, CaseIterable {
         case .recentSessions: return "Recent sessions"
         case .scratch: return "Scratch terminal"
         case .split: return "Split view"
+        case .overlayToggle: return "Hide overlays"
         case .dashboard: return "Dashboard"
         case .quickTerminal: return "Quick terminal"
         case .customCommands: return "Custom commands"
@@ -327,6 +337,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var newSessionCustomDirectory: String?
     /// newSessionPlacement stores a `NewSessionPlacement` raw value; nil means `end`.
     public var newSessionPlacement: String?
+    /// The ssh host a "+" new-session button creates its session on; nil = this Mac. Read through
+    /// `effectiveNewSessionHost`. No control command sets or reads it, like the two fields above.
+    public var newSessionHost: String?
     /// Whether a GUI session close (⌘W, the File/palette Close Session, the sidebar row's Close) confirms
     /// first; nil = off. Read on demand; the control channel's `session.close` never prompts.
     public var confirmCloseSession: Bool?
@@ -363,6 +376,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Raw `FlaggedViewLayout` for the sidebar's flagged view; nil = flat. Resolved by
     /// `effectiveFlaggedViewLayout`.
     public var flaggedViewLayout: String?
+    /// Raw `LinkOpenMode`; nil = browser. Resolved by `effectiveLinkOpenMode`.
+    public var linkOpenMode: String?
+    /// terminalInputSource is the keyboard input source id held while a terminal has the keyboard; nil = off.
+    /// `InputSourceLock` owns when it is selected and restored.
+    public var terminalInputSource: String?
     /// htmlOverlayZoom is the page zoom every HTML overlay shows at, nil for actual size; read it through
     /// `effectiveHtmlOverlayZoom`.
     public var htmlOverlayZoom: Double?
@@ -372,6 +390,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Whether `session.overlay.open` may redirect an overlay to/from a paired machine; nil/false = off.
     /// The persisted half of `OverlayRedirectController` — unlike normal mode, this survives a restart.
     public var overlayRedirectEnabled: Bool?
+    public var rebasedAppPath: String?
+    /// Days a Rebased mirror may go unused before the IDE start removes it; 0 = never. See `RebasedMirrorCleanup`.
+    public var rebasedMirrorMaxAgeDays: Int?
+
+    public var effectiveRebasedAppPath: String { rebasedAppPath ?? "/Applications/Rebased.app" }
+    public var effectiveRebasedMirrorMaxAgeDays: Int {
+        guard let days = rebasedMirrorMaxAgeDays, days >= 0 else { return 14 }
+        return days
+    }
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
                 darkTheme: String? = nil, followSystemAppearance: Bool? = nil,
@@ -390,7 +417,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 blockedStatusSoundName: String? = nil, statusReset: String? = nil, rightClickPaste: Bool? = nil,
                 workspaceRowClickExpands: Bool? = nil,
                 newSessionDirectory: String? = nil, newSessionCustomDirectory: String? = nil,
-                newSessionPlacement: String? = nil,
+                newSessionPlacement: String? = nil, newSessionHost: String? = nil,
                 confirmCloseSession: Bool? = nil, closeGraceUndoEnabled: Bool? = nil,
                 autoFollowAttention: String? = nil,
                 autoFollowStayOnActive: Bool? = nil, recencyDwell: String? = nil,
@@ -398,7 +425,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 interfaceFontSize: Double? = nil, quickTerminalSizePercent: Int? = nil,
                 hiddenInterfaceElements: [String]? = nil, shownInterfaceElements: [String]? = nil,
                 autoHideSidebarInactiveWindows: Bool? = nil, flaggedViewLayout: String? = nil,
-                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil) {
+                linkOpenMode: String? = nil, terminalInputSource: String? = nil,
+                htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil,
+                rebasedAppPath: String? = nil, rebasedMirrorMaxAgeDays: Int? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.theme = theme
@@ -435,6 +464,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.newSessionDirectory = newSessionDirectory
         self.newSessionCustomDirectory = newSessionCustomDirectory
         self.newSessionPlacement = newSessionPlacement
+        self.newSessionHost = newSessionHost
         self.confirmCloseSession = confirmCloseSession
         self.closeGraceUndoEnabled = closeGraceUndoEnabled
         self.autoFollowAttention = autoFollowAttention
@@ -447,9 +477,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.shownInterfaceElements = shownInterfaceElements
         self.autoHideSidebarInactiveWindows = autoHideSidebarInactiveWindows
         self.flaggedViewLayout = flaggedViewLayout
+        self.linkOpenMode = linkOpenMode
+        self.terminalInputSource = terminalInputSource
         self.htmlOverlayZoom = htmlOverlayZoom
         self.welcomeShown = welcomeShown
         self.overlayRedirectEnabled = overlayRedirectEnabled
+        self.rebasedAppPath = rebasedAppPath
+        self.rebasedMirrorMaxAgeDays = rebasedMirrorMaxAgeDays
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.
@@ -486,6 +520,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         flaggedViewLayout.flatMap(FlaggedViewLayout.init(rawValue:)) ?? .flat
     }
 
+    /// The resolved link-open mode: the explicit `linkOpenMode` when a KNOWN raw value, else `browser`.
+    public var effectiveLinkOpenMode: LinkOpenMode {
+        linkOpenMode.flatMap(LinkOpenMode.init(rawValue:)) ?? .browser
+    }
+
     /// effectiveHtmlOverlayZoom is `htmlOverlayZoom` bounded to `HtmlZoom`'s range, the only read of the setting.
     public var effectiveHtmlOverlayZoom: Double { HtmlZoom.resolve(htmlOverlayZoom) }
 
@@ -502,6 +541,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public var effectiveNewSessionPlacement: NewSessionPlacement {
         newSessionPlacement.flatMap(NewSessionPlacement.init(rawValue:)) ?? .end
+    }
+
+    /// The trimmed `newSessionHost`, or nil when it is blank or a value `zmx.new` would refuse.
+    public var effectiveNewSessionHost: String? {
+        guard let host = newSessionHost?.trimmingCharacters(in: .whitespacesAndNewlines),
+              RemoteSession.isPlain(host), !host.hasPrefix("-") else { return nil }
+        return host
     }
 
     /// The resolved cursor shape, or nil when unset OR when the stored raw name is one this version does

@@ -7,7 +7,7 @@ struct Workspace: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Workspace commands.",
         subcommands: [New.self, Rename.self, Delete.self, Select.self, Go.self, Move.self, Focus.self, Filter.self,
-                      Collapse.self, Expand.self]
+                      FlagCommand.self, Collapse.self, Expand.self]
     )
 
     struct New: RequestCommand {
@@ -68,13 +68,26 @@ struct Workspace: ParsableCommand {
     }
 
     struct Move: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Reorder a workspace among its siblings.")
-        @Option(name: .long, help: "Direction: up, down, top, or bottom.") var to: String
+        static let configuration = CommandConfiguration(
+            abstract: "Reorder a workspace among its siblings, or move it to another window with --to-window.")
+        @Option(name: .long, help: "Direction: up, down, top, or bottom.") var to: String?
+        @Option(name: .customLong("to-window"), help: "Move to another window: new, a window name, an id or a prefix.") var toWindow: String?
+        @Option(name: .customLong("window-name"), help: "Name of the window --to-window new creates (default: the workspace's name).") var windowName: String?
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
 
+        func validate() throws {
+            try validateWindowName(windowName, toWindow: toWindow)
+            switch (to, toWindow) {
+            case (nil, nil): throw ValidationError("provide --to or --to-window")
+            case (.some, .some): throw ValidationError("use either --to or --to-window, not both")
+            default: break
+            }
+        }
+
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .workspaceMove, target: target.target, args: options.withWindow(ControlArgs(to: to)))
+            ControlRequest(cmd: .workspaceMove, target: target.target,
+                           args: options.withWindow(ControlArgs(to: to, toWindow: toWindow, windowName: windowName)))
         }
     }
 
@@ -123,6 +136,29 @@ struct Workspace: ParsableCommand {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .workspaceFilter, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    /// `agtermctl workspace flag [on|off|toggle] [--target W]` — flags or unflags EVERY session of one workspace
+    /// as one value. `toggle` unflags only when all are flagged, otherwise flags all, so it is not a per-session
+    /// invert; the read-back is each session's `flagged` in `tree`.
+    struct FlagCommand: RequestCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "flag", abstract: "Flag or unflag every session in a workspace (on|off|toggle)."
+        )
+        @Argument(help: "Mode: on, off, or toggle (default; unflags only when every session is flagged).")
+        var mode: String = "toggle"
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func validate() throws {
+            guard ["on", "off", "toggle"].contains(mode) else {
+                throw ValidationError("mode must be on, off, or toggle")
+            }
+        }
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .workspaceFlag, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
         }
     }
 

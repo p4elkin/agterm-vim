@@ -17,6 +17,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [park-and-resume](park-and-resume/) | close a project's workspaces, bring them back later | 0.16.0, jq, zsh |
 | [project-launcher](project-launcher/) | pick a project anywhere — or type "project + prompt" — and get a session in its workspace | 0.19.0, jq |
 | [project-switcher](project-switcher/) | show only one project's workspaces in the sidebar | 0.18.0, jq |
+| [session-snapshot](session-snapshot/) | snapshot every open session into a browsable page, close them, and restore any one later with its own Claude conversation | 0.7.1, jq, python3 |
 | [window-per-project](window-per-project/) | park every other window in the Dock and raise one | 0.17.1, jq |
 | [window-switcher](window-switcher/) | jump to a window by number, or pick one with its waiting sessions in view | 0.28.0, jq |
 | [workspace-sets](workspace-sets/) | switch the sidebar between named groups of workspaces, one chord each | 0.18.0, jq |
@@ -25,6 +26,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 
 | recipe | what it does | needs |
 |---|---|---|
+| [antigravity-session-resume](antigravity-session-resume/) | each tab reopens its own Antigravity CLI conversation after a restart | 0.16.0, zsh, Antigravity CLI |
 | [claude-session-resume](claude-session-resume/) | each tab reopens its own Claude Code conversation after a restart | 0.3.1, zsh or fish, Claude Code |
 | [codex-session-resume](codex-session-resume/) | each tab reopens its own codex conversation after a restart | 0.3.1, zsh, Codex CLI |
 | [kimi-session-resume](kimi-session-resume/) | each tab reopens its own Kimi Code conversation after a restart | 0.16.0, Kimi Code, python3 |
@@ -37,6 +39,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [agent-reset](agent-reset/) | one chord clears the pane's Claude Code or codex run, and nothing when neither is running | 0.26.0, python3, Claude Code or Codex |
 | [annotate-claude-replies](annotate-claude-replies/) | mark up Claude's answers in revdiff and send the notes back | 0.13.0, revdiff, python3, Claude Code |
 | [annotate-pane-output](annotate-pane-output/) | mark up what the pane just printed in revdiff and send the notes back to whatever is running there | 0.13.0, revdiff, python3 |
+| [antigravity-agent-status](antigravity-agent-status/) | Antigravity CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Antigravity CLI |
 | [backlog-picker](backlog-picker/) | pick one of the repo's written-down deferred items and hand it to the agent in the pane | 0.20.2, python3, Claude Code |
 | [chat-rooms](chat-rooms/) | the agent writes long answers into rooms, read live in the pane beside it with unread counts, alongside the messages other sessions sent | 0.22.0, python3, fzf, curl, Claude Code |
 | [claude-account-swap](claude-account-swap/) | switch the left pane's Claude account with a conversation summary | 0.26.0, python3, jq, Claude Code, Codex CLI, Git |
@@ -46,11 +49,12 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [container-agent-status](container-agent-status/) | a containerized agent reports status onto its sidebar row via a TCP notification to the host | 0.7.1, nc, timeout, Claude Code |
 | [copilot-agent-status](copilot-agent-status/) | Copilot CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Copilot CLI |
 | [cross-agent-chat](cross-agent-chat/) | sessions message each other without flooding the chat, one chord reads the conversation back | 0.10.0, python3, fzf, Claude Code |
-| [html-doc-overlay](html-doc-overlay/) | ask Claude Code for a page about the issue, PR, plan or topic in hand and read it in an overlay | 0.33.0, jq, Claude Code |
+| [html-doc-overlay](html-doc-overlay/) | ask Claude Code for a page about the issue, PR, plan or topic in hand, read it in an overlay, and optionally share it on an expiring link | 0.33.0, jq, python3, Claude Code, cloudflared for sharing |
 | [kimi-agent-status](kimi-agent-status/) | Kimi Code sessions report agent status onto their sidebar row | 0.3.1, Kimi Code |
 | [kiro-agent-status](kiro-agent-status/) | Kiro CLI sessions report active, blocked, and completed onto their sidebar row | 0.7.1, Kiro CLI |
 | [long-commands-status](long-commands-status/) | wrap any long shell command so the row reports active while it runs and completed or blocked when it finishes | 0.17.0 |
 | [remote-claude-session](remote-claude-session/) | one chord runs Claude Code in a tmux session on a remote host, reconnecting and reporting status onto its own tab | 0.22.0, jq, ssh, tmux, Claude Code |
+| [scheduled-jobs](scheduled-jobs/) | an agent installs cronn, schedules and reports on jobs, and jobs can open agterm sessions running an agent on a prompt | 0.37.0, Homebrew, jq, Claude Code |
 | [session-context-nudge](session-context-nudge/) | Claude Code keeps the title bar saying what the session is working on | 0.26.0, jq, Claude Code |
 | [status-announcer](status-announcer/) | demo: speak agent status changes from a dedicated session | 0.16.0, jq |
 | [truthful-agent-lights](truthful-agent-lights/) | the row reports what is still running after the turn ends, and stops claiming work that is gone | 0.17.0, jq, Claude Code |
@@ -71,7 +75,7 @@ its *needs* column, so searching this page for `claude` or `kiro` finds those di
 | [vim-keys](vim-keys/) | j/k/h/l navigation and a space leader behind a vim-style normal mode | 0.22.0 |
 | [vim-keys-cheatsheet](vim-keys-cheatsheet/) | one chord shows your own cheat sheet, normal-mode keys in their own section | 0.22.0, python3, glow, Claude Code |
 
-Most recipes need `agtermctl` on your PATH; **Help ▸ Install Command Line Tool…** puts it there. Three of the four session-resume recipes are shell functions that read the environment agterm gives a session and never call the CLI; the Kimi one is a lifecycle hook that pins its tab's restore command through `agtermctl`. Some recipes also need `jq`, `fzf`, or a particular shell, and each recipe's *Requirements* section says which, along with the minimum agterm version it needs. Recipes are snapshots rather than a maintained surface: the control API grows by addition, so they rarely break, and one that does gets fixed when it is reported.
+Most recipes need `agtermctl` on your PATH; **Help ▸ Install Command Line Tool…** puts it there. Three of the five session-resume recipes are shell functions that read the environment agterm gives a session and never call the CLI; the Kimi and Antigravity ones use lifecycle hooks that pin the pane's restore command through `agtermctl`. Some recipes also need `jq`, `fzf`, or a particular shell, and each recipe's *Requirements* section says which, along with the minimum agterm version it needs. Recipes are snapshots rather than a maintained surface: the control API grows by addition, so they rarely break, and one that does gets fixed when it is reported.
 
 ## Contributing a recipe
 

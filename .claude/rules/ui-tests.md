@@ -81,9 +81,11 @@ These run inside the app, so a mistake can kill the host instead of failing an a
 - **`xcodebuild` piped through `grep`/`tail` reports the PIPELINE's exit status, not its own.** Check for
   the literal `** TEST SUCCEEDED **` marker or read `${PIPESTATUS[0]}`. A failing run has been reported as
   a pass this way.
-- Default UI-test launches bypass live-session wrapping through the existing UI-test sentinel. Only the
-  focused zmx persistence test sets `AGTERM_UITEST_ENABLE_ZMX=1`; it must kill its exact test daemons in
-  teardown so they cannot leak into later tests.
+- Default UI-test launches bypass live-session wrapping through the existing UI-test sentinel. Only
+  `ZmxLiveUITests` sets `AGTERM_UITEST_ENABLE_ZMX=1`: the focused zmx persistence tests and
+  `testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons`, which needs live daemons to prove a
+  window transfer keeps them. Its teardown must kill the exact test daemons, in every window, so they
+  cannot leak into later tests.
 - Pass a temporary `AGTERM_STATE_DIR` in the launch environment; `agtermApp.restoredStore()` honors it.
   Verify the native `Open Directory...` panel manually.
 - **Use `app.launchForUITest()`, never `app.launch()`.** FB11763863 on macOS 15+/Xcode 16+, including
@@ -166,7 +168,12 @@ These run inside the app, so a mistake can kill the host instead of failing an a
   failure occurred about 64 seconds after synthesis began and the same test passed in about 13 seconds
   without HazeOver. Quit overlays and
   clear covered/minimized/other-Space windows before debugging the test. FB11763863 instead has no
-  window/AX tree.
+  window/AX tree. The same timeout also came from typing that hid the app under test: on 2026-10-18
+  `typeText` keys arrived as Command chords (Cmd-M minimized it, Cmd-H hid it, the rest reached the live
+  agterm the run was launched from and opened its Open Directory panel), while
+  `typeKey(_:modifierFlags: [])` was unaffected. [Unverified] where the stuck Command came from.
+  A window ordered out or an unexpected Open panel seconds into typing means stop the run; do not rerun
+  it on the same desktop.
 - `XCUIApplication.terminate()` does not call `applicationWillTerminate`. Use ⌘Q plus
   `wait(for: .notRunning, timeout:)` for restore-command or quit-flush tests; XCUITest auto-skips the
   quit-confirm modal. `MultiWindowUITests` survives hard termination only because structural saves

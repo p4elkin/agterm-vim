@@ -32,6 +32,17 @@ is the `.claude/rules` file that owns the design.
 
 **Panes and sessions**
 
+- **Rebased in an overlay** — the IntelliJ-platform git client runs inside agterm, docked to the window,
+  session-wide or in one split pane, for a live review: commit-range or working-tree diffs, files, and
+  `--on-close`. It hides through upstream's overlay hide (⇧⌘J, `session overlay hide|show|toggle`) as well as
+  its own toggle; a hidden session-wide IDE leaves the slot, so a picker or page opens meanwhile. A remote row's repository opens from an ssh-fetched mirror on the Mac.
+  Unused remote mirrors are removed after `rebasedMirrorMaxAgeDays`, also on demand (`rebased mirror prune`).
+  `.claude/rules/rebased-overlay.md`.
+- **IntelliJ IDEA in the same overlay** — choose its bundle in Settings > General > IDE app, then restart.
+  Separate product state, with approved standalone settings and plugins seeded once; `.claude/rules/rebased-overlay.md`.
+- **"+" creates on a remote host** — Settings ▸ Sessions names a host, and the "+" new-session controls
+  create the session there through `zmx new HOST`, in the clicked workspace, dimmed while it runs.
+  `zmx new HOST --workspace` places a scripted one. `.claude/rules/settings.md`, `control-api.md`.
 - **Overlay redirect** — an overlay opens on the machine you are actually watching from, so one fired on
   the workstation appears on the laptop mirroring it.
   Section below; design in `.claude/rules/overlay-redirect.md`.
@@ -64,6 +75,7 @@ is the `.claude/rules` file that owns the design.
   attach the session right after it, which is how a p4linux offload gets its Mac row.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
+  `session type` clears a status by the `statusReset` in the server's own `settings.json`, read on every call.
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's
   `agtermctl` is the server's own CLI, and agterm-agents' `agtermctl` shim is gone.
   Design in `docs/plans/20260929-headless-origin-spec.md`, rules in `.claude/rules/headless-origin.md`.
@@ -282,6 +294,11 @@ whichever workspace you choose, instead of always in the current one.
   a create rather than a dead end. The row is offered even when a title matches partially.
 - Bound as a single chord, and reachable from `nmap` like any other built-in.
 
+## Move a workspace or sessions to another window
+
+`workspace move --to-window <new|name|id>` and `session move --to-window …` move rows to another window, both
+panes still running. Details and limits: `.claude/rules/windows.md`, "Transfer between windows".
+
 ## An attention-counts pill
 
 The title-bar bell says something needs you, never how much or of what kind — and it is opt-in and off by
@@ -332,6 +349,8 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 
 - `agtermctl session status <state> --note TEXT` — a one-line reason on the agent status, read back as
   `statusNote` on `tree` and `note` on the `status` event, far rows included. `control-api.md` has the rules.
+- A `completed` written without `--auto-reset` is owned by its pane like a `blocked`: another pane's
+  non-`blocked` write is refused with `status owned by pane <pane>`. `control-api.md` has the rules.
 - `agtermctl session mark` and `session bookmark add|list|go|remove` — the bookmarks above.
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.

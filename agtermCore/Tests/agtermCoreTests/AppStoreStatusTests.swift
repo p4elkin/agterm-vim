@@ -254,6 +254,73 @@ struct AppStoreStatusTests {
         #expect(session.agentIndicator.status == .active)
     }
 
+    @Test func markForAttentionSetsAPlainCompletedOnAnIdleSession() throws {
+        let drafts = DraftCollector()
+        let store = AppStore(persistence: PersistenceStore(directory: FileManager.default.temporaryDirectory
+                                 .appendingPathComponent("agterm-tests-\(UUID().uuidString)")),
+                             controlEventSink: { drafts.kinds.append($0.kind) })
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo"))
+        drafts.kinds.removeAll()
+
+        store.markForAttention([session.id])
+
+        #expect(session.agentIndicator == AgentIndicator(status: .completed))
+        #expect(store.attentionSessions.map(\.id) == [session.id])
+        #expect(drafts.kinds == [.status])
+        let node = try #require(store.controlTree().workspaces[0].sessions.first)
+        #expect(node.status == "completed")
+        #expect(node.statusChangedAt == session.statusChangedAt?.timeIntervalSince1970)
+        #expect(node.statusChangedAt != nil)
+    }
+
+    @Test func markForAttentionSurvivesLeavingAndRevisitingTheSession() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let marked = try #require(store.addSession(toWorkspace: ws.id, cwd: "/marked"))
+        let other = try #require(store.addSession(toWorkspace: ws.id, cwd: "/other"))
+        store.selectSession(marked.id)
+
+        store.markForAttention([marked.id])
+        store.selectSession(other.id)
+        store.selectSession(marked.id)
+
+        #expect(marked.agentIndicator.status == .completed)
+    }
+
+    @Test(arguments: [AgentStatus.active, .completed, .blocked])
+    func markForAttentionLeavesANonIdleSessionAlone(_ status: AgentStatus) throws {
+        let drafts = DraftCollector()
+        let store = AppStore(persistence: PersistenceStore(directory: FileManager.default.temporaryDirectory
+                                 .appendingPathComponent("agterm-tests-\(UUID().uuidString)")),
+                             controlEventSink: { drafts.kinds.append($0.kind) })
+        let ws = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/repo"))
+        let standing = AgentIndicator(status: status, blink: true, color: "#112233", statusPane: .left)
+        store.setAgentIndicator(standing, forSession: session.id)
+        let stamp = session.statusChangedAt
+        drafts.kinds.removeAll()
+
+        store.markForAttention([session.id])
+
+        #expect(session.agentIndicator == standing)
+        #expect(session.statusChangedAt == stamp)
+        #expect(drafts.kinds.isEmpty)
+    }
+
+    @Test func markForAttentionMarksOnlyTheIdleMembersOfABatch() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let idle = try #require(store.addSession(toWorkspace: ws.id, cwd: "/idle"))
+        let blocked = try #require(store.addSession(toWorkspace: ws.id, cwd: "/blocked"))
+        store.setAgentIndicator(AgentIndicator(status: .blocked), forSession: blocked.id)
+
+        store.markForAttention([idle.id, blocked.id, UUID()])
+
+        #expect(idle.agentIndicator.status == .completed)
+        #expect(blocked.agentIndicator.status == .blocked)
+    }
+
     @Test func aRefusedWriteEmitsNoStatusEvent() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
         let drafts = DraftCollector()
@@ -270,6 +337,80 @@ struct AppStoreStatusTests {
         store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right), forSession: session.id)
 
         #expect(drafts.kinds.isEmpty)
+    }
+
+    // MARK: - pane precedence over a sticky completed status
+
+    /// A split session whose LEFT pane holds a `completed` written without auto-reset: an open question.
+    private func stickyCompletedLeftSplitSession(autoReset: Bool = false) -> (AppStore, Session) {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/repo")!
+        store.toggleSplit(session.id)
+        store.applyControlStatus(AgentIndicator(status: .completed, autoReset: autoReset, statusPane: .left,
+                                                note: "asks: which option?"),
+                                 forSession: session.id)
+        return (store, session)
+    }
+
+    @Test(arguments: [AgentStatus.active, .completed, .idle])
+    func rightPaneCannotReplaceTheLeftPanesStickyCompleted(_ status: AgentStatus) {
+        let (store, session) = stickyCompletedLeftSplitSession()
+        let stamp = session.statusChangedAt
+
+        let result = store.applyControlStatus(AgentIndicator(status: status, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .refused(owner: .left))
+        #expect(session.agentIndicator.status == .completed)
+        #expect(session.agentIndicator.note == "asks: which option?")
+        #expect(session.statusChangedAt == stamp)
+    }
+
+    @Test func theOtherPanesBlockReplacesAStickyCompleted() {
+        let (store, session) = stickyCompletedLeftSplitSession()
+
+        let result = store.applyControlStatus(AgentIndicator(status: .blocked, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .blocked)
+        #expect(session.agentIndicator.statusPane == .right)
+    }
+
+    @Test(arguments: [AgentStatus.active, .completed, .idle])
+    func theOwningPaneChangesItsOwnStickyCompleted(_ status: AgentStatus) {
+        let (store, session) = stickyCompletedLeftSplitSession()
+
+        let result = store.applyControlStatus(AgentIndicator(status: status, statusPane: .left),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == status)
+    }
+
+    @Test func anAutoResetCompletedIsNotOwned() {
+        let (store, session) = stickyCompletedLeftSplitSession(autoReset: true)
+
+        let result = store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .active)
+        #expect(session.agentIndicator.statusPane == .right)
+    }
+
+    @Test func aSinglePaneRowReplacesItsStickyCompleted() {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let session = store.addSession(toWorkspace: ws.id, cwd: "/repo")!
+        store.applyControlStatus(AgentIndicator(status: .completed, statusPane: .left), forSession: session.id)
+
+        let result = store.applyControlStatus(AgentIndicator(status: .active, statusPane: .right),
+                                              forSession: session.id)
+
+        #expect(result == .applied)
+        #expect(session.agentIndicator.status == .active)
     }
 
     @MainActor

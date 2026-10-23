@@ -5,6 +5,25 @@ import Testing
 @MainActor
 struct AppStorePaneSwapTests {
     @Test(arguments: OverlayPane.allCases)
+    func aRebasedOverlayFollowsItsPaneAcrossSwap(pane: OverlayPane) {
+        let fixture = makeSeededSession()
+        let session = fixture.session
+        session.isSplit = true
+        fixture.store.closePaneOverlay(session.id, pane: pane)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(fixture.store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(fixture.store.swapPanes(session.id) == nil)
+        #expect(session.rebasedPlacement?.overlay.id == overlay.id)
+        #expect(session.rebasedPlacement?.pane == (pane == .left ? .right : .left))
+        #expect(fixture.store.swapPanes(session.id) == nil)
+        #expect(session.rebasedPlacement?.pane == pane)
+        #expect(releases.isEmpty)
+    }
+
+    @Test(arguments: OverlayPane.allCases)
     func closingTheAskPaneAfterSwapCancelsByIdentity(originalPane: OverlayPane) throws {
         let fixture = makeSeededSession()
         let session = fixture.session
@@ -240,6 +259,18 @@ struct AppStorePaneSwapTests {
         #expect(restored.commandWait)
         #expect(restored.splitInitialCommand == "left command")
         #expect(!restored.splitCommandWait)
+    }
+
+    @Test func aHiddenPaneOverlayStaysHiddenOnItsNewPane() {
+        let fixture = makeSeededSession()
+        let session = fixture.session
+        #expect(fixture.store.setOverlaysHidden(session.id, pane: .left, hidden: true) == nil)
+
+        #expect(fixture.store.swapPanes(session.id) == nil)
+
+        #expect(session.paneOverlay(.right)?.command == "left overlay")
+        #expect(session.overlayHidden(.right))
+        #expect(!session.overlayHidden(.left))
     }
 
     @Test func swapAssignsEachSurfaceItsNewRole() {

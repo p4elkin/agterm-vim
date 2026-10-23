@@ -21,6 +21,7 @@ public enum Command: String, Codable, Sendable {
     case workspaceFilter = "workspace.filter"
     case workspaceCollapse = "workspace.collapse"
     case workspaceExpand = "workspace.expand"
+    case workspaceFlag = "workspace.flag"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
@@ -41,6 +42,7 @@ public enum Command: String, Codable, Sendable {
     case sessionBookmarkList = "session.bookmark.list"
     case sessionBookmarkGo = "session.bookmark.go"
     case sessionBookmarkRemove = "session.bookmark.remove"
+    case sessionRestart = "session.restart"
     case sessionBackground = "session.background"
     case sessionSplit = "session.split"
     case sessionSplitClose = "session.split.close"
@@ -57,6 +59,8 @@ public enum Command: String, Codable, Sendable {
     case sessionSelectAll = "session.selectall"
     case sessionText = "session.text"
     case sessionSearch = "session.search"
+    case sessionRebasedShow = "session.rebased.show"
+    case sessionRebasedToggle = "session.rebased.toggle"
     case sessionOverlayOpen = "session.overlay.open"
     case sessionOverlayClose = "session.overlay.close"
     case sessionOverlayResize = "session.overlay.resize"
@@ -66,6 +70,9 @@ public enum Command: String, Codable, Sendable {
     case sessionOverlaySubmit = "session.overlay.submit"
     case sessionOverlayCopy = "session.overlay.copy"
     case sessionOverlayText = "session.overlay.text"
+    case sessionOverlayHide = "session.overlay.hide"
+    case sessionOverlayShow = "session.overlay.show"
+    case sessionOverlayToggle = "session.overlay.toggle"
     case sessionHudOpen = "session.hud.open"
     case sessionHudUpdate = "session.hud.update"
     case sessionHudClose = "session.hud.close"
@@ -112,6 +119,7 @@ public enum Command: String, Codable, Sendable {
     case hooksReload = "hooks.reload"
     case hooksList = "hooks.list"
     case browserClear = "browser.clear"
+    case browserLinks = "browser.links"
     case configReload = "config.reload"
     case themeSet = "theme.set"
     case themeList = "theme.list"
@@ -134,8 +142,16 @@ public enum Command: String, Codable, Sendable {
     case zmxAttach = "zmx.attach"
     case zmxPresent = "zmx.present"
     case zmxScreen = "zmx.screen"
+    case rebasedMirrorList = "rebased.mirror.list"
+    case rebasedMirrorPrune = "rebased.mirror.prune"
+    case recentList = "recent.list"
+    case recentOpen = "recent.open"
+    case recentClear = "recent.clear"
     /// A viewer's helper claiming a remote overlay job; after an ok reply the connection carries job frames.
     case sessionOverlayJobRun = "session.overlay.job.run"
+    /// sessionOverlayPageServe is a viewer's helper claiming a handed-over page by its single-use token; after an
+    /// ok reply the connection carries page channel frames.
+    case sessionOverlayPageServe = "session.overlay.page.serve"
     /// UI-TEST-ONLY: forces the app-level appearance (`light`|`dark` via `args.name`) so an XCUITest can
     /// simulate a macOS light/dark flip; with NO name it READS the side the last config feed applied, so a
     /// test can assert the flip drove the reload. Refused outside an XCUITest launch, and EXEMPT from the
@@ -163,7 +179,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `all` clears the exception set and applies the mode everywhere, absent drives the window flag.
     public var workspace: String?
     /// Target workspace BY NAME for `session.new` (mutually exclusive with `workspace`). Reuses the first
-    /// workspace with this exact name; an absent name is an error unless `createWorkspace` is set.
+    /// workspace with this exact name; an absent name is an error unless `createWorkspace` is set. For
+    /// `session.move` with `toWindow` it names the destination workspace, reused or created without `createWorkspace`.
     public var workspaceName: String?
     /// For `session.new` with `workspaceName`: create the named workspace when none exists (idempotent
     /// reuse-or-create). An error without `workspaceName` — there is nothing to create by id.
@@ -213,9 +230,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Mode for `session.split` (`on|off|toggle`), `quick`/`surface.zoom` (`show|hide|toggle`),
     /// `session.flag` (`on|off|toggle|clear`), `session.park` (`on|off|toggle`, no `clear` — unparking
     /// every row at once would leave a screen of rows that look live and hold nothing),
-    /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|tree|toggle`),
-    /// `sidebar.parked` (`show|hide|toggle`),
-    /// `workspace.focus` (`on|off|toggle|add`), `workspace.filter`/`window.minimize`/`mode` (`on|off|toggle`),
+    /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|plain|tree|toggle`),
+    /// `sidebar.parked` (`show|hide|toggle`), `workspace.focus` (`on|off|toggle|add`),
+    /// `workspace.filter`/`workspace.flag`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
     /// `command`, pin nothing, or drop the pin), `session.context` (`set|clear`), and `session.pairing`
     /// (`mirrors|viewer` — which of the two pairings `host`/`name` describe).
@@ -293,6 +310,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// reorder form of `session.move` / `workspace.move` (`up`|`down`|`top`|`bottom`), and for
     /// `session.search` (`next`|`prev`|`close`), and `session.overlay.navigate` (`back`|`forward`|`browser`|`finder`).
     public var to: String?
+    /// The destination window of `workspace.move`/`session.move`: `new`, a window name, an id or a prefix.
+    /// Exclusive with `to` and, for `session.move`, with `after`/`before`.
+    public var toWindow: String?
+    /// The name of the window `toWindow == "new"` creates; nil names it after the moved or target workspace.
+    public var windowName: String?
     /// Anchor session (id / unique prefix / `active`) to place a session right AFTER, for the placement form
     /// of `session.new`/`session.move`. The anchor carries its own workspace (resolved across the whole
     /// store), so it names the destination — mutually exclusive with `to`, `before`, and the workspace param.
@@ -328,8 +350,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// For `session.overlay.resize`, requests the full-pane (translucent, session-hidden) overlay — the way
     /// to switch a floating overlay back to full. Mutually exclusive with `sizePercent`.
     public var full: Bool?
-    /// For `session.overlay.open`, whether to select the target after opening; omitted/false opens in the
-    /// background without changing the active session (the default for full and floating overlays alike).
+    /// Whether `session.overlay.open` and a showing `session.scratch` select their target; omitted/false
+    /// leaves the active session alone. For `pick.open` and `ask.open` it raises the owning window instead.
     public var follow: Bool?
     /// `session.overlay.open`'s two-phase resolved re-send: `agtermctl` sets this ONLY on the second
     /// request it sends after wrapping the program in ssh per the redirect decision. The app then skips the
@@ -359,6 +381,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// markdown renders the HUD message as markdown for `session.hud.open`/`.update`; nil/omitted is plain.
     /// An update omitting it returns the panel to plain text, the whole spec being replaced.
     public var markdown: Bool?
+    /// sticky puts a HUD flush against the edge or corner its `position` names, for `session.hud.open`/
+    /// `.update`; nil/omitted keeps the edge margin.
+    public var sticky: Bool?
+    /// frame false drops a HUD's border, rounding and blank rows, for `session.hud.open`/`.update`;
+    /// nil/omitted is framed.
+    public var frame: Bool?
     /// The finished caller-provided choices for `pick.open`.
     public var items: [ControlPickItem]?
     /// Optional placeholder text for `pick.open`'s query field.
@@ -380,6 +408,20 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var align: String?
     /// destructiveButton identifies the ask button styled as destructive.
     public var destructiveButton: String?
+    /// cancelButton identifies the ask button that resolves `escaped`, as Esc does.
+    public var cancelButton: String?
+    /// input is `line` or `multiline`, giving `ask.open` a text field.
+    public var input: String?
+    /// placeholder is the hint an empty `ask.open` text field shows.
+    public var placeholder: String?
+    /// choices gives `ask.open` a radio or checkbox list, in caller order.
+    public var choices: [ControlAskChoice]?
+    /// multiple makes an `ask.open` choice list checkboxes instead of radio buttons.
+    public var multiple: Bool?
+    /// checked lists the `ask.open` choice ids selected at open.
+    public var checked: [String]?
+    /// other adds a free-form row after an `ask.open` choice list; the value is its placeholder.
+    public var other: String?
     /// Target window whose tree a session/workspace/tree/font command operates on: id / prefix / `active`
     /// (= frontmost).
     public var window: String?
@@ -433,6 +475,14 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// html is the absolute path of the page `session.overlay.open --html` shows instead of running `command`; `cwd`
     /// is then WebKit's read grant.
     public var html: String?
+    public var rebased: Bool?
+    /// diff is the range a `--rebased` open shows, as typed; the dispatcher parses it.
+    public var diff: String?
+    public var workingTree: Bool?
+    public var file: String?
+    public var project: String?
+    public var onClose: String?
+    public var overlay: String?
     /// current makes `session.overlay.reload` reload the page the user navigated to, not the original file.
     public var current: Bool?
     /// navigation gives an `--html` or `--url` overlay its toolbar.
@@ -441,16 +491,23 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var url: String?
     /// javascript lets an `--html` or `--url` page run its own scripts (`--js`); off by default.
     public var javascript: Bool?
-    /// chromeless opens an `--html` page with no identity strip (`--chromeless`).
+    /// chromeless opens an `--html` page, or a `--url` page on a loopback host, with no identity strip (`--chromeless`).
     public var chromeless: Bool?
     /// persistent opens a `--url` page on the saved browser store (`--persistent`) instead of an in-memory one.
     public var persistent: Bool?
-    /// value is the answer `session.overlay.submit` hands back from a page; empty is a real answer.
+    /// browse lets a `--url` page's main frame leave its first origin for any HTTP(S) site (`--browse`).
+    public var browse: Bool?
+    /// value is the answer `session.overlay.submit` hands back from a page, empty being a real answer, or
+    /// the initial text of an `ask.open` input field.
     public var value: String?
     /// page is the page id `session.overlay.result` reads the outcome of, instead of a program's exit status.
     public var page: String?
     /// attach is the origin session `zmx.attach --beside` asks the presenting Mac to attach right after `target` (fork only).
     public var attach: String?
+    /// olderThanDays is the age `rebased.mirror.prune --older-than` removes from; nil leaves it to the setting.
+    public var olderThanDays: Int?
+    /// dryRun makes `rebased.mirror.prune` report what it would remove and remove nothing.
+    public var dryRun: Bool?
 
     public init(name: String? = nil, cwd: String? = nil, targets: [String]? = nil,
                 workspace: String? = nil, workspaceName: String? = nil,
@@ -463,12 +520,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 sizePercent: Int? = nil, full: Bool? = nil,
                 follow: Bool? = nil, resolved: Bool? = nil,
                 message: String? = nil, detail: String? = nil, spinner: String? = nil,
-                hideAfter: Double? = nil, markdown: Bool? = nil,
+                hideAfter: Double? = nil, markdown: Bool? = nil, sticky: Bool? = nil, frame: Bool? = nil,
                 items: [ControlPickItem]? = nil, prompt: String? = nil,
                 query: String? = nil, allowCustom: Bool? = nil, selection: String? = nil,
                 buttons: [ControlAskButton]? = nil, defaultButton: String? = nil,
                 destructiveButton: String? = nil, style: String? = nil, align: String? = nil, window: String? = nil,
-                pane: String? = nil, paneID: String? = nil, to: String? = nil,
+                pane: String? = nil, paneID: String? = nil, to: String? = nil, toWindow: String? = nil, windowName: String? = nil,
                 after: String? = nil, before: String? = nil, run: String? = nil,
                 kinds: [String]? = nil, limit: Int? = nil,
                 title: String? = nil, body: String? = nil,
@@ -484,7 +541,12 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil) {
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil,
+                olderThanDays: Int? = nil, dryRun: Bool? = nil,
+                workingTree: Bool? = nil, file: String? = nil, project: String? = nil, onClose: String? = nil, overlay: String? = nil,
+                cancelButton: String? = nil, input: String? = nil,
+                placeholder: String? = nil, choices: [ControlAskChoice]? = nil, multiple: Bool? = nil,
+                checked: [String]? = nil, other: String? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -514,6 +576,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.spinner = spinner
         self.hideAfter = hideAfter
         self.markdown = markdown
+        self.sticky = sticky
+        self.frame = frame
         self.items = items
         self.prompt = prompt
         self.query = query
@@ -528,6 +592,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.pane = pane
         self.paneID = paneID
         self.to = to
+        self.toWindow = toWindow
+        self.windowName = windowName
         self.after = after
         self.before = before
         self.run = run
@@ -575,6 +641,23 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.chromeless = chromeless
         self.persistent = persistent
         self.attach = attach
+        self.browse = browse
+        self.rebased = rebased
+        self.diff = diff
+        self.olderThanDays = olderThanDays
+        self.dryRun = dryRun
+        self.workingTree = workingTree
+        self.file = file
+        self.project = project
+        self.onClose = onClose
+        self.overlay = overlay
+        self.cancelButton = cancelButton
+        self.input = input
+        self.placeholder = placeholder
+        self.choices = choices
+        self.multiple = multiple
+        self.checked = checked
+        self.other = other
     }
 }
 
@@ -662,6 +745,9 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var bookmarks: [ControlBookmarkNode]?
     /// The app serving this socket, for `version`. The same value `tree` carries.
     public var app: AppIdentity?
+    /// The build metadata of the bundle on disk, for `version`. Omitted when it cannot be read, which
+    /// means unknown, never "same as `app`".
+    public var installed: AppIdentity?
     /// The restore-mode policy for `restore.mode`, and the header `zmx list` repeats so its rows can be
     /// read without a second call.
     public var restore: ControlRestoreStatus?
@@ -675,6 +761,16 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var pageID: String?
     /// A page's selector outcome for `session.overlay.result --page`.
     public var pageOutcome: ControlHtmlPageOutcome?
+    /// restart is what `session.restart` replaced: the pane's stable id and its shell before and after.
+    public var restart: ControlRestartReceipt?
+    /// The mirrors `rebased.mirror.list` found or `rebased.mirror.prune` removed and kept (fork only).
+    public var rebasedMirrors: ControlRebasedMirrors?
+    public var overlay: String?
+    public var request: String?
+    /// The Recent Closed entries for `recent.list`, newest first.
+    public var recent: [ControlRecentItem]?
+    /// What `recent.open` reopened and where.
+    public var recentOpen: ControlRecentOpen?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -690,9 +786,19 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 zmx: ControlZmxInventory? = nil, remote: ControlRemoteTree? = nil,
                 liveReset: ControlLiveResetStatus? = nil,
                 width: Int? = nil, height: Int? = nil,
-                pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil) {
+                pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
+                restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil, overlay: String? = nil, request: String? = nil,
+                installed: AppIdentity? = nil,
+                recent: [ControlRecentItem]? = nil, recentOpen: ControlRecentOpen? = nil) {
         self.overlayRedirect = overlayRedirect
+        self.rebasedMirrors = rebasedMirrors
         self.bookmarks = bookmarks
+        self.recent = recent
+        self.recentOpen = recentOpen
+        self.restart = restart
+        self.overlay = overlay
+        self.request = request
+        self.installed = installed
         self.width = width
         self.height = height
         self.restore = restore
@@ -751,7 +857,7 @@ public enum OverlayHudError {
     /// `overlayActive` alone would otherwise answer the misleading "overlay still running".
     public static let noResult = "no overlay result: the slot holds a hud"
     /// A HUD is always floating (`AppStore.openHud`): it must never cover the session it is a message about.
-    /// A percent is accepted but bounded by `HudLayout.clampSizePercent`, which states the same invariant.
+    /// A percent is accepted but bounded by `HudLayout.clampSizePercent(_:for:)`.
     public static let fullResize = "a hud is always floating: pass --size-percent, not --full"
     /// `session.hud.update`/`.close` against a slot that holds no HUD — empty, or running a caller's program.
     public static let noHud = "no hud"
@@ -784,17 +890,30 @@ public enum OverlayHtmlError {
     public static let invalidURL = "session.overlay.open: --url must be an absolute http or https URL"
     public static let navigationWithoutPage = "session.overlay.open: --navigation requires --html or --url"
     public static let javascriptWithoutPage = "session.overlay.open: --js requires --html or --url"
-    /// chromelessRequiresFile: the strip is what names a URL page's origin, so only a file page may drop it.
-    public static let chromelessRequiresFile = "session.overlay.open: --chromeless requires --html"
+    public static let chromelessRequiresFile = "session.overlay.open: --chromeless requires --html or a loopback --url"
+    /// chromelessRequiresLoopback: the strip is what names a URL page's origin, so only this Mac's may drop it.
+    public static let chromelessRequiresLoopback =
+        "session.overlay.open: --chromeless with --url requires a loopback host: 127.0.0.1, ::1 or localhost"
     public static let chromelessWithNavigation = "session.overlay.open: --chromeless cannot be combined with --navigation"
+    public static let chromelessWithBrowse = "session.overlay.open: --chromeless cannot be combined with --browse"
     public static let persistentRequiresURL = "session.overlay.open: --persistent requires --url"
     public static let persistentUnavailable = "persistent browser storage is not available"
+    public static let browseRequiresURL = "session.overlay.open: --browse requires --url"
     /// presenter: a page is shown on this Mac, so it is refused while another Mac presents the session.
     public static let presenter = "a viewer presents this session: an html overlay would open where nobody sees it"
     public static let noOverlay = "no overlay"
     public static let notHtml = "the overlay is not an html page"
     public static let navigation = "session.overlay.navigate requires back, forward, browser or finder"
     public static let finderRequiresFile = "show in Finder requires a file page"
+    /// remoteFile: a file page shown for another Mac has no file here to reveal or open.
+    public static let remoteFile = "the page's file is on another Mac"
+    /// remotePage: Finder and Browser are refused for a file page shown on the presenting Mac.
+    public static let remotePage = "page is shown on another Mac"
+    /// replicaSubmit: a page shown here for another Mac is answered there, through the page itself.
+    public static let replicaSubmit = "submit on the Mac that opened the page"
+    /// remoteLoopback: a loopback URL names this Mac, so the presenting Mac cannot load it.
+    public static let remoteLoopback = "a loopback url names this Mac, so the Mac presenting the session cannot load it"
+    public static let remoteTooLarge = "page too large to show on another Mac"
     /// noHistory: the page has nowhere to go in that direction.
     public static func noHistory(_ navigation: HtmlNavigation) -> String { "no page to go \(navigation.rawValue) to" }
     /// notRealized: the page has not been shown yet, so there is no web view to drive.
@@ -807,6 +926,13 @@ public enum OverlayHtmlError {
     public static let invalidPageID = "invalid page id"
     /// unknownPage: no page with that id was opened, or its outcome aged out of the retained results.
     public static let unknownPage = "no such page"
+}
+
+/// Error strings for `session.overlay.hide|show|toggle` and for opening into a slot whose overlay is hidden.
+public enum OverlayVisibilityError {
+    /// hidden: the slot still holds its overlay, running; show or close it before opening another.
+    public static let hidden = "overlay hidden"
+    public static let noOverlay = "no overlay"
 }
 
 /// Error strings for the pane-scoped (`--pane`) arm of `session.overlay.*`. Shared because the rejections

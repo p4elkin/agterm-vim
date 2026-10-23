@@ -54,6 +54,7 @@ targets:
           - "Resources/zmx"
           - "Resources/agent-status"
           - "Resources/hud"
+          - "Resources/rebased"
           # committed SOURCE for agterm's own bundled theme(s); setup.sh stages it
           # into Resources/ghostty/themes (above), so the source dir itself must not
           # be pulled into the project tree or the app bundle.
@@ -89,6 +90,9 @@ targets:
       - path: agterm/Resources/hud
         type: folder
         buildPhase: resources
+      - path: agterm/Resources/rebased
+        type: folder
+        buildPhase: resources
       # Agent skill package (SKILL.md + reference.md + examples.md + cookbook.md + troubleshooting.md
       # + scripts).
       # It lives at plugins/agterm/skills/agterm so the SAME directory is also the skill source for
@@ -108,6 +112,9 @@ targets:
         MARKETING_VERSION: "0.0.0"
         CURRENT_PROJECT_VERSION: "0.0.0"
         GIT_COMMIT: ""
+        # Swift imports the C JNI shim; JBR headers stay private to its implementation.
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/agterm/Rebased/JNI"
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/agterm/Rebased/JNI/include $(SRCROOT)/agterm/Rebased/JNI/include/darwin"
         ENABLE_HARDENED_RUNTIME: YES
         OTHER_LDFLAGS:
           - "-lc++"
@@ -125,7 +132,7 @@ targets:
         # AGTERM_STATE_DIR adopts its own agterm-debug directory (DebugStateDirectory).
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.umputun.agterm.debug
-          # Debug alone needs the three hardened-runtime exceptions; see the header of the file.
+          # Debug adds unsigned executable memory for previews; see the entitlement file's header.
           CODE_SIGN_ENTITLEMENTS: agterm/agterm-debug.entitlements
     postBuildScripts:
       # Build the Swift helpers here; setup.sh stages the pinned zmx binary and license.
@@ -172,7 +179,7 @@ targets:
           # builds, so adding the helper would otherwise break the seal. --deep because a clean
           # build can reach here before Xcode has signed agterm.debug.dylib. Entitlements come in a
           # SECOND pass instead: --deep applies them to every nested binary, and helpers carry no app
-          # TCC entitlements.
+          # entitlements.
           codesign --force --deep --options runtime --sign - "$CODESIGNING_FOLDER_PATH"
           # CODE_SIGN_ENTITLEMENTS, not a literal path: Debug and Release use different files.
           codesign --force --options runtime --entitlements "$SRCROOT/$CODE_SIGN_ENTITLEMENTS" --sign - "$CODESIGNING_FOLDER_PATH"
@@ -230,6 +237,8 @@ targets:
         INFOPLIST_KEY_NSPrincipalClass: HostedWindowHider
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/agterm.app/Contents/MacOS/agterm"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/agterm/Rebased/JNI"
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/agterm/Rebased/JNI/include $(SRCROOT)/agterm/Rebased/JNI/include/darwin"
         CODE_SIGN_IDENTITY: "-"
         # Hosted AppKit tests call isolated app code on the main actor; strict
         # checking adds XCTest boundary failures without improving that coverage.

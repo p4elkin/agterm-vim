@@ -9,8 +9,14 @@ extension ControlDispatcher {
             if let name = request.args?.name, name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) {
                 return ControlResponse(ok: false, error: "zmx.new name must not contain control characters")
             }
-            let options = ControlZmxNewOptions(name: request.args?.name, command: request.args?.command, cwd: request.args?.cwd)
-            guard let host = request.args?.host?.trimmedOrNil else { return actions.createAttachableSession(options) }
+            let workspace = request.args?.workspace?.trimmedOrNil
+            let options = ControlZmxNewOptions(name: request.args?.name, command: request.args?.command, cwd: request.args?.cwd,
+                                               workspace: workspace)
+            guard let host = request.args?.host?.trimmedOrNil else {
+                // a local `zmx new` creates no row, so there is nothing to place
+                guard workspace == nil else { return ControlResponse(ok: false, error: "zmx.new --workspace needs a host") }
+                return actions.createAttachableSession(options)
+            }
             guard RemoteSession.isPlain(host), !host.hasPrefix("-") else { return ControlResponse(ok: false, error: "invalid host") }
             return await actions.createRemoteSession(host: host, options: options, window: request.args?.window?.trimmedOrNil)
         case .zmxTree:

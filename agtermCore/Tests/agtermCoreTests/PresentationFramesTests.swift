@@ -59,12 +59,47 @@ struct PresentationFramesTests {
             id: "f2", response: ControlResponse(ok: false, error: "no such session")))),
         PresentationFrame(gen: 1, rev: 34, body: .status(PresentationStatus(
             status: .blocked, blink: false, color: nil, shape: nil, pane: pane, changedAt: nil, note: "perm: Bash"))),
+        PresentationFrame(gen: 1, rev: 35, body: .sound(PresentationSound(name: "Glass"))),
+        PresentationFrame(gen: 1, rev: 36, body: .sound(PresentationSound(name: nil))),
+        PresentationFrame(gen: 1, rev: 37, body: .askRequest(PresentationAsk(
+            PendingAsk(id: "a2", title: "pick", buttons: [ControlAskButton(id: "ok", label: "OK")],
+                       form: .choices(AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A")], multiple: true, other: "Other"))),
+            pane: nil, owner: 3))),
+        PresentationFrame(gen: 1, rev: 38, body: .askResolve(PresentationAskAnswer(id: "a2", owner: 3, button: "ok", text: " mine ",
+                                                                                   selected: ["a"]))),
+        PresentationFrame(gen: 1, rev: 35, body: .pageRequest(PresentationPage(
+            page: "p1", token: "t1", source: .url("https://example.com/review/42?token=abc&x=1#top"), identity: "https://example.com",
+            chromeless: false, javascript: true, navigation: true, browse: false, persistent: true, backgroundColor: nil,
+            pane: nil, sizePercent: 80, follow: true))),
+        PresentationFrame(gen: 1, rev: 36, body: .pageRequest(PresentationPage(
+            page: "p2", token: "t2", source: .file(path: "/Users/u/docs/index.html", grantRoot: "/Users/u/docs"), identity: "index.html",
+            chromeless: true, javascript: true, navigation: false, browse: false, persistent: false, backgroundColor: "#102030",
+            pane: pane, sizePercent: nil, follow: false))),
+        PresentationFrame(gen: 1, rev: 37, body: .pageRequest(PresentationPage(
+            page: "p3", token: "t3", source: .file(path: "/tmp/r.html", grantRoot: nil), identity: "r.html",
+            chromeless: false, javascript: false, navigation: false, browse: false, persistent: false, backgroundColor: nil,
+            pane: nil, sizePercent: nil, follow: false))),
+        PresentationFrame(gen: 1, rev: 38, body: .pageRejected(PresentationPageChange(page: "p1", reason: "slot taken"))),
+        PresentationFrame(gen: 1, rev: 39, body: .pageClose(PresentationPageChange(page: "p1"))),
+        PresentationFrame(gen: 1, rev: 40, body: .pageClosed(PresentationPageChange(page: "p1"))),
+        PresentationFrame(gen: 1, rev: 41, body: .pageCommand(PresentationPageCommand(page: "p1", seq: 7, action: .resize, sizePercent: 50))),
+        PresentationFrame(gen: 1, rev: 42, body: .pageCommand(PresentationPageCommand(page: "p1", seq: 8, action: .reloadCurrent))),
+        PresentationFrame(gen: 1, rev: 43, body: .pageState(PresentationPageState(
+            page: "p1", title: "Review", address: "/Users/u/docs/b.html", load: .loaded, error: nil, canGoBack: true,
+            canGoForward: false, hidden: true, appliedSeq: 8))),
     ]
 
     static var forwardRequest: ControlRequest {
         var args = ControlArgs()
         args.mode = "on"
         return ControlRequest(cmd: .sessionFlag, target: "11111111-2222-3333-4444-555555555555", args: args)
+    }
+
+    @Test func aChoiceRequestFromAnOriginWithoutTheOtherRowDecodesWithNone() throws {
+        let choices = try JSONDecoder().decode(AskChoiceForm.self, from: Data(#"{"choices":[{"id":"a","label":"A"}],"multiple":false,"checked":[]}"#.utf8))
+
+        #expect(choices == AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A")]))
+        #expect(choices.other == nil)
     }
 
     @Test(arguments: frames)
@@ -74,6 +109,18 @@ struct PresentationFramesTests {
         #expect(line.last == UInt8(ascii: "\n"))
         #expect(!line.dropLast().contains(UInt8(ascii: "\n")))
         #expect(try PresentationCodec.decode(line.dropLast()) == frame)
+    }
+
+    @Test func pageStateBoundsThePagesOwnStrings() throws {
+        let long = String(repeating: "x", count: 100_000)
+        let state = PresentationPageState(page: "p1", title: long, address: long, load: .failed, error: long, canGoBack: false,
+                                          canGoForward: false, hidden: false, appliedSeq: 0)
+
+        #expect(state.title?.count == PresentationPageState.maxTitle)
+        #expect(state.address?.count == PresentationPageState.maxAddress)
+        #expect(state.error?.count == PresentationPageState.maxError)
+        #expect(try PresentationCodec.encode(PresentationFrame(gen: .max, rev: .max, body: .pageState(state))).count
+            < PresentationCodec.maxFrameBytes)
     }
 
     @Test func anUnknownKindDecodesToUnknownAndKeepsItsOrdering() throws {

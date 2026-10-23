@@ -8,6 +8,8 @@ public final class HeadlessActions: ControlActions {
     private let headless: Headless
     private let identity: AppIdentity
     private let hudClock: () -> Date
+    /// Read on every `session.type`, so an edited `statusReset` applies without a restart; nothing else in it is used.
+    private let settings: SettingsStore
     private struct HudAutoHide {
         let revision: UUID
         let deadline: Date
@@ -19,6 +21,7 @@ public final class HeadlessActions: ControlActions {
     public init(headless: Headless, installDirectory: URL, hudClock: @escaping () -> Date = Date.init) {
         self.headless = headless
         self.hudClock = hudClock
+        settings = SettingsStore(directory: URL(fileURLWithPath: headless.config.stateDirectory))
         let commit = (try? String(contentsOf: installDirectory.appendingPathComponent("BUILD"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         identity = AppIdentity(version: Headless.programVersion, recordedCommit: commit)
@@ -42,7 +45,7 @@ public final class HeadlessActions: ControlActions {
     public func respond(to request: ControlRequest) async -> ControlResponse {
         let session = headless.resolve(request.target)?.1
         let pane = request.args?.pane.flatMap(OverlayPane.init(controlName:))
-        if request.cmd == .sessionOverlayOpen, let html = request.args?.html {
+        if request.cmd == .sessionOverlayOpen, request.args?.rebased != true, let html = request.args?.html {
             return await openServedPage(request, html: html, session: session?.id)
         }
         switch ForwardPolicy.route(request, holdsJob: session?.remoteOverlays.slot(pane) != nil) {
@@ -138,7 +141,7 @@ public final class HeadlessActions: ControlActions {
                                            autoReset: update.autoReset ?? false, color: update.color,
                                            shape: update.shape, statusPane: pane, note: update.note)
             if case .refused(let owner) = store.applyControlStatus(indicator, forSession: session.id) {
-                return ControlResponse(ok: false, error: "blocked status owned by pane \(owner.rawValue)")
+                return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue)")
             }
             return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
         }
@@ -258,6 +261,10 @@ public final class HeadlessActions: ControlActions {
     }
 
     public func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse { refuse(.sessionFlag) }
+
+    public func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
+        refuse(.workspaceFlag)
+    }
 
     public func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         refuse(.sessionPark)
@@ -416,7 +423,7 @@ public final class HeadlessActions: ControlActions {
         if !options.text.isEmpty, let store = headless.library.store(forSession: lane.session),
            store.session(withID: lane.session)?.agentIndicator.clearedBy(
                pane: lane.pane, keystroke: InterruptKeystroke.classify(text: options.text),
-               reset: AppSettings().effectiveStatusReset) == true {
+               reset: settings.load().effectiveStatusReset) == true {
             store.setAgentIndicator(AgentIndicator(), forSession: lane.session)
         }
         return ControlResponse(ok: true, result: ControlResult(id: lane.session.uuidString))
@@ -576,6 +583,7 @@ public final class HeadlessActions: ControlActions {
     }
 
     public func claimOverlayJob(_ job: String) -> ControlResponse { headless.claimOverlayJob(job) }
+    public func claimPageServe(_: String) -> ControlResponse { refuse(.sessionOverlayPageServe) }
     public func openHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse {
         openHud(target, window: window, spec: spec, placement: ControlHudPlacement())
     }
@@ -785,6 +793,8 @@ public final class HeadlessActions: ControlActions {
         withSession(target, window: window) { store, session in headless.killPane(pane, of: session, in: store) }
     }
     public func resetLiveSessions() -> ControlResponse { refuse(.zmxReset) }
+    public func listRebasedMirrors() async -> ControlResponse { refuse(.rebasedMirrorList) }
+    public func pruneRebasedMirrors(olderThanDays: Int?, dryRun: Bool) async -> ControlResponse { refuse(.rebasedMirrorPrune) }
     public func attachRemoteSession(host: String, session: String) async -> ControlResponse { refuse(.zmxAttach) }
 
     public func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {

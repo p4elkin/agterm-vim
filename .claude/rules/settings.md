@@ -34,6 +34,14 @@ paths:
   selection only when that lives in the destination workspace. Open Directory, folder drops, and
   `open -a agterm <dir>` keep appending; `session new` keeps its own `--after`/`--before` rules.
   Deliberate control exemption, like `newSessionDirectory`: no command sets or reads it.
+  A "+" remote create (below) reads it after the ssh round trip, in `ControlServer`, not at the click.
+- `newSessionHost` (fork; nil = this Mac) sends the "+" controls — the workspace row "+", its New Session
+  item and the footer New Session — to `AppActions.newSessionFromButton`, which creates on that host through
+  `ControlServer.createRemoteSessionForButton`. `effectiveNewSessionHost` drops a value `zmx.new` would
+  refuse. The footer then adds New Local Session; ⌘N, menus, palette and `session new` stay local.
+  `RemoteCreatePending` is both the one-create-per-window guard and what dims those controls, so the two
+  cannot drift. A failure is a sheet with no local fallback, which would hide a dead host. The field saves
+  on submit, focus loss and disappear, never per keystroke. Same control exemption as its siblings.
 - `sidebarFontSize` and `interfaceFontSize` are separate settings, both 9...20 default 13, read through
   `effectiveSidebarFontSize`/`effectiveInterfaceFontSize`. Neither falls back to the other: the sidebar
   is a density knob, the palette a readability one.
@@ -101,13 +109,14 @@ paths:
 - `.agtermAppearanceChanged` is required because terminal color is not observable; it updates
   `terminalColor`, quick-terminal backing, title/window appearance, and non-observable chrome mirrors.
 - Settings is a 540x680 six-tab SwiftUI scene with explicit selection defaulting General, preventing
-  `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse, Sessions, and Ghostty
-  Config. Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, plus
-  Multiple Windows and the quick terminal's panel size, which sits there rather than under Appearance's
-  Window because the panel belongs to no window.
+  `com_apple_SwiftUI_Settings_selectedTabIndex` persistence. General holds Mouse and Sessions; the
+  global-Ghostty-config toggle and its hint close Sessions, since a third section made the tab scroll.
+  Appearance holds Terminal and Window. Interface groups `InterfaceElement`s two per row, with the
+  Multiple Windows toggle as the Sidebar section's last row, plus the quick terminal's panel size,
+  which sits there rather than under Appearance's Window because the panel belongs to no window.
   Notifications holds banner/badge/attention/bounce/sound. Agent Status holds colors/shapes, sound,
-  status reset, auto-follow, recency dwell, and Reset. Key Mapping holds config directory, diagnostics,
-  and Reload.
+  status reset, auto-follow, recency dwell, and Reset. Key Mapping holds the keyboard layout lock,
+  config directory, diagnostics, and Reload.
 - `statusReset` stores a raw `StatusReset` (`firstKey`|`enter`|`never`), nil for the default `firstKey`,
   resolved by `effectiveStatusReset` and mirrored to `GhosttyApp.statusReset`, which the surface factories'
   keystroke-clear closure reads at keystroke time. Reset to defaults clears it with the glyph settings.
@@ -152,8 +161,8 @@ paths:
   cached diagnostics.
 - **Process restore mode is frozen at launch; capture follows the configured next mode.** `none` restores fresh shells, `rerun` uses the captured-command path
   below, and `live` is zmx-backed. Settings changes apply after restart. A live request falls back to
-  `none` when the bundled executable, zsh integration, or password-database login shell is unsupported, and
-  Settings reports the reason. The requested-live latch still claims persisted daemons during fallback; only
+  `none` when the bundled executable, the bundled zsh or fish integration, or the password-database login
+  shell (zsh or fish) is unsupported, and Settings reports the reason. The requested-live latch still claims persisted daemons during fallback; only
   a deliberate `none` or `rerun` launch reaps them. Factories, control status, and reap read the immutable
   requested or active mode. Exit capture and `restore.capture` read the configured next-launch mode.
 - **Command replay is launch-scoped; capture runs at two exits and on demand.**
@@ -247,11 +256,12 @@ paths:
   close and sidebar row close; skip under XCUITest. Control `session.close` must never prompt.
 - `hiddenInterfaceElements` stores raw names and preserves unknown values while toggling known ones; empty
   maps nil. Titlebar cases are `sidebarToggle`, `workspaceName`, `sessionName`, `windowName`, `remoteHost`,
-  `sessionContext`, `recentSessions`, `scratch`, `split`, `dashboard`, `quickTerminal`, `customCommands`;
+  `sessionContext`, `recentSessions`, `scratch`, `split`, `dashboard`, `quickTerminal`, `customCommands`,
+  `overlayToggle`;
   sidebar cases are `newWorkspace`, `newSession`, `flaggedView`, `focusFilter`, and row-level
   `workspaceAddSession`.
-  A `hiddenByDefault` case (`workspaceName` and `customCommands`) is governed by `shownInterfaceElements`
-  instead, the same shape with the opposite sense, and its name in the hidden list is ignored. Attention
+  A `hiddenByDefault` case (`workspaceName`, `customCommands` and `overlayToggle`) is governed by
+  `shownInterfaceElements` instead, the same shape with the opposite sense, and its name in the hidden list is ignored. Attention
   has its separate default-off setting.
   `workspaceName` leads the identity as `workspace — session — window`, looked up from the ACTIVE SESSION
   (`workspace(forSession:)`, never `currentWorkspaceID`, which an empty workspace can hold while the old
@@ -279,14 +289,36 @@ paths:
   which is what makes the toggle survive a relaunch. It has NO Settings UI and no menu item — the keymap
   chord (`map <chord> overlay_redirect_toggle`), the palette action, and `agtermctl overlay-redirect
   toggle` are the three ways in.
-- `flaggedViewLayout` is a raw `FlaggedViewLayout` (`flat`|`tree`), nil for the default `flat`, resolved by
+- `rebasedAppPath` (fork only, see [[rebased-overlay]]) names the IDE bundle, nil for
+  `/Applications/Rebased.app` through `effectiveRebasedAppPath`.
+  Settings > General > IDE app accepts Rebased or IntelliJ IDEA; changes apply after restarting agterm.
+- `rebasedMirrorMaxAgeDays` (fork only) is the days a Rebased mirror may go unused before a prune removes it.
+  `effectiveRebasedMirrorMaxAgeDays` gives 14 for nil or a negative value, and 0 turns the start prune off.
+  `settings.json` only, with no Settings UI, so a hand edit applies at the next launch.
+- `flaggedViewLayout` is a raw `FlaggedViewLayout` (`flat`|`plain`|`tree`), nil for the default `flat`, resolved by
   `effectiveFlaggedViewLayout` and mirrored to `GhosttyApp.flaggedViewLayout`. App-wide, never per window.
   Every sidebar Coordinator picks it up on `.agtermAppearanceChanged`, and only one showing the flagged view
   rebuilds. The picker sits at the bottom of the General tab's Sessions section: the Interface tab is exactly full at
   540x680, and one more row pushes the quick-terminal Size off the bottom. A grouped Form scrolls, so an
-  overflowing tab still reports every control hittable; `testFlaggedViewLayoutPickerPersists` compares the
-  tab's last line against the window frame instead.
+  overflowing tab still reports every control hittable, and its last text can sit inside the window while
+  the section's bottom inset does not; `assertGeneralTabFits` in `SettingsUITests` scrolls the tab and
+  requires the closing hint not to move.
   The control catalog carries it as `sidebar.flagged-layout` ([[control-api]]).
+- `terminalInputSource` is a macOS input source id, nil = off. `InputSourceLock` in `agtermCore` decides and
+  `TerminalInputSource` is the only caller of Text Input Source selection: it selects the id while the key
+  window's first responder is a `GhosttySurfaceView`, reselects on every source-change notification, and
+  restores the earlier source when that stops being true and in `applicationWillTerminate`.
+  It keys on key-window and responder changes, never app activation, because the quick terminal takes key
+  while agterm stays inactive. The source-change notification is delivered to an inactive app (measured
+  with the quick panel key), so the observer needs no suspension override.
+  Selection is system-wide and macOS restores nothing itself (measured with the per-document input source
+  option off), so a crash leaves the id selected; never persist the baseline to restore at the next
+  launch, which would overwrite a later choice made elsewhere.
+  Deliberate control exemption, like `newSessionPlacement`: no command sets or reads it.
+- `linkOpenMode` is raw `LinkOpenMode`, nil = `browser`, read through `effectiveLinkOpenMode` at each link
+  click; nothing renders from it. Its picker sits in the General tab's Mouse section, and
+  `testLinkOpenModePickerPersists` runs the same fit check. The control catalog carries it as
+  `browser.links` ([[control-api]]).
 - `htmlOverlayZoom` is the one page zoom every HTML overlay shows at, nil = 1, stepped only by the font
   commands through `SettingsModel.stepHtmlOverlayZoom`, which saves and mirrors to `HtmlOverlayRegistry`
   without `persistAndApply`: nothing else renders it, so a keypress must not broadcast an appearance change.

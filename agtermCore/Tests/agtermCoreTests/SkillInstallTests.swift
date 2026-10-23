@@ -32,6 +32,9 @@ struct SkillInstallTests {
         #expect(reference.contains("event cursor expired"))
         #expect(examples.contains("agtermctl events --json"))
         #expect(skill.contains("minimize <id> [on|off|toggle]"))
+        #expect(skill.contains("`session overlay hide|show|toggle [--pane left|right]`"))
+        #expect(reference.contains("`session overlay hide|show|toggle [--pane left|right] [--target] [--window W]`"))
+        #expect(skill.contains("`hiddenOverlays`"))
         #expect(reference.contains("`window minimize <id> [on|off|toggle]`"))
         #expect(examples.contains("agtermctl window minimize"))
         #expect(skill.contains("park [on|off|toggle]"))
@@ -54,10 +57,10 @@ struct SkillInstallTests {
         let examples = try String(contentsOf: skillDirectory.appendingPathComponent("examples.md"), encoding: .utf8)
 
         #expect(examples.contains(".result.tree.sessionRecency"))
-        #expect(reference.contains("twenty top-level read-only fields"))
+        #expect(reference.contains("twenty-two top-level read-only fields"))
 
         let fields = treeTopLevelFieldNames
-        #expect(fields.count == 20, "ControlTree's top-level fields changed; update the skill's counts")
+        #expect(fields.count == 22, "ControlTree's top-level fields changed; update the skill's counts")
         for field in fields {
             #expect(skill.contains("`\(field)`"), "SKILL.md never names the tree field \(field)")
             #expect(reference.contains("`\(field)`"), "reference.md never names the tree field \(field)")

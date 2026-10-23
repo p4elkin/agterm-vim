@@ -54,6 +54,18 @@ struct RemotePresentationStateTests {
         return (store, session)
     }
 
+    // a row attached while its stream was connecting kept the disconnected icon after it connected
+    @Test func aConnectionChangeIsAnnouncedToObservers() throws {
+        let (store, session) = try attached()
+        let announced = Flag()
+        withObservationTracking { _ = session.remoteConnection } onChange: { announced.set() }
+
+        store.setRemoteConnection(.connected, forSession: session.id)
+
+        #expect(session.remoteConnection == .connected)
+        #expect(announced.isSet)
+    }
+
     private final class Flag: @unchecked Sendable {
         private(set) var isSet = false
         func set() { isSet = true }
@@ -531,6 +543,68 @@ struct RemotePresentationStateTests {
 
         #expect(sent == [.askResolve(PresentationAskAnswer(id: ask.id, owner: 4, button: "no"))])
         #expect(session.askPending == nil)
+    }
+
+    @Test func aFormReplicaSendsItsDraftWithTheAnswerAndTheFrameSurvivesTheCodec() throws {
+        let (store, session) = try attached()
+        let buttons = [ControlAskButton(id: "ok", label: "OK"), ControlAskButton(id: "cancel", label: "Cancel")]
+        let ask = PresentationAsk(PendingAsk(id: UUID().uuidString, title: "name?", buttons: buttons,
+                                             form: .input(AskInputForm(mode: .multiline, value: "draft")), cancelID: "cancel"),
+                                  pane: nil, owner: 4)
+        var sent: [PresentationFrame.Body] = []
+        #expect(store.presentReplicaAsk(ask, forSession: session.id) { sent.append($0) })
+        #expect(session.askPending?.form == ask.form)
+
+        session.updateAskDraft(id: ask.id) { $0.text = "é \"quoted\"\nsecond" }
+        session.answerAsk(id: ask.id, buttonAt: 0)
+
+        let expected = PresentationFrame.Body.askResolve(PresentationAskAnswer(id: ask.id, owner: 4, button: "ok",
+                                                                               text: "é \"quoted\"\nsecond"))
+        #expect(sent == [expected])
+        let line = try PresentationCodec.encode(PresentationFrame(gen: 1, rev: 1, body: expected))
+        #expect(try PresentationCodec.decode(line.dropLast()).body == expected)
+    }
+
+    @Test func aChoiceReplicaSendsTheSelectionAndItsCancelButtonSendsNoButton() throws {
+        let (store, session) = try attached()
+        let buttons = [ControlAskButton(id: "ok", label: "OK"), ControlAskButton(id: "cancel", label: "Cancel")]
+        let form = AskForm.choices(AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A"), ControlAskChoice(id: "b", label: "B")],
+                                                 multiple: true))
+        for (button, expected) in [(0, PresentationAskAnswer(id: "", owner: 4, button: "ok", selected: ["b"])),
+                                   (1, PresentationAskAnswer(id: "", owner: 4, button: nil))] {
+            let ask = PresentationAsk(PendingAsk(id: UUID().uuidString, title: "pick", buttons: buttons, form: form, cancelID: "cancel"),
+                                      pane: nil, owner: 4)
+            var sent: [PresentationFrame.Body] = []
+            #expect(store.presentReplicaAsk(ask, forSession: session.id) { sent.append($0) })
+            session.updateAskDraft(id: ask.id) { $0.toggle(at: 1) }
+            session.answerAsk(id: ask.id, buttonAt: button)
+            var answer = expected
+            answer.id = ask.id
+            #expect(sent == [.askResolve(answer)])
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func anOtherRowReplicaSendsItsTextAndTheOriginAppliesIt(multiple: Bool) throws {
+        let (store, session) = try attached()
+        let buttons = [ControlAskButton(id: "ok", label: "OK"), ControlAskButton(id: "cancel", label: "Cancel")]
+        let list = AskChoiceForm(choices: [ControlAskChoice(id: "a", label: "A"), ControlAskChoice(id: "b", label: "B")],
+                                 multiple: multiple, checked: ["a"], other: "Other")
+        let pending = PendingAsk(id: UUID().uuidString, title: "pick", buttons: buttons, form: .choices(list), cancelID: "cancel")
+        let ask = PresentationAsk(pending, pane: nil, owner: 4)
+        var sent: [PresentationFrame.Body] = []
+        #expect(store.presentReplicaAsk(ask, forSession: session.id) { sent.append($0) })
+        #expect(session.askPending?.form == .choices(list))
+
+        session.updateAskDraft(id: ask.id) { $0.text = " mine " }
+        session.answerAsk(id: ask.id, buttonAt: 0)
+
+        let answer = PresentationAskAnswer(id: ask.id, owner: 4, button: "ok", text: " mine ", selected: multiple ? ["a"] : [])
+        #expect(sent == [.askResolve(answer)])
+        let line = try PresentationCodec.encode(PresentationFrame(gen: 1, rev: 1, body: .askResolve(answer)))
+        #expect(try PresentationCodec.decode(line.dropLast()).body == .askResolve(answer))
+        #expect(pending.validatedAnswer(buttonID: "ok", text: answer.text, selected: answer.selected)
+            == ControlAskResult(result: .answered, id: "ok", label: "OK", index: 0, text: " mine ", selected: answer.selected))
     }
 
     @Test func aDismissalWithEscSendsNoButton() throws {

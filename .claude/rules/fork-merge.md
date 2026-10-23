@@ -13,6 +13,31 @@ flagged:
   - "agtermCore/Sources/agtermCore/LinkPolicy.swift"
   # its presenter-only receive arm keeps a mirror from answering a forwarded request
   - "agtermCore/Sources/agtermCore/PresentationHub.swift"
+  # the "+" row button and New Session route to `newSessionFromButton`; upstream's local call there
+  # drops the remote host, which only `NewSessionButtonTests` notices
+  - "agterm/Views/WorkspaceSidebar+ContextMenu.swift"
+  # Rebased overlay: a resolution dropping one of these lines silently loses part of it
+  - "agtermCore/Sources/agtermCore/Session+HtmlOverlay.swift"
+  - "agtermCore/Sources/agtermCore/ControlDispatcher+Overlay.swift"
+  - "agtermCore/Sources/agtermCore/ForwardPolicy.swift"
+  - "agterm/AppDelegate.swift"
+  - "agterm/Views/WindowContentView.swift"
+  - "agterm/Views/WindowContentView+Detail.swift"
+  - "agterm/Control/ControlServer+SessionActions.swift"
+  - "agterm/Views/SessionSwitcher.swift"
+  - "agterm/Views/PaneShortcuts.swift"
+  - "agterm/Views/UndoCloseShortcut.swift"
+  - "agtermCore/Sources/agtermCore/Session.swift"
+  - "agtermCore/Sources/agtermCore/AppStore+Panes.swift"
+  - "agtermCore/Sources/agtermCore/TerminalZoom.swift"
+  - "agtermCore/Sources/agtermCore/DashboardCover.swift"
+  - "agterm/AppActions.swift"
+  - "agterm/AppActions+Focus.swift"
+  - "agtermCore/Sources/agtermCore/AppStore.swift"
+  - "agterm/Control/ControlServer+SurfaceIO.swift"
+  - "agterm/Control/ControlServer.swift"
+  - "agtermCore/Sources/agtermCore/AppStore+RemoteOverlay.swift"
+  - "agterm/agtermApp.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
@@ -40,11 +65,8 @@ declined:
   - "agterm/Views/WindowContentView+Titlebar.swift"
   - "agterm/Views/WorkspaceSidebar.swift"
   - "agterm/Views/SidebarRowViews.swift"
-  - "agterm/Control/ControlServer.swift"
   - "agterm/Control/ControlServer+AppCommands.swift"
-  - "agtermCore/Sources/agtermCore/AppStore.swift"
   - "agtermCore/Sources/agtermCore/ControlDispatcher.swift"
-  - "agtermCore/Sources/agtermCore/Session.swift"
   - "agtermCore/Sources/agtermctlKit/MiscCommands.swift"
   # declined 2026-10-01: fork-only, so no merge can conflict in it
   - "agterm/Control/ControlServer+Forward.swift"
@@ -108,6 +130,40 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   fails the Mac `swift test` build there and in `ForwardPolicy.kind(of:)`, and a new `ControlActions` requirement without a default fails
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
+- The Rebased overlay's hooks into upstream files ([[rebased-overlay]]) need these paths preserved:
+  - `Session.swift`: `PaneOverlay.rebased`, pane release, unrealized-program cleanup, and the IDE in
+    `topmostSurface` and `programOverlayOwnsKeyboard` (which reads `coverOverlayVisible`).
+  - `Session+HtmlOverlay.swift`: placement/update by id, the IDE in `coverOverlayActive`, `rebasedHidden`
+    and session release.
+  - `AppStore+OverlayVisibility.swift`: `setSlotHidden` parks and unparks a session-wide IDE and reports
+    each IDE hide to `RebasedOverlayReleases.onHiddenChange`; every hide route must go through it.
+    `setOverlaysHidden` returns a refused unpark last.
+  - `Session+OverlayVisibility.swift`: `slotEffectivelyHidden` in `hideableOverlaySlots`, `anyOverlayShown`
+    and `hiddenOverlayNames`, and `OverlayVisibilityFailure.rebased`. Opens keep reading the raw bit.
+  - `AppActions+Overlay.swift`, `SocketClient.swift`: `toggleOverlays` beeps on a refused unpark; the
+    `tree` tag reads `hiddenOverlays` even with `overlay` false.
+  - `AppStore+Panes.swift`: pane close release; swap and promotion move the whole value.
+  - `TerminalZoom.swift`, `DashboardCover.swift`: IDEs have no terminal target; hidden holders uncover panes.
+  - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`;
+    `init` connects `RebasedOverlayReleases.onHiddenChange`.
+  - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to
+    their terminal.
+  - `AppStore.swift`: project a held overlay through `rebasedPlacement`, even hidden or in a pane.
+  - `ControlServer+SurfaceIO.swift`: font refusal on the IDE's own pane; overlay reads keep
+    held-slot occupancy.
+  - `ControlServer+SessionActions.swift`: the Rebased adapter route and program-only pane result predicate.
+  - `ControlServer.swift`: both Rebased commands stay in the dispatcher-handled switch row; status
+    retains the port.
+  - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, callback refusal and
+    id-targeted close routing.
+  - `WindowContentView+Detail.swift`: held-slot IDE branches and the `RebasedSlot` visibility inputs.
+  - `WindowContentView.swift`: `rebasedCovered` keeps in-window covers above the child frame.
+  - `AppStore+RemoteOverlay.swift`: a hidden pane IDE still reserves its pane; a parked session-wide IDE
+    holds no slot, so a remote job opens over it.
+  - `AppDelegate.swift`: `saveBeforeQuit` and `releaseAllBeforeQuit` in `applicationWillTerminate`.
+  - `agtermApp.swift`, `CustomCommandRunner.swift`: configure the Mac-built callback environment.
+  - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the
+    IDE-key-window early return.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].

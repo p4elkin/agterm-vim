@@ -36,10 +36,18 @@ public protocol TerminalSurface: AnyObject {
 
     /// Whether this primary/split surface is attached through zmx. Ephemeral surfaces keep the default false.
     var backedByZmx: Bool { get }
+
+    /// Frees this surface because its session is moving to another window, leaving the zmx daemon running for
+    /// the destination to attach to. A requirement rather than an extension-only method, so the app's override
+    /// (which first claims the process exit, keeping the pane-exit handler from closing the row) is dispatched
+    /// through `any TerminalSurface`.
+    func prepareForTransfer()
 }
 
 public extension TerminalSurface {
     var backedByZmx: Bool { false }
+
+    func prepareForTransfer() { teardown() }
 }
 
 /// A live terminal surface's current role in a two-pane session.

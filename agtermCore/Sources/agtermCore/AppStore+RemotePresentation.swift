@@ -64,6 +64,7 @@ extension AppStore {
     public func setRemoteConnection(_ connection: RemotePresentationConnection, forSession id: UUID) {
         guard let session = session(withID: id), let state = session.remotePresentation else { return }
         session.remotePresentation?.connection = connection
+        if state.connection != connection { session.remoteConnectionRevision += 1 }
         guard state.connection == .connected, connection != .connected else { return }
         applyRemoteContext(nil, forSession: id)
         if state.statusBridged { setAgentIndicator(AgentIndicator(), forSession: id) }
@@ -71,6 +72,7 @@ extension AppStore {
         // the origin takes a handed-over ask back when the stream goes, so the replica must not answer it
         if session.askReplica { session.releaseAsk() }
         orphanReplicaOverlays(of: session)
+        closeReplicaPages(of: session)
     }
 
     /// Shows an overlay `id`'s origin handed over as a local one running `command`, the job's helper over
@@ -150,10 +152,12 @@ extension AppStore {
         }
         let pending = PendingAsk(id: ask.id, title: ask.title, message: ask.message, buttons: ask.buttons,
                                  defaultID: ask.defaultID, destructiveID: ask.destructiveID, style: ask.style,
-                                 align: ask.align, width: ask.width)
+                                 align: ask.align, width: ask.width, form: ask.form, cancelID: ask.cancelID)
         return session.openReplicaAsk(pending, paneIdentity: paneIdentity) { result in
             switch result.result {
-            case .answered: answer(.askResolve(PresentationAskAnswer(id: ask.id, owner: ask.owner, button: result.id)))
+            case .answered:
+                answer(.askResolve(PresentationAskAnswer(id: ask.id, owner: ask.owner, button: result.id,
+                                                         text: result.text, selected: result.selected)))
             case .escaped: answer(.askResolve(PresentationAskAnswer(id: ask.id, owner: ask.owner, button: nil)))
             case .cancelled, .pending: answer(.askRejected(PresentationAskRef(id: ask.id, owner: ask.owner)))
             }
@@ -227,5 +231,14 @@ extension AppStore {
         guard let pane else { return (nil, true) }
         guard let role = localPane(pane, in: session) else { return (nil, false) }
         return (role == .right ? .right : .left, true)
+    }
+}
+
+extension Session {
+    /// remoteConnection is the presentation stream's state, read through here by anything that must
+    /// redraw when it changes: `remotePresentation` announces nothing.
+    public var remoteConnection: RemotePresentationConnection? {
+        _ = remoteConnectionRevision
+        return remotePresentation?.connection
     }
 }
