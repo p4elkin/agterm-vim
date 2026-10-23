@@ -354,7 +354,8 @@ extension ControlServer {
         }
         return .success(RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
                                   presentationVersion: tree.presentation, transport: transport, left: left,
-                                  right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:))))
+                                  right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)),
+                                  name: remote.name, namePending: false))
     }
 
     /// Inserts a bound remote row and opens its presentation stream. Shared by a user attach, which has just
@@ -381,7 +382,7 @@ extension ControlServer {
         // path that exists on the far side may not exist on this Mac. The attached shell reports its real
         // cwd through the terminal stream anyway.
         guard let created = store.addSession(toWorkspace: placement.workspace, cwd: NSHomeDirectory(),
-                                             command: primary, name: row.sessionName, wait: true,
+                                             command: primary, name: row.name, wait: true,
                                              at: placement.position, select: placement.select,
                                              remoteHost: row.host) else {
             return .refused(ControlResponse(ok: false, error: "could not create the session"))
@@ -401,7 +402,7 @@ extension ControlServer {
                                           transport: row.transport)
         store.bindRemote(RemoteBinding(remoteSessionID: row.remoteSessionID, daemonsByLocalPane: daemons,
                                        presentationVersion: row.presentationVersion, origin: origin),
-                         forSession: created.id)
+                         forSession: created.id, namePending: row.namePending)
         // the row's created event fired inside `addSession`, before the binding existed
         startRemotePresentation(for: created)
         return .inserted(created)
@@ -622,6 +623,11 @@ struct RemoteRow {
     let left: String
     let right: String?
     let splitAxis: SplitAxis?
+    /// The name the row is created with. The origin owns it, and its first snapshot corrects a seed that was
+    /// only the origin's automatic name.
+    let name: String?
+    /// A rename made on this Mac, saved before the origin confirmed it; it goes out with the first snapshot.
+    let namePending: Bool
 }
 
 /// A row's window and workspace, pinned before a remote round trip. `newSessionRule` marks the "+" path.

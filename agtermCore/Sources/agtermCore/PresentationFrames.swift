@@ -392,12 +392,17 @@ public struct PresentationSnapshot: Codable, Equatable, Sendable {
     public var hud: PresentationHud?
     public var context: String?
     public var layout: PresentationLayout?
+    /// The origin's custom name, nil when it has none. Read only from an origin whose hello listed `name`:
+    /// an older one sends no key, which would otherwise read as a cleared name.
+    public var name: String?
 
-    public init(status: PresentationStatus?, hud: PresentationHud?, context: String? = nil, layout: PresentationLayout? = nil) {
+    public init(status: PresentationStatus?, hud: PresentationHud?, context: String? = nil, layout: PresentationLayout? = nil,
+                name: String? = nil) {
         self.status = status
         self.hud = hud
         self.context = context
         self.layout = layout
+        self.name = name
     }
 }
 
@@ -413,6 +418,10 @@ public struct PresentationFrame: Equatable, Sendable {
         case snapshot(PresentationSnapshot)
         case status(PresentationStatus?)
         case context(String?)
+        /// The origin's custom name changed, or a rename changed nothing and is echoed; nil when it has none.
+        case name(String?)
+        /// A viewer renaming the origin's session; nil or blank clears the name.
+        case rename(String?)
         case layout(PresentationLayout)
         case hud(PresentationHud?)
         case notify(PresentationNotify)
@@ -459,6 +468,8 @@ public struct PresentationFrame: Equatable, Sendable {
             case .snapshot: return "snapshot"
             case .status: return "status"
             case .context: return "context"
+            case .name: return "name"
+            case .rename: return "rename"
             case .layout: return "layout"
             case .hud: return "hud"
             case .notify: return "notify"
@@ -502,7 +513,7 @@ public struct PresentationFrame: Equatable, Sendable {
 
 extension PresentationFrame: Codable {
     private enum CodingKeys: String, CodingKey {
-        case kind, gen, rev, hello, snapshot, status, context, layout, hud, notify, sound, ask, overlay, forward, page
+        case kind, gen, rev, hello, snapshot, status, context, name, layout, hud, notify, sound, ask, overlay, forward, page
     }
 
     public init(from decoder: Decoder) throws {
@@ -518,6 +529,8 @@ extension PresentationFrame: Codable {
         case "snapshot": body = .snapshot(try container.decode(PresentationSnapshot.self, forKey: .snapshot))
         case "status": body = .status(try container.decodeIfPresent(PresentationStatus.self, forKey: .status))
         case "context": body = .context(try container.decodeIfPresent(String.self, forKey: .context))
+        case "name": body = .name(try container.decodeIfPresent(String.self, forKey: .name))
+        case "rename": body = .rename(try container.decodeIfPresent(String.self, forKey: .name))
         case "layout": body = .layout((try? container.decode(PresentationLayout.self, forKey: .layout)) ?? .invalid)
         case "hud": body = .hud(try container.decodeIfPresent(PresentationHud.self, forKey: .hud))
         case "notify": body = .notify(try container.decode(PresentationNotify.self, forKey: .notify))
@@ -558,6 +571,7 @@ extension PresentationFrame: Codable {
         case .snapshot(let snapshot): try container.encode(snapshot, forKey: .snapshot)
         case .status(let status): try container.encodeIfPresent(status, forKey: .status)
         case .context(let context): try container.encodeIfPresent(context, forKey: .context)
+        case .name(let name), .rename(let name): try container.encodeIfPresent(name, forKey: .name)
         case .layout(let layout): try container.encode(layout, forKey: .layout)
         case .hud(let hud): try container.encodeIfPresent(hud, forKey: .hud)
         case .notify(let notify): try container.encode(notify, forKey: .notify)

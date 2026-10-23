@@ -87,6 +87,11 @@ struct PresentationFramesTests {
         PresentationFrame(gen: 1, rev: 43, body: .pageState(PresentationPageState(
             page: "p1", title: "Review", address: "/Users/u/docs/b.html", load: .loaded, error: nil, canGoBack: true,
             canGoForward: false, hidden: true, appliedSeq: 8))),
+        PresentationFrame(gen: 1, rev: 44, body: .name("deploy box")),
+        PresentationFrame(gen: 1, rev: 45, body: .name(nil)),
+        PresentationFrame(gen: 1, rev: 46, body: .rename("deploy box")),
+        PresentationFrame(gen: 1, rev: 47, body: .rename(nil)),
+        PresentationFrame(gen: 1, rev: 48, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, name: "deploy box"))),
     ]
 
     static var forwardRequest: ControlRequest {
@@ -135,6 +140,41 @@ struct PresentationFramesTests {
 
         #expect(try PresentationCodec.decode(line) == PresentationFrame(
             gen: 1, rev: 1, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: nil))))
+    }
+
+    @Test func aSnapshotFromAnOriginWithoutNamesDecodesWithNone() throws {
+        let line = Data(#"{"kind":"snapshot","gen":1,"rev":1,"snapshot":{"context":"PR #517"}}"#.utf8)
+
+        #expect(try PresentationCodec.decode(line) == PresentationFrame(
+            gen: 1, rev: 1, body: .snapshot(PresentationSnapshot(status: nil, hud: nil, context: "PR #517"))))
+    }
+
+    @Test(arguments: [("name", 44), ("rename", 46)])
+    func aNameFrameCarriesItsValueUnderNameSoAnOlderReaderSeesUnknown(_ kind: String, _ rev: Int) throws {
+        let frame = try #require(Self.frames.first { $0.rev == rev })
+        let line = try PresentationCodec.encode(frame)
+        let object = try #require(JSONSerialization.jsonObject(with: line) as? [String: Any])
+
+        #expect(object["kind"] as? String == kind)
+        #expect(object["name"] as? String == "deploy box")
+        #expect(Set(object.keys) == ["kind", "gen", "rev", "name"])
+        var older = object
+        older["kind"] = "\(kind).unknown-to-this-build"
+        let olderLine = try JSONSerialization.data(withJSONObject: older)
+        #expect(try PresentationCodec.decode(olderLine).body == .unknown("\(kind).unknown-to-this-build"))
+    }
+
+    @Test(arguments: [("name", 45), ("rename", 47)])
+    func aClearedNameTravelsWithoutTheKey(_ kind: String, _ rev: Int) throws {
+        let frame = try #require(Self.frames.first { $0.rev == rev })
+        let object = try #require(JSONSerialization.jsonObject(with: try PresentationCodec.encode(frame)) as? [String: Any])
+
+        #expect(object["kind"] as? String == kind)
+        #expect(Set(object.keys) == ["kind", "gen", "rev"])
+    }
+
+    @MainActor @Test func theOriginOffersNamesAsAKind() {
+        #expect(PresentationHub.supportedKinds.contains("name"))
     }
 
     @Test func aStatusWithoutANoteEncodesNoKeyAnOlderViewerWouldMeet() throws {

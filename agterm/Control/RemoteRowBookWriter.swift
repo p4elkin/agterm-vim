@@ -31,6 +31,12 @@ final class RemoteRowBookWriter {
             finalized?(id)
             self?.schedule()
         }
+        // a closed window's rows are kept as last written, so a rename still inside the debounce is written now
+        let closing = library.onWindowClosing
+        library.onWindowClosing = { [weak self] id in
+            closing?(id)
+            self?.write()
+        }
     }
 
     func schedule() {

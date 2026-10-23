@@ -94,6 +94,13 @@ public struct RemotePresentationState: Equatable, Sendable {
     public var connection: RemotePresentationConnection
     public var mode: PresentationMode = .mirror
     public var rowState: RemoteRowState = .attached
+    /// True from a rename made on this Mac until the origin echoes it. The row book keeps it, so a rename
+    /// made while the stream was down goes out with the next snapshot, even after a relaunch.
+    public internal(set) var namePending = false
+    /// The renames sent and not yet echoed, oldest first. The origin echoes each in order, so an echo
+    /// acknowledges the head only: matching text alone would let the echo of an earlier rename to the same
+    /// name end a later one still in flight.
+    var namesInFlight: [String?] = []
     var layout: PresentationLayout?
     var heldPanes: Set<UUID> = []
     /// Whether the glyph on the row is the bridge's. A flag and not a comparison of values: a pane swap

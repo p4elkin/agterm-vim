@@ -132,6 +132,12 @@ extension ControlServer {
             },
             pageClose: { [weak self] change in self?.library.store(forSession: id)?.closeReplicaPage(change.page, forSession: id) },
             pageCommand: { [weak self] command in self?.applyReplicaPageCommand(command, forSession: id) },
+            name: { [weak self] name in self?.library.store(forSession: id)?.applyRemoteName(name, forSession: id) },
+            snapshotName: { [weak self] name in
+                guard let self, let store = library.store(forSession: id),
+                      store.applyRemoteSnapshotName(name, forSession: id) else { return }
+                remoteClients[id]?.rename(store.session(withID: id)?.customName)
+            },
             warn: { reason in
                 remoteLogger.warning("presentation stream for \(id, privacy: .public): \(reason, privacy: .public)")
             })

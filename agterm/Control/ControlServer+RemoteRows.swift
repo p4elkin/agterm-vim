@@ -22,10 +22,11 @@ extension ControlServer {
             }
             guard !present, let left = record.daemonsByPane[.left],
                   let count = store.workspaces.first(where: { $0.id == entry.workspaceID })?.sessions.count else { continue }
+            let name = record.restoredName
             let row = RemoteRow(host: record.host, endpoint: record.endpoint, sessionName: record.sessionName,
                                 remoteSessionID: record.remoteSessionID, presentationVersion: record.presentationVersion,
                                 transport: record.transport, left: left, right: record.daemonsByPane[.right],
-                                splitAxis: record.splitAxis)
+                                splitAxis: record.splitAxis, name: name.value, namePending: name.pending)
             let placement = RemoteRowPlacement(store: store, workspace: entry.workspaceID,
                                                position: min(entry.position, count), select: false)
             _ = insertRemoteRow(row, at: placement, claim: false)

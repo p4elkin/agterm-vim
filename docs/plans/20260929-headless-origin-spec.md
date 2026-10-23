@@ -465,7 +465,7 @@ Each problem has a short name. The plan's tasks repeat that name.
 | Program overlays, HTML overlays with assets, URL overlays | Later phase, as Sasha decided. The frames and the job contract exist for a Mac origin. The server needs a job runner, asset transfer and an ssh forward. Until then an agent in a headless session gets a refusal by name. Today the shim sends its `session overlay open` to the Mac. |
 | `pick.open` from a headless session | No presentation frame carries a picker. It needs a new frame kind on both sides. Later phase. |
 | Durability beyond the park tools | Sasha's call. No journal, no SQLite. The status of a session is lost when the server restarts. The next hook call sets it again. |
-| Split, rename and close of the origin session from the Mac UI | A Mac verb on a remote row acts on the local row by design. A split there opens a local shell (`.claude/rules/control-api.md`, "Remote sessions"). Making the verbs act on the origin is the relay's ingress problem. On p4linux, `agtermctl` does all three, and splits reach the Mac through "a split made on the origin after attach is not shown on the Mac". |
+| Split, rename and close of the origin session from the Mac UI | Rename is solved (2026-10-22, `docs/plans/20261022-remote-row-names.md`): the origin owns the name and both sides sync over the stream. For split and close: a Mac verb on a remote row acts on the local row by design. A split there opens a local shell (`.claude/rules/control-api.md`, "Remote sessions"). Making the verbs act on the origin is the relay's ingress problem. On p4linux, `agtermctl` does all three, and splits reach the Mac through "a split made on the origin after attach is not shown on the Mac". |
 | Close asks "keep or end" | Closing a remote row keeps the daemon, as today. End it with `agtermctl session close` on p4linux. |
 | One owner for all p4linux sessions, and moving the working set on a switch | Parked in the active-Mac design. Per-pane lead plus "the presenter ignores the lead" covers the daily case. |
 | Notify while no Mac is attached | Dropped, as in the maintainer's design and as today. |
@@ -611,7 +611,7 @@ reconsiders that with this change. The author also decides whether `Presentation
 |---|---|
 | Create from the Mac | "the Mac cannot create a p4linux session" |
 | Split, swap, rename, end on the server | "no session lifecycle on the server" |
-| Split, rename, close from the Mac UI | Not solved (section 4) |
+| Split, rename, close from the Mac UI | Rename solved by `docs/plans/20261022-remote-row-names.md`; split and close not solved (section 4) |
 | Status, context, notify | Spike, plus "most commands are refused" and "agent calls go to the Mac" |
 | HUD, ask | "HUD and asks are not served", with "the presenter ignores the lead" for the target Mac |
 | Pick, HTML overlays, URL overlays, program overlays | Later phase |

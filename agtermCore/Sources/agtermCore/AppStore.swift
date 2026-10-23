@@ -156,6 +156,8 @@ public final class AppStore {
     @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
     /// onReplicaPageChanged is told the local id of a page shown for an origin whose reported state changed.
     @ObservationIgnored public var onReplicaPageChanged: ((UUID) -> Void)?
+    /// Called when an attached row is renamed here, with the name to send its origin; nil clears it.
+    @ObservationIgnored public var onRemoteSessionRenamed: ((UUID, String?) -> Void)?
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
@@ -519,8 +521,10 @@ public final class AppStore {
         // both reach a custom command's expansion — cwd through initialCwd, name through customName — so
         // both are sanitized here. See TerminalText.
         // `remoteHost` arrives here rather than being assigned after, because this call saves.
+        // an over-long name is dropped rather than seeded; the control requests reject it before this
+        let seeded = name.map(TerminalText.sanitized)?.trimmedOrNil
         let session = Session(initialCwd: TerminalText.sanitized(cwd),
-                              customName: name.map(TerminalText.sanitized)?.trimmedOrNil,
+                              customName: Session.nameTooLong(seeded) ? nil : seeded,
                               remoteHost: remoteHost)
         session.initialCommand = command
         session.commandWait = wait

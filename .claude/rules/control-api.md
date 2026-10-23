@@ -1796,7 +1796,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `ZmxLaunch.wrapsLocally` is the one gate both surface factories read, so a remote pane is never wrapped
   in a local daemon. Wrapping buys nothing for a session that never restores, and under live mode window
   close would drop the local client while the daemon kept ssh connected with no UI showing it.
-- Presentation carries status, context, notifications, the HUD and the layout of attached panes. Such a program runs
+- Presentation carries status, context, the session's name, notifications, the HUD and the layout of attached panes. Such a program runs
   on the origin and reaches the origin's socket, so without a stream the viewer sees terminal bytes only.
   Every attach opens one: the viewer runs `ssh -T <host> agtermctl zmx present <session>`, whose far end
   bridges stdio to a `zmx.present` connection. The far-side `agtermctl` PATH precondition above applies.
@@ -1806,7 +1806,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   kind without ending the stream, which is what lets a later kind reach an older viewer.
 - `zmx.tree` advertises `presentation`, the protocol version. A viewer never launches the bridge against an
   origin that omits it and reports `unsupported`; nothing is retried and no warning is raised.
-- Read-back is `presentation {state, mode, error}` on the viewer's session node and `presenters {mirrors}`
+- Read-back is `presentation {state, mode, error, namePending}` on the viewer's session node (`namePending`
+  stays true against an origin too old to take names) and `presenters {mirrors}`
   on the origin's. `connected` means the PRESENTATION stream is up. It says nothing about the panes' own
   ssh connections.
 - A `layout` frame and the snapshot's optional `layout` carry model pane identities, primary, axis and
@@ -1838,6 +1839,25 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   effective value: setting the text the mirror already shows emits nothing. Attach does not seed the
   context from `zmx.tree`, which would make the origin's label a local override that wins forever, so an
   origin predating the `context` frame mirrors none.
+- The origin owns an attached row's name. `AppStore.renameSession` publishes `name` (the custom name, nil
+  for none) and the snapshot carries it; the viewer writes it into the row's own `customName`, not into a
+  mirror field, because there is no local override to keep. A rename of an attached row on the viewer
+  shows at once, sets `namePending`, and sends `rename`, which any viewer may send; the origin runs it
+  through `renameFromViewer`, which publishes `name` even when nothing changed, as the sender's
+  confirmation. While pending, the viewer takes only echoes, matched in order against the renames it sent
+  (`namesInFlight`), and ignores any other name, which is older than its rename; the flag ends with the
+  echo of the last one, so an earlier rename to the same text cannot end a later one. A snapshot that does
+  not carry the pending value makes the viewer send its rename again, and that push is then the only one
+  in flight: that is how a rename made while the stream was down, or before a relaunch (the row
+  book keeps `namePending`), reaches the origin. An origin's name is applied with `applyRemoteName`, never
+  through `renameSession`, so it is never sent back. Both kinds need `name` in the hello answer, so an
+  older origin gets no `rename` and its snapshot's missing name is not read as a clear. The name survives
+  the stream ending. Attach seeds the row with the origin tree's `name`, which may be an automatic one;
+  the first snapshot replaces it with the origin's custom name or none.
+  A custom name is at most `Session.nameByteLimit` (1024 UTF-8 bytes): `session.rename`,
+  `session.new --name` and `zmx.new --name` reject a longer one, `renameSession` refuses it, and
+  `addSession` and snapshot restore (`session(from:)`, for a name an older build saved) drop it, so the
+  presentation snapshot that carries it stays far inside a frame.
 - Seeing an attached row here (`AppStore.clearUnseen`, reached by selection, pane focus and the zoom refocus)
   sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
   session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count
@@ -1969,7 +1989,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - The origin bounds each stream: 256 KiB a line checked before delivery, a bounded outbound queue whose
   overflow closes the subscriber, a hello deadline, and a drop when the source session leaves.
 - XCUITest exemption: `zmx.present` needs a second app as its peer, and its effects on a viewer are the
-  existing status, context, notification, HUD and pane paths those suites already cover. `ControlServerRemotePresentationTests`
+  existing status, context, name, notification, HUD and pane paths those suites already cover. `ControlServerRemotePresentationTests`
   runs both roles in one process over the real bridge binary instead.
 ## Pane lead
 

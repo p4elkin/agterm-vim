@@ -93,6 +93,21 @@ final class RemoteRowBookAppTests: XCTestCase {
         XCTAssertEqual(book.load().map(\.windowID), [window.id])
     }
 
+    func testARenameStillInTheDebounceIsWrittenWhenItsWindowCloses() async throws {
+        let writer = RemoteRowBookWriter(library: library, book: book, delay: 60)
+        let window = library.newWindow(name: "other")
+        let store = try XCTUnwrap(library.loadStore(for: window.id))
+        let session = try attach(in: store)
+        writer.write()
+
+        store.renameSession(session.id, to: "parking")
+        library.closeWindow(window.id)
+
+        let name = try XCTUnwrap(book.load().first?.name)
+        XCTAssertEqual(name.value, "parking")
+        XCTAssertTrue(name.pending)
+    }
+
     func testQuitTeardownDoesNotEmptyTheBook() async throws {
         let writer = RemoteRowBookWriter(library: library, book: book, delay: 0)
         let store = try XCTUnwrap(library.activeStore)

@@ -26,6 +26,11 @@ public struct RemotePresentationEffects {
     public var sound: @MainActor (PresentationSound) -> Void
     public var connection: @MainActor (RemotePresentationConnection) -> Void
     public var context: @MainActor (String?) -> Void
+    /// The origin's custom name changed. Reached only from an origin that listed `name` in its hello.
+    public var name: @MainActor (String?) -> Void
+    /// The name a snapshot carries. Separate from `name` because one arrives with every reconnect, which is
+    /// when a rename this Mac made while the stream was down has to go out instead.
+    public var snapshotName: @MainActor (String?) -> Void
     public var layout: @MainActor (PresentationLayout) -> Void
     public var mode: @MainActor (PresentationMode) -> Void
     /// Shows an ask the origin handed over; false when it cannot, which the client reports as a refusal.
@@ -61,6 +66,8 @@ public struct RemotePresentationEffects {
                 pageRequest: @escaping @MainActor (PresentationPage) -> String? = { _ in RemotePresentationClient.pagesUnsupported },
                 pageClose: @escaping @MainActor (PresentationPageChange) -> Void = { _ in },
                 pageCommand: @escaping @MainActor (PresentationPageCommand) -> Void = { _ in },
+                name: @escaping @MainActor (String?) -> Void = { _ in },
+                snapshotName: @escaping @MainActor (String?) -> Void = { _ in },
                 warn: @escaping @MainActor (String) -> Void) {
         self.status = status
         self.snapshotStatus = snapshotStatus
@@ -69,6 +76,8 @@ public struct RemotePresentationEffects {
         self.sound = sound
         self.connection = connection
         self.context = context
+        self.name = name
+        self.snapshotName = snapshotName
         self.layout = layout
         self.mode = mode
         self.askRequest = askRequest
@@ -118,6 +127,9 @@ public final class RemotePresentationClient {
     /// Nil until reported, so a new client's first report reaches the row whatever an earlier client of
     /// the same row left on it.
     private var mode: PresentationMode?
+    /// Whether the current connection's origin listed `name` in its hello answer. An older origin neither
+    /// sends a name nor reads a rename, and its snapshot's missing name must not read as a cleared one.
+    private var namesSupported = false
 
     public init(argv: [String], presentationVersion: Int?, transport: RemotePresentationTransport,
                 effects: RemotePresentationEffects, leads: @escaping @MainActor () -> Bool = { false },
@@ -169,6 +181,15 @@ public final class RemotePresentationClient {
 
     public func markSeen() {
         answer(.seen)
+    }
+
+    /// Asks the origin to rename the session; nil clears its name. False when nothing was sent: no link, or
+    /// an origin that does not take renames.
+    @discardableResult
+    public func rename(_ name: String?) -> Bool {
+        guard let link, namesSupported else { return false }
+        send(.rename(name), on: link)
+        return true
     }
 
     /// Reconnects when a retry is due and drops a link that has gone quiet.
@@ -223,16 +244,19 @@ public final class RemotePresentationClient {
             effects.snapshotStatus(snapshot.status)
             effects.hud(snapshot.hud)
             effects.context(snapshot.context)
+            if namesSupported { effects.snapshotName(snapshot.name) }
         case .status(let status): effects.status(status)
         case .context(let context): effects.context(context)
+        case .name(let name): if namesSupported { effects.name(name) }
         case .layout(let layout): applyLayout(layout)
         case .hud(let hud): effects.hud(hud)
         case .notify(let notify): effects.notify(notify)
         case .sound(let sound): effects.sound(sound)
         case .ping: send(.ack, on: link)
-        // an origin that predates the role answers mirror, and nothing is asked of it
-        case .hello(let answer) where answer.mode == .presenter:
-            send(leads() ? .presenterTake : .presenterAcquire, on: link)
+        case .hello(let answer):
+            namesSupported = answer.kinds.contains("name")
+            // an origin that predates the role answers mirror, and nothing is asked of it
+            if answer.mode == .presenter { send(leads() ? .presenterTake : .presenterAcquire, on: link) }
         case .presenterGranted: report(.presenter)
         case .presenterRefused: report(.mirror)
         case .askRequest(let ask):
@@ -256,7 +280,7 @@ public final class RemotePresentationClient {
             }
         case .pageClose(let change): effects.pageClose(change)
         case .pageCommand(let command): effects.pageCommand(command)
-        case .hello, .ack, .seen, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed,
+        case .ack, .seen, .rename, .presenterAcquire, .presenterTake, .askResolve, .askRejected, .overlayRejected, .overlayClosed,
              .controlForwarded, .unknown, .pageRejected, .pageClosed, .pageState:
             break
         }
@@ -285,6 +309,7 @@ public final class RemotePresentationClient {
         retryAt = nil
         generation = nil
         revision = -1
+        namesSupported = false
         lastFrameAt = now()
         report(.connecting)
         launchCount += 1

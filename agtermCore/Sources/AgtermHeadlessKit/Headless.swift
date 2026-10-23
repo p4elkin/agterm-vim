@@ -51,12 +51,21 @@ public final class Headless {
         }
         attachAskPresentation()
         attachSeenPresentation()
+        attachRenamePresentation()
     }
 
     private func attachSeenPresentation() {
         hub.onSeen = { [weak self] id in
             guard let (store, session) = self?.resolve(id.uuidString) else { return }
             HeadlessActions.markSessionSeen(session, in: store)
+        }
+    }
+
+    private func attachRenamePresentation() {
+        hub.onRename = { [weak self] id, name in
+            guard let self, let (store, session) = resolve(id.uuidString),
+                  store.renameFromViewer(session.id, to: name) else { return }
+            persist(store)
         }
     }
 

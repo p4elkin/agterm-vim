@@ -119,6 +119,8 @@ public final class WindowLibrary {
     @ObservationIgnored public var onStoreLoaded: (@MainActor (UUID, AppStore) -> Void)?
     /// A session's real teardown, which a soft close reaches only when its undo grace ends with no tree change.
     @ObservationIgnored public var onSessionFinalized: (@MainActor (UUID) -> Void)?
+    /// A window is closing and its store is still loaded: the last moment anything can read it.
+    @ObservationIgnored public var onWindowClosing: (@MainActor (UUID) -> Void)?
     @ObservationIgnored private let paneFinalizer: (([UUID]) -> Void)?
     @ObservationIgnored private let launchPaneDrop: (([UUID]) -> Void)?
     @ObservationIgnored private let launchInventorySink: ((Set<UUID>?) -> Void)?
@@ -517,6 +519,7 @@ public final class WindowLibrary {
             }
         }
         store.scheduleTreeChanged()
+        onWindowClosing?(id)
         stores[id] = nil
         openSetVersion += 1
         // the persisted `frontmost` is what the next launch's `reopen` fallback picks, and nil there

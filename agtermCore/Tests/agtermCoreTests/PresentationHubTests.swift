@@ -467,4 +467,50 @@ struct PresentationHubTests {
         #expect(seen == [session])
     }
 
+    @Test(arguments: [PresentationMode.mirror, .presenter])
+    func renameRoutesFromAnyCurrentViewerToItsOwnSession(mode: PresentationMode) throws {
+        let hub = makeHub()
+        let sink = Sink()
+        let session = UUID()
+        let id = try hub.subscribe(session: session,
+            hello: PresentationHello(version: 1, kinds: ["name"], mode: mode), sink: sink) { Self.empty }
+        let generation = try #require(sink.frames.first?.gen)
+        if mode == .presenter {
+            hub.receive(PresentationFrame(gen: generation, rev: 0, body: .presenterAcquire), from: id)
+        }
+        var renames: [String?] = []
+        hub.onRename = { target, name in
+            #expect(target == session)
+            renames.append(name)
+        }
+        hub.onPresenterFrame = { _, _ in Issue.record("a rename is separate from presenter work") }
+        hub.receive(PresentationFrame(gen: generation + 1, rev: 0, body: .rename("stale")), from: id)
+        #expect(renames.isEmpty)
+        let count = sink.frames.count
+        hub.receive(PresentationFrame(gen: generation, rev: 0, body: .rename("deploy box")), from: id)
+        hub.receive(PresentationFrame(gen: generation, rev: 0, body: .rename(nil)), from: id)
+        #expect(renames == ["deploy box", nil])
+        #expect(sink.frames.count == count)
+        hub.unsubscribe(id)
+        hub.receive(PresentationFrame(gen: generation, rev: 0, body: .rename("gone")), from: id)
+        #expect(renames == ["deploy box", nil])
+    }
+
+    @Test func theHelloAnswerListsNamesOnlyForAViewerThatListedThem() throws {
+        let hub = makeHub()
+        let older = Sink()
+        let current = Sink()
+        try hub.subscribe(session: UUID(), hello: PresentationHello(version: 1, kinds: ["status"], mode: .mirror),
+                          sink: older) { Self.empty }
+        try hub.subscribe(session: UUID(), hello: PresentationHello(version: 1, kinds: ["status", "name"], mode: .mirror),
+                          sink: current) { Self.empty }
+
+        guard case .hello(let olderAnswer)? = older.frames.first?.body,
+              case .hello(let currentAnswer)? = current.frames.first?.body else {
+            Issue.record("each subscriber opens with hello")
+            return
+        }
+        #expect(!olderAnswer.kinds.contains("name"))
+        #expect(currentAnswer.kinds.contains("name"))
+    }
 }

@@ -182,7 +182,9 @@ pane attachment state separately from the presentation stream; omitted for local
 origin must name as `--target`),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
 origin too old to stream, or `failed` with the reason in `error`, and `mode` is `presenter` when this
-row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not; it says whether the stream is up,
+row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not, and `namePending: true`
+while a rename made on this Mac has not been confirmed by the origin (it stays true against an origin too old
+to take names); it says whether the stream is up,
 never whether the panes' ssh connections are),
 `presenters` (on an origin session: `mirrors`, how many streams mirror it without presenting, one per
 attached row and not per Mac, and `presenter: true` when one presents it; omitted when none does),
@@ -548,7 +550,8 @@ buys nothing. A caller with no tree uses `version`.
   several sessions in the same window/store. Batch close honors the GUI grace-undo setting: one grouped
   undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.
 - `session select [--target] [--window W]`.
-- `session rename <name> [--target] [--window W]`.
+- `session rename <name> [--target] [--window W]`. A name over 1024 UTF-8 bytes (after trimming) is
+  rejected, here and in `session new --name` and `zmx new --name`.
 - `session reveal [--target] [--window W]` — select the target session's focused-pane working
   directory in Finder. Errors when that directory no longer exists.
 - `session go --to next|prev|first|last|next-attention|prev-attention [--window W]` — move the

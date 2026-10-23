@@ -50,6 +50,40 @@ final class RemoteRowBookTests {
         #expect(object["initialCommand"] == nil)
     }
 
+    @Test func aRecordKeepsTheRowsNameAndAPendingRename() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.windows.first)
+        let store = try #require(library.store(for: window.id))
+        let session = try row(in: store, origin: origin())
+        let workspace = try #require(store.workspaces.first?.id)
+        let initial = try #require(RemoteRowBook.Record(session: session, windowID: window.id, workspaceID: workspace,
+                                                        position: 1))
+        #expect(initial.name == RemoteRowBook.Record.Name(value: nil, pending: false))
+        #expect(initial.restoredName == (value: nil, pending: false))
+
+        store.renameSession(session.id, to: "deploy box")
+        let saved = try #require(RemoteRowBook.Record(session: session, windowID: window.id, workspaceID: workspace,
+                                                      position: 1))
+        let book = RemoteRowBook(directory: directory)
+        try book.save([saved])
+        let restored = try #require(book.load().first)
+
+        #expect(restored.name == RemoteRowBook.Record.Name(value: "deploy box", pending: true))
+        #expect(restored.restoredName == (value: "deploy box", pending: true))
+        #expect(restored.sessionName == "remote-session")
+    }
+
+    @Test func aRecordAnOlderBuildWroteRestoresTheAttachTimeName() throws {
+        let saved = try record()
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+        object["name"] = nil
+        let older = try JSONDecoder().decode(RemoteRowBook.Record.self,
+                                             from: JSONSerialization.data(withJSONObject: object))
+
+        #expect(older.name == nil)
+        #expect(older.restoredName == (value: "remote-session", pending: false))
+    }
+
     @Test(arguments: [Int?.none, .some(1)])
     func aRestoredBindingKeepsThePresentationVersionAndTransport(version: Int?) throws {
         let saved = try record(.mosh(server: "/opt/mosh-server", client: "/opt/mosh"), version: version)
