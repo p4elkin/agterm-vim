@@ -1,0 +1,5 @@
+<idea-plugin>
+  <extensions defaultExtensionNs="com.intellij">
+    <postStartupActivity implementation="agterm.rebased.maven.MirrorMaven"/>
+  </extensions>
+</idea-plugin>

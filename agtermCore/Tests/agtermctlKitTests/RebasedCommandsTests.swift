@@ -58,6 +58,20 @@ struct RebasedCommandsTests {
         """)
     }
 
+    @Test func aRowPrintsTheSyncStateBeforeTheInUseMarker() {
+        let base = node(daysAgo: 2, inUse: true)
+        func synced(_ sync: ControlRebasedMirrorSync) -> ControlRebasedMirrorNode {
+            ControlRebasedMirrorNode(host: base.host, source: base.source, directory: base.directory, lastOpened: base.lastOpened,
+                                     bytes: base.bytes, inUse: true, sync: sync)
+        }
+        let mirrors = ControlRebasedMirrors(mirrors: [synced(.init(state: "watching")),
+                                                      synced(.init(state: "unknown", error: "daemon gone"))])
+        #expect(SocketClient.formatRebasedMirrors(mirrors, now: now) == """
+        p4linux  p4linux:/home/s/jackrabbit  2 days  101 MB  sync watching  in use  /Users/s/mirrors/p4linux/ab12/jackrabbit
+        p4linux  p4linux:/home/s/jackrabbit  2 days  101 MB  sync unknown (daemon gone)  in use  /Users/s/mirrors/p4linux/ab12/jackrabbit
+        """)
+    }
+
     @Test func emptyListSaysNoMirrors() {
         let response = ControlResponse(ok: true, result: ControlResult(rebasedMirrors: ControlRebasedMirrors(mirrors: [])))
         #expect(SocketClient.formatResponse(response) == "no mirrors")

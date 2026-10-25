@@ -70,6 +70,8 @@ declined:
   - "agtermCore/Sources/agtermctlKit/MiscCommands.swift"
   # declined 2026-10-01: fork-only, so no merge can conflict in it
   - "agterm/Control/ControlServer+Forward.swift"
+  # declined 2026-10-25 by Sasha: fork-only, so no merge can conflict in it
+  - "agterm/Rebased/RebasedOnCloseRunner.swift"
 ---
 
 ## Keeping the fork current with upstream
@@ -154,8 +156,8 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   - `ControlServer+SessionActions.swift`: the Rebased adapter route and program-only pane result predicate.
   - `ControlServer.swift`: both Rebased commands stay in the dispatcher-handled switch row; status
     retains the port.
-  - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, callback refusal and
-    id-targeted close routing.
+  - `ControlDispatcher+Overlay.swift`, `ForwardPolicy.swift`: Rebased flags, forwarding `--on-close`
+    and id-targeted close routing.
   - `WindowContentView+Detail.swift`: held-slot IDE branches and the `RebasedSlot` visibility inputs.
   - `WindowContentView.swift`: `rebasedCovered` keeps in-window covers above the child frame.
   - `AppStore+RemoteOverlay.swift`: a hidden pane IDE still reserves its pane; a parked session-wide IDE

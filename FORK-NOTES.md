@@ -36,7 +36,8 @@ is the `.claude/rules` file that owns the design.
   session-wide or in one split pane, for a live review: commit-range or working-tree diffs, files, and
   `--on-close`. It hides through upstream's overlay hide (⇧⌘J, `session overlay hide|show|toggle`) as well as
   its own toggle; a hidden session-wide IDE leaves the slot, so a picker or page opens meanwhile. A remote row's repository opens from an ssh-fetched mirror on the Mac.
-  Unused remote mirrors are removed after `rebasedMirrorMaxAgeDays`, also on demand (`rebased mirror prune`).
+  With mutagen on the Mac the mirror's working tree and the host's `~/.m2` are synced, so working-tree diffs,
+  files and Maven resolution work on a remote row, and `--on-close` runs on the host. Unused remote mirrors are removed after `rebasedMirrorMaxAgeDays`, also on demand (`rebased mirror prune`).
   `.claude/rules/rebased-overlay.md`.
 - **IntelliJ IDEA in the same overlay** — choose its bundle in Settings > General > IDE app, then restart.
   Separate product state, with approved standalone settings and plugins seeded once; `.claude/rules/rebased-overlay.md`.

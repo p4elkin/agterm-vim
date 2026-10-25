@@ -47,6 +47,7 @@ final class RebasedHost {
         let sizePercent: Int?
         let view: RebasedView?
         let pane: OverlayPane?
+        var onClose: RebasedOnClose?
     }
 
     var runtime: any RebasedRuntime = JNIRebasedRuntime()
@@ -82,9 +83,10 @@ final class RebasedHost {
     var isIDEKeyWindowOverride: Bool?
     var isFocusedPane: (UUID, OverlayPane) -> Bool = { _, _ in false }
     var clock: () -> Date = { Date() }
-    var mirrorRefresh: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> =
-        RebasedHost.makeMirrorRefresh(withLock: { try RebasedStateLock.withLockIfFree($0, $1) })
-    // The defaults touch no disk; only `configure` installs the real ones, so a test's host never prunes.
+    var mirrorRefresh: MirrorRefresh = RebasedHost.makeMirrorRefresh(withLock: { try RebasedStateLock.withLockIfFree($0, $1) })
+    // The defaults touch no disk; only `configure` installs the real ones, so a test's host never prunes or syncs.
+    var sync = RebasedMirrorRefresh.Sync.none
+    var swept = false
     var mirrorMaxAgeDays: () -> Int = { 0 }
     var mirrorPrune: @Sendable (RebasedMirrorCleanup.Request) throws -> RebasedMirrorCleanup.Report = { request in
         RebasedMirrorCleanup.Report(removed: [], kept: [], dryRun: request.dryRun, olderThanDays: request.maxAgeDays)
@@ -142,8 +144,9 @@ final class RebasedHost {
         self.toggle = toggle
         self.stateDirectory = stateDirectory
         mirrorMaxAgeDays = { settings().effectiveRebasedMirrorMaxAgeDays }
-        mirrorPrune = Self.makeMirrorPrune(withLock: RebasedStateLock.withLockIfFree)
+        mirrorPrune = Self.makeMirrorPrune(withLock: RebasedStateLock.withLockIfFree, sync: .installed)
         mirrorList = Self.makeMirrorList()
+        sync = .installed
         isFocusedPane = { [weak library] id, pane in
             guard let store = library?.activeStore else { return false }
             return store.selectedSessionID == id && store.session(withID: id)?.focusedPane == pane
@@ -193,12 +196,14 @@ final class RebasedHost {
         if onClose != nil, session.rebasedPlacement != nil {
             return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
         }
-        if session.remoteHost != nil, onClose != nil { return .failure(.init(message: "--on-close works on a local row only")) }
-        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? onCloseDirectory(for: session), environment: environment(session, store)) }
-        if session.remoteHost != nil {
+        if let host = session.remoteHost {
+            let path = cwd ?? session.focusedCwd
+            // the command runs on the host, in its own login environment; nothing of this Mac's goes with it
+            let captured = onClose.map { RebasedOnClose(command: $0, cwd: path, environment: [:], host: host) }
             return openRemote(in: store, session: session,
-                              request: .init(path: cwd ?? session.focusedCwd, sizePercent: sizePercent, view: view, pane: pane))
+                              request: .init(path: path, sizePercent: sizePercent, view: view, pane: pane, onClose: captured))
         }
+        let captured = onClose.map { RebasedOnClose(command: $0, cwd: cwd ?? onCloseDirectory(for: session), environment: environment(session, store)) }
         let project = project ?? Self.projectDirectory(for: cwd ?? session.focusedCwd)
         if let placement = session.rebasedPlacement, Self.canonical(placement.overlay.project) == Self.canonical(project) {
             guard pane == nil || placement.pane == pane else {
@@ -244,7 +249,7 @@ final class RebasedHost {
     // MARK: - Remote rows
 
     func openRemote(in store: AppStore, session: Session, request: RemoteOpenRequest) -> Result<RebasedOpened, RebasedOpenRefusal> {
-        let path = request.path, sizePercent = request.sizePercent, view = request.view, pane = request.pane
+        let path = request.path, sizePercent = request.sizePercent, view = request.view, pane = request.pane, onClose = request.onClose
         let host = session.remoteHost ?? ""
         guard let mirror = RebasedMirror(host: host, path: path) else {
             return .failure(.init(message: "Rebased cannot mirror \(host):\(path)"))
@@ -258,10 +263,14 @@ final class RebasedHost {
                 return .failure(.init(message: RebasedOverlayOpenFailure.alreadyOpen.message))
             }
             overlayID = placement.overlay.id
+            // a placeholder whose refresh failed (no frame, the host path still its project) fetches again from scratch
+            if case .failed = placement.overlay.state, !Self.isMirror(placement.overlay.project, stateDirectory: stateDirectory) {
+                session.updateRebasedOverlay(overlayID) { $0.state = .fetching }
+            }
             request = view.map { issueView(overlay: overlayID, view: $0) }
         } else {
             var placeholder = RebasedOverlay(project: path, state: .fetching, source: mirror.source(top: path),
-                                             view: view.map(RebasedViewRequest.init(view:)))
+                                             view: view.map(RebasedViewRequest.init(view:)), onClose: onClose)
             if case .diff(let diff, _) = view { placeholder.diff = diff }
             if let failure = store.openRebasedOverlay(session.id, overlay: placeholder, sizePercent: sizePercent, pane: pane) {
                 return .failure(.init(message: failure.message(pane: pane)))
@@ -272,9 +281,9 @@ final class RebasedHost {
             entries[overlayID] = Entry(id: overlayID, session: session.id, project: Self.canonical(path), order: opens, onClose: placeholder.onClose)
         }
         fetching.insert(session.id)
-        let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id
+        let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id, sync = sync
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
-        onMirrorQueue({ result.set { try refresh(mirror, directory).get() } }, { [weak self] in
+        onMirrorQueue({ result.set { try refresh(mirror, directory, sync).get() } }, { [weak self] in
             self?.mirrored(result.value, session: sessionID, overlay: overlayID, request: request)
         })
         return .success(.init(overlay: overlayID, request: request))
@@ -358,7 +367,10 @@ final class RebasedHost {
             self.launch(launch)
         }
         let days = mirrorMaxAgeDays()
-        guard days > 0, fetching.isEmpty else { return ready() }
+        guard days > 0, fetching.isEmpty else {
+            enqueueSweep()
+            return ready()
+        }
         let prune = mirrorPrune, directory = stateDirectory
         let result = ResultBox<RebasedMirrorCleanup.Report>()
         onMirrorQueue({ [self] in
@@ -372,6 +384,7 @@ final class RebasedHost {
             }
             ready()
         })
+        enqueueSweep()
     }
 
     private func launch(_ launch: RebasedLaunch) {
@@ -740,10 +753,10 @@ final class RebasedHost {
 
     /// Not on the mirror queue: a list only reads, and must not wait behind a fetch.
     func listMirrors() async -> [RebasedMirrorRecord] {
-        let list = mirrorList, directory = stateDirectory, inUse = mirrorsInUse
+        let list = mirrorList, directory = stateDirectory, inUse = mirrorsInUse, sync = sync
         let result = ResultBox<[RebasedMirrorRecord]>()
         await withCheckedContinuation { continuation in
-            offMain({ result.set { list(directory, inUse) } }, { continuation.resume() })
+            offMain({ result.set { Self.withSync(list(directory, inUse), stateDirectory: directory, sync: sync) } }, { continuation.resume() })
         }
         return (try? result.value?.get()) ?? []
     }
@@ -762,11 +775,11 @@ final class RebasedHost {
     }
 
     /// Only a real prune takes the lock: a second instance's mirrors are invisible here.
-    nonisolated static func makeMirrorPrune(withLock lock: @escaping MirrorLock)
+    nonisolated static func makeMirrorPrune(withLock lock: @escaping MirrorLock, sync: RebasedMirrorRefresh.Sync = .none)
         -> @Sendable (RebasedMirrorCleanup.Request) throws -> RebasedMirrorCleanup.Report {
         { request in
-            if request.dryRun { return RebasedMirrorCleanup.prune(request) }
-            return try lock(request.stateDirectory.appendingPathComponent("rebased")) { RebasedMirrorCleanup.prune(request) }
+            if request.dryRun { return syncedPrune(request, sync: sync) }
+            return try lock(request.stateDirectory.appendingPathComponent("rebased")) { syncedPrune(request, sync: sync) }
         }
     }
 
@@ -775,15 +788,16 @@ final class RebasedHost {
 
     /// A refresh holds the state lock as a prune does, so another agterm instance's prune cannot delete the clone
     /// mid-fetch. Held by another instance, the refresh fails.
+    typealias MirrorRefresh = @Sendable (RebasedMirror, URL, RebasedMirrorRefresh.Sync)
+        -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure>
+
     nonisolated static func makeMirrorRefresh(
         withLock lock: @escaping RefreshLock,
-        run: @escaping @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = {
-            RebasedMirrorRefresh.run($0, stateDirectory: $1)
-        }
-    ) -> @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> {
-        { mirror, directory in
+        run: @escaping MirrorRefresh = { RebasedMirrorRefresh.run($0, stateDirectory: $1, sync: $2) }
+    ) -> MirrorRefresh {
+        { mirror, directory, sync in
             do {
-                return try lock(directory.appendingPathComponent("rebased")) { run(mirror, directory) }
+                return try lock(directory.appendingPathComponent("rebased")) { run(mirror, directory, sync) }
             } catch {
                 return .failure(.init(message: error.localizedDescription))
             }

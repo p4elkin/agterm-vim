@@ -17,7 +17,7 @@ extension RebasedHost {
         if let entry = entries[id], let session = store(entry.session)?.session(withID: entry.session),
            fetchRefusal(session: session) != nil, let current = overlay(entry)?.view?.id { return current }
         if let entry = entries[id], let session = store(entry.session)?.session(withID: entry.session),
-           let host = session.remoteHost, case .diff = view {
+           let host = session.remoteHost {
             let prefix = host + ":"
             let source = overlay(entry)?.source
             let path = source.flatMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil } ?? session.focusedCwd
@@ -53,9 +53,17 @@ extension RebasedHost {
               let held = overlay(entry), !overlayHidden(entry), let request = held.view, request.state == .queued,
               let session = store(entry.session)?.session(withID: entry.session) else { return }
         let pane = session.rebasedPlacement?.pane != nil
+        var view = request.view
+        // the model keeps the host path a remote row asked for; only the bridge gets the mirror's
+        if let host = session.remoteHost, case .file(let path, let line) = view {
+            let top = held.source.map { String($0.dropFirst(host.count + 1)) } ?? ""
+            guard let mapped = RebasedMirror.mirrorPath(hostPath: path, top: top, directory: entry.project) else {
+                return failView(overlay: id, request: request.id, reason: "--file \(path) is outside \(host):\(top)")
+            }
+            view = .file(path: mapped, line: line)
+        }
         session.updateRebasedOverlay(id) { $0.view?.sent() }
-        let answer = runtime.call(request.view.bridgeVerb,
-                                  request.view.bridgeArgument(request: request.id, project: entry.project, pane: pane))
+        let answer = runtime.call(view.bridgeVerb, view.bridgeArgument(request: request.id, project: entry.project, pane: pane))
         guard answer == "ok" else { failView(overlay: id, request: request.id, reason: answer); return }
         after(Self.viewDeadline) { [weak self] in
             guard let self, let entry = self.entries[id] else { return }

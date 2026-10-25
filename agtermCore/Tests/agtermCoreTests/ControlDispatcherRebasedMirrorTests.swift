@@ -54,7 +54,8 @@ struct ControlDispatcherRebasedMirrorTests {
                                                bytes: 101_000_000, inUse: false,
                                                ideData: ["/s/system/projects/jackrabbit.1a2b"])
         let kept = ControlRebasedMirrorNode(host: "p4linux", directory: "/m/p4linux/3c4d", lastOpened: 1_790_000_000,
-                                            inUse: false, error: "permission denied")
+                                            inUse: false, error: "permission denied",
+                                            sync: ControlRebasedMirrorSync(state: "unknown", error: "daemon gone"))
         let prune = ControlResult(rebasedMirrors: ControlRebasedMirrors(removed: [removed], kept: [kept],
                                                                         dryRun: true, olderThanDays: 14))
         let list = ControlResult(rebasedMirrors: ControlRebasedMirrors(mirrors: [removed, kept]))
@@ -63,6 +64,27 @@ struct ControlDispatcherRebasedMirrorTests {
             let decoded = try JSONDecoder().decode(ControlResult.self, from: JSONEncoder().encode(result))
             #expect(decoded == result)
         }
+    }
+
+    @Test func aPayloadWithoutSyncStillDecodes() throws {
+        let json = #"{"host": "h", "directory": "/d", "lastOpened": 1, "inUse": false}"#
+        let node = try JSONDecoder().decode(ControlRebasedMirrorNode.self, from: Data(json.utf8))
+        #expect(node.sync == nil)
+        let synced = #"{"host": "h", "directory": "/d", "lastOpened": 1, "inUse": false, "sync": {"state": "watching"}}"#
+        #expect(try JSONDecoder().decode(ControlRebasedMirrorNode.self, from: Data(synced.utf8)).sync == .init(state: "watching"))
+    }
+
+    @Test func aReportCarriesEachMirrorsSyncIntoItsNode() {
+        let record = RebasedMirrorRecord(host: "h", source: nil, clone: URL(fileURLWithPath: "/m/h/1/r"),
+                                         hashDirectory: URL(fileURLWithPath: "/m/h/1"), lastOpened: Date(timeIntervalSince1970: 1),
+                                         bytes: nil, inUse: false)
+        let report = RebasedMirrorCleanup.Report(removed: [.init(mirror: record, ideData: [], error: nil)],
+                                                 kept: [.init(mirror: record, ideData: [], error: "x")], dryRun: true, olderThanDays: 3)
+            .withSync { _ in ControlRebasedMirrorSync(state: "paused") }
+        let nodes = ControlRebasedMirrors(report: report)
+        #expect(nodes.removed?.map(\.sync) == [.init(state: "paused")])
+        #expect(nodes.kept?.map(\.sync) == [.init(state: "paused")])
+        #expect(ControlRebasedMirrors(mirrors: [record]).mirrors?.first?.sync == nil)
     }
 
     @Test func absentFieldsStayOffTheWire() throws {

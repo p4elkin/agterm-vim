@@ -83,6 +83,30 @@ final class ControlServerRebasedMirrorTests: XCTestCase {
         XCTAssertNotNil(nodes.first?.bytes)
     }
 
+    func testListAndPruneCarryEachMirrorsSyncState() async throws {
+        let synced = try seedMirror(host: "p4linux", hash: "0a1b2c3d", name: "jackrabbit", ageDays: 20)
+        let plain = try seedMirror(host: "p4air", hash: "4e5f6a7b", name: "oak", ageDays: 20)
+        let tree = #"{"name": "t", "labels": {"agterm-kind": "tree"}, "status": "watching", "alpha": {"path": "a"}, "#
+            + #""beta": {"path": "\#(synced.path)"}}"#
+        let sync = FakeSync(lists: ["[\(tree)]", "[\(tree)]"])
+        RebasedHost.shared.sync = sync.seam
+        RebasedHost.shared.mirrorPrune = RebasedHost.makeMirrorPrune(withLock: { _, body in try body() }, sync: sync.seam)
+
+        let listing = try await mirrors(.rebasedMirrorList)
+        let listed = try XCTUnwrap(listing.mirrors)
+        XCTAssertEqual(listed.first { $0.directory == synced.path }?.sync, .init(state: "watching"))
+        XCTAssertEqual(listed.first { $0.directory == plain.path }?.sync, .init(state: "none"))
+
+        let dryRun = try await mirrors(.rebasedMirrorPrune, ControlArgs(olderThanDays: 7, dryRun: true))
+        XCTAssertEqual(dryRun.removed?.first { $0.directory == synced.path }?.sync, .init(state: "watching"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: synced.path))
+        XCTAssertEqual(sync.verbs, ["list", "list"])
+
+        RebasedHost.shared.sync = FakeSync(lists: [], failing: ["list": "no daemon"]).seam
+        let failed = try await mirrors(.rebasedMirrorList)
+        XCTAssertEqual(try XCTUnwrap(failed.mirrors).map(\.sync), Array(repeating: .init(state: "unknown", error: "mutagen sync list: no daemon"), count: 2))
+    }
+
     func testADryRunRemovesNothingAndAPruneRemovesOnlyTheStaleMirror() async throws {
         let stale = try seedMirror(host: "p4air", hash: "4e5f6a7b", name: "oak", ageDays: 20)
         let fresh = try seedMirror(host: "p4linux", hash: "0a1b2c3d", name: "jackrabbit", ageDays: 1)

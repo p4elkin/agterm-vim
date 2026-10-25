@@ -5,13 +5,13 @@ import agtermCore
 
 @MainActor
 struct HeadlessActionsTests {
-    @Test func theOriginRefusesARebasedOnCloseCommand() async throws {
+    @Test func theOriginForwardsARebasedOnCloseOpen() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }
         let response = await fixture.actions.respond(to: ControlRequest(cmd: .sessionOverlayOpen,
             target: fixture.session.id.uuidString, args: ControlArgs(rebased: true, onClose: "/bin/flush")))
         #expect(!response.ok)
-        #expect(response.error?.contains("--on-close works on a local row only") == true)
+        #expect(response.error == "session.overlay.open cannot be forwarded: no Mac is presenting this session")
         #expect(fixture.session.rebasedPlacement == nil)
     }
 

@@ -2174,6 +2174,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   falling back to 14.
 - Both answer `result.rebasedMirrors`, a `ControlRebasedMirrors`: list fills `mirrors`, prune fills `removed`,
   `kept`, `dryRun` and `olderThanDays`, the age it used. `RebasedMirrorCleanup.swift` owns the mapping.
+- Each mirror node carries `sync: {state, error?}`, its tree session in mutagen: the session's status
+  (`watching`, `scanning`, `halted-…`), `paused`, `none` (no session, or no mutagen on this Mac), or `unknown`
+  with `error` when `mutagen sync list` failed. The human row prints `sync <state>` before the in-use marker.
 - Both are in `ControlServer.waitsOnNetwork`, so they never hold the accept thread: list walks the disk, and
   prune waits behind any job on the mirror queue, a fetch included ([[rebased-overlay]]).
 - Read-back is `rebased.mirror.list`, a deliberate exemption from the tree rule: a `tree` read must not walk

@@ -7,6 +7,7 @@ final class RemoteForwardTests: XCTestCase {
     private var stateDir: URL!
     private var servers: [ControlServer] = []
     private var pickWindows: [WindowInfo.ID] = []
+    private var previousHost: RebasedHost?
 
     private struct Fixture {
         let server: ControlServer
@@ -25,6 +26,10 @@ final class RemoteForwardTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        if let previousHost { RebasedHost.shared = previousHost }
+        previousHost = nil
+        RebasedOverlayReleases.shared.onRelease = nil
+        RebasedOverlayReleases.shared.onHiddenChange = nil
         for id in pickWindows { PickRegistry.shared.unregister(id) }
         pickWindows.removeAll()
         for server in servers { server.stop() }
@@ -183,5 +188,29 @@ final class RemoteForwardTests: XCTestCase {
 
         XCTAssertEqual(reply?.ok, true)
         XCTAssertTrue(fix.row.flagged)
+    }
+
+    func testAForwardedRebasedOnCloseIsCapturedForTheRowsHostAndNeverRunsHere() async throws {
+        let fix = try fixture()
+        previousHost = RebasedHost.shared
+        let host = RebasedHost.isolated(stateDirectory: stateDir, store: fix.store)
+        var commands: [RebasedOnClose] = []
+        host.runOnClose = { commands.append($0) }
+        RebasedHost.shared = host
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-forward-on-close-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: marker) }
+
+        let response = await fix.server.runForwarded(request(.sessionOverlayOpen, target: fix.serverSession) {
+            $0.rebased = true
+            $0.cwd = "/home/s/repo"
+            $0.onClose = "touch \(marker)"
+        }, forSession: fix.row.id)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(fix.row.rebasedOverlay?.onClose,
+                       RebasedOnClose(command: "touch \(marker)", cwd: "/home/s/repo", environment: [:], host: "p4linux"))
+        XCTAssertTrue(fix.store.closeRebasedOverlay(fix.row.id, id: try XCTUnwrap(fix.row.rebasedOverlay?.id)))
+        XCTAssertEqual(commands.map(\.host), ["p4linux"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker))
     }
 }

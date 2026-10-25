@@ -424,7 +424,7 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "ready", payload: "")
         _ = window("frame", number: 7)
         host.handle(event: "frameOpened", payload: "\(project)\t7")
-        host.mirrorRefresh = { _, _ in .failure(.init(message: "offline")) }
+        host.mirrorRefresh = { _, _, _ in .failure(.init(message: "offline")) }
         let request = host.requestView(overlay: opened.overlay, view: .diff(range, workingTree: false))
         XCTAssertEqual(remote.rebasedOverlay?.view?.state, .failed)
         XCTAssertEqual(remote.rebasedOverlay?.view?.detail, "offline")
@@ -693,7 +693,7 @@ final class RebasedHostTests: XCTestCase {
         let session = try XCTUnwrap(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "p4linux"))
         hostWindows[session.id] = window("remote")
         let calls = MirrorCalls()
-        host.mirrorRefresh = { mirror, _ in
+        host.mirrorRefresh = { mirror, _, _ in
             calls.append(mirror)
             return refresh
         }
@@ -752,7 +752,7 @@ final class RebasedHostTests: XCTestCase {
         host.handle(event: "ready", payload: "")
         _ = window("frame", number: 7)
         host.handle(event: "frameOpened", payload: "\(project)\t7")
-        host.mirrorRefresh = { _, _ in .failure(.init(message: "offline")) }
+        host.mirrorRefresh = { _, _, _ in .failure(.init(message: "offline")) }
         XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil, view: .diff(range, workingTree: false)).get())
         XCTAssertFalse(runtime.calls.contains(diffCall))
         XCTAssertEqual(remote.rebasedOverlay?.state, .shown)
@@ -871,7 +871,7 @@ final class RebasedHostTests: XCTestCase {
         host.mirrorMaxAgeDays = { 14 }
         let events = Recorder<String>()
         let (remote, _) = try remoteRow(refresh: .success(mirrored))
-        host.mirrorRefresh = { [mirrored] _, _ in
+        host.mirrorRefresh = { [mirrored] _, _, _ in
             events.append("refresh")
             return .success(mirrored)
         }
@@ -1057,7 +1057,7 @@ final class RebasedHostTests: XCTestCase {
         let mirror = RebasedMirror(host: "p4linux", path: "/home/s/repo")!
         let copy = RebasedMirrorRefresh.Copy(directory: "/tmp", source: "p4linux:/home/s/repo")
         let runs = Recorder<String>()
-        let run: @Sendable (RebasedMirror, URL) -> Result<RebasedMirrorRefresh.Copy, RebasedMirrorRefresh.Failure> = { _, _ in
+        let run: RebasedHost.MirrorRefresh = { _, _, _ in
             runs.append("run")
             return .success(copy)
         }
@@ -1066,12 +1066,12 @@ final class RebasedHostTests: XCTestCase {
             locks.append(url.path)
             return body()
         }, run: run)
-        XCTAssertEqual(held(mirror, directory), .success(copy))
+        XCTAssertEqual(held(mirror, directory, .none), .success(copy))
         XCTAssertEqual(locks.items, [directory.appendingPathComponent("rebased").path])
 
         let refused = RebasedHost.makeMirrorRefresh(withLock: { _, _ in throw RebasedRuntimeError.failed(RebasedStateLock.message) },
                                                      run: run)
-        XCTAssertEqual(refused(mirror, directory), .failure(.init(message: RebasedStateLock.message)))
+        XCTAssertEqual(refused(mirror, directory, .none), .failure(.init(message: RebasedStateLock.message)))
         XCTAssertEqual(runs.items, ["run"])
     }
 

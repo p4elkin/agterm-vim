@@ -924,8 +924,13 @@ error keeps those names for compatibility.
   The callback runs once on release with the Mac-captured environment and cwd, including after failed startup or confirmed quit.
   Hide, hand-back, swap, promotion and undo do not run it; soft close runs it at finalize.
   Hard kill runs no callback; a detached quit callback may outlive the app and needs external delivery recovery.
-  On a remote row the Mac refreshes an ssh mirror of commits/branches on every open or diff show.
-  `--working-tree`, `--file`, `--project` and `--on-close` refuse there with `--<flag> works on a local row only`.
+  On a remote row the Mac refreshes an ssh mirror of commits/branches on every open or show; with mutagen
+  installed it also syncs the host's working tree (read-only on the Mac) and `~/.m2/repository`, which the IDE's
+  Maven uses. `--working-tree` and `--file` then work there, `--file` naming a host path inside the repository;
+  without mutagen they refuse with `--<flag> on a remote row needs mutagen on this Mac`. `--on-close` runs on the
+  row's host over ssh, in `--cwd` there. `--project` refuses with `--project works on a local row only`.
+  A first open that outlasts the initial copy fails with `first sync of <host>:<top> is still copying; open again`;
+  open again without `--on-close`, since the first open's callback stays armed.
 - `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE]) [--target] [--window W]` (fork only)
   — issue a fresh view request on the held IDE. The answer carries `{id, overlay, request}`.
   A hidden holder stays hidden and reads `queued` until shown; no holder is refused.
@@ -934,12 +939,14 @@ error keeps those names for compatibility.
   The answer carries `{id, overlay, text}` with `text` `hidden`, `shown` or `opened`; the tree's `hidden` follows.
   On a failed overlay it closes it and answers `{id, text: "closed"}` with no `overlay`; the tree drops `rebasedOverlay`.
 - `rebased mirror list` (fork only) — every remote row's mirror on this Mac, one line each: host, source
-  (`host:path`), days since last opened, size, and the clone's directory, with `in use` before it when an
-  overlay shows the mirror or the IDE has opened it in this run. A mirror counts as opened whenever its
+  (`host:path`), days since last opened, size, `sync <state>`, and the clone's directory, with `in use` before
+  it when an overlay shows the mirror or the IDE has opened it in this run. A mirror counts as opened whenever its
   overlay is shown. JSON: `result.rebasedMirrors.mirrors[]` of `{host, source?, directory, lastOpened,
-  bytes?, inUse}`, `lastOpened` in epoch seconds. It does not wait for a running fetch.
+  bytes?, inUse, sync?}`, `lastOpened` in epoch seconds; `sync` is `{state, error?}`, the mutagen session's status
+  (`watching`, `paused`, …), `none`, or `unknown` with `error`. It does not wait for a running fetch.
 - `rebased mirror prune [--older-than DAYS] [--dry-run]` (fork only) — remove the mirrors last opened at
-  least DAYS days ago (1 or more), with the IDE's data for them; a mirror in use is always kept.
+  least DAYS days ago (1 or more), with the IDE's data and mutagen session for them; a mirror in use is always
+  kept. The synced `~/.m2` copy is never removed.
   Without `--older-than` it uses `rebasedMirrorMaxAgeDays` from `settings.json` (14 by default) and is
   refused when that is 0. `--dry-run` reports and removes nothing. It waits for a running fetch first,
   minutes at worst. Prints `removed` or `would remove`, `kept: in use` or `kept: <error>` per mirror, or

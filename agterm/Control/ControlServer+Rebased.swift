@@ -6,9 +6,8 @@ extension ControlServer {
         guard let session = store.session(withID: id) else { return ControlResponse(ok: false, error: "no such session") }
         let view = options.rebasedView ?? options.rebasedDiff.map { RebasedView.diff($0, workingTree: false) }
         if session.remoteHost != nil {
-            if let flag = Self.localRebasedFlag(view) { return Self.localRebasedRefusal(flag) }
+            if let flag = Self.syncedRebasedFlag(view) { return Self.syncRefusal(flag) }
             if options.rebasedProject != nil { return Self.localRebasedRefusal("project") }
-            if options.rebasedOnClose != nil { return Self.localRebasedRefusal("on-close") }
         }
         switch RebasedHost.shared.openOverlay(in: store, session: id, cwd: options.cwd, sizePercent: options.sizePercent,
                                              view: view, pane: options.pane, project: options.rebasedProject, onClose: options.rebasedOnClose) {
@@ -29,7 +28,7 @@ extension ControlServer {
     func showRebasedView(_ target: String?, window: String?, view: RebasedView) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else { return ControlResponse(ok: false, error: "no such session") }
-            if session.remoteHost != nil, let flag = Self.localRebasedFlag(view) { return Self.localRebasedRefusal(flag) }
+            if session.remoteHost != nil, let flag = Self.syncedRebasedFlag(view) { return Self.syncRefusal(flag) }
             guard let held = session.rebasedPlacement else {
                 return ControlResponse(ok: false, error: "no Rebased overlay in this session")
             }
@@ -54,12 +53,18 @@ extension ControlServer {
         }
     }
 
-    private static func localRebasedFlag(_ view: RebasedView?) -> String? {
+    /// A flag a remote row serves only from a mirror mutagen keeps current; nil once this Mac has mutagen.
+    private static func syncedRebasedFlag(_ view: RebasedView?) -> String? {
+        guard RebasedHost.shared.sync.binary() == nil else { return nil }
         switch view?.kind {
         case .workingTree?: return "working-tree"
         case .file?: return "file"
         default: return nil
         }
+    }
+
+    private static func syncRefusal(_ flag: String) -> ControlResponse {
+        ControlResponse(ok: false, error: "--\(flag) on a remote row needs mutagen on this Mac")
     }
 
     private static func localRebasedRefusal(_ flag: String) -> ControlResponse {

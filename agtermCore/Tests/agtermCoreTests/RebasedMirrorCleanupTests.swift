@@ -330,6 +330,45 @@ struct RebasedMirrorCleanupTests {
         #expect(report.kept.map(\.mirror.hashDirectory) == [fixture.used.hashDirectory])
     }
 
+    @Test func beforeRemoveRunsOnlyForAConfirmedRemovalAndItsErrorKeepsTheMirror() throws {
+        let fixture = try Self.pruneFixture()
+        var seen: [URL] = []
+        var emptied: [String] = []
+        struct Refused: Error, LocalizedError { var errorDescription: String? { "terminate failed" } }
+        let hooks = RebasedMirrorCleanup.Hooks(beforeRemove: { record in
+            seen.append(record.hashDirectory)
+            #expect(fixture.ideData(fixture.stale).allSatisfy(Self.exists))
+            throw Refused()
+        }, hostEmptied: { emptied.append($0) })
+        let report = RebasedMirrorCleanup.prune(fixture.request(dryRun: false), hooks: hooks)
+        #expect(seen == [fixture.stale.hashDirectory])
+        #expect(Self.exists(fixture.stale.clone))
+        #expect(fixture.ideData(fixture.stale).allSatisfy(Self.exists))
+        #expect(report.removed.isEmpty)
+        #expect(report.kept.first { $0.mirror.hashDirectory == fixture.stale.hashDirectory }?.error == "terminate failed")
+        #expect(emptied == ["empty-host"])
+    }
+
+    @Test func hostEmptiedNamesOnlyAHostThePruneRemoved() throws {
+        let state = try Self.temporaryDirectory()
+        let stale = Self.opened.addingTimeInterval(-30 * Self.day)
+        _ = try Self.mirror(in: state, host: "p4linux", marker: stale)
+        let (beside, _) = try Self.mirror(in: state, host: "p4air", marker: stale)
+        try Data("x".utf8).write(to: beside.deletingLastPathComponent().appendingPathComponent(".DS_Store"))
+        var emptied: [String] = []
+        let request = RebasedMirrorCleanup.Request(stateDirectory: state, inUse: [], maxAgeDays: 7, dryRun: false, now: Self.opened)
+        _ = RebasedMirrorCleanup.prune(request, hooks: .init(hostEmptied: { emptied.append($0) }))
+        #expect(emptied == ["p4linux"])
+    }
+
+    @Test func aDryRunCallsNeitherHook() throws {
+        let fixture = try Self.pruneFixture()
+        var calls = 0
+        let hooks = RebasedMirrorCleanup.Hooks(beforeRemove: { _ in calls += 1 }, hostEmptied: { _ in calls += 1 })
+        _ = RebasedMirrorCleanup.prune(fixture.request(dryRun: true), hooks: hooks)
+        #expect(calls == 0)
+    }
+
     @Test func theLastMirrorOfAHostTakesTheHostAndAnotherFileKeepsIt() throws {
         let state = try Self.temporaryDirectory()
         let stale = Self.opened.addingTimeInterval(-30 * Self.day)

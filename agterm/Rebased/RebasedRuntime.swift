@@ -58,7 +58,7 @@ struct JNIRebasedRuntime: RebasedRuntime {
         let install = try RebasedInstall(bundlePath: appPath, stateDirectory: stateDirectory.path, product: product,
                                          vmOptions: vmOptions, agtermVmOptions: agtermVmOptions,
                                          runtimeRelease: input("Contents/jbr/Contents/Home/release"))
-        _ = try RebasedPluginBuilder(appBundle: app, ideRoot: ideRoot).build(buildNumber: install.buildNumber)
+        _ = try RebasedPluginBuilder(appBundle: app, ideRoot: ideRoot, pluginClassPaths: product.pluginClassPaths).build(buildNumber: install.buildNumber)
         return RebasedLaunch(libjvm: app.appendingPathComponent("Contents/jbr/Contents/Home/lib/server/libjvm.dylib").path,
                              options: install.jvmOptions, mainClass: install.mainClass)
     }

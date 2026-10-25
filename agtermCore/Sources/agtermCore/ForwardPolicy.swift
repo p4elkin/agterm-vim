@@ -66,8 +66,6 @@ public enum ForwardPolicy {
         case .refused(let reason): return .refused(reason)
         case .routed:
             switch request.cmd {
-            case .sessionOverlayOpen where request.args?.rebased == true && request.args?.onClose != nil:
-                return .refused("--on-close works on a local row only")
             // the page is a file the Mac would read from its own disk
             case .sessionOverlayOpen where request.args?.html != nil:
                 return .refused("an --html page is a file on the origin; use --url")

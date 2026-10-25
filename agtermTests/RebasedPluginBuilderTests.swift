@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import agtermCore
 @testable import agterm
 
 final class RebasedPluginBuilderTests: XCTestCase {
@@ -221,5 +222,128 @@ final class RebasedPluginBuilderTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: changed.jar), bytes)
         try (text + "\n// source digest fixture\n").write(to: java, atomically: true, encoding: .utf8)
         XCTAssertFalse(try builder.build(buildNumber: "fixture-build").rebuilt)
+    }
+
+    func testTheSourceDigestCoversEveryMetaInfFile() throws {
+        let app = try installedApp()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-meta-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try copiedSource(into: root)
+        let builder = RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("state/rebased"), sourceDirectory: source)
+        let first = try builder.build(buildNumber: "fixture-meta")
+        let descriptor = source.appendingPathComponent("res/META-INF/agterm-maven.xml")
+        try (String(contentsOf: descriptor, encoding: .utf8) + "<!-- digest fixture -->\n").write(to: descriptor, atomically: true, encoding: .utf8)
+        let changed = try builder.build(buildNumber: "fixture-meta")
+        XCTAssertTrue(changed.rebuilt)
+        XCTAssertNotEqual(changed.key, first.key)
+    }
+
+    func testWithoutAMavenPluginTheBridgeBuildsWithoutTheMavenHook() throws {
+        let app = try installedApp()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-nomaven-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let builder = RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("rebased"),
+                                           pluginClassPaths: ["Git4Idea": ["plugins/vcs-git/lib/vcs-git.jar"]])
+        try assertNoMavenHook(builder.build(buildNumber: "fixture-nomaven").jar, root: root)
+    }
+
+    func testAFailedMavenCompileBuildsTheBridgeWithoutTheMavenHook() throws {
+        let app = try installedApp()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-badmaven-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let builder = RebasedPluginBuilder(appBundle: app, ideRoot: root.appendingPathComponent("rebased"),
+                                           pluginClassPaths: ["org.jetbrains.idea.maven": ["plugins/missing/lib/none.jar"]])
+        try assertNoMavenHook(builder.build(buildNumber: "fixture-badmaven").jar, root: root)
+        XCTAssertTrue(try builder.build(buildNumber: "fixture-badmaven").rebuilt, "a failed Maven compile is retried at the next build")
+    }
+
+    func testGainingAMavenPluginRebuildsTheJarWithTheHook() throws {
+        let idea = URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app")
+        let info = idea.appendingPathComponent("Contents/Resources/product-info.json")
+        guard FileManager.default.fileExists(atPath: info.path) else { throw XCTSkip("IntelliJ IDEA is not installed") }
+        let product = try RebasedProduct(bundlePath: idea.path, productInfo: .init(path: info.path, contents: String(contentsOf: info, encoding: .utf8)))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-gain-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let ideRoot = root.appendingPathComponent("rebased")
+        try assertNoMavenHook(RebasedPluginBuilder(appBundle: idea, ideRoot: ideRoot).build(buildNumber: "fixture-gain").jar, root: root)
+        let built = try RebasedPluginBuilder(appBundle: idea, ideRoot: ideRoot, pluginClassPaths: product.pluginClassPaths)
+            .build(buildNumber: "fixture-gain")
+        XCTAssertTrue(built.rebuilt)
+        let listing = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-Z1", built.jar.path], root: root)
+        XCTAssertTrue(listing.contains("agterm/rebased/maven/MirrorMaven.class"), listing)
+    }
+
+    func testIdeaGetsTheMavenHookThatMapsAMirrorToItsHostsM2Copy() throws {
+        let idea = URL(fileURLWithPath: "/Applications/IntelliJ IDEA.app")
+        let info = idea.appendingPathComponent("Contents/Resources/product-info.json")
+        guard FileManager.default.fileExists(atPath: info.path) else { throw XCTSkip("IntelliJ IDEA is not installed") }
+        let product = try RebasedProduct(bundlePath: idea.path, productInfo: .init(path: info.path, contents: String(contentsOf: info, encoding: .utf8)))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebased-builder-maven-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let built = try RebasedPluginBuilder(appBundle: idea, ideRoot: root.appendingPathComponent("rebased"),
+                                             pluginClassPaths: product.pluginClassPaths).build(buildNumber: "fixture-maven")
+        let listing = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-Z1", built.jar.path], root: root)
+        XCTAssertTrue(listing.contains("agterm/rebased/maven/MirrorMaven.class"), listing)
+        XCTAssertTrue(listing.contains("META-INF/agterm-maven.xml"), listing)
+        let descriptor = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-p", built.jar.path, "META-INF/plugin.xml"], root: root)
+        XCTAssertTrue(descriptor.contains(#"<depends optional="true" config-file="agterm-maven.xml">org.jetbrains.idea.maven</depends>"#), descriptor)
+
+        let mirrors = root.appendingPathComponent("state/rebased/mirrors")
+        let project = mirrors.appendingPathComponent("p4linux/abc123/repo")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("state/rebased/mirrors2/p4linux/abc123/repo"),
+                                                withIntermediateDirectories: true)
+        let unsynced = mirrors.appendingPathComponent("p4air/def456/repo")
+        try FileManager.default.createDirectory(at: unsynced, withIntermediateDirectories: true)
+        let m2 = root.appendingPathComponent("state/rebased/m2")
+        try FileManager.default.createDirectory(at: m2.appendingPathComponent("p4linux"), withIntermediateDirectories: true)
+        let realMirrors = try XCTUnwrap(realpath(mirrors.path, nil).map { String(cString: $0) })
+        let source = root.appendingPathComponent("MirrorMavenContracts.java")
+        try """
+        package agterm.rebased.maven;
+
+        public final class MirrorMavenContracts {
+          public static void main(String[] args) {
+            String mirrors = args[0], m2 = args[3];
+            assert (m2 + "/p4linux/repository").equals(MirrorMaven.repositoryFor(args[1], mirrors, m2)) : MirrorMaven.repositoryFor(args[1], mirrors, m2);
+            assert MirrorMaven.repositoryFor(args[4], mirrors, m2) == null : "a host never synced keeps its own repository";
+            assert MirrorMaven.repositoryFor(args[2], mirrors, m2) == null : "a sibling sharing the prefix is outside";
+            assert MirrorMaven.repositoryFor(mirrors, mirrors, m2) == null : "the mirrors root itself names no host";
+            assert MirrorMaven.repositoryFor("/elsewhere/repo", mirrors, m2) == null;
+            assert MirrorMaven.repositoryFor(args[1], null, m2) == null;
+            System.out.println("maven contracts passed");
+          }
+        }
+        """.write(to: source, atomically: true, encoding: .utf8)
+        let classes = root.appendingPathComponent("contract-classes")
+        try FileManager.default.createDirectory(at: classes, withIntermediateDirectories: true)
+        let contents = idea.appendingPathComponent("Contents")
+        let classpath = ([built.jar.path, contents.appendingPathComponent("lib/*").path]
+                         + (product.pluginClassPaths["org.jetbrains.idea.maven"] ?? []).map { contents.appendingPathComponent($0).path })
+            .joined(separator: ":")
+        let bin = contents.appendingPathComponent("jbr/Contents/Home/bin")
+        _ = try runJavaTool(bin.appendingPathComponent("javac"), arguments: ["--release", "21", "-cp", classpath, "-d", classes.path, source.path], root: root)
+        let output = try runJavaTool(bin.appendingPathComponent("java"),
+                                    arguments: ["-ea", "-cp", classes.path + ":" + classpath, "agterm.rebased.maven.MirrorMavenContracts",
+                                                realMirrors, project.path,
+                                                root.appendingPathComponent("state/rebased/mirrors2/p4linux/abc123/repo").path,
+                                                m2.path, unsynced.path], root: root)
+        XCTAssertTrue(output.contains("maven contracts passed"), output)
+    }
+
+    private func copiedSource(into root: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("source")
+        try FileManager.default.copyItem(at: XCTUnwrap(Bundle.main.url(forResource: "rebased", withExtension: nil)), to: source)
+        return source
+    }
+
+    private func assertNoMavenHook(_ jar: URL, root: URL, file: StaticString = #filePath, line: UInt = #line) throws {
+        let listing = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-Z1", jar.path], root: root)
+        XCTAssertTrue(listing.contains("agterm/rebased/Bridge.class"), listing, file: file, line: line)
+        XCTAssertFalse(listing.contains("agterm/rebased/maven/"), listing, file: file, line: line)
+        XCTAssertFalse(listing.contains("agterm-maven.xml"), listing, file: file, line: line)
+        let descriptor = try runJavaTool(URL(fileURLWithPath: "/usr/bin/unzip"), arguments: ["-p", jar.path, "META-INF/plugin.xml"], root: root)
+        XCTAssertFalse(descriptor.contains("org.jetbrains.idea.maven"), descriptor, file: file, line: line)
     }
 }

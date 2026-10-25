@@ -32,9 +32,16 @@ struct RebasedMirrorTests {
         #expect(directory != other.directory(top: "/home/s/repo", stateDirectory: state))
     }
 
+    @Test func theHashIsTheMirrorsHashDirectory() throws {
+        let mirror = try #require(RebasedMirror(host: "p4linux", path: "/home/s/repo"))
+        let directory = mirror.directory(top: "/home/s/repo", stateDirectory: URL(fileURLWithPath: "/state"))
+        #expect(directory.deletingLastPathComponent().lastPathComponent == RebasedMirror.hash("/home/s/repo"))
+        #expect(RebasedMirror.hash("/home/s/repo") == "21f3a68ef576b918")
+    }
+
     @Test func theRefreshTakesTheHostsBranchesRemoteBranchesTagsAndHead() throws {
         let mirror = try #require(RebasedMirror(host: "p4linux", path: "/home/s/repo"))
-        #expect(mirror.refreshCommands(top: "/home/s/repo", directory: "/m/repo") == [
+        #expect(mirror.refreshCommands(top: "/home/s/repo", directory: "/m/repo", synced: false).map(\.argv) == [
             ["/usr/bin/git", "init", "-q", "/m/repo"],
             ["/usr/bin/git", "-C", "/m/repo", "fetch", "-q", "--prune", "--force", "--update-head-ok", "p4linux:/home/s/repo",
              "+refs/heads/*:refs/heads/*", "+refs/remotes/*:refs/remotes/*", "+refs/tags/*:refs/tags/*",
@@ -42,6 +49,27 @@ struct RebasedMirrorTests {
             ["/usr/bin/git", "-C", "/m/repo", "checkout", "-q", "--force", "--detach", "refs/agterm/head"],
         ])
         #expect(RebasedMirror.environment["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes -o ConnectTimeout=10")
+    }
+
+    @Test func eachRefreshStepCarriesItsOwnTimeout() throws {
+        let mirror = try #require(RebasedMirror(host: "p4linux", path: "/home/s/repo"))
+        let plain = mirror.refreshCommands(top: "/home/s/repo", directory: "/m/repo", synced: false)
+        #expect(plain.map(\.timeout) == [30, 300, 300])
+        let synced = mirror.refreshCommands(top: "/home/s/repo", directory: "/m/repo", synced: true)
+        #expect(synced.map(\.timeout) == [30, 300, 30, 30])
+        #expect(synced.prefix(2) == plain.prefix(2))
+        #expect(synced.dropFirst(2).map(\.argv) == [
+            ["/usr/bin/git", "-C", "/m/repo", "update-ref", "--no-deref", "HEAD", "refs/agterm/head"],
+            ["/usr/bin/git", "-C", "/m/repo", "read-tree", "-m", "-i", "refs/agterm/head"],
+        ])
+        #expect(!synced.contains { $0.argv.contains("checkout") })
+    }
+
+    @Test(arguments: [("/home/s/repo/a/b.swift", "/m/repo/a/b.swift"), ("/home/s/repo", "/m/repo"),
+                      ("/home/s/repo/", "/m/repo"), ("/home/s/repo/a/../c", "/m/repo/c"),
+                      ("/home/s/repo2/a", nil), ("/home/s/other", nil), ("/home/s/repo/../x", nil), ("/", nil)])
+    func aHostPathMapsIntoTheMirrorOnlyUnderTheTop(_ hostPath: String, _ mapped: String?) {
+        #expect(RebasedMirror.mirrorPath(hostPath: hostPath, top: "/home/s/repo", directory: "/m/repo") == mapped)
     }
 
     @Test(arguments: [("p4linux", "/home/s/repo", true), ("p4linux", "/home/s/repo/sub", true),

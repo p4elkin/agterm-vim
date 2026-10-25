@@ -10,9 +10,9 @@ struct ForwardPolicyTests {
     }
 
     @Test(arguments: [false, true])
-    func aForwardedRebasedOpenCannotRunAnOriginChosenCallback(holdsJob: Bool) {
+    func aRebasedOpenWithAnOnCloseCallbackIsForwarded(holdsJob: Bool) {
         let request = ControlRequest(cmd: .sessionOverlayOpen, args: ControlArgs(rebased: true, onClose: "/bin/flush"))
-        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .refused("--on-close works on a local row only"))
+        #expect(ForwardPolicy.route(request, holdsJob: holdsJob) == .forwarded)
         let close = ControlRequest(cmd: .sessionOverlayClose, args: ControlArgs(overlay: UUID().uuidString))
         #expect(ForwardPolicy.route(close, holdsJob: holdsJob) == .forwarded)
     }

@@ -89,7 +89,8 @@ extension SocketClient {
         let days = max(0, Int((now.timeIntervalSince1970 - node.lastOpened) / 86400))
         let age = days == 1 ? "1 day" : "\(days) days"
         let marker = inUse ? "in use  " : ""
-        return "\(node.host)  \(node.source ?? "-")  \(age)  \(mirrorSize(node.bytes))  \(marker)\(node.directory)"
+        let sync = node.sync.map { "sync \($0.state)" + ($0.error.map { " (\($0))" } ?? "") + "  " } ?? ""
+        return "\(node.host)  \(node.source ?? "-")  \(age)  \(mirrorSize(node.bytes))  \(sync)\(marker)\(node.directory)"
     }
 
     /// Decimal units spelled by hand: `ByteCountFormatter` follows the locale, and a row should not.

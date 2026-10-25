@@ -111,10 +111,12 @@ In this fork, Rebased can cover the session or one pane (`--rebased --pane left|
 `session overlay hide|show|toggle` hides it like any other overlay.
 Save the open's `result.overlay` and `result.request`; close with `session overlay close --overlay ID` to avoid closing another holder.
 Read `rebasedOverlay`'s `pane`, `hidden`, `view` and armed `onClose`, and top-level `rebased` (including `rebased.port` once known).
-A view is ready at `view.state: opened`; a hidden view stays `queued`. Remote rows support commit diffs and panes,
-but refuse `--working-tree`, `--file`, `--project` and `--on-close`. Details are in [reference.md](reference.md).
-A remote row's repository is mirrored to the Mac first (its commits only); `rebased mirror list|prune`
-lists and removes those mirrors.
+A view is ready at `view.state: opened`; a hidden view stays `queued`. Remote rows support commit diffs, panes
+and `--on-close` (run on the row's host), and `--working-tree` and `--file` (a host path) when mutagen is on the Mac;
+they refuse `--project`. Details are in [reference.md](reference.md).
+A remote row's repository is mirrored to the Mac first, its working tree kept in sync by mutagen when installed;
+`rebased mirror list|prune` lists and removes those mirrors. A first open of a large repository can fail with
+`first sync of <host>:<top> is still copying; open again`: open again, without `--on-close`.
 The session-wide slot holds either a HUD or a program overlay. A program or page overlay can be
 hidden without closing it (`session overlay hide|show|toggle`, ⇧⌘J for the user): it keeps running and keeps
 its slot until it closes, so opening another there is refused. Separately, the app has one

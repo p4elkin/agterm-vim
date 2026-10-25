@@ -57,8 +57,29 @@ struct RebasedInstallTests {
             "-Didea.config.path=\(state)/rebased/config", "-Didea.system.path=\(state)/rebased/system",
             "-Didea.plugins.path=\(state)/rebased/plugins", "-Didea.log.path=\(state)/rebased/log",
             "-Dide.native.launcher=true", "-Dsun.java.command=com.intellij.idea.Main",
-            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"
+            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false",
+            "-Dagterm.rebased.mirrors=\(state)/rebased/mirrors", "-Dagterm.rebased.m2=\(state)/rebased/m2"
         ])
+    }
+
+    @Test func mirrorAndM2OptionsNameTheSymlinkResolvedStateDirectory() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("agterm-install-\(UUID().uuidString)")
+        let real = base.appendingPathComponent("real"), link = base.appendingPathComponent("link")
+        try fm.createDirectory(at: real, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: link, withDestinationURL: real)
+        defer { try? fm.removeItem(at: base) }
+        let resolved = RebasedInstall.realPath(real.path)
+        let install = try RebasedInstall(bundlePath: bundle, stateDirectory: link.path,
+                                         product: RebasedProduct(bundlePath: bundle, productInfo: .init(path: productPath, contents: product),
+                                                                 architecture: "aarch64"),
+                                         vmOptions: .init(path: optionsPath, contents: ""),
+                                         runtimeRelease: .init(path: releasePath, contents: "JAVA_VERSION=\"25\"\n"))
+        #expect(install.jvmOptions.suffix(2) == ["-Dagterm.rebased.mirrors=\(resolved)/rebased/mirrors",
+                                                 "-Dagterm.rebased.m2=\(resolved)/rebased/m2"])
+        #if os(macOS)
+        #expect(resolved.hasPrefix("/private/"))
+        #endif
     }
 
     @Test func ideaUsesItsLaunchOptionsPathAndProductRoot() throws {

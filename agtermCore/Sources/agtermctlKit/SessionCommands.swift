@@ -665,7 +665,10 @@ extension Session {
             @Flag(name: .long, help: "With --rebased --diff, compare tracked working-tree changes against the base.") var workingTree = false
             @Option(name: .long, help: "With --rebased, open FILE[:LINE] in the editor (excludes --diff).") var file: String?
             @Option(name: .long, help: "With --rebased, open exactly this project directory without searching for a git root.") var project: String?
-            @Option(name: .long, help: "With --rebased, run this shell command once when the overlay is released; hiding does not release it.") var onClose: String?
+            @Option(name: .long, help: """
+                With --rebased, run this shell command once when the overlay is released; hiding does not release it. \
+                On a remote row it runs on the row's host.
+                """) var onClose: String?
             @Option(name: .long, help: "With --rebased, show the changes of RANGE: A..B, A...B (from the merge base), or A (A..HEAD).") var diff: String?
             @Option(name: .long, help: """
                 Show this http or https URL instead of running COMMAND; links to its own origin load in place. \

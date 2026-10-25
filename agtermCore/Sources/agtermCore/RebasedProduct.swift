@@ -16,6 +16,8 @@ public struct RebasedProduct: Sendable {
     public let minRequiredJavaVersion: Int
     public let launch: Launch
     public let vmOptionsPath: String
+    /// `layout` entries of kind `plugin`: plugin id to class path, relative to `Contents`.
+    public let pluginClassPaths: [String: [String]]
 
     public init(bundlePath: String, productInfo: RebasedInstall.FileInput,
                 architecture: String = RebasedInstall.nativeArchitecture) throws {
@@ -40,6 +42,7 @@ public struct RebasedProduct: Sendable {
         self.launch = launch
         let launcherDirectory = URL(fileURLWithPath: bundlePath).appendingPathComponent("Contents/MacOS", isDirectory: true)
         vmOptionsPath = URL(fileURLWithPath: launch.vmOptionsFilePath, relativeTo: launcherDirectory).standardizedFileURL.path
+        pluginClassPaths = Dictionary((info.layout ?? []).filter { $0.kind == "plugin" }.map { ($0.name, $0.classPath ?? []) }) { first, _ in first }
     }
 
     public func ideRoot(stateDirectory: URL) -> URL {
@@ -53,5 +56,12 @@ public struct RebasedProduct: Sendable {
         let buildNumber: String
         let minRequiredJavaVersion: Int
         let launch: [Launch]
+        let layout: [LayoutEntry]?
+    }
+
+    private struct LayoutEntry: Decodable {
+        let name: String
+        let kind: String
+        let classPath: [String]?
     }
 }

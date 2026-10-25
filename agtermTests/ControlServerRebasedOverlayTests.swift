@@ -48,6 +48,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             done()
         }
         host.stateDirectory = stateDir
+        host.mirrorRefresh = { _, _, _ in .failure(.init(message: "no refresh in this test")) }
         host.install()
         RebasedHost.shared = host
     }
@@ -178,7 +179,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "opened")
     }
 
-    func testRemoteRowsRefuseLocalFlagsButStillOpenAndShowDiffs() throws {
+    func testWithoutMutagenRemoteRowsRefuseLocalFlagsButStillOpenAndShowDiffs() throws {
         let store = try XCTUnwrap(library.activeStore)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
         let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/repo", remoteHost: "remote"))
@@ -187,27 +188,61 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             ("working-tree", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedView: .diff(diff, workingTree: true))),
             ("file", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedView: .file(path: "/repo/a", line: 0))),
             ("project", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedProject: "/repo")),
-            ("on-close", .init(command: "", cwd: nil, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true, rebasedOnClose: "/bin/flush"))
         ]
         for (flag, options) in options {
+            let synced = ["working-tree", "file"].contains(flag)
             XCTAssertEqual(server.openSessionOverlay(session.id.uuidString, window: nil, options: options).error,
-                           "--\(flag) works on a local row only")
+                           synced ? "--\(flag) on a remote row needs mutagen on this Mac" : "--\(flag) works on a local row only")
             XCTAssertNil(session.rebasedPlacement)
         }
         let directory = stateDir.path
-        RebasedHost.shared.mirrorRefresh = { _, _ in .success(.init(directory: directory, source: "remote:/repo")) }
+        RebasedHost.shared.mirrorRefresh = { _, _, _ in .success(.init(directory: directory, source: "remote:/repo")) }
         let opened = server.openSessionOverlay(session.id.uuidString, window: nil,
             options: .init(command: "", cwd: "/repo", wait: false, sizePercent: nil, backgroundColor: nil, rebased: true,
                            rebasedView: .diff(diff, workingTree: false)))
         XCTAssertTrue(opened.ok, opened.error ?? "")
         frameOpened(session)
         XCTAssertEqual(server.showRebasedView(session.id.uuidString, window: nil, view: .diff(diff, workingTree: true)).error,
-                       "--working-tree works on a local row only")
+                       "--working-tree on a remote row needs mutagen on this Mac")
         XCTAssertEqual(server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/repo/a", line: 0)).error,
-                       "--file works on a local row only")
+                       "--file on a remote row needs mutagen on this Mac")
         let shown = server.showRebasedView(session.id.uuidString, window: nil, view: .diff(diff, workingTree: false))
         XCTAssertTrue(shown.ok, shown.error ?? "")
         XCTAssertNotEqual(shown.result?.request, opened.result?.request)
+    }
+
+    func testWithMutagenARemoteRowRefreshesForEveryViewAndSendsTheFileInsideTheMirror() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/repo", remoteHost: "remote"))
+        RebasedHost.shared.sync = RebasedMirrorRefresh.Sync(binary: { "/fake/mutagen" }, run: { _, _ in .init(status: 0, stdout: "[]", reason: "") })
+        let refreshes = Recorder<String>()
+        let directory = stateDir.path
+        RebasedHost.shared.mirrorRefresh = { mirror, _, _ in
+            refreshes.append(mirror.path)
+            return .success(.init(directory: directory, source: "remote:/repo"))
+        }
+        let opened = server.openSessionOverlay(session.id.uuidString, window: nil,
+            options: .init(command: "", cwd: "/repo", wait: false, sizePercent: nil, backgroundColor: nil, rebased: true,
+                           rebasedView: .diff(RebasedDiff(base: "A", head: "HEAD", mergeBase: false), workingTree: true)))
+        XCTAssertTrue(opened.ok, opened.error ?? "")
+        frameOpened(session)
+        XCTAssertEqual(refreshes.items.count, 1)
+
+        let shown = server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/repo/src/../a.kt", line: 3))
+        let request = try XCTUnwrap(shown.result?.request, shown.error ?? "")
+        XCTAssertEqual(refreshes.items.count, 2)
+        XCTAssertEqual(session.rebasedOverlay?.view?.view.target, "/repo/src/../a.kt")
+        XCTAssertEqual(runtime.calls.last, "openFile \(request)\t3\t\(RebasedHost.canonical(directory))/a.kt\t\(RebasedHost.canonical(directory))")
+        RebasedHost.shared.handle(event: "viewOpened", payload: "\(request)\tok")
+        XCTAssertEqual(session.rebasedOverlay?.view?.id, request)
+        XCTAssertEqual(session.rebasedOverlay?.view?.state, .opened)
+
+        let outside = server.showRebasedView(session.id.uuidString, window: nil, view: .file(path: "/repo2/a.kt", line: 1))
+        let refused = try XCTUnwrap(outside.result?.request)
+        XCTAssertEqual(session.rebasedOverlay?.view?.id, refused)
+        XCTAssertEqual(session.rebasedOverlay?.view?.state, .failed)
+        XCTAssertEqual(session.rebasedOverlay?.view?.detail, "--file /repo2/a.kt is outside remote:/repo")
     }
 
     func testPaneIDEHasNoProgramResultOrFontAndLeavesItsSiblingAddressable() throws {
@@ -646,5 +681,50 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(actions.toggleRebasedOverlay(session: session.id), .hidden)
         XCTAssertTrue(session.rebasedHidden)
         XCTAssertFalse(other.overlayActive)
+    }
+
+    func testARemoteOnCloseIsCapturedForTheHostAndRunsOnceAtRelease() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/repo", remoteHost: "remote"))
+        var commands: [RebasedOnClose] = []
+        RebasedHost.shared.runOnClose = { commands.append($0) }
+        var pending: [(@Sendable () -> Void, @MainActor @Sendable () -> Void)] = []
+        RebasedHost.shared.onMirrorQueue = { work, done in pending.append((work, done)) }
+        func open(cwd: String?) -> ControlResponse {
+            server.openSessionOverlay(session.id.uuidString, window: nil,
+                options: .init(command: "", cwd: cwd, wait: false, sizePercent: nil, backgroundColor: nil, rebased: true,
+                               rebasedOnClose: "flush --final"))
+        }
+        let fetching = open(cwd: nil)
+        XCTAssertTrue(fetching.ok, fetching.error ?? "")
+        XCTAssertEqual(session.rebasedOverlay?.state, .fetching)
+        XCTAssertEqual(session.rebasedOverlay?.onClose,
+                       RebasedOnClose(command: "flush --final", cwd: "/repo", environment: [:], host: "remote"))
+        XCTAssertEqual(open(cwd: nil).error, "a Rebased overlay is already open in this session; --on-close needs a new one")
+        XCTAssertTrue(server.closeSessionOverlay(session.id.uuidString, window: nil,
+                                                 overlay: try XCTUnwrap(session.rebasedOverlay?.id)).ok)
+        XCTAssertEqual(commands.map(\.host), ["remote"])
+        for (work, done) in pending {
+            work()
+            done()
+        }
+        XCTAssertEqual(commands.count, 1)
+
+        RebasedHost.shared.onMirrorQueue = { work, done in
+            work()
+            done()
+        }
+        let directory = stateDir.path
+        RebasedHost.shared.mirrorRefresh = { _, _, _ in .success(.init(directory: directory, source: "remote:/repo")) }
+        XCTAssertTrue(open(cwd: "/repo/sub").ok)
+        XCTAssertEqual(session.rebasedOverlay?.onClose?.cwd, "/repo/sub")
+        frameOpened(session)
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "hidden")
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertEqual(server.toggleRebasedOverlay(session.id.uuidString, window: nil).result?.text, "shown")
+        XCTAssertTrue(server.closeSessionOverlay(session.id.uuidString, window: nil,
+                                                 overlay: try XCTUnwrap(session.rebasedOverlay?.id)).ok)
+        XCTAssertEqual(commands.map(\.cwd), ["/repo", "/repo/sub"])
     }
 }

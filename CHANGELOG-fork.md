@@ -44,7 +44,13 @@ publishes an empty body with only a warning on stderr.
 
 - `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
   sessions to another window, or to a new one, keeping both panes of each row running through zmx.
-
+- A live review in the IDE now works for an agent on a remote row. With mutagen installed on the Mac
+  (`brew install mutagen`, then `mutagen daemon register` once), the mirror keeps the host's working tree in
+  sync, read-only on the Mac, so `--working-tree` diffs and `--file PATH[:LINE]` (a host path) work there. The
+  host's `~/.m2/repository` is synced too, and IntelliJ IDEA's Maven uses that copy, so a Maven project
+  resolves the same jars as on the host. `--on-close` on a remote row runs on the host, in `--cwd`.
+  `rebased mirror list` shows each mirror's `sync` state; a prune ends the mirror's sync session and keeps the
+  `~/.m2` copy. Without mutagen a remote row works as before, and those flags say mutagen is needed.
 - Rebased can cover one split pane for a live review, leaving the other terminal usable.
   Open commit or tracked working-tree diffs, files at a line, or an exact project folder.
   `session rebased show` updates the view; close-by-overlay-id protects another review from a stale close.

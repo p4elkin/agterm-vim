@@ -28,4 +28,22 @@ final class RebasedOnCloseRunnerTests: XCTestCase {
         XCTAssertEqual(messages.count, 1)
         XCTAssertTrue(messages[0].contains("failed to spawn"))
     }
+
+    func testAHostCallbackSpawnsSshWithTheAppsEnvironmentAndNoDirectory() throws {
+        let captured = RebasedOnClose(command: "flush --final", cwd: "/home/u/repo", environment: ["X": "mac"], host: "p4linux")
+        var launches: [RebasedOnCloseRunner.Launch] = []
+        XCTAssertTrue(RebasedOnCloseRunner.run(captured, spawn: { launches.append($0) }))
+        let launch = try XCTUnwrap(launches.first)
+        XCTAssertEqual(launch.argv, try XCTUnwrap(captured.remoteArgv))
+        XCTAssertNil(launch.cwd)
+        XCTAssertEqual(launch.environment["HOME"], ProcessInfo.processInfo.environment["HOME"])
+        XCTAssertEqual(launch.environment["SSH_AUTH_SOCK"], ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"])
+        XCTAssertNil(launch.environment["X"])
+    }
+
+    func testALocalCallbackStillRunsTheShellInItsCapturedDirectory() {
+        let captured = RebasedOnClose(command: "true", cwd: "/tmp", environment: ["X": "mac"])
+        XCTAssertEqual(RebasedOnCloseRunner.launch(for: captured),
+                       .init(argv: ["/bin/sh", "-c", "true"], cwd: "/tmp", environment: ["X": "mac"]))
+    }
 }

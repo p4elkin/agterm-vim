@@ -134,10 +134,23 @@ public struct RebasedOnClose: Equatable, Sendable {
     public let command: String
     public let cwd: String
     public let environment: [String: String]
+    /// The remote row's ssh host: the command runs there, in `cwd` on that host.
+    public let host: String?
 
-    public init(command: String, cwd: String, environment: [String: String]) {
+    public init(command: String, cwd: String, environment: [String: String], host: String? = nil) {
         self.command = command
         self.cwd = cwd
         self.environment = environment
+        self.host = host
+    }
+
+    /// sshd runs the remote command through the account's shell; `exec` hands the script to that user's login
+    /// shell as its `-c` script, as a local callback reaches `/bin/sh -c`.
+    public var remoteArgv: [String]? {
+        guard let host else { return nil }
+        // `cd … && command` would bind only to the first item of a list, running the rest in `$HOME`
+        let script = "cd " + CommandRestore.shellQuotedLine([cwd]) + " || exit\n" + command
+        return ["/usr/bin/ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", host,
+                #"exec "${SHELL:-/bin/sh}" -l -c "# + CommandRestore.shellQuotedLine([script])]
     }
 }

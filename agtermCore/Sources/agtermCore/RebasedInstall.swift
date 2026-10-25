@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 public struct RebasedInstall: Sendable {
     public struct FileInput: Sendable {
@@ -66,6 +71,7 @@ public struct RebasedInstall: Sendable {
         mainClass = launch.mainClass
         let root = product.ideRoot(stateDirectory: URL(fileURLWithPath: stateDirectory)).path
         let lib = URL(fileURLWithPath: bundlePath).appendingPathComponent("Contents/lib")
+        let resolvedState = Self.realPath(stateDirectory)
         let classPath = launch.bootClassPathJarNames.map { lib.appendingPathComponent($0).path }.joined(separator: ":")
         let hostOptions = [
             "-XX:ErrorFile=\(root)/log/java_error_in_agterm_%p.log",
@@ -74,7 +80,9 @@ public struct RebasedInstall: Sendable {
             "-Didea.config.path=\(root)/config", "-Didea.system.path=\(root)/system",
             "-Didea.plugins.path=\(root)/plugins", "-Didea.log.path=\(root)/log",
             "-Dide.native.launcher=true", "-Dsun.java.command=\(launch.mainClass)",
-            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false"
+            "-DjbScreenMenuBar.enabled=false", "-Dapple.laf.useScreenMenuBar=false",
+            // resolved, as the IDE sees a mirror project's path (`MirrorMaven`)
+            "-Dagterm.rebased.mirrors=\(resolvedState)/rebased/mirrors", "-Dagterm.rebased.m2=\(resolvedState)/rebased/m2"
         ]
         let options = Self.options(optionsText) + launch.additionalJvmArguments + Self.options(agtermVmOptions ?? "") + hostOptions
         jvmOptions = options.map { $0.replacingOccurrences(of: "$APP_PACKAGE", with: bundlePath)
@@ -83,6 +91,13 @@ public struct RebasedInstall: Sendable {
 
     public static func pluginCacheKey(buildNumber: String, sourceDigest: String) -> String {
         "\(buildNumber.utf8.count):\(buildNumber)\(sourceDigest.utf8.count):\(sourceDigest)"
+    }
+
+    /// `realpath(3)`: Foundation's `resolvingSymlinksInPath` strips `/private`, which the IDE's paths keep.
+    static func realPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return path }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     private static func options(_ text: String) -> [String] {

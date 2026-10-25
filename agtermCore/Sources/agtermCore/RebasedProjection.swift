@@ -67,9 +67,11 @@ public struct ControlRebasedMirrorNode: Codable, Sendable, Equatable {
     public let ideData: [String]?
     /// Why a prune kept a mirror it meant to remove.
     public let error: String?
+    /// The mirror's mutagen tree session; for a prune, as it was before the prune ended any session.
+    public let sync: ControlRebasedMirrorSync?
 
     public init(host: String, source: String? = nil, directory: String, lastOpened: Double, bytes: Int? = nil,
-                inUse: Bool, ideData: [String]? = nil, error: String? = nil) {
+                inUse: Bool, ideData: [String]? = nil, error: String? = nil, sync: ControlRebasedMirrorSync? = nil) {
         self.host = host
         self.source = source
         self.directory = directory
@@ -77,6 +79,19 @@ public struct ControlRebasedMirrorNode: Codable, Sendable, Equatable {
         self.bytes = bytes
         self.inUse = inUse
         self.ideData = ideData
+        self.error = error
+        self.sync = sync
+    }
+}
+
+/// `state` is mutagen's status (`watching`, `scanning`, ...), `paused`, `none` (no session, or no mutagen on this Mac),
+/// or `unknown` with `error` when `mutagen sync list` failed.
+public struct ControlRebasedMirrorSync: Codable, Sendable, Equatable {
+    public let state: String
+    public let error: String?
+
+    public init(state: String, error: String? = nil) {
+        self.state = state
         self.error = error
     }
 }

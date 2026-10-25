@@ -121,10 +121,28 @@ public enum RebasedMirrorCleanup {
     /// Removes each mirror not in use and last opened at least `maxAgeDays` ago, its IDE entries first.
     /// A fresh mirror, and a stale one that vanishes or freshens before its delete, is left out of the report.
     public static func prune(_ request: Request) -> Report {
-        prune(request) { _ in }
+        prune(request, hooks: Hooks()) { _ in }
     }
 
-    static func prune(_ request: Request, beforeDelete: (RebasedMirrorRecord) -> Void) -> Report {
+    /// What a real prune runs besides the deletes; a dry run calls neither.
+    public struct Hooks {
+        /// Runs once a stale mirror is confirmed for removal, before anything of it is deleted; throwing keeps it.
+        public var beforeRemove: (RebasedMirrorRecord) throws -> Void
+        /// Runs with a `<host>` directory's name once the prune has removed that directory.
+        public var hostEmptied: (String) -> Void
+
+        public init(beforeRemove: @escaping (RebasedMirrorRecord) throws -> Void = { _ in },
+                    hostEmptied: @escaping (String) -> Void = { _ in }) {
+            self.beforeRemove = beforeRemove
+            self.hostEmptied = hostEmptied
+        }
+    }
+
+    public static func prune(_ request: Request, hooks: Hooks) -> Report {
+        prune(request, hooks: hooks) { _ in }
+    }
+
+    static func prune(_ request: Request, hooks: Hooks = Hooks(), beforeDelete: (RebasedMirrorRecord) -> Void) -> Report {
         let roots = Roots(request.stateDirectory)
         var removed: [Report.Entry] = []
         var kept: [Report.Entry] = []
@@ -144,6 +162,7 @@ public enum RebasedMirrorCleanup {
                       let again = lastOpened(hashDirectory: record.hashDirectory), request.isStale(again) else { continue }
                 let ideData = roots.ideEntries(of: record)
                 do {
+                    try hooks.beforeRemove(record)
                     for entry in ideData { try FileManager.default.removeItem(at: entry) }
                     try FileManager.default.removeItem(at: record.hashDirectory)
                     removed.append(.init(mirror: record, ideData: ideData, error: nil))
@@ -152,7 +171,7 @@ public enum RebasedMirrorCleanup {
                 }
             }
             // Never removeItem: it is recursive, and a host still holding a kept mirror or any other file must stay.
-            if !request.dryRun { _ = rmdir(host.path) }
+            if !request.dryRun, rmdir(host.path) == 0 { hooks.hostEmptied(host.lastPathComponent) }
         }
         return Report(removed: removed, kept: kept, dryRun: request.dryRun, olderThanDays: request.maxAgeDays)
     }
@@ -236,8 +255,10 @@ public struct RebasedMirrorRecord: Equatable, Sendable {
     public let lastOpened: Date
     public let bytes: Int64?
     public let inUse: Bool
+    public var sync: ControlRebasedMirrorSync?
 
-    public init(host: String, source: String?, clone: URL, hashDirectory: URL, lastOpened: Date, bytes: Int64?, inUse: Bool) {
+    public init(host: String, source: String?, clone: URL, hashDirectory: URL, lastOpened: Date, bytes: Int64?, inUse: Bool,
+                sync: ControlRebasedMirrorSync? = nil) {
         self.host = host
         self.source = source
         self.clone = clone
@@ -245,6 +266,21 @@ public struct RebasedMirrorRecord: Equatable, Sendable {
         self.lastOpened = lastOpened
         self.bytes = bytes
         self.inUse = inUse
+        self.sync = sync
+    }
+}
+
+extension RebasedMirrorCleanup.Report {
+    /// The same report with each entry's mirror carrying `state(mirror)`.
+    public func withSync(_ state: (RebasedMirrorRecord) -> ControlRebasedMirrorSync) -> Self {
+        func annotate(_ entries: [Entry]) -> [Entry] {
+            entries.map { entry in
+                var mirror = entry.mirror
+                mirror.sync = state(mirror)
+                return Entry(mirror: mirror, ideData: entry.ideData, error: entry.error)
+            }
+        }
+        return Self(removed: annotate(removed), kept: annotate(kept), dryRun: dryRun, olderThanDays: olderThanDays)
     }
 }
 
@@ -267,6 +303,6 @@ extension ControlRebasedMirrorNode {
     init(_ record: RebasedMirrorRecord, ideData: [String]? = nil, error: String? = nil) {
         self.init(host: record.host, source: record.source, directory: record.clone.path,
                   lastOpened: record.lastOpened.timeIntervalSince1970, bytes: record.bytes.map { Int(clamping: $0) },
-                  inUse: record.inUse, ideData: ideData, error: error)
+                  inUse: record.inUse, ideData: ideData, error: error, sync: record.sync)
     }
 }

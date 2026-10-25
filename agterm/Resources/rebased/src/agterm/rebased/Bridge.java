@@ -73,7 +73,7 @@ public final class Bridge implements BiFunction<String, String, String> {
     return "";
   }
 
-  static void log(String s) { System.err.println("[agterm-bridge] " + s); }
+  public static void log(String s) { System.err.println("[agterm-bridge] " + s); }
 
   static void install() {
     System.getProperties().put(PROPERTY, new Bridge());

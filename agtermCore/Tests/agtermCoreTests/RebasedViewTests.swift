@@ -127,4 +127,59 @@ struct RebasedViewTests {
         #expect(overlay.onClose?.cwd == "/repo")
         #expect(overlay.onClose?.environment == ["AGTERM_PANE": "left"])
     }
+
+    @Test func aHostCallbackRunsItsCommandOverSshInTheHostCwd() throws {
+        #expect(RebasedOnClose(command: "flush", cwd: "/repo", environment: [:]).remoteArgv == nil)
+        let onClose = RebasedOnClose(command: "flush --final", cwd: "/home/u/repo", environment: [:], host: "p4linux")
+        #expect(try #require(onClose.remoteArgv) == [
+            "/usr/bin/ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", "p4linux",
+            #"exec "${SHELL:-/bin/sh}" -l -c 'cd '\''/home/u/repo'\'' || exit"# + "\n" + "flush --final'",
+        ])
+    }
+
+    @Test func theRemoteCommandHandsTheInnerShellTheScriptUnchanged() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("agterm-onclose-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let record = dir.appendingPathComponent("args")
+        let shell = dir.appendingPathComponent("shell")
+        try "#!/bin/sh\nprintf '%s\\0' \"$@\" > '\(record.path)'\n".write(to: shell, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell.path)
+        let cwd = #"/home/u/it's "a" $HOME && b"#
+        let command = #"echo 'done' && printf "%s" "$PWD" && x=$(id -u); true # c"#
+        let onClose = RebasedOnClose(command: command, cwd: cwd, environment: [:], host: "p4linux")
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", try #require(onClose.remoteArgv?.last)]
+        proc.environment = ["SHELL": shell.path, "PATH": "/usr/bin:/bin"]
+        try proc.run()
+        proc.waitUntilExit()
+
+        #expect(proc.terminationStatus == 0)
+        let args = try String(contentsOf: record, encoding: .utf8).split(separator: "\0", omittingEmptySubsequences: false).dropLast().map(String.init)
+        #expect(args == ["-l", "-c", #"cd '/home/u/it'\''s "a" $HOME && b' || exit"# + "\n" + command])
+    }
+
+    @Test func aMissingRemoteCwdRunsNoPartOfTheCommand() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("agterm-onclose-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let marker = dir.appendingPathComponent("marker").path
+        let onClose = RebasedOnClose(command: "true; touch '\(marker)'", cwd: dir.appendingPathComponent("gone").path,
+                                     environment: [:], host: "p4linux")
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", try #require(onClose.remoteArgv?.last)]
+        proc.environment = ["SHELL": "/bin/sh", "PATH": "/usr/bin:/bin"]
+        proc.standardError = Pipe()
+        try proc.run()
+        proc.waitUntilExit()
+
+        #expect(proc.terminationStatus != 0)
+        #expect(!fm.fileExists(atPath: marker))
+    }
 }

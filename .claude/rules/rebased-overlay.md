@@ -80,7 +80,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - `RebasedInstall` builds options in order: bundle vmoptions, launch entry's `additionalJvmArguments`,
   the product root's optional `config/idea.vmoptions`, then host-owned options.
   The last group owns error/heap-dump paths, class path, the four `idea.*.path` properties,
-  native-launcher properties and both screen-menu flags; user tuning cannot redirect isolated state.
+  native-launcher properties, both screen-menu flags, and `agterm.rebased.mirrors` and `agterm.rebased.m2`
+  (symlink-resolved, for the bridge's Maven hook); user tuning cannot redirect isolated state.
   Repeated options are preserved, including `--add-opens`.
 - Six IDE-root consumers: `RebasedInstall`, `JNIRebasedRuntime.prepare`, `RebasedPluginBuilder`,
   `RebasedMirrorCleanup` (legacy Rebased `system` only), `RebasedSeed`, and the agterm vmoptions read in `prepare`.
@@ -116,6 +117,17 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - `agterm/Resources/rebased/` is compiled at first start with the bundle's own `javac` (JBR ships no `jar`
   tool, so `/usr/bin/zip -r -X` packs it) into the product root's `plugins/agterm-bridge`, keyed by build
   number and source digest.
+- `src/agterm/rebased/maven/` compiles in a second `javac` step against the product's Maven and Java plugin
+  class paths (`RebasedProduct.pluginClassPaths`, from `product-info.json` `layout`), and registers through an
+  optional `<depends>` on `org.jetbrains.idea.maven` (`agterm-maven.xml`). Without a Maven plugin, or when that
+  step fails, the bridge builds without the hook; the stamp then ends in `-nomaven`, so the next start retries.
+  The source digest covers those class paths.
+- `MirrorMaven`, a project activity, sets the Maven local repository override of a project under
+  `agterm.rebased.mirrors/<host>/` to `agterm.rebased.m2/<host>/repository`, so it wins over `settings.xml`.
+  Only once `m2/<host>/` exists, which a synced refresh creates before the m2 create, so without mutagen the IDE
+  keeps its own repository. Not `repository` itself: mutagen makes it when the first copy lands, after the open.
+  A fresh project's first link swaps in a new settings object after the activity, so it re-applies on
+  `activated()` and `projectImportCompleted()`, forcing one more import each time, at most 3 times.
 - The plugin publishes a `BiFunction` under the system property `agterm.rebased.bridge`. The host calls it
   for `open`, `hide`, `show`, `diff`, `openFile`, `port` and `saveAll`, and registers the native
   `hostEvent` on its class, then calls `hello`; the plugin queues events until then.
@@ -237,6 +249,10 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   frame close to one release.
   `removeEntry` succeeds once before `RebasedOnCloseRunner` starts detached `/bin/sh -c` with null stdio.
   Spawn failures are logged; no caller waits for command completion.
+- On a remote row the capture keeps the host (`RebasedOnClose.host`) and the host's cwd, and the runner spawns
+  `ssh -o BatchMode=yes -- <host>` running the login shell on `cd <cwd> || exit` and the command, with this
+  app's environment and no local cwd. `|| exit` with a newline, not `&&`, so a missing cwd never runs the
+  rest of a command list in `$HOME`.
 - Soft close retains the callback through undo and releases at finalize.
   Hide, hand-back, swap and promotion never release; confirmed quit drains entries before later
   finalize can repeat them.
@@ -247,7 +263,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 
 - The IDE reads only this Mac's disk, so a remote row (`Session.remoteHost`) opens a `RebasedMirror` (core):
   a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, remote-tracking branches, tags and HEAD,
-  detached. Uncommitted work on the host is not in it, and edits made in the IDE never reach the host.
+  detached. With mutagen on this Mac its working tree is synced from the host (Synced mirrors below);
+  without it, uncommitted work on the host is not in it. Edits made in the IDE never reach the host.
 - `--cwd` (or the row's cwd) is the host's path. `RebasedMirrorRefresh` asks the host for its repository top
   over ssh (`git upload-pack` does not look upward), then `git fetch`es over ssh with `BatchMode`, off the
   main actor. The slot reads `fetching` with `source: host:path` until it lands, then opens on the mirror.
@@ -258,7 +275,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - Every job that writes under `mirrors/` runs on `RebasedHost`'s one serial mirror queue: each refresh, the
   start prune, each on-demand prune (dry run included) and each marker touch.
   So two rows on one repository never fetch into one directory at once, and a second row's open or a prune
-  waits behind a running refresh, about 15 minutes at worst (a 30 s ssh query plus three 300 s git steps).
+  waits behind a running refresh. Each step carries its own timeout (`RebasedMirror.RefreshStep`): at worst
+  660 s unsynced and 870 s synced (the git steps, then list, terminate, two creates, a 240 s flush and a list).
   Nothing on the main actor may wait on the queue: a prune job reads its in-use snapshot from main.
 - `RebasedMirrorRefresh` writes `<hash>/mirror.json` (`RebasedMirrorMarker`) before the first git step and
   after the last, so a fetch that fails mid-way still counts as an open; an unreachable host writes neither.
@@ -286,15 +304,54 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   and is refused while another instance holds it; a list and a dry run never take it.
 - `rebasedMirrorMaxAgeDays` (see [[settings]]) is the age the start prune and a bare prune use.
 - The headless origin forwards `--rebased`, `session.rebased.show`, `session.rebased.toggle` and
-  close-by-overlay-id to the presenting Mac.
-  A forwarded open carrying `--on-close` is refused before any Mac command can run.
-- Remote rows refuse `--working-tree`, `--file`, `--project` and `--on-close` on open, and the view
-  flags on show,
-  with `--<flag> works on a local row only`; commit diffs and `--pane` remain available.
+  close-by-overlay-id to the presenting Mac, `--on-close` included; the Mac runs it on the row's host.
+- Remote rows refuse `--project` with `--project works on a local row only`. Without mutagen they also refuse
+  `--working-tree` and `--file`, on open and on show, with `--<flag> on a remote row needs mutagen on this Mac`.
+- A remote `--file` names the host path. The model and `view.target` keep it; `sendView` maps it into the
+  mirror (`RebasedMirror.mirrorPath`), and a path outside the repository top fails the view with
+  `--file <path> is outside <host>:<top>`.
+
 - `site/commands.html` does not list it: fork-only commands stay off the upstream site, as for `zmx.new`.
 - `rebasedAppPath` (see [[settings]]) names the bundle, default `/Applications/Rebased.app`.
   Settings > General > IDE app can name `/Applications/IntelliJ IDEA.app`; changes apply after restarting agterm.
   A running JVM keeps its product.
+
+#### Synced mirrors
+
+- `RebasedMirrorSync` (core) builds every mutagen argv and parses `sync list`; the app runs them on the mirror
+  queue through `RebasedHost.sync`, a binary lookup (`/opt/homebrew/bin`, then `/usr/local/bin`, one `stat` per
+  use) plus a runner. Only `configure` installs the real one; the default finds no binary, so tests never
+  reach mutagen.
+- Mutagen's daemon is shared by the live app and every Debug instance. Sessions are told apart by the label
+  `agterm-state=<RebasedMirror.hash of the resolved state dir>` and by name: tree
+  `agterm-<state>-<hosthash>-<hash>`, m2 `agterm-<state>-m2-<hosthash>`, labelled `agterm-kind=tree|m2`.
+  A label value cannot hold `@`, so no label carries a host.
+- Tree session: `<host>:<top>` into the clone, `one-way-replica`, `--ignore-vcs`, ignoring `.idea/`,
+  `node_modules/` and `**/target/*` except `generated-sources` and `generated-test-sources`, beta modes
+  `0444`/`0755`, `--no-global-configuration`. Mutagen sets `0444` only on files it writes, so before the
+  create the refresh removes the write bits from a mirror first made without mutagen.
+- m2 session: `<host>:.m2/repository` into `<stateDir>/rebased/m2/<host>/repository`, `one-way-safe`.
+  The refresh makes `m2/<host>/` first: create does not make the beta's parent, and every cycle then fails
+  quietly. A failed m2 create is logged and retried at the next refresh. A path written on both sides is a
+  conflict that keeps the Mac's copy, so after each flush the refresh deletes each conflict root under the
+  copy and the host's file arrives on the next cycle.
+- A synced refresh fetches, moves HEAD with `update-ref` and the index with `read-tree -m -i` (plain `-m`
+  refuses `not uptodate` once mutagen changed a file), then lists, terminates a halted session, resumes a
+  paused one or creates a missing one, flushes the tree session and lists again.
+- `flush` exits 0 while a cycle cannot apply anything; the problem shows only in `transitionProblems` or
+  `scanProblems`. So the second list decides: a root problem (empty `path`) or no file arriving fails the open;
+  per-file problems (an absolute symlink, a case collision) are logged.
+- A flush that times out before the first copy finishes fails the open with
+  `first sync of <host>:<top> is still copying; open again`; the session keeps copying. Opening again reuses
+  the failed holder, back to `fetching`, and its first `--on-close` stays armed.
+- A prune lists the sessions only when it has a mirror to remove or report. It terminates a mirror's tree
+  session before removing the clone, and a failed list or terminate keeps the mirror. With the host's last
+  mirror gone it ends the m2 session and keeps the copy: agterm never deletes `m2/`.
+- The sweep runs once per process, queued after the start prune, so `launch` never waits on it. It ends tree
+  sessions whose `<hash>/mirror.json` is gone (mutagen rebuilds a deleted beta root, so the beta path is no
+  sign) and m2 sessions with no `mirrors/<host>`.
+- `rebased mirror list` and `prune` report each mirror's tree session as `sync: {state, error?}` (see
+  [[control-api]]).
 
 ### Risks accepted
 
@@ -308,6 +365,10 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   start or a refresh in that time fails, and closing the overlay and opening it again recovers.
 - An open while the host is unreachable does not freshen the mirror's marker; at worst a prune removes it and
   the next open re-clones.
+- After `brew upgrade mutagen` the new CLI can refuse the older running daemon, failing every synced open
+  until the daemon restarts: `mutagen daemon stop`, and the registered launchd agent starts it again.
+- A mutagen daemon started by agterm would live in agterm's process coalition; register it as a launchd agent
+  (`mutagen daemon register`) instead.
 
 - A HUD over a pane IDE sits under that child window; hiding the IDE for every status toast would
   blank the review.
