@@ -605,22 +605,22 @@ depends: 1, 2
 - Create: `agtermCore/Sources/agtermCore/WindowLibrary+SessionRecency.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/WindowLibraryAppRecencyTests.swift`
 
-- [ ] write failing tests for visits: two windows; a selection in the frontmost window enters `appRecency`; a
+- [x] write failing tests for visits: two windows; a selection in the frontmost window enters `appRecency`; a
       selection in the other window does not, while that window's `sessionRecency` does; after `frontmostWindowID`
       changes, the other window's selections count; with a 20 s dwell, a selection whose window stops being frontmost
       before `flush()` is not taken
-- [ ] write failing tests for the close reselection: closing the active session in the frontmost window puts the
+- [x] write failing tests for the close reselection: closing the active session in the frontmost window puts the
       reselected session into `appRecency` (with a 20 s dwell only after `flush()`); the same close in a background
       window does not
-- [ ] write failing tests for removal: closing a session removes it; `removeWindow` of an open window removes all its
+- [x] write failing tests for removal: closing a session removes it; `removeWindow` of an open window removes all its
       sessions; `removeWindow` of a closed window removes the sessions read from its file; `closeWindow` keeps them
-- [ ] write failing tests for launch: no file, two open windows, frontmost `B`: the list is `B`'s
+- [x] write failing tests for launch: no file, two open windows, frontmost `B`: the list is `B`'s
       `sessionRecency.items` then `A`'s; a second `WindowLibrary` on the same directory loads the saved order and does
       not seed again; a relaunch does not move any window's restored selection to the front
-- [ ] add the stored property, the init and seed lines, the `makeStore` split and the `removeWindow` line in
+- [x] add the stored property, the init and seed lines, the `makeStore` split and the `removeWindow` line in
       `WindowLibrary.swift`; put `wireAppRecency` and `seedAppRecencyIfFresh` in the new extension file
-- [ ] confirm `WindowLibraryTests` and `WindowLibraryTransferTests` still pass
-- [ ] the Check below passes
+- [x] confirm `WindowLibraryTests` and `WindowLibraryTransferTests` still pass
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "WindowLibraryAppRecencyTests|WindowLibraryTests|WindowLibraryTransferTests"'`
 
