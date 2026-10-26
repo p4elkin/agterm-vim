@@ -128,15 +128,8 @@ final class ZmxLiveUITests: ControlAPITestCase {
         XCTAssertTrue(poll(until: self.paneDaemons(of: sessionID).map(\.clients) == [1, 1], timeout: 20))
         let before = paneDaemons(of: sessionID)
         XCTAssertEqual(before.map(\.daemon), daemons)
-        let sourceTree = sessionIDs(window: source)
         let destinationTree = sessionIDs(window: destination)
-        let lastWorkspace = try XCTUnwrap(workspaces(window: destination).first?["id"] as? String)
-
-        let refused = try sendControlCommand("workspace.move", target: lastWorkspace,
-                                             args: ["window": destination, "toWindow": source])
-        XCTAssertEqual(refused["error"] as? String, "last workspace in window")
-        XCTAssertEqual(sessionIDs(window: source), sourceTree)
-        XCTAssertEqual(sessionIDs(window: destination), destinationTree)
+        let destinationDefault = try XCTUnwrap(workspaces(window: destination).first?["id"] as? String)
 
         let response = try sendControlCommand("workspace.move", target: moved, args: ["window": source, "toWindow": destination])
         XCTAssertEqual(response["ok"] as? Bool, true, "\(response)")
@@ -153,6 +146,21 @@ final class ZmxLiveUITests: ControlAPITestCase {
         XCTAssertEqual(after.map(\.leaderPID), before.map(\.leaderPID), "the same daemons, not new ones")
         XCTAssertTrue(before.allSatisfy { $0.leaderPID != nil })
         XCTAssertEqual(try ["left", "right"].map { try XCTUnwrap(paneID(sessionID, kind: $0, window: destination)) }, panes)
+
+        // back again as `dest`'s last workspace: the move deletes the emptied window and keeps both daemons
+        let deleted = try sendControlCommand("workspace.delete", target: destinationDefault, args: ["window": destination])
+        XCTAssertEqual(deleted["ok"] as? Bool, true, "\(deleted)")
+        let back = try sendControlCommand("workspace.move", target: moved, args: ["window": destination, "toWindow": source])
+        XCTAssertEqual(back["ok"] as? Bool, true, "\(back)")
+        let listed = try sendControlCommand("window.list")["result"] as? [String: Any]
+        let ids = ((listed?["windows"] as? [[String: Any]]) ?? []).compactMap { ($0["id"] as? String)?.uppercased() }
+        XCTAssertFalse(ids.contains(destination.uppercased()), "the emptied window is deleted: \(ids)")
+        let returned = poll(until: self.paneDaemons(of: sessionID).map { "\($0.clients ?? 0) \($0.windowID?.uppercased() ?? "")" }
+            == Array(repeating: "1 \(source.uppercased())", count: 2), timeout: 20)
+        let home = paneDaemons(of: sessionID)
+        XCTAssertTrue(returned, "each daemon should get one client back in the source window: \(home)")
+        XCTAssertEqual(home.map(\.leaderPID), before.map(\.leaderPID), "still the same daemons")
+        XCTAssertTrue(sessionIDs(window: source).contains(sessionID.uppercased()))
     }
 
     private struct PaneDaemon: CustomStringConvertible {
