@@ -1380,9 +1380,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ⚠️ The Ctrl-Tab switcher and `dashboard --mru` are NOT the same list and must not be cited as matching
   it: the switcher keeps the active session at index 0, and `dashboard --mru` reads raw `recentSessions`,
   every workspace and the active session included.
-- The bundled skill counts fourteen read-only top-level tree fields, every `ControlTree` property but
+- `appSessionRecency` (fork only) is the app-wide visit order, `{session, window}` objects most recent first,
+  read from `WindowLibrary.appRecency` by `controlAppSessionRecency()`. A visit is a recency push made while
+  its window is frontmost, so a background window's script select or close reselection never counts.
+  Only sessions in an OPEN window appear, each filtered by its own window's `navigableSessions`, so it hides
+  what each window's `sessionRecency` hides; the active window's active session is dropped, other windows'
+  selected sessions stay. App-wide like `app`: the same value whatever `--window` says. Omitted when empty.
+  Set by `ControlServer.controlTree(window:)` through `with(appSessionRecency:)`; `HeadlessActions.controlTree`
+  and the remote window projection never produce it. Design and persistence: [[windows]].
+- The bundled skill counts twenty-three read-only top-level tree fields, every `ControlTree` property but
   `workspaces`, pinned by `SkillInstallTests` against the type rather than against the prose.
-  It documents `sessionRecency` even though the field is fork-only, unlike a fork-only COMMAND
+  It documents `sessionRecency` and `appSessionRecency` even though the fields are fork-only, unlike a fork-only COMMAND
   (see [[overlay-redirect]]): a read-back field upstream lacks is simply absent from that user's tree,
   where a documented command upstream lacks breaks a call the skill told them to make.
   `site/commands.html` still says seven and lists seven, and is left alone on this fork for upstream.

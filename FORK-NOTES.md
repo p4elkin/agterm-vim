@@ -109,6 +109,10 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 
 **Control API and tooling**
 
+- `tree` reports `appSessionRecency` beside `sessionRecency`: the sessions last visited in any open window,
+  each with its window, for a recent-session picker that reaches across windows. The list lives in the
+  fork-only `AppSessionRecency.swift` and `WindowLibrary+SessionRecency.swift`; no file joins the
+  `fork-merge.md` lists. `.claude/rules/windows.md` and `control-api.md`.
 - `tree` reports `sessionRecency`; `keymap list` reports the `nmap` binds in their own section;
   `agtermctl mode on|off|toggle`; `window.list` reports `normalMode`. `.claude/rules/control-api.md`.
 - `zmx list` reports `socketDirectory`, the private `ZMX_DIR` the app's own client is using, so an
@@ -302,6 +306,7 @@ whichever workspace you choose, instead of always in the current one.
 
 `workspace move --to-window <new|name|id>` and `session move --to-window …` move rows to another window, both
 panes still running. Details and limits: `.claude/rules/windows.md`, "Transfer between windows".
+Moving a window's last workspace deletes the emptied window, and the destination becomes frontmost.
 
 ## An attention-counts pill
 

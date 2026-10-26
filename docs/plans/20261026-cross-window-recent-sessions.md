@@ -732,23 +732,23 @@ depends: 4, 6
 - Modify: `FORK-NOTES.md`
 - Modify: `CHANGELOG-fork.md`
 
-- [ ] `control-api.md`, tree section: one bullet for `appSessionRecency` (what a visit is, open windows only, each
+- [x] `control-api.md`, tree section: one bullet for `appSessionRecency` (what a visit is, open windows only, each
       window's navigation scope, active session dropped, the same under `--window`); correct the stale "fourteen" to
       twenty-three
-- [ ] `windows.md`, Model and persistence: `session-recency.json`, the hooks (`pushRecency`, `forgetRecency`, the
+- [x] `windows.md`, Model and persistence: `session-recency.json`, the hooks (`pushRecency`, `forgetRecency`, the
       visit rule including the close reselection, the seed, `removeWindow` forgetting from the live store), and that
       the headless origin creates and seeds its own copy but never reports the field
-- [ ] `windows.md`, Transfer between windows, "Refused": drop "the last workspace of a window"; keep the pending
+- [x] `windows.md`, Transfer between windows, "Refused": drop "the last workspace of a window"; keep the pending
       close and the not-zmx-backed pane
-- [ ] `windows.md`, Transfer between windows: a move hands frontmost to the destination, copies the dwell into a new
+- [x] `windows.md`, Transfer between windows: a move hands frontmost to the destination, copies the dwell into a new
       or loaded destination, and re-arms its recency; the source fallback never counts as a visit; the delete of an
       emptied window and its order (empty the store, then `removeWindow`, then close the NSWindow, all before any
       `await`)
-- [ ] `FORK-NOTES.md`: `appSessionRecency` beside `sessionRecency` under Control API and tooling; one line in "Move a
+- [x] `FORK-NOTES.md`: `appSessionRecency` beside `sessionRecency` under Control API and tooling; one line in "Move a
       workspace or sessions to another window"; one sentence that no file joins the `fork-merge.md` lists
-- [ ] `CHANGELOG-fork.md`, Unreleased: one entry for the picker across windows, one for the last-workspace move
-- [ ] no `CHANGELOG.md` change
-- [ ] the Check below passes
+- [x] `CHANGELOG-fork.md`, Unreleased: one entry for the picker across windows, one for the last-workspace move
+- [x] no `CHANGELOG.md` change
+- [x] the Check below passes
 
 Check: `bash -lc 'grep -q appSessionRecency .claude/rules/control-api.md && grep -q session-recency.json .claude/rules/windows.md && ! grep -q "the last workspace of a window" .claude/rules/windows.md && grep -q appSessionRecency FORK-NOTES.md && grep -q appSessionRecency CHANGELOG-fork.md && git diff --quiet "$(git merge-base HEAD origin/main)" -- CHANGELOG.md'`
 

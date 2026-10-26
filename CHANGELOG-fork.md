@@ -44,6 +44,13 @@ publishes an empty body with only a warning on stderr.
 
 - `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
   sessions to another window, or to a new one, keeping both panes of each row running through zmx.
+- `workspace move --to-window` also moves a window's last workspace: the emptied window is deleted and the
+  destination comes to the front.
+- `tree` reports `appSessionRecency`, the sessions you last visited in any open window, each with its window,
+  so a recent-session picker can offer rows from other windows and raise the right one. A visit is a session
+  you stayed on for the Recency dwell while its window was in front; a script's select in a background window
+  does not count. The order is kept in `session-recency.json` and survives a relaunch. The first launch builds
+  it from each open window's own recent sessions, frontmost window first.
 - A live review in the IDE now works for an agent on a remote row. With mutagen installed on the Mac
   (`brew install mutagen`, then `mutagen daemon register` once), the mirror keeps the host's working tree in
   sync, read-only on the Mac, so `--working-tree` diffs and `--file PATH[:LINE]` (a host path) work there. The
