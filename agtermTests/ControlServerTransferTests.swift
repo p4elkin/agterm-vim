@@ -111,18 +111,23 @@ final class ControlServerTransferTests: XCTestCase {
         XCTAssertNil(store.session(withID: session.id))
     }
 
-    func testARefusedMoveAnswersTheRefusalAndChangesNothing() async throws {
+    func testTheLastWorkspaceMovesAndItsEmptiedWindowIsDeleted() async throws {
         let store = try XCTUnwrap(library.activeStore)
+        let source = try XCTUnwrap(library.windowID(for: store))
         let only = try XCTUnwrap(store.workspaces.first)
-        _ = library.newWindow(name: "other")
-        let windows = library.windows.map(\.id)
+        let sessions = only.sessions.map(\.id)
+        let other = library.newWindow(name: "other")
 
         let response = await makeActions().transferWorkspace(only.id.uuidString, window: nil, toWindow: "other",
                                                               windowName: nil)
 
-        XCTAssertEqual(response.error, "last workspace in window")
-        XCTAssertEqual(library.windows.map(\.id), windows)
-        XCTAssertEqual(store.workspaces.map(\.id), [only.id])
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(response.result?.id, other.id.uuidString)
+        XCTAssertEqual(response.result?.affected, sessions.count)
+        XCTAssertFalse(library.windows.map(\.id).contains(source))
+        let landed = try XCTUnwrap(library.store(for: other.id)?.workspaces.first { $0.id == only.id })
+        XCTAssertEqual(landed.sessions.map(\.id), sessions)
+        XCTAssertFalse(WindowRegistry.shared.isRegistered(source))
     }
 
     func testSessionsMoveIntoANamedWorkspaceOfANamedWindow() async throws {

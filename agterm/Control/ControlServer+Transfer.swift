@@ -45,6 +45,8 @@ extension ControlServer {
             renewRemoteAttachments(result)
             // the debounced write would leave a crash in its gap restoring the row in the source window
             remoteRowBook?.write()
+            // the library already deleted the emptied source; its willClose handler sees an empty store
+            if let removed = result.removedSourceWindow { WindowRegistry.shared.close(removed) }
         }
         return outcome
     }
@@ -79,6 +81,8 @@ extension ControlServer {
             actions.openWindow?(result.windowID)
             await pollUntil { WindowRegistry.shared.isRegistered(result.windowID) }
             takeFrontmost(result.windowID)
+            // the closed source took key focus with it; nothing else gives it to the destination's terminal
+            if result.removedSourceWindow != nil { actions.focusActiveSession() }
             return ControlResponse(ok: true, result: result.controlResult)
         }
     }

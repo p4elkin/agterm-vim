@@ -9,7 +9,8 @@ import agtermCore
 extension ControlServer {
     func controlTree(window: String?) -> ControlResponse {
         resolver.resolvePlacementStore(window) { store in
-            ControlResponse(ok: true, result: ControlResult(tree: buildTree(in: store)))
+            ControlResponse(ok: true, result: ControlResult(
+                tree: buildTree(in: store).with(appSessionRecency: library.controlAppSessionRecency())))
         }
     }
 
