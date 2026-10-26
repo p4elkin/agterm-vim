@@ -1087,40 +1087,41 @@ symlink rule for `GhosttyKit.xcframework` and the ghostty resources. Starts afte
 
 **Files:** `agterm/Control/ControlServer+AppCommands.swift`, `agterm/Control/ControlServer+Transfer.swift`
 
-- [ ] `make build` and `make lint` pass before any change
-- [ ] `controlTree(window:)`: `.with(appSessionRecency: library.controlAppSessionRecency())`
-- [ ] `ControlServer+Transfer.transfer`: on success with `removedSourceWindow`, `WindowRegistry.shared.close(id)`
+- [x] `make build` and `make lint` pass before any change
+- [x] `controlTree(window:)`: `.with(appSessionRecency: library.controlAppSessionRecency())`
+- [x] `ControlServer+Transfer.transfer`: on success with `removedSourceWindow`, `WindowRegistry.shared.close(id)`
       before returning (the `willClose` handler already refreshes the Dock badge); `present`:
       `actions.focusActiveSession()` after `takeFrontmost` when the source was removed
-- [ ] `make build`, `make lint`
+- [x] `make build`, `make lint`
 
 ### Mac step 2: Hosted tests
 
 **Files:** `agtermTests/ControlServerTransferTests.swift`, `agtermTests/ControlServerAppRecencyTests.swift` (new)
 
-- [ ] write a hosted test: two windows, a select in each while it is frontmost; `controlTree(window: nil)` and
+- [x] write a hosted test: two windows, a select in each while it is frontmost; `controlTree(window: nil)` and
       `controlTree(window: <other>)` carry the same `appSessionRecency` with the right window ids
-- [ ] replace `testARefusedMoveAnswersTheRefusalAndChangesNothing`: moving the only workspace to `other` answers ok
+- [x] replace `testARefusedMoveAnswersTheRefusalAndChangesNothing`: moving the only workspace to `other` answers ok
       with `id` and `affected`; the source id is gone from `library.windows`; the destination holds the session;
       `WindowRegistry` no longer has the source
-- [ ] Verify: `scripts/test-app.sh -only-testing:agtermTests/ControlServerTransferTests -only-testing:agtermTests/ControlServerAppRecencyTests`
+- [x] Verify: `scripts/test-app.sh -only-testing:agtermTests/ControlServerTransferTests -only-testing:agtermTests/ControlServerAppRecencyTests`
 
 ### Mac step 3: UI test for a last-workspace move with live daemons
 
 **Files:** `agtermUITests/ZmxLiveUITests.swift`
 
-- [ ] in `testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons`, remove the refused `workspace.move` block
+- [x] in `testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons`, remove the refused `workspace.move` block
       (it would now delete `dest` before the main step)
-- [ ] after the main move, `workspace.delete` `dest`'s default workspace, then move the moved workspace back to the
+- [x] after the main move, `workspace.delete` `dest`'s default workspace, then move the moved workspace back to the
       source: `window.list` no longer lists `dest`; `zmx list` shows both daemons with the same `leaderPID` and
       `clients == 1`; `tree --window <source>` holds the session
 - [ ] run it alone from a Mac driver session, never over ssh (`.claude/rules/ui-tests.md`):
       `xcodebuild test -project agterm.xcodeproj -scheme agterm -destination 'platform=macOS' -only-testing:agtermUITests/ZmxLiveUITests/testAWorkspaceWithASplitMovesToAnotherWindowAndKeepsItsDaemons`
+- ⚠️ the run needs Sasha's GUI session: over ssh xcodebuild cannot enable UI automation
 
 ### Mac step 4: Manual check and wide gates
 
-- [ ] recount consumers: all 34 new and all 10 removed done
-- [ ] bring the agterm-agents branch to the Mac: `git -C ~/dev/agterm-agents fetch p4linux:dev/agterm-agents
+- [x] recount consumers: all 34 new and all 10 removed done
+- [x] bring the agterm-agents branch to the Mac: `git -C ~/dev/agterm-agents fetch p4linux:dev/agterm-agents
       cross-window-recent:cross-window-recent`, then `git -C ~/dev/agterm-agents worktree add
       ~/dev/agterm-agents-recent cross-window-recent`
 - [ ] manual check on an isolated Debug instance, following CLAUDE.md "Working norms". In one shell: export a short
@@ -1133,7 +1134,11 @@ symlink rule for `GhosttyKit.xcframework` and the ghostty resources. Starts afte
       gone. A lead step, not a plan-run step: `.claude/planning-rules.md` forbids launching the app during plan
       execution
 - [ ] remove the Mac worktree: `git -C ~/dev/agterm-agents worktree remove ~/dev/agterm-agents-recent`
-- [ ] `cd agtermCore && swift test`, `make test-app`, `make lint`, each once
+- [x] `cd agtermCore && swift test`, `make test-app`, `make lint`, each once
+- ➕ gates 2026-10-26: Mac `swift test` 5800 tests (one known issue), `make test-app` 1785 tests 0 failures,
+      `make lint` clean (after a three-member tuple fix in `AppStoreAppRecencyTests`)
+- ⚠️ the manual check needs Sasha's GUI session: a Debug instance launched over ssh (direct or `open -n --env`)
+      never opened its socket
 
 ### Mac step 5: Deploy (Sasha's go)
 
