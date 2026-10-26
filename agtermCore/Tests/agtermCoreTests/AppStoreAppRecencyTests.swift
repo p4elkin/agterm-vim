@@ -16,7 +16,7 @@ struct AppStoreAppRecencyTests {
 
     /// Two workspaces, `home` with one session and `work` with three, the hooks wired after setup so the
     /// pushes `addSession` made on the way in are not counted. `dwell` nil records on selection.
-    private func makeHookedStore(dwell: TimeInterval?) -> (AppStore, Hooks, home: Workspace, work: Workspace) {
+    private func makeHookedStore(dwell: TimeInterval?) -> (AppStore, Hooks, (home: Workspace, work: Workspace)) {
         let store = makeStore()
         let home = store.addWorkspace(name: "home")
         _ = store.addSession(toWorkspace: home.id, cwd: "/home")
@@ -27,7 +27,7 @@ struct AppStoreAppRecencyTests {
         store.onRecencyPush = { hooks.pushed.append($0) }
         store.onRecencyForget = { hooks.forgotten.append($0) }
         let current = { (id: UUID) in store.workspaces.first { $0.id == id } ?? Workspace(name: "missing") }
-        return (store, hooks, current(home.id), current(work.id))
+        return (store, hooks, (current(home.id), current(work.id)))
     }
 
     /// Empties the per-window list, so a case can tell a fresh push from an id that was already first.
@@ -38,13 +38,13 @@ struct AppStoreAppRecencyTests {
     // MARK: - Push
 
     @Test func anImmediateSelectionReportsThePushOnce() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         store.selectSession(work.sessions[0].id)
         #expect(hooks.pushed == [work.sessions[0].id])
     }
 
     @Test func aDwellReportsNothingUntilItElapses() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: longDwell)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: longDwell)
         store.selectSession(work.sessions[0].id)
         #expect(hooks.pushed.isEmpty)
         store.recencyDwellDebouncer.flush()
@@ -52,7 +52,7 @@ struct AppStoreAppRecencyTests {
     }
 
     @Test func recordRecencyNowReportsThePush() throws {
-        let (store, hooks, _, _) = makeHookedStore(dwell: longDwell)
+        let (store, hooks, (_, _)) = makeHookedStore(dwell: longDwell)
         let selected = try #require(store.selectedSessionID)
         store.recordRecencyNow()
         #expect(hooks.pushed == [selected])
@@ -60,7 +60,7 @@ struct AppStoreAppRecencyTests {
 
     @Test(arguments: [nil, 20.0] as [TimeInterval?])
     func restoreReportsNoPushWhileTheWindowListKeepsTheSelection(dwell: TimeInterval?) {
-        let (store, hooks, _, _) = makeHookedStore(dwell: dwell)
+        let (store, hooks, (_, _)) = makeHookedStore(dwell: dwell)
         let ids = [UUID(), UUID()]
         let sessions = ids.map { SessionSnapshot(id: $0, customName: nil, cwd: "/\($0)") }
         store.restore(from: Snapshot(selectedSessionID: ids[1],
@@ -74,7 +74,7 @@ struct AppStoreAppRecencyTests {
 
     @Test(arguments: [nil, 20.0] as [TimeInterval?])
     func detachWorkspaceRecordsTheFallbackOnlyInTheWindowList(dwell: TimeInterval?) {
-        let (store, hooks, _, work) = makeHookedStore(dwell: dwell)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: dwell)
         store.selectSession(work.sessions[1].id)
         store.recencyDwellDebouncer.flush()
         clearRecency(store)
@@ -91,7 +91,7 @@ struct AppStoreAppRecencyTests {
 
     @Test(arguments: [nil, 20.0] as [TimeInterval?])
     func detachSessionsRecordsTheFallbackOnlyInTheWindowList(dwell: TimeInterval?) {
-        let (store, hooks, _, work) = makeHookedStore(dwell: dwell)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: dwell)
         store.selectSession(work.sessions[1].id)
         store.recencyDwellDebouncer.flush()
         clearRecency(store)
@@ -110,7 +110,7 @@ struct AppStoreAppRecencyTests {
 
     @Test(arguments: [nil, 20.0] as [TimeInterval?])
     func closingTheActiveSessionReportsTheReselection(dwell: TimeInterval?) throws {
-        let (store, hooks, _, work) = makeHookedStore(dwell: dwell)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: dwell)
         store.selectSession(work.sessions[1].id)
         store.recencyDwellDebouncer.flush()
         hooks.pushed.removeAll()
@@ -125,7 +125,7 @@ struct AppStoreAppRecencyTests {
 
     @Test(arguments: [nil, 20.0] as [TimeInterval?])
     func removingTheActiveWorkspaceReportsTheReselection(dwell: TimeInterval?) {
-        let (store, hooks, home, work) = makeHookedStore(dwell: dwell)
+        let (store, hooks, (home, work)) = makeHookedStore(dwell: dwell)
         store.selectSession(work.sessions[1].id)
         store.recencyDwellDebouncer.flush()
         hooks.pushed.removeAll()
@@ -140,19 +140,19 @@ struct AppStoreAppRecencyTests {
     // MARK: - Forget
 
     @Test func closeSessionReportsTheClosedID() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         store.closeSession(work.sessions[2].id)
         #expect(hooks.forgotten == [work.sessions[2].id])
     }
 
     @Test func removeWorkspaceReportsEveryRemovedID() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         store.removeWorkspace(work.id)
         #expect(hooks.forgotten == work.sessions.map(\.id))
     }
 
     @Test func theEndOfASoftCloseGraceReportsTheClosedID() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         #expect(store.softCloseSession(work.sessions[2].id, grace: 60))
         #expect(hooks.forgotten.isEmpty)
         store.finalizeAllPendingCloses()
@@ -160,7 +160,7 @@ struct AppStoreAppRecencyTests {
     }
 
     @Test func theEndOfASoftWorkspaceCloseGraceReportsEveryRemovedID() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         #expect(store.softRemoveWorkspace(work.id, grace: 60))
         #expect(hooks.forgotten.isEmpty)
         store.finalizeAllPendingCloses()
@@ -169,7 +169,7 @@ struct AppStoreAppRecencyTests {
     }
 
     @Test func anUndoneSoftCloseReportsNothing() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         #expect(store.softCloseSession(work.sessions[2].id, grace: 60))
         #expect(store.undoPendingClose())
         store.finalizeAllPendingCloses()
@@ -179,7 +179,7 @@ struct AppStoreAppRecencyTests {
     // MARK: - Transfer never forgets
 
     @Test func detachWorkspaceDropsItsIDsWithoutReportingThem() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         for session in work.sessions { store.selectSession(session.id) }
         store.detachWorkspace(work.id)
         #expect(work.sessions.allSatisfy { !store.sessionRecency.items.contains($0.id) })
@@ -187,7 +187,7 @@ struct AppStoreAppRecencyTests {
     }
 
     @Test func detachSessionsDropsTheIDsWithoutReportingThem() {
-        let (store, hooks, _, work) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, work)) = makeHookedStore(dwell: nil)
         let leaving = [work.sessions[0].id, work.sessions[2].id]
         for id in leaving { store.selectSession(id) }
         store.detachSessions(leaving)
@@ -196,7 +196,7 @@ struct AppStoreAppRecencyTests {
     }
 
     @Test func withdrawTransferredDropsTheIDsWithoutReportingThem() {
-        let (store, hooks, _, _) = makeHookedStore(dwell: nil)
+        let (store, hooks, (_, _)) = makeHookedStore(dwell: nil)
         let previous = store.selectedSessionID
         let moved = Session(initialCwd: "/moved")
         let workspace = Workspace(name: "moved", sessions: [moved])
