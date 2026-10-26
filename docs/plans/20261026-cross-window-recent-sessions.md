@@ -526,20 +526,20 @@ No file joins the `fork-merge.md` `flagged` list: none holds key routing, and th
 Lead, on p4linux, before `pair start`. Board checks are frozen when the pair starts, so the skip list in Task 9 is
 fixed here.
 
-- [ ] `main` holds untracked files (`docs/headless-origin-report.md`, this plan), so `pair start --base main` refuses.
+- [x] `main` holds untracked files (`docs/headless-origin-report.md`, this plan), so `pair start --base main` refuses.
       Cut a base branch: `git branch cross-window-recent-base main`
-- [ ] measure the baseline in a temporary worktree, never in a clone another session works in:
+- [x] measure the baseline in a temporary worktree, never in a clone another session works in:
       `git worktree add /tmp/cwr-baseline cross-window-recent-base`, then run Task 9's command there without its
       `--skip`, and record every failing test. The two skips in Task 9 were measured at `28c169b3`; replace them with
       what fails at this base
-- [ ] edit the main-checkout copy of this plan (the file `pair start --plan` reads and the board checks are built
+- [x] edit the main-checkout copy of this plan (the file `pair start --plan` reads and the board checks are built
       from): write the measured skip list into Task 9 and the plan-review marker. Then `cp` it into
       `/tmp/cwr-baseline`, commit it there on `cross-window-recent-base`, and remove the temporary worktree. Keep the
       main-checkout copy identical to the committed one until Mac step 6
-- [ ] `pair start --plan docs/plans/20261026-cross-window-recent-sessions.md --mate <claude|codex, chosen at the route
+- [x] `pair start --plan docs/plans/20261026-cross-window-recent-sessions.md --mate <claude|codex, chosen at the route
       step> --base cross-window-recent-base --slug cross-window-recent`; the integration branch is
       `pair/cross-window-recent`
-- [ ] keep `cross-window-recent-base` until `pair cleanup` has run (Mac step 6): cleanup checks against it
+- [x] keep `cross-window-recent-base` until `pair cleanup` has run (Mac step 6): cleanup checks against it
 
 ## Implementation Steps (pair board)
 
@@ -554,16 +554,16 @@ Task 6, beside the window delete, so no task lands with `WindowLibraryTransferTe
 - Create: `agtermCore/Sources/agtermCore/AppSessionRecency.swift`
 - Create: `agtermCore/Tests/agtermCoreTests/AppSessionRecencyTests.swift`
 
-- [ ] write failing tests: a missing file loads empty and marks the list fresh; a corrupt file the same; a valid file
+- [x] write failing tests: a missing file loads empty and marks the list fresh; a corrupt file the same; a valid file
       loads in order; unknown keys are ignored
-- [ ] write failing tests: `push` moves an id to the front and writes; a push of the current front writes nothing;
+- [x] write failing tests: `push` moves an id to the front and writes; a push of the current front writes nothing;
       `forget` of a known id removes and writes; `forget` of unknown ids writes nothing; the 100 limit holds
-- [ ] write failing tests: `seed` fills a fresh list and writes; `seed` on a list loaded from a valid file does
+- [x] write failing tests: `seed` fills a fresh list and writes; `seed` on a list loaded from a valid file does
       nothing; a write into a read-only directory keeps the in-memory list (the technique in
       `WindowLibraryRecentClosedTests`)
-- [ ] write a failing test: `ControlRecentSession` encodes as `{"session":…,"window":…}` and round-trips
-- [ ] add `AppSessionRecency`, `AppSessionRecencyPersistence` and `ControlRecentSession` as in Technical Details
-- [ ] the Check below passes
+- [x] write a failing test: `ControlRecentSession` encodes as `{"session":…,"window":…}` and round-trips
+- [x] add `AppSessionRecency`, `AppSessionRecencyPersistence` and `ControlRecentSession` as in Technical Details
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter AppSessionRecencyTests'`
 
