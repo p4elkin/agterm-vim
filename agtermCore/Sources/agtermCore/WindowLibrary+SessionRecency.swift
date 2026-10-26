@@ -24,4 +24,20 @@ extension WindowLibrary {
         let ordered = (active.map { [$0] } ?? []) + openIDs().filter { $0 != active }
         appRecency.seed(ordered.compactMap { stores[$0] }.flatMap(\.sessionRecency.items))
     }
+
+    /// The tree field `appSessionRecency`: the visit list narrowed, per open window, to its `navigableSessions`,
+    /// so it hides what each window's `sessionRecency` hides. The active window's active session is dropped;
+    /// other windows' selections stay. Nil when nothing is left.
+    public func controlAppSessionRecency() -> [ControlRecentSession]? {
+        var owner: [UUID: UUID] = [:]
+        for id in openIDs() {
+            for session in stores[id]?.navigableSessions ?? [] { owner[session.id] = id }
+        }
+        let current = activeStore?.activeSession?.id
+        let entries = appRecency.items.compactMap { id -> ControlRecentSession? in
+            guard id != current, let window = owner[id] else { return nil }
+            return ControlRecentSession(session: id.uuidString, window: window.uuidString)
+        }
+        return entries.isEmpty ? nil : entries
+    }
 }

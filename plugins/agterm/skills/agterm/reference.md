@@ -329,7 +329,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-two top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-three top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
@@ -367,6 +367,13 @@ first — the currently ACTIVE session is dropped and the visible navigation sco
 title-bar recent popover's filtering but uncapped, where that popover shows at most ten, not the raw stack;
 a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
+`appSessionRecency` (fork only: the app-wide visit order across windows, an array of
+`{"session": "<uuid>", "window": "<uuid>"}` objects, most recent first. A visit is a selection that served
+its dwell while its window was frontmost, so a script's `session select` in a background window and a
+reselection after a close behind the user do not count. Only sessions in an OPEN window appear, each
+narrowed by its own window's navigation scope as `sessionRecency` is; the active window's active session is
+dropped, other windows' selected sessions stay. App-wide like `app`, so it is the same whatever `--window`
+says; omitted when empty),
 `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending), `askPending` (the pending GUI question's id, omitted when absent),
 and `app` (which agterm is serving this socket: `version`, plus
@@ -383,7 +390,7 @@ It is omitted until Rebased first starts.
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four
-`dashboard*` fields, `sessionRecency`, `pickPending`, and `askPending`
+`dashboard*` fields, `sessionRecency`, `appSessionRecency`, `pickPending`, and `askPending`
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale). All of those are read-only
 projections of live GUI state. `app` is the one CONSTANT among them, and is absent from `window.list`
 for a different reason: it describes the serving app rather than a window, so repeating it on every row

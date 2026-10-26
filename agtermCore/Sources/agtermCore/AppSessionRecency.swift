@@ -78,3 +78,12 @@ public struct ControlRecentSession: Codable, Sendable, Equatable {
         self.window = window
     }
 }
+
+extension ControlTree {
+    /// The tree with `appSessionRecency` set; the app target cannot write the `internal(set)` field itself.
+    public func with(appSessionRecency: [ControlRecentSession]?) -> ControlTree {
+        var tree = self
+        tree.appSessionRecency = appSessionRecency
+        return tree
+    }
+}

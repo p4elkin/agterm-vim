@@ -744,6 +744,8 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// applies, so this is the title-bar recent popover's projection, uncapped, not the raw recency stack.
     /// A session that was never selected has no entry, so the array can be shorter than the session count.
     public let sessionRecency: [String]?
+    /// The app-wide visit order across open windows (fork only), set through `with(appSessionRecency:)`.
+    public internal(set) var appSessionRecency: [ControlRecentSession]?
     public let pickPending: String?
     /// The pending GUI ask; terminal asks are exposed on their session nodes.
     public let askPending: String?

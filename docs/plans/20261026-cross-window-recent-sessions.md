@@ -637,19 +637,24 @@ depends: 3
 - Modify: `plugins/agterm/skills/agterm/reference.md`
 - Modify: `plugins/agterm/skills/agterm/SKILL.md`
 
-- [ ] write failing tests for `controlAppSessionRecency()`: entries in list order with their window ids; a session in
+- [x] write failing tests for `controlAppSessionRecency()`: entries in list order with their window ids; a session in
       a closed window is left out; a session hidden by its window's focus filter or parked hiding is left out; the
       active window's active session is left out; another window's selected session stays; a pending-close session is
       left out; an empty result is nil
-- [ ] write failing tests for the wire: a tree with the field set encodes `appSessionRecency` as an array of objects;
+- [x] write failing tests for the wire: a tree with the field set encodes `appSessionRecency` as an array of objects;
       nil omits the key; an older tree JSON without the key decodes with nil
-- [ ] update `SkillInstallTests` to 23 fields and `twenty-three top-level read-only fields`; watch it fail on the docs
-- [ ] add `ControlTree.appSessionRecency` in `ControlProjection.swift`; the fork-only extension with
+- [x] update `SkillInstallTests` to 23 fields and `twenty-three top-level read-only fields`; watch it fail on the docs
+- [x] add `ControlTree.appSessionRecency` in `ControlProjection.swift`; the fork-only extension with
       `with(appSessionRecency:)` in `AppSessionRecency.swift`, beside `ControlRecentSession`;
       `controlAppSessionRecency()` in `WindowLibrary+SessionRecency.swift`
-- [ ] `reference.md`: the field in the tree field list (count twenty-three), app-wide like `app`, the same under
+- [x] `reference.md`: the field in the tree field list (count twenty-three), app-wide like `app`, the same under
       `--window`, `tree`-only; `SKILL.md`: name it beside `sessionRecency`, never in `description`
-- [ ] the Check below passes
+- [x] the Check below passes
+
+- ⚠️ on p4linux (Swift 6.2.4, debug) the new field crashes every test that builds a `ControlResult`
+      (signal 11 in "outlined init with copy of ControlResult", e.g. `WindowLibraryTransferTests`). Not this
+      field: any 8-byte growth of `ControlTree`, or an `Int` added to `ControlResult` ahead of `rebasedMirrors`,
+      crashes the same way; the same `Int` after `rebasedMirrors` passes. The fix is outside Task 4's files
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "ControlTreeAppSessionRecencyTests|SkillInstallTests"'`
 
