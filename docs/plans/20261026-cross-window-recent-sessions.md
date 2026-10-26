@@ -565,6 +565,13 @@ Task 6, beside the window delete, so no task lands with `WindowLibraryTransferTe
 - [x] add `AppSessionRecency`, `AppSessionRecencyPersistence` and `ControlRecentSession` as in Technical Details
 - [x] the Check below passes
 
+- ➕ recount 2026-10-26: every agtermCore and doc consumer is in place; `theLastWorkspaceIsRefused` is gone from both
+      core suites. Left for the Mac stage: `ControlServer.controlTree(window:)` (`with(appSessionRecency:)`,
+      `controlAppSessionRecency()`), `removedSourceWindow` in `ControlServer+Transfer` (`transfer`, `present`),
+      `ControlServerTransferTests` and `ZmxLiveUITests` ("last workspace in window"). Left for the agterm-agents
+      part: none (`--recent`, the recent-picker `window-id` column, agent-sessions text and the window-picker test
+      are on branch `cross-window-recent`). Gate: 5586 tests in 258 suites passed
+
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter AppSessionRecencyTests'`
 
 ### Task 2: Store hooks for a visit and a real close
@@ -997,9 +1004,9 @@ depends: 4, 6
 **Files:**
 - Modify: `plugins/agterm/skills/agterm/reference.md`
 
-- [ ] `workspace move --to-window`: replace "Refuses the window's last workspace" with: the last workspace moves and
+- [x] `workspace move --to-window`: replace "Refuses the window's last workspace" with: the last workspace moves and
       the emptied window is deleted; the pending-close refusal stays
-- [ ] the Check below passes
+- [x] the Check below passes
 
 Check: `bash -lc '! grep -q "Refuses the window.s last" plugins/agterm/skills/agterm/reference.md && source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter SkillInstallTests'`
 
@@ -1008,12 +1015,12 @@ Check: `bash -lc '! grep -q "Refuses the window.s last" plugins/agterm/skills/ag
 owner: lead
 depends: 1, 2, 3, 4, 5, 6, 7, 8
 
-- [ ] every Overview item has code and a test, except the parts in the agterm-agents part and the Mac stage
-- [ ] recount [Consumers of the new and removed pieces](#consumers-of-the-new-and-removed-pieces); list those left for
+- [x] every Overview item has code and a test, except the parts in the agterm-agents part and the Mac stage
+- [x] recount [Consumers of the new and removed pieces](#consumers-of-the-new-and-removed-pieces); list those left for
       the Mac stage and the agterm-agents part
-- [ ] the headless origin builds, and the full suite passes, skipping only the baseline failures recorded in
+- [x] the headless origin builds, and the full suite passes, skipping only the baseline failures recorded in
       [Before the pair starts](#before-the-pair-starts) (the skip list below is replaced there before `pair start`)
-- [ ] the Check below passes
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && export PATH=$HOME/.local/share/mise/installs/node/26/bin:$PATH && cd agtermCore && swift build --product agterm-headless && swift test --no-parallel --skip "aFramelessPanelIsAsTallAsItsText|interruptedPayloadStillExecsTheFinalShell"'`
 
