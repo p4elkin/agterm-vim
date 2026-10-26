@@ -661,12 +661,12 @@ depends: 2
 - Modify: `agtermCore/Sources/agtermCore/AppStore+Transfer.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTransferTests.swift`
 
-- [ ] write failing tests, calling `detachWorkspace` directly on the only workspace: `workspaces` is empty,
+- [x] write failing tests, calling `detachWorkspace` directly on the only workspace: `workspaces` is empty,
       `selectedSessionID` nil, no `sessionClosed`, nothing finalized, no file written
-- [ ] write a test that `detachSessions` of every session of the only workspace still keeps the empty workspace
-- [ ] drop the `canRemoveWorkspace` part of the guard in `detachWorkspace`; leave `workspaceTransferRefusal` as it is
+- [x] write a test that `detachSessions` of every session of the only workspace still keeps the empty workspace
+- [x] drop the `canRemoveWorkspace` part of the guard in `detachWorkspace`; leave `workspaceTransferRefusal` as it is
       (Task 6 changes it), so `theLastWorkspaceIsRefused` in both suites still passes
-- [ ] the Check below passes
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreTransferTests|WindowLibraryTransferTests"'`
 

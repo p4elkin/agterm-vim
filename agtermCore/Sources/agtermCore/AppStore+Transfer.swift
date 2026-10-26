@@ -43,7 +43,7 @@ extension AppStore {
     /// Runs only after the destination saved. Unlike `removeWorkspace` nothing is finalized or recorded as
     /// closed, and the panes stay claimed for the launch reap.
     func detachWorkspace(_ workspaceID: UUID) {
-        guard canRemoveWorkspace, let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         let workspace = workspaces[index]
         let removingActive = selectedSessionID.map { id in workspace.sessions.contains { $0.id == id } } ?? false
         workspace.sessions.forEach(releaseLeavingSession)
