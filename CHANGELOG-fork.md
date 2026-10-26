@@ -48,8 +48,8 @@ publishes an empty body with only a warning on stderr.
   destination comes to the front.
 - `tree` reports `appSessionRecency`, the sessions you last visited in any open window, each with its window,
   so a recent-session picker can offer rows from other windows and raise the right one. A visit is a session
-  you stayed on for the Recency dwell while its window was in front; a script's select in a background window
-  does not count. The order is kept in `session-recency.json` and survives a relaunch. The first launch builds
+  you stayed on for the Recency dwell, or typed into, while its window was in front; a script's select in a
+  background window does not count. The order is kept in `session-recency.json` and survives a relaunch. The first launch builds
   it from each open window's own recent sessions, frontmost window first.
 - A live review in the IDE now works for an agent on a remote row. With mutagen installed on the Mac
   (`brew install mutagen`, then `mutagen daemon register` once), the mirror keeps the host's working tree in

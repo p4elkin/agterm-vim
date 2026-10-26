@@ -301,10 +301,13 @@ session drag are out of scope.
   keys the primary host by surface revision, and a nil slot does not rebuild it.
 - Once the destination saved, `land` hands frontmost to it (`frontmostWindowID`, every destination kind) and
   saves the index. A `new` or `loaded` destination has not mounted, so its dwell is still nil and would record
-  at once: `land` copies the source's dwell into it first, the dwell being one app setting. Then it re-arms the
-  destination's recency, so the moved session becomes a visit only if it is still selected in the still-frontmost
-  destination when the dwell ends. The source's fallback selection (`reselectAfterDetach`) arms with
-  `appWide: false` and never reaches the app-wide list, even if the user goes back to the source first.
+  at once: `land` assigns the source's dwell to it first (not `setRecencyDwell`, which would arm the
+  destination's own selection), the dwell being one app setting. Then, when the destination's selection is a
+  moved session, it re-arms the destination's recency, so that session becomes a visit only if it is still
+  selected in the still-frontmost destination when the dwell ends. The attach itself (`selectAttached`) arms with
+  `appWide: false`, so a destination save that fails leaves no visit, and an empty workspace's move visits
+  nothing. The source's fallback selection (`reselectAfterDetach`) arms with `appWide: false` too and never
+  reaches the app-wide list, even if the user goes back to the source first.
 - A detach that leaves the source with no workspace deletes the window instead of saving it, in one
   main-actor turn before any `await`: `detachWorkspace` empties the store, `land` calls `removeWindow(source)`
   and reports it as `TransferResult.removedSourceWindow`, then `ControlServer+Transfer.transfer` closes the

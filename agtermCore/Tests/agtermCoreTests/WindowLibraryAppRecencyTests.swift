@@ -249,6 +249,23 @@ final class WindowLibraryAppRecencyTests {
         #expect(library.appRecency.items == before)
     }
 
+    @Test(arguments: [MoveKind.open, .loaded], [nil, 20.0] as [TimeInterval?])
+    func anEmptyWorkspaceMoveVisitsNothingInTheDestination(_ kind: MoveKind, dwell: TimeInterval?) throws {
+        let (library, source, _) = try makeMoveSource()
+        let sourceStore = try #require(library.store(for: source))
+        let empty = sourceStore.addWorkspace(name: "empty")
+        let destination = moveDestination(kind, library, source: source)
+        sourceStore.recencyDwell = dwell
+        if kind == .open, case .window(let id) = destination { try #require(library.store(for: id)).recencyDwell = dwell }
+        let before = library.appRecency.items
+
+        let result = try library.transferWorkspace(empty.id, from: source, to: destination).get()
+        try #require(library.store(for: result.windowID)).recencyDwellDebouncer.flush()
+
+        #expect(library.frontmostWindowID == result.windowID)
+        #expect(library.appRecency.items == before)
+    }
+
     @Test func aLastWorkspaceMoveKeepsTheMovedSessionsInTheList() throws {
         let library = WindowLibrary(directory: directory)
         let source = try #require(library.activeWindowID)

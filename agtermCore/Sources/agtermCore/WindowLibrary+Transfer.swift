@@ -146,10 +146,12 @@ extension WindowLibrary {
         // no rollback on failure: the window file is saved, and a rollback would orphan a new window with the
         // workspace inside; retryUnsavedIndex and the launch stray-file claim cover a missing entry
         saveIndex()
-        // an unmounted store still has the nil dwell and would record at once; the dwell is one app setting
-        if landing.kind != .open { landing.store.setRecencyDwell(sourceStore.recencyDwell) }
-        // the attach pushed or armed only this window's list; this push is the one that can be a visit
-        landing.store.recordRecency()
+        // an unmounted store still has the nil dwell and would record at once; the dwell is one app setting.
+        // Assigned, not `setRecencyDwell`, which would arm the destination's own selection
+        if landing.kind != .open { landing.store.recencyDwell = sourceStore.recencyDwell }
+        // the attach pushed or armed only this window's list; this push is the one that can be a visit, and only
+        // for a moved session: an empty workspace leaves the destination's own selection, which nobody visited
+        if landing.store.selectedSessionID.map(sessionIDs.contains) == true { landing.store.recordRecency() }
         sourceStore.releaseForTransfer(sessionIDs)
         detach(sourceStore)
         let removed = sourceStore.workspaces.isEmpty ? source : nil
