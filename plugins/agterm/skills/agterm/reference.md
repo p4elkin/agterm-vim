@@ -424,9 +424,11 @@ buys nothing. A caller with no tree uses `version`.
   the last one; address a specific workspace by id to step the same one.
 - `workspace move --to-window <new|name|id> [--window-name N] [--target] [--window W]` — move the workspace
   to another window, or to a new one (`new`; `--window-name` names it, else it takes the workspace's name).
-  Both panes of every row keep running; scratch, overlays, HUD and search close. Refuses the window's last
-  workspace and any realized pane that is not zmx-backed. Exactly one of `--to`, `--to-window`. Returns the
-  destination window id as `result.id` and the moved session count as `result.affected`.
+  Both panes of every row keep running; scratch, overlays, HUD and search close. The window's last workspace
+  moves too: the emptied window is deleted and the destination comes to the front. Refuses a workspace a
+  pending close names as its undo target and any realized pane that is not zmx-backed. Exactly one of `--to`,
+  `--to-window`. Returns the destination window id as `result.id` and the moved session count as
+  `result.affected`.
 - `workspace focus [on|off|toggle|add] [--target] [--window W]` — mark or unmark ONE workspace in the
   sidebar's focus SET; returns the workspace id. The sidebar renders the marked workspaces when the
   filter is applied, all of them when it is not. `on` sets the marked set to just this workspace and

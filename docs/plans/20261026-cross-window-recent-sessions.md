@@ -752,6 +752,244 @@ depends: 4, 6
 
 Check: `bash -lc 'grep -q appSessionRecency .claude/rules/control-api.md && grep -q session-recency.json .claude/rules/windows.md && ! grep -q "the last workspace of a window" .claude/rules/windows.md && grep -q appSessionRecency FORK-NOTES.md && grep -q appSessionRecency CHANGELOG-fork.md && git diff --quiet "$(git merge-base HEAD origin/main)" -- CHANGELOG.md'`
 
+### Task 9:`): `agtermCore` code and tests, fork docs, the bundled skill, the
+  full Linux gate. Every Check runs on p4linux.
+- **agterm-agents part** (`### Agents step N:`, lead): its own branch and worktree. Its steps end in a Verify
+  line, never an Acceptance or Check line, so `pair start` never stores them as board checks.
+- **Mac stage** (`### Mac step N:`, lead): app-target code, hosted and UI tests, Mac gates, deploy.
+- The `Agents step` and `Mac step` headings do not match `Task N:`, so neither the pair board nor ralphex picks them.
+
+## Before the pair starts
+
+Lead, on p4linux, before `pair start`. Board checks are frozen when the pair starts, so the skip list in Task 9 is
+fixed here.
+
+- [x] `main` holds untracked files (`docs/headless-origin-report.md`, this plan), so `pair start --base main` refuses.
+      Cut a base branch: `git branch cross-window-recent-base main`
+- [x] measure the baseline in a temporary worktree, never in a clone another session works in:
+      `git worktree add /tmp/cwr-baseline cross-window-recent-base`, then run Task 9's command there without its
+      `--skip`, and record every failing test. The two skips in Task 9 were measured at `28c169b3`; replace them with
+      what fails at this base
+- [x] edit the main-checkout copy of this plan (the file `pair start --plan` reads and the board checks are built
+      from): write the measured skip list into Task 9 and the plan-review marker. Then `cp` it into
+      `/tmp/cwr-baseline`, commit it there on `cross-window-recent-base`, and remove the temporary worktree. Keep the
+      main-checkout copy identical to the committed one until Mac step 6
+- [x] `pair start --plan docs/plans/20261026-cross-window-recent-sessions.md --mate <claude|codex, chosen at the route
+      step> --base cross-window-recent-base --slug cross-window-recent`; the integration branch is
+      `pair/cross-window-recent`
+- [x] keep `cross-window-recent-base` until `pair cleanup` has run (Mac step 6): cleanup checks against it
+
+## Implementation Steps (pair board)
+
+Parallel start: Tasks 1 and 2 share no files. Task 3 needs 1 and 2; Task 4 needs 3; Task 5 needs 2 (both touch
+`AppStore+Transfer.swift`); Task 6 needs 3 and 5; Tasks 7 and 8 need 4 and 6 (Task 8 shares `reference.md` with
+Task 4). Only Task 2 touches `AppStore.swift`; only Task 3 touches `WindowLibrary.swift`. The refusal change lives in
+Task 6, beside the window delete, so no task lands with `WindowLibraryTransferTests.theLastWorkspaceIsRefused` red.
+
+### Task 1: The app-wide visit list and its file
+
+**Files:**
+- Create: `agtermCore/Sources/agtermCore/AppSessionRecency.swift`
+- Create: `agtermCore/Tests/agtermCoreTests/AppSessionRecencyTests.swift`
+
+- [x] write failing tests: a missing file loads empty and marks the list fresh; a corrupt file the same; a valid file
+      loads in order; unknown keys are ignored
+- [x] write failing tests: `push` moves an id to the front and writes; a push of the current front writes nothing;
+      `forget` of a known id removes and writes; `forget` of unknown ids writes nothing; the 100 limit holds
+- [x] write failing tests: `seed` fills a fresh list and writes; `seed` on a list loaded from a valid file does
+      nothing; a write into a read-only directory keeps the in-memory list (the technique in
+      `WindowLibraryRecentClosedTests`)
+- [x] write a failing test: `ControlRecentSession` encodes as `{"session":…,"window":…}` and round-trips
+- [x] add `AppSessionRecency`, `AppSessionRecencyPersistence` and `ControlRecentSession` as in Technical Details
+- [x] the Check below passes
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter AppSessionRecencyTests'`
+
+### Task 2: Store hooks for a visit and a real close
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/AppStore.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore+PendingClose.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppStore+Transfer.swift` (reselectAfterDetach only)
+- Create: `agtermCore/Tests/agtermCoreTests/AppStoreAppRecencyTests.swift`
+
+- [x] write failing tests for push: with a nil dwell, a selection change calls `onRecencyPush` once with the id; with
+      a dwell, nothing until `recencyDwellDebouncer.flush()`, then once; `recordRecencyNow()` calls it;
+      `restore(from:launchRestore:)` calls it zero times while the per-window list still gets the restored selection
+- [x] write failing tests for the move fallback: after `detachWorkspace` and after `detachSessions` of the active
+      session, with a nil dwell (through the immediate branch of `recordRecency`) and with a 20 s dwell plus `flush()`,
+      the reselected session is first in `sessionRecency` and `onRecencyPush` was called zero times
+- [x] write failing tests for the close reselection: after `closeSession` and after `removeWorkspace` of the active
+      session, with a nil dwell and with a 20 s dwell plus `flush()`, `onRecencyPush` is called once with the
+      reselected session (the frontmost check is the library's, in Task 3)
+- [x] write failing tests for forget: `closeSession`, `removeWorkspace`, and the end of a soft-close grace each call
+      `onRecencyForget` for every removed id; a soft close followed by `undoPendingClose()` calls it zero times
+- [x] write failing tests that transfer never forgets: `detachWorkspace`, `detachSessions` and `withdrawTransferred`
+      drop the ids from `sessionRecency` and call `onRecencyForget` zero times
+- [x] add `onRecencyPush`, `onRecencyForget`, `recordRecency(appWide:)` (its nil-dwell branch calls `pushRecency`
+      itself), `pushRecency(_:appWide:)`, `forgetRecency(_:)`; route the three push callers and the three real-close
+      removals through them; pass `appWide: false` in `reselectAfterDetach`
+- [x] confirm `AppStoreRecencyDwellTests`, `AppStoreSessionRecencyTests` and `AppStoreTransferTests` still pass
+- [x] the Check below passes
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreAppRecencyTests|AppStoreRecencyDwellTests|AppStoreSessionRecencyTests|AppStoreTransferTests|AppStoreCloseReselectionTests|AppStoreTests"'`
+
+### Task 3: The library records visits, seeds, and forgets on window delete
+
+depends: 1, 2
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/WindowLibrary.swift`
+- Create: `agtermCore/Sources/agtermCore/WindowLibrary+SessionRecency.swift`
+- Create: `agtermCore/Tests/agtermCoreTests/WindowLibraryAppRecencyTests.swift`
+
+- [x] write failing tests for visits: two windows; a selection in the frontmost window enters `appRecency`; a
+      selection in the other window does not, while that window's `sessionRecency` does; after `frontmostWindowID`
+      changes, the other window's selections count; with a 20 s dwell, a selection whose window stops being frontmost
+      before `flush()` is not taken
+- [x] write failing tests for the close reselection: closing the active session in the frontmost window puts the
+      reselected session into `appRecency` (with a 20 s dwell only after `flush()`); the same close in a background
+      window does not
+- [x] write failing tests for removal: closing a session removes it; `removeWindow` of an open window removes all its
+      sessions; `removeWindow` of a closed window removes the sessions read from its file; `closeWindow` keeps them
+- [x] write failing tests for launch: no file, two open windows, frontmost `B`: the list is `B`'s
+      `sessionRecency.items` then `A`'s; a second `WindowLibrary` on the same directory loads the saved order and does
+      not seed again; a relaunch does not move any window's restored selection to the front
+- [x] add the stored property, the init and seed lines, the `makeStore` split and the `removeWindow` line in
+      `WindowLibrary.swift`; put `wireAppRecency` and `seedAppRecencyIfFresh` in the new extension file
+- [x] confirm `WindowLibraryTests` and `WindowLibraryTransferTests` still pass
+- [x] the Check below passes
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "WindowLibraryAppRecencyTests|WindowLibraryTests|WindowLibraryTransferTests"'`
+
+### Task 4: The tree field `appSessionRecency` and the skill
+
+depends: 3
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/ControlProjection.swift`
+- Modify: `agtermCore/Sources/agtermCore/WindowLibrary+SessionRecency.swift`
+- Modify: `agtermCore/Sources/agtermCore/AppSessionRecency.swift`
+- Create: `agtermCore/Tests/agtermCoreTests/ControlTreeAppSessionRecencyTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/SkillInstallTests.swift`
+- Modify: `plugins/agterm/skills/agterm/reference.md`
+- Modify: `plugins/agterm/skills/agterm/SKILL.md`
+
+- [x] write failing tests for `controlAppSessionRecency()`: entries in list order with their window ids; a session in
+      a closed window is left out; a session hidden by its window's focus filter or parked hiding is left out; the
+      active window's active session is left out; another window's selected session stays; a pending-close session is
+      left out; an empty result is nil
+- [x] write failing tests for the wire: a tree with the field set encodes `appSessionRecency` as an array of objects;
+      nil omits the key; an older tree JSON without the key decodes with nil
+- [x] update `SkillInstallTests` to 23 fields and `twenty-three top-level read-only fields`; watch it fail on the docs
+- [x] add `ControlTree.appSessionRecency` in `ControlProjection.swift`; the fork-only extension with
+      `with(appSessionRecency:)` in `AppSessionRecency.swift`, beside `ControlRecentSession`;
+      `controlAppSessionRecency()` in `WindowLibrary+SessionRecency.swift`
+- [x] `reference.md`: the field in the tree field list (count twenty-three), app-wide like `app`, the same under
+      `--window`, `tree`-only; `SKILL.md`: name it beside `sessionRecency`, never in `description`
+- [x] the Check below passes
+
+- ⚠️ an incremental Linux build after adding a `ControlTree` field crashed every test that builds a
+      `ControlResult` (signal 11 in "outlined init with copy of ControlResult"): stale objects with the old
+      layout. A clean build (`rm -rf agtermCore/.build/x86_64-unknown-linux-gnu/debug`) fixes it; the field is fine
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "ControlTreeAppSessionRecencyTests|SkillInstallTests"'`
+
+### Task 5: `detachWorkspace` may empty the store
+
+depends: 2
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/AppStore+Transfer.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTransferTests.swift`
+
+- [x] write failing tests, calling `detachWorkspace` directly on the only workspace: `workspaces` is empty,
+      `selectedSessionID` nil, no `sessionClosed`, nothing finalized, no file written
+- [x] write a test that `detachSessions` of every session of the only workspace still keeps the empty workspace
+- [x] drop the `canRemoveWorkspace` part of the guard in `detachWorkspace`; leave `workspaceTransferRefusal` as it is
+      (Task 6 changes it), so `theLastWorkspaceIsRefused` in both suites still passes
+- [x] the Check below passes
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreTransferTests|WindowLibraryTransferTests"'`
+
+### Task 6: A move hands frontmost to the destination and deletes an emptied source
+
+depends: 3, 5
+
+**Files:**
+- Modify: `agtermCore/Sources/agtermCore/AppStore+Transfer.swift`
+- Modify: `agtermCore/Sources/agtermCore/WindowLibrary+Transfer.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/AppStoreTransferTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/WindowLibraryTransferTests.swift`
+- Modify: `agtermCore/Tests/agtermCoreTests/WindowLibraryAppRecencyTests.swift`
+
+- [x] write failing tests for frontmost: after `transferWorkspace` and `transferSessions` to `.new`, an open window and
+      a closed window, `frontmostWindowID` is the destination and `windows.json` records it; a destination save
+      failure leaves `frontmostWindowID` unchanged
+- [x] write failing recency tests for each destination kind, `.new`, `.open` and `.loaded`, each with the source dwell
+      nil and with the source dwell 20 s (for `.open`, set the same dwell on both stores, as the app's fan-out does;
+      `land` copies a dwell only into `.new` and `.loaded`):
+      with nil the moved session is first in `appRecency.items` right after the move; with 20 s it is NOT first before
+      `flush()` on the destination store and is first after it; with 20 s, selecting another destination session
+      before `flush()` leaves the moved session at its old index; a `.new` or `.loaded` destination store's
+      `recencyDwell` equals the source's after the move
+- [x] write failing tests that the move never moves the source's fallback session forward in `appRecency.items` (its
+      index is unchanged, or it stays absent when the fixture never visited it): nil dwell; 20 s dwell with `flush()`
+      on the source store; 20 s dwell with `frontmostWindowID` set back to the source before that `flush()`
+- [x] replace `theLastWorkspaceIsRefused` in `AppStoreTransferTests` with a failing test that
+      `workspaceTransferRefusal` answers nil for the only workspace; keep `aWorkspaceNamedByAPendingCloseIsRefused`
+      and add a case where that workspace is the only one
+- [x] replace `theLastWorkspaceIsRefused` in `WindowLibraryTransferTests` with failing tests: the only workspace moves
+      to `.new` and to an open window; the source id is gone from `windows`, its store from `stores`, its file from
+      disk; `windows.json` lists the destination as frontmost; `TransferResult.removedSourceWindow` is the source id
+- [x] write failing tests for the panes: a recording `paneFinalizer` is never called with a moved pane identity; no
+      `session.closed` event for a moved session; `removeWindow` does not release a moved session a second time; a
+      second `WindowLibrary` on the directory claims every moved pane identity (as the existing claims test does)
+- [x] write failing tests: the moved sessions stay in `appRecency.items` after the window delete; a destination save
+      failure on a last-workspace move leaves the source window, its store and its file unchanged; a pending session
+      close inside the moved workspace is still refused; another pending workspace close in the source window is
+      finalized by the delete
+- [x] write a failing test that `transferSessions` emptying the only workspace keeps the source window and its empty
+      workspace, with `removedSourceWindow` nil
+- [x] drop the last-workspace clause from `workspaceTransferRefusal`
+- [x] in `land`, after the destination save, for every kind: set `frontmostWindowID` and save the index; for `.new`
+      and `.loaded` call `landing.store.setRecencyDwell(sourceStore.recencyDwell)`; then `recordRecency()` on the
+      destination store. Add `removedSourceWindow` to `TransferResult` (default nil) and the `removeWindow(source)`
+      branch
+- [x] the Check below passes
+
+Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreTransferTests|WindowLibraryTransferTests|WindowLibraryAppRecencyTests"'`
+
+### Task 7: Fork docs
+
+depends: 4, 6
+
+**Files:**
+- Modify: `.claude/rules/control-api.md`
+- Modify: `.claude/rules/windows.md`
+- Modify: `FORK-NOTES.md`
+- Modify: `CHANGELOG-fork.md`
+
+- [x] `control-api.md`, tree section: one bullet for `appSessionRecency` (what a visit is, open windows only, each
+      window's navigation scope, active session dropped, the same under `--window`); correct the stale "fourteen" to
+      twenty-three
+- [x] `windows.md`, Model and persistence: `session-recency.json`, the hooks (`pushRecency`, `forgetRecency`, the
+      visit rule including the close reselection, the seed, `removeWindow` forgetting from the live store), and that
+      the headless origin creates and seeds its own copy but never reports the field
+- [x] `windows.md`, Transfer between windows, "Refused": drop "the last workspace of a window"; keep the pending
+      close and the not-zmx-backed pane
+- [x] `windows.md`, Transfer between windows: a move hands frontmost to the destination, copies the dwell into a new
+      or loaded destination, and re-arms its recency; the source fallback never counts as a visit; the delete of an
+      emptied window and its order (empty the store, then `removeWindow`, then close the NSWindow, all before any
+      `await`)
+- [x] `FORK-NOTES.md`: `appSessionRecency` beside `sessionRecency` under Control API and tooling; one line in "Move a
+      workspace or sessions to another window"; one sentence that no file joins the `fork-merge.md` lists
+- [x] `CHANGELOG-fork.md`, Unreleased: one entry for the picker across windows, one for the last-workspace move
+- [x] no `CHANGELOG.md` change
+- [x] the Check below passes
+
+Check: `bash -lc 'grep -q appSessionRecency .claude/rules/control-api.md && grep -q session-recency.json .claude/rules/windows.md && ! grep -q "the last workspace of a window" .claude/rules/windows.md && grep -q appSessionRecency FORK-NOTES.md && grep -q appSessionRecency CHANGELOG-fork.md && git diff --quiet "$(git merge-base HEAD origin/main)" -- CHANGELOG.md'`
+
 ### Task 8: Skill text for the last-workspace move
 
 depends: 4, 6
