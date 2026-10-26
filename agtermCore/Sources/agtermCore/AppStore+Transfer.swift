@@ -140,6 +140,7 @@ extension AppStore {
         selectedSessionID = sessionID
         replaceSidebarSelection(with: sessionID)
         disableFocusIfSelectionOutsideSet(sessionID)
-        recordRecency()
+        // provisional until the destination saves; `land` records the visit after that
+        recordRecency(appWide: false)
     }
 }

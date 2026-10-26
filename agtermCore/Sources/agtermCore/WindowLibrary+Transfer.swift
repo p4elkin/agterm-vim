@@ -148,7 +148,7 @@ extension WindowLibrary {
         saveIndex()
         // an unmounted store still has the nil dwell and would record at once; the dwell is one app setting
         if landing.kind != .open { landing.store.setRecencyDwell(sourceStore.recencyDwell) }
-        // the attach pushed or armed while the source was frontmost; this push is the one that can be a visit
+        // the attach pushed or armed only this window's list; this push is the one that can be a visit
         landing.store.recordRecency()
         sourceStore.releaseForTransfer(sessionIDs)
         detach(sourceStore)

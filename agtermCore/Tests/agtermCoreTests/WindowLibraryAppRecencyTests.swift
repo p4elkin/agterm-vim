@@ -234,6 +234,21 @@ final class WindowLibraryAppRecencyTests {
         #expect(library.appRecency.items.firstIndex(of: x.id) == 1)
     }
 
+    @Test func aFailedMoveIntoTheFrontmostWindowIsNoVisit() throws {
+        let (library, source, project) = try makeMoveSource()
+        let destination = library.newWindow(name: "dest").id
+        library.frontmostWindowID = destination
+        let before = library.appRecency.items
+        let windows = directory.appendingPathComponent("windows").path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: windows)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: windows) }
+
+        let result = library.transferWorkspace(project.id, from: source, to: .window(destination))
+
+        #expect(result == .failure(TransferRefusal("destination save failed")))
+        #expect(library.appRecency.items == before)
+    }
+
     @Test func aLastWorkspaceMoveKeepsTheMovedSessionsInTheList() throws {
         let library = WindowLibrary(directory: directory)
         let source = try #require(library.activeWindowID)
