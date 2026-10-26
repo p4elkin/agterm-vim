@@ -651,10 +651,9 @@ depends: 3
       `--window`, `tree`-only; `SKILL.md`: name it beside `sessionRecency`, never in `description`
 - [x] the Check below passes
 
-- ⚠️ on p4linux (Swift 6.2.4, debug) the new field crashes every test that builds a `ControlResult`
-      (signal 11 in "outlined init with copy of ControlResult", e.g. `WindowLibraryTransferTests`). Not this
-      field: any 8-byte growth of `ControlTree`, or an `Int` added to `ControlResult` ahead of `rebasedMirrors`,
-      crashes the same way; the same `Int` after `rebasedMirrors` passes. The fix is outside Task 4's files
+- ⚠️ an incremental Linux build after adding a `ControlTree` field crashed every test that builds a
+      `ControlResult` (signal 11 in "outlined init with copy of ControlResult"): stale objects with the old
+      layout. A clean build (`rm -rf agtermCore/.build/x86_64-unknown-linux-gnu/debug`) fixes it; the field is fine
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "ControlTreeAppSessionRecencyTests|SkillInstallTests"'`
 
