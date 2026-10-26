@@ -532,7 +532,7 @@ extension AppStore {
             session.scratchSurface?.teardown()
             session.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
             WatermarkStorage.removeAllRenderedText(sessionID: session.id)
-            removeFromRecency(session.id)
+            forgetRecency(session.id)
             // only here, never on `.sessionClosed`: that event fires when the grace STARTS, and
             // `undoPendingClose` reinserts this same object without restoring anything keyed off it.
             sessionDidFinalize?(session.id)

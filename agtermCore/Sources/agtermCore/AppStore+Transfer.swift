@@ -89,7 +89,8 @@ extension AppStore {
         selectedSessionID = target
         replaceSidebarSelection(with: target)
         disableFocusIfSelectionOutsideSet(target)
-        recordRecency()
+        // the source window's fallback, not a visit
+        recordRecency(appWide: false)
     }
 
     // MARK: - Destination

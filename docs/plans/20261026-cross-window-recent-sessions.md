@@ -575,24 +575,24 @@ Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift
 - Modify: `agtermCore/Sources/agtermCore/AppStore+Transfer.swift` (reselectAfterDetach only)
 - Create: `agtermCore/Tests/agtermCoreTests/AppStoreAppRecencyTests.swift`
 
-- [ ] write failing tests for push: with a nil dwell, a selection change calls `onRecencyPush` once with the id; with
+- [x] write failing tests for push: with a nil dwell, a selection change calls `onRecencyPush` once with the id; with
       a dwell, nothing until `recencyDwellDebouncer.flush()`, then once; `recordRecencyNow()` calls it;
       `restore(from:launchRestore:)` calls it zero times while the per-window list still gets the restored selection
-- [ ] write failing tests for the move fallback: after `detachWorkspace` and after `detachSessions` of the active
+- [x] write failing tests for the move fallback: after `detachWorkspace` and after `detachSessions` of the active
       session, with a nil dwell (through the immediate branch of `recordRecency`) and with a 20 s dwell plus `flush()`,
       the reselected session is first in `sessionRecency` and `onRecencyPush` was called zero times
-- [ ] write failing tests for the close reselection: after `closeSession` and after `removeWorkspace` of the active
+- [x] write failing tests for the close reselection: after `closeSession` and after `removeWorkspace` of the active
       session, with a nil dwell and with a 20 s dwell plus `flush()`, `onRecencyPush` is called once with the
       reselected session (the frontmost check is the library's, in Task 3)
-- [ ] write failing tests for forget: `closeSession`, `removeWorkspace`, and the end of a soft-close grace each call
+- [x] write failing tests for forget: `closeSession`, `removeWorkspace`, and the end of a soft-close grace each call
       `onRecencyForget` for every removed id; a soft close followed by `undoPendingClose()` calls it zero times
-- [ ] write failing tests that transfer never forgets: `detachWorkspace`, `detachSessions` and `withdrawTransferred`
+- [x] write failing tests that transfer never forgets: `detachWorkspace`, `detachSessions` and `withdrawTransferred`
       drop the ids from `sessionRecency` and call `onRecencyForget` zero times
-- [ ] add `onRecencyPush`, `onRecencyForget`, `recordRecency(appWide:)` (its nil-dwell branch calls `pushRecency`
+- [x] add `onRecencyPush`, `onRecencyForget`, `recordRecency(appWide:)` (its nil-dwell branch calls `pushRecency`
       itself), `pushRecency(_:appWide:)`, `forgetRecency(_:)`; route the three push callers and the three real-close
       removals through them; pass `appWide: false` in `reselectAfterDetach`
-- [ ] confirm `AppStoreRecencyDwellTests`, `AppStoreSessionRecencyTests` and `AppStoreTransferTests` still pass
-- [ ] the Check below passes
+- [x] confirm `AppStoreRecencyDwellTests`, `AppStoreSessionRecencyTests` and `AppStoreTransferTests` still pass
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreAppRecencyTests|AppStoreRecencyDwellTests|AppStoreSessionRecencyTests|AppStoreTransferTests|AppStoreCloseReselectionTests|AppStoreTests"'`
 
