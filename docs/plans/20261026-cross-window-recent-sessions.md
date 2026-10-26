@@ -681,40 +681,40 @@ depends: 3, 5
 - Modify: `agtermCore/Tests/agtermCoreTests/WindowLibraryTransferTests.swift`
 - Modify: `agtermCore/Tests/agtermCoreTests/WindowLibraryAppRecencyTests.swift`
 
-- [ ] write failing tests for frontmost: after `transferWorkspace` and `transferSessions` to `.new`, an open window and
+- [x] write failing tests for frontmost: after `transferWorkspace` and `transferSessions` to `.new`, an open window and
       a closed window, `frontmostWindowID` is the destination and `windows.json` records it; a destination save
       failure leaves `frontmostWindowID` unchanged
-- [ ] write failing recency tests for each destination kind, `.new`, `.open` and `.loaded`, each with the source dwell
+- [x] write failing recency tests for each destination kind, `.new`, `.open` and `.loaded`, each with the source dwell
       nil and with the source dwell 20 s (for `.open`, set the same dwell on both stores, as the app's fan-out does;
       `land` copies a dwell only into `.new` and `.loaded`):
       with nil the moved session is first in `appRecency.items` right after the move; with 20 s it is NOT first before
       `flush()` on the destination store and is first after it; with 20 s, selecting another destination session
       before `flush()` leaves the moved session at its old index; a `.new` or `.loaded` destination store's
       `recencyDwell` equals the source's after the move
-- [ ] write failing tests that the move never moves the source's fallback session forward in `appRecency.items` (its
+- [x] write failing tests that the move never moves the source's fallback session forward in `appRecency.items` (its
       index is unchanged, or it stays absent when the fixture never visited it): nil dwell; 20 s dwell with `flush()`
       on the source store; 20 s dwell with `frontmostWindowID` set back to the source before that `flush()`
-- [ ] replace `theLastWorkspaceIsRefused` in `AppStoreTransferTests` with a failing test that
+- [x] replace `theLastWorkspaceIsRefused` in `AppStoreTransferTests` with a failing test that
       `workspaceTransferRefusal` answers nil for the only workspace; keep `aWorkspaceNamedByAPendingCloseIsRefused`
       and add a case where that workspace is the only one
-- [ ] replace `theLastWorkspaceIsRefused` in `WindowLibraryTransferTests` with failing tests: the only workspace moves
+- [x] replace `theLastWorkspaceIsRefused` in `WindowLibraryTransferTests` with failing tests: the only workspace moves
       to `.new` and to an open window; the source id is gone from `windows`, its store from `stores`, its file from
       disk; `windows.json` lists the destination as frontmost; `TransferResult.removedSourceWindow` is the source id
-- [ ] write failing tests for the panes: a recording `paneFinalizer` is never called with a moved pane identity; no
+- [x] write failing tests for the panes: a recording `paneFinalizer` is never called with a moved pane identity; no
       `session.closed` event for a moved session; `removeWindow` does not release a moved session a second time; a
       second `WindowLibrary` on the directory claims every moved pane identity (as the existing claims test does)
-- [ ] write failing tests: the moved sessions stay in `appRecency.items` after the window delete; a destination save
+- [x] write failing tests: the moved sessions stay in `appRecency.items` after the window delete; a destination save
       failure on a last-workspace move leaves the source window, its store and its file unchanged; a pending session
       close inside the moved workspace is still refused; another pending workspace close in the source window is
       finalized by the delete
-- [ ] write a failing test that `transferSessions` emptying the only workspace keeps the source window and its empty
+- [x] write a failing test that `transferSessions` emptying the only workspace keeps the source window and its empty
       workspace, with `removedSourceWindow` nil
-- [ ] drop the last-workspace clause from `workspaceTransferRefusal`
-- [ ] in `land`, after the destination save, for every kind: set `frontmostWindowID` and save the index; for `.new`
+- [x] drop the last-workspace clause from `workspaceTransferRefusal`
+- [x] in `land`, after the destination save, for every kind: set `frontmostWindowID` and save the index; for `.new`
       and `.loaded` call `landing.store.setRecencyDwell(sourceStore.recencyDwell)`; then `recordRecency()` on the
       destination store. Add `removedSourceWindow` to `TransferResult` (default nil) and the `removeWindow(source)`
       branch
-- [ ] the Check below passes
+- [x] the Check below passes
 
 Check: `bash -lc 'source ~/.local/share/swiftly/env.sh && cd agtermCore && swift test --no-parallel --filter "AppStoreTransferTests|WindowLibraryTransferTests|WindowLibraryAppRecencyTests"'`
 

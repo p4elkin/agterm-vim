@@ -146,6 +146,111 @@ final class WindowLibraryAppRecencyTests {
         #expect(kept.allSatisfy { !library.appRecency.items.contains($0.id) })
     }
 
+    // MARK: - Moves
+
+    /// The launch window `S`, frontmost, with `home` (`h`, `x`) and `project` (`p0`, `p1`); visits `h`, then `x`.
+    private func makeMoveSource() throws -> (WindowLibrary, source: UUID, project: Workspace) {
+        let library = WindowLibrary(directory: directory)
+        let source = try #require(library.activeWindowID)
+        let store = try #require(library.store(for: source))
+        let home = try #require(store.workspaces.first)
+        let x = try #require(store.addSession(toWorkspace: home.id, cwd: "/x", select: false))
+        let project = store.addWorkspace(name: "project")
+        _ = store.addSession(toWorkspace: project.id, cwd: "/p0", select: false)
+        _ = store.addSession(toWorkspace: project.id, cwd: "/p1", select: false)
+        library.frontmostWindowID = source
+        store.selectSession(home.sessions[0].id)
+        store.selectSession(x.id)
+        return (library, source, try #require(store.workspaces.first { $0.id == project.id }))
+    }
+
+    /// `open` and `loaded` hand the source frontmost back, as it is when a move starts from it.
+    private func moveDestination(_ kind: MoveKind, _ library: WindowLibrary, source: UUID) -> TransferDestination {
+        guard kind != .new else { return .new }
+        let id = library.newWindow(name: "dest").id
+        if kind == .loaded { library.closeWindow(id) }
+        library.frontmostWindowID = source
+        return .window(id)
+    }
+
+    @Test(arguments: MoveKind.allCases, [nil, 20.0] as [TimeInterval?])
+    func aMovedSessionIsAVisitOnceTheDwellEndsInTheDestination(_ kind: MoveKind, dwell: TimeInterval?) throws {
+        let (library, source, project) = try makeMoveSource()
+        let moved = project.sessions[0]
+        let sourceStore = try #require(library.store(for: source))
+        let destination = moveDestination(kind, library, source: source)
+        sourceStore.recencyDwell = dwell
+        if kind == .open, case .window(let id) = destination { try #require(library.store(for: id)).recencyDwell = dwell }
+
+        let result = try library.transferWorkspace(project.id, from: source, to: destination).get()
+
+        let store = try #require(library.store(for: result.windowID))
+        #expect(store.recencyDwell == dwell)
+        if dwell != nil {
+            #expect(library.appRecency.items.first != moved.id)
+            store.recencyDwellDebouncer.flush()
+        }
+        #expect(library.appRecency.items.first == moved.id)
+    }
+
+    @Test(arguments: MoveKind.allCases)
+    func leavingAMovedSessionBeforeTheDwellEndsKeepsItsPlace(_ kind: MoveKind) throws {
+        let (library, source, project) = try makeMoveSource()
+        let (moved, other) = (project.sessions[0], project.sessions[1])
+        let sourceStore = try #require(library.store(for: source))
+        let destination = moveDestination(kind, library, source: source)
+        sourceStore.selectSession(moved.id)
+        sourceStore.selectSession(sourceStore.workspaces[0].sessions[0].id)
+        sourceStore.recencyDwell = 20
+        if kind == .open, case .window(let id) = destination { try #require(library.store(for: id)).recencyDwell = 20 }
+        let before = library.appRecency.items
+        #expect(before.firstIndex(of: moved.id) == 1)
+
+        let result = try library.transferWorkspace(project.id, from: source, to: destination).get()
+        let store = try #require(library.store(for: result.windowID))
+        store.selectSession(other.id)
+        store.recencyDwellDebouncer.flush()
+
+        #expect(library.appRecency.items.first == other.id)
+        #expect(library.appRecency.items.filter { $0 != other.id } == before)
+    }
+
+    @Test(arguments: [FallbackCase.immediate, .dwellFlushed, .dwellFlushedWithTheSourceFrontmost])
+    func theSourceFallbackIsNeverAVisit(_ fallback: FallbackCase) throws {
+        let (library, source, project) = try makeMoveSource()
+        let sourceStore = try #require(library.store(for: source))
+        let x = sourceStore.workspaces[0].sessions[1]
+        sourceStore.selectSession(project.sessions[0].id)
+        let before = library.appRecency.items
+        #expect(before.firstIndex(of: x.id) == 1)
+        if fallback != .immediate { sourceStore.recencyDwell = 20 }
+
+        _ = try library.transferWorkspace(project.id, from: source, to: .new).get()
+        #expect(sourceStore.selectedSessionID == x.id)
+        if fallback == .dwellFlushedWithTheSourceFrontmost { library.frontmostWindowID = source }
+        sourceStore.recencyDwellDebouncer.flush()
+
+        #expect(sourceStore.sessionRecency.items.first == x.id)
+        #expect(library.appRecency.items.firstIndex(of: x.id) == 1)
+    }
+
+    @Test func aLastWorkspaceMoveKeepsTheMovedSessionsInTheList() throws {
+        let library = WindowLibrary(directory: directory)
+        let source = try #require(library.activeWindowID)
+        let store = try #require(library.store(for: source))
+        let only = try #require(store.workspaces.first)
+        let second = try #require(store.addSession(toWorkspace: only.id, cwd: "/second", select: false))
+        library.frontmostWindowID = source
+        store.selectSession(second.id)
+        let visited = library.appRecency.items
+        #expect(visited.contains(second.id))
+
+        let result = try library.transferWorkspace(only.id, from: source, to: .new).get()
+
+        #expect(result.removedSourceWindow == source)
+        #expect(visited.allSatisfy(library.appRecency.items.contains))
+    }
+
     // MARK: - Launch
 
     @Test func aLaunchWithNoFileSeedsFrontmostFirst() throws {
@@ -186,4 +291,12 @@ final class WindowLibraryAppRecencyTests {
         #expect(try #require(relaunched.store(for: a)).selectedSessionID == inA[0].id)
         #expect(relaunched.appRecency.items == saved)
     }
+}
+
+enum MoveKind: CaseIterable, Sendable {
+    case new, open, loaded
+}
+
+enum FallbackCase: Sendable {
+    case immediate, dwellFlushed, dwellFlushedWithTheSourceFrontmost
 }

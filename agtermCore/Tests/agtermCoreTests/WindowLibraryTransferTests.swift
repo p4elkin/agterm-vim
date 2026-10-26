@@ -5,6 +5,8 @@ import Testing
 @MainActor
 final class WindowLibraryTransferTests {
     private let directory: URL
+    private var finalized: [UUID] = []
+    private var events: [ControlEvent] = []
 
     init() throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-library-transfer-\(UUID().uuidString)")
@@ -109,6 +111,33 @@ final class WindowLibraryTransferTests {
         #expect(result.sessionIDs == project.sessions.map(\.id))
         #expect(result.controlResult.id == result.windowID.uuidString)
         #expect(result.controlResult.affected == 2)
+    }
+
+    // MARK: - frontmost
+
+    @Test(arguments: MoveDestination.allCases)
+    func aWorkspaceMoveMakesTheDestinationFrontmost(_ kind: MoveDestination) throws {
+        let fixture = try makeFixture()
+        let project = try fixture.workspace("project")
+        let destination = destination(kind, fixture)
+
+        let result = try fixture.library.transferWorkspace(project.id, from: fixture.source, to: destination).get()
+
+        #expect(fixture.library.frontmostWindowID == result.windowID)
+        #expect(try readIndex().frontmost == result.windowID)
+    }
+
+    @Test(arguments: MoveDestination.allCases)
+    func aSessionMoveMakesTheDestinationFrontmost(_ kind: MoveDestination) throws {
+        let fixture = try makeFixture()
+        let moving = try fixture.workspace("project").sessions[0]
+        let destination = destination(kind, fixture)
+
+        let result = try fixture.library.transferSessions([moving.id], from: fixture.source, to: destination,
+                                                          workspace: .none).get()
+
+        #expect(fixture.library.frontmostWindowID == result.windowID)
+        #expect(try readIndex().frontmost == result.windowID)
     }
 
     // MARK: - session moves
@@ -269,6 +298,7 @@ final class WindowLibraryTransferTests {
             return surface
         }
         let destination = fixture.library.newWindow(name: "dest").id
+        fixture.library.frontmostWindowID = fixture.source
         let destinationStore = try #require(fixture.library.store(for: destination))
         let selection = destinationStore.selectedSessionID
         let workspaces = destinationStore.workspaces.map(\.id)
@@ -279,6 +309,7 @@ final class WindowLibraryTransferTests {
         try restoreWindowsDirectory()
 
         #expect(result == .failure(TransferRefusal("destination save failed")))
+        #expect(fixture.library.frontmostWindowID == fixture.source)
         #expect(try fixture.workspace("project").sessions.map(\.id) == project.sessions.map(\.id))
         #expect(zip(project.sessions, surfaces).allSatisfy { $0.surface === $1 })
         #expect(surfaces.allSatisfy { $0.prepareCount == 0 && $0.teardownCount == 0 })
@@ -311,6 +342,7 @@ final class WindowLibraryTransferTests {
         let project = try fixture.workspace("project")
         let destination = fixture.library.newWindow(name: "dest").id
         fixture.library.closeWindow(destination)
+        fixture.library.frontmostWindowID = fixture.source
         let files = fileState()
         try makeWindowsReadOnly()
 
@@ -319,6 +351,7 @@ final class WindowLibraryTransferTests {
 
         #expect(result == .failure(TransferRefusal("destination save failed")))
         #expect(!fixture.library.isOpen(destination))
+        #expect(fixture.library.frontmostWindowID == fixture.source)
         #expect(fileState() == files)
         #expect(fixture.store.workspaces.contains { $0.id == project.id })
     }
@@ -381,18 +414,111 @@ final class WindowLibraryTransferTests {
         #expect(records.first?.workspaceID == project.id)
     }
 
-    // MARK: - refusals
+    // MARK: - last workspace
 
-    @Test func theLastWorkspaceIsRefused() throws {
-        let library = WindowLibrary(directory: directory)
-        let source = try #require(library.activeWindowID)
-        let only = try #require(library.activeStore?.workspaces.first)
-        let fixture = Fixture(library: library, source: source, store: try #require(library.activeStore))
+    @Test(arguments: [MoveDestination.new, .open])
+    func theOnlyWorkspaceMovesAndItsWindowIsDeleted(_ kind: MoveDestination) throws {
+        let (fixture, only) = try makeLoneFixture()
+        fixture.store.save()
+        #expect(FileManager.default.fileExists(atPath: windowFileURL(fixture.source).path))
+        let destination = destination(kind, fixture)
 
-        try expectRefusal("last workspace in window", fixture) {
-            library.transferWorkspace(only.id, from: source, to: .new)
+        let result = try fixture.library.transferWorkspace(only.id, from: fixture.source, to: destination).get()
+
+        #expect(result.removedSourceWindow == fixture.source)
+        #expect(fixture.library.store(for: result.windowID)?.workspaces.last?.id == only.id)
+        #expect(!fixture.library.windows.contains { $0.id == fixture.source })
+        #expect(fixture.library.stores[fixture.source] == nil)
+        #expect(!FileManager.default.fileExists(atPath: windowFileURL(fixture.source).path))
+        let index = try readIndex()
+        #expect(index.frontmost == result.windowID)
+        #expect(!index.windows.contains { $0.id == fixture.source })
+    }
+
+    @Test func theWindowDeleteFinalizesClosesAndReleasesNoMovedSession() throws {
+        let (fixture, only) = try makeLoneFixture()
+        only.sessions[0].hasSplit = true
+        only.sessions[0].splitPaneIdentity = UUID()
+        let moved = Set(only.sessions.flatMap { [$0.paneIdentity, $0.splitPaneIdentity].compactMap(\.self) })
+        let movedIDs = Set(only.sessions.map(\.id.uuidString))
+        events.removeAll()
+
+        _ = try fixture.library.transferWorkspace(only.id, from: fixture.source, to: .new).get()
+
+        #expect(fixture.store.workspaces.isEmpty)
+        #expect(moved.isDisjoint(with: finalized))
+        #expect(!events.contains { $0.kind == .sessionClosed && movedIDs.contains($0.session ?? "") })
+    }
+
+    @Test func aRelaunchClaimsEveryPaneOfAMovedLastWorkspace() throws {
+        let (fixture, only) = try makeLoneFixture()
+        only.sessions[0].hasSplit = true
+        only.sessions[0].splitPaneIdentity = UUID()
+        fixture.store.save()
+        let moved = Set(only.sessions.flatMap { [$0.paneIdentity, $0.splitPaneIdentity].compactMap(\.self) })
+
+        _ = try fixture.library.transferWorkspace(only.id, from: fixture.source, to: .new).get()
+        var inventories: [Set<UUID>?] = []
+        _ = WindowLibrary(directory: directory, paneFinalizer: nil, launchInventorySink: { inventories.append($0) })
+
+        let claimed = try #require(inventories.first ?? nil)
+        #expect(moved.isSubset(of: claimed))
+    }
+
+    @Test func aFailedSaveOnALastWorkspaceMoveKeepsTheSourceWindow() throws {
+        let (fixture, only) = try makeLoneFixture()
+        fixture.store.save()
+        let windows = fixture.library.windows
+        let files = fileState()
+        try makeWindowsReadOnly()
+
+        let result = fixture.library.transferWorkspace(only.id, from: fixture.source, to: .new)
+        try restoreWindowsDirectory()
+
+        #expect(result == .failure(TransferRefusal("destination save failed")))
+        #expect(fixture.library.windows == windows)
+        #expect(fixture.library.stores[fixture.source] === fixture.store)
+        #expect(fixture.store.workspaces.map(\.id) == [only.id])
+        #expect(fileState() == files)
+    }
+
+    @Test func aPendingCloseInsideTheOnlyWorkspaceIsStillRefused() throws {
+        let (fixture, only) = try makeLoneFixture()
+        #expect(fixture.store.softCloseSession(only.sessions[0].id, grace: 3600))
+
+        try expectRefusal("workspace has a pending close", fixture) {
+            fixture.library.transferWorkspace(only.id, from: fixture.source, to: .new)
         }
     }
+
+    @Test func theWindowDeleteFinalizesAnotherPendingWorkspaceClose() throws {
+        let (fixture, closing) = try makeLoneFixture()
+        let project = fixture.store.addWorkspace(name: "project")
+        _ = fixture.store.addSession(toWorkspace: project.id, cwd: "/api", name: "api")
+        let doomed = Set(closing.sessions.map(\.paneIdentity))
+        #expect(fixture.store.softRemoveWorkspace(closing.id, grace: 3600))
+        #expect(finalized.isEmpty)
+
+        let result = try fixture.library.transferWorkspace(project.id, from: fixture.source, to: .new).get()
+
+        #expect(result.removedSourceWindow == fixture.source)
+        #expect(doomed.isSubset(of: finalized))
+    }
+
+    @Test func aSessionMoveThatEmptiesTheOnlyWorkspaceKeepsTheSourceWindow() throws {
+        let (fixture, only) = try makeLoneFixture()
+
+        let result = try fixture.library.transferSessions(only.sessions.map(\.id), from: fixture.source, to: .new,
+                                                          workspace: .none).get()
+
+        #expect(result.removedSourceWindow == nil)
+        #expect(fixture.library.stores[fixture.source] === fixture.store)
+        #expect(fixture.library.windows.contains { $0.id == fixture.source })
+        #expect(fixture.store.workspaces.map(\.id) == [only.id])
+        #expect(fixture.store.workspaces[0].sessions.isEmpty)
+    }
+
+    // MARK: - refusals
 
     @Test func aWorkspaceWithAPendingCloseIsRefused() throws {
         let fixture = try makeFixture()
@@ -498,6 +624,26 @@ final class WindowLibraryTransferTests {
         return Fixture(library: library, source: source, store: store)
     }
 
+    /// The launch window's only workspace with a second session, recording finalized panes and events.
+    private func makeLoneFixture() throws -> (Fixture, Workspace) {
+        let library = WindowLibrary(directory: directory, paneFinalizer: { [weak self] in self?.finalized += $0 })
+        library.onControlEvent = { [weak self] in self?.events.append($0) }
+        let store = try #require(library.activeStore)
+        let only = try #require(store.workspaces.first)
+        _ = store.addSession(toWorkspace: only.id, cwd: "/web", name: "web")
+        let fixture = Fixture(library: library, source: try #require(library.activeWindowID), store: store)
+        return (fixture, try #require(store.workspaces.first))
+    }
+
+    /// `open` and `closed` leave the source frontmost, as it is when a move starts from it.
+    private func destination(_ kind: MoveDestination, _ fixture: Fixture) -> TransferDestination {
+        guard kind != .new else { return .new }
+        let id = fixture.library.newWindow(name: "dest").id
+        if kind == .closed { fixture.library.closeWindow(id) }
+        fixture.library.frontmostWindowID = fixture.source
+        return .window(id)
+    }
+
     private func expectRefusal(_ message: String, _ fixture: Fixture,
                                _ move: () -> Result<TransferResult, TransferRefusal>,
                                sourceLocation: SourceLocation = #_sourceLocation) throws {
@@ -540,9 +686,17 @@ final class WindowLibraryTransferTests {
         try JSONDecoder().decode(WindowsIndex.self, from: Data(contentsOf: directory.appendingPathComponent("windows.json")))
     }
 
+    private func windowFileURL(_ id: UUID) -> URL {
+        directory.appendingPathComponent("windows").appendingPathComponent("\(id.uuidString).json")
+    }
+
     private func windowFile(_ id: UUID) throws -> Snapshot {
         try PersistenceStore(directory: directory.appendingPathComponent("windows"), fileName: "\(id.uuidString).json").loadChecked()
     }
+}
+
+enum MoveDestination: CaseIterable, Sendable {
+    case new, open, closed
 }
 
 private final class MoveSpySurface: TerminalSurface {

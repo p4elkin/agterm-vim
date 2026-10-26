@@ -361,11 +361,20 @@ final class AppStoreTransferTests {
 
     // MARK: - refusals
 
-    @Test func theLastWorkspaceIsRefused() {
+    @Test func theOnlyWorkspaceMayLeave() {
         let only = Workspace(name: "only", sessions: [Session(initialCwd: "/tmp")])
         let store = makeStore([only], selected: nil)
 
-        #expect(store.workspaceTransferRefusal(only.id) == "last workspace in window")
+        #expect(store.workspaceTransferRefusal(only.id) == nil)
+    }
+
+    @Test func theOnlyWorkspaceNamedByAPendingCloseIsRefused() {
+        let only = Workspace(name: "only", sessions: [Session(initialCwd: "/a"), Session(initialCwd: "/b")])
+        let store = makeStore([only], selected: nil)
+
+        #expect(store.softCloseSession(only.sessions[0].id, grace: 3600))
+
+        #expect(store.workspaceTransferRefusal(only.id) == "workspace has a pending close")
     }
 
     @Test func aWorkspaceNamedByAPendingCloseIsRefused() {

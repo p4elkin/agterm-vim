@@ -7,9 +7,6 @@ extension AppStore {
 
     /// Why `workspaceID` cannot leave this window, nil when it can.
     func workspaceTransferRefusal(_ workspaceID: UUID) -> String? {
-        if workspaces.count <= 1, workspaces.contains(where: { $0.id == workspaceID }) {
-            return "last workspace in window"
-        }
         let undoTarget = pendingCloseRecords.values.contains { record in
             guard case let .sessions(close) = record else { return false }
             return close.sessions.contains { $0.workspaceID == workspaceID }

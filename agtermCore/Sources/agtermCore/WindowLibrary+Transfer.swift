@@ -10,16 +10,19 @@ public enum TransferWorkspaceTarget: Equatable, Sendable {
     case none
 }
 
-/// A transfer that landed. `needsOpen` marks a closed destination the move loaded, which the app still shows.
+/// A transfer that landed. `needsOpen` marks a closed destination the move loaded, which the app still shows;
+/// `removedSourceWindow` the source window a last-workspace move emptied and deleted, whose NSWindow the app closes.
 public struct TransferResult: Equatable, Sendable {
     public let windowID: UUID
     public let sessionIDs: [UUID]
     public let needsOpen: Bool
+    public let removedSourceWindow: UUID?
 
-    public init(windowID: UUID, sessionIDs: [UUID], needsOpen: Bool) {
+    public init(windowID: UUID, sessionIDs: [UUID], needsOpen: Bool, removedSourceWindow: UUID? = nil) {
         self.windowID = windowID
         self.sessionIDs = sessionIDs
         self.needsOpen = needsOpen
+        self.removedSourceWindow = removedSourceWindow
     }
 
     /// `id` is the destination window, `affected` the moved session count.
@@ -66,7 +69,7 @@ extension WindowLibrary {
                                       createdWorkspace: true, previousSelection: store.selectedSessionID)
             store.attachWorkspace(workspace, selecting: selecting)
         }
-        return land(landing, sessionIDs: workspace.sessions.map(\.id), from: sourceStore) { $0.detachWorkspace(workspaceID) }
+        return land(landing, sessionIDs: workspace.sessions.map(\.id), from: source, sourceStore) { $0.detachWorkspace(workspaceID) }
     }
 
     /// Moves sessions, in tree order, into one workspace of another window; the workspaces they leave stay.
@@ -126,27 +129,33 @@ extension WindowLibrary {
             }
             landing = attached
         }
-        return land(landing, sessionIDs: ids, from: sourceStore) { $0.detachSessions(ids) }
+        return land(landing, sessionIDs: ids, from: source, sourceStore) { $0.detachSessions(ids) }
     }
 
     // MARK: - Steps
 
-    private func land(_ landing: TransferLanding, sessionIDs: [UUID], from sourceStore: AppStore,
+    /// A source the detach empties is deleted rather than saved. Its store then holds none of the moved sessions,
+    /// so `removeWindow` finalizes, closes and sweeps none of them.
+    private func land(_ landing: TransferLanding, sessionIDs: [UUID], from source: UUID, _ sourceStore: AppStore,
                       detach: (AppStore) -> Void) -> Result<TransferResult, TransferRefusal> {
         guard landing.store.saveChecked() else {
             withdraw(landing, sessionIDs: sessionIDs)
             return .failure(TransferRefusal("destination save failed"))
         }
-        if landing.kind == .new {
-            frontmostWindowID = landing.windowID
-            // no rollback on failure: the window file is saved, and a rollback would orphan it with the
-            // workspace inside; retryUnsavedIndex and the launch stray-file claim cover a missing entry
-            saveIndex()
-        }
+        frontmostWindowID = landing.windowID
+        // no rollback on failure: the window file is saved, and a rollback would orphan a new window with the
+        // workspace inside; retryUnsavedIndex and the launch stray-file claim cover a missing entry
+        saveIndex()
+        // an unmounted store still has the nil dwell and would record at once; the dwell is one app setting
+        if landing.kind != .open { landing.store.setRecencyDwell(sourceStore.recencyDwell) }
+        // the attach pushed or armed while the source was frontmost; this push is the one that can be a visit
+        landing.store.recordRecency()
         sourceStore.releaseForTransfer(sessionIDs)
         detach(sourceStore)
-        sourceStore.save()
-        return .success(TransferResult(windowID: landing.windowID, sessionIDs: sessionIDs, needsOpen: landing.kind == .loaded))
+        let removed = sourceStore.workspaces.isEmpty ? source : nil
+        if let removed { removeWindow(removed) } else { sourceStore.save() }
+        return .success(TransferResult(windowID: landing.windowID, sessionIDs: sessionIDs, needsOpen: landing.kind == .loaded,
+                                       removedSourceWindow: removed))
     }
 
     private func withdraw(_ landing: TransferLanding, sessionIDs: [UUID]) {
