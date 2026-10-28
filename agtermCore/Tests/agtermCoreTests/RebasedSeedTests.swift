@@ -9,7 +9,9 @@ struct RebasedSeedTests {
     -Xms128m
     -Xmx1g
     -XX:ReservedCodeCacheSize=240m
-    -Didea.load.plugins.id=com.intellij.java,org.jetbrains.idea.maven,Git4Idea,IdeaVIM,org.jetbrains.toolbox-enterprise-client,agterm.rebased.bridge,dev.sasha.clauderemarks,org.intellij.plugins.markdown
+    -Didea.load.plugins.id=com.intellij.java,org.jetbrains.idea.maven,Git4Idea,IdeaVIM,org.jetbrains.toolbox-enterprise-client,\
+    agterm.rebased.bridge,dev.sasha.clauderemarks,org.intellij.plugins.markdown,intellij.recentFiles.plugin,\
+    intellij.navbar.plugin,intellij.execution.serviceView.plugin,intellij.bookmarks.plugin
 
     """
 

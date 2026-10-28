@@ -15,11 +15,16 @@ public enum RebasedSeed {
     private static let configEntries = ["options", "keymaps", "codestyles", "templates", "inspection", "ssl",
                                         "idea.key", "early-access-registry.txt", "tbe"]
     private static let pluginEntries = ["IdeaVIM", "tbe-intellij-plugin", "claude-remarks"]
+    private static let loadedPlugins = [
+        "com.intellij.java", "org.jetbrains.idea.maven", "Git4Idea", "IdeaVIM", "org.jetbrains.toolbox-enterprise-client",
+        "agterm.rebased.bridge", "dev.sasha.clauderemarks", "org.intellij.plugins.markdown", "intellij.recentFiles.plugin",
+        "intellij.navbar.plugin", "intellij.execution.serviceView.plugin", "intellij.bookmarks.plugin",
+    ]
     private static let leanOptions = """
     -Xms128m
     -Xmx1g
     -XX:ReservedCodeCacheSize=240m
-    -Didea.load.plugins.id=com.intellij.java,org.jetbrains.idea.maven,Git4Idea,IdeaVIM,org.jetbrains.toolbox-enterprise-client,agterm.rebased.bridge,dev.sasha.clauderemarks,org.intellij.plugins.markdown
+    -Didea.load.plugins.id=\(loadedPlugins.joined(separator: ","))
 
     """
 
