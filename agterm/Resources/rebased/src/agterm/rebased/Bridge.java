@@ -118,7 +118,7 @@ public final class Bridge implements BiFunction<String, String, String> {
     Project p = openProject(dir);
     if (p == null) return;
     FileDocumentManager.getInstance().saveAllDocuments();
-    ProjectManager.getInstance().closeAndDispose(p);
+    if (!ProjectManager.getInstance().closeAndDispose(p)) log("close refused: " + dir);
   }
 
   static Project openProject(String dir) {

@@ -479,7 +479,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             XCTAssertEqual(messages.count, 2)
             if scenario == "shownSession" || scenario == "left" {
                 XCTAssertTrue(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
-                XCTAssertNil(session.rebasedOverlay)
+                XCTAssertNil(session.rebasedPlacement)
                 XCTAssertFalse(store.undoPendingClose())
                 XCTAssertEqual(releases, [opened.overlay])
                 XCTAssertEqual(commands.map(\.command), ["/bin/flush --final"])
