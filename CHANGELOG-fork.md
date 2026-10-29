@@ -33,6 +33,10 @@ publishes an empty body with only a warning on stderr.
   ⌘E, the navigation bar popup and their actions (IdeaVim mappings included) work in the overlay. An IDE
   folder seeded before this keeps its old list: delete
   `<stateDir>/rebased/ide/<dataDirectoryName>` to seed it again, or add the four ids to its `config/idea.vmoptions`.
+- The embedded IntelliJ IDEA's Markdown preview renders in its browser form again, so Mermaid diagrams
+  draw and claude-remarks' preview notes work there. An IDE folder seeded before this needs
+  `com.intellij.modules.jcef,com.intellij.modules.json,org.jetbrains.plugins.yaml,com.intellij.mermaid` added to
+  the `idea.load.plugins.id` line of its `config/idea.vmoptions`.
 - A remote row keeps its name across a relaunch, and the name is shared with the origin: renaming the row
   on the Mac renames the session on the origin, and a rename on the origin (for example by a script that
   names a new session) reaches every Mac attached to it. A rename made while disconnected is sent when the

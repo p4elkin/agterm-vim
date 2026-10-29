@@ -18,7 +18,8 @@ public enum RebasedSeed {
     private static let loadedPlugins = [
         "com.intellij.java", "org.jetbrains.idea.maven", "Git4Idea", "IdeaVIM", "org.jetbrains.toolbox-enterprise-client",
         "agterm.rebased.bridge", "dev.sasha.clauderemarks", "org.intellij.plugins.markdown", "intellij.recentFiles.plugin",
-        "intellij.navbar.plugin", "intellij.execution.serviceView.plugin", "intellij.bookmarks.plugin",
+        "intellij.navbar.plugin", "intellij.execution.serviceView.plugin", "intellij.bookmarks.plugin", "com.intellij.modules.jcef",
+        "com.intellij.modules.json", "org.jetbrains.plugins.yaml", "com.intellij.mermaid",
     ]
     private static let leanOptions = """
     -Xms128m

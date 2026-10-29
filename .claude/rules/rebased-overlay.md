@@ -110,6 +110,10 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   `agterm.rebased.bridge`, `dev.sasha.clauderemarks`, `org.intellij.plugins.markdown`, and the platform's own
   `intellij.recentFiles.plugin`, `intellij.navbar.plugin`, `intellij.execution.serviceView.plugin` and
   `intellij.bookmarks.plugin`: 2026.2 ships them as plugins, and without them ⌘E and their actions do nothing.
+  `com.intellij.modules.jcef` gives the Markdown preview its browser form, which Mermaid diagrams and
+  claude-remarks' preview notes both need; without it the preview falls back to a plain renderer.
+  `com.intellij.mermaid` follows with its hard dependencies `com.intellij.modules.json` and
+  `org.jetbrains.plugins.yaml`.
   A missing action in the embedded IDE shows in `idea.log` as `Plugin '<name>' (<id>) is not required`.
   A missing source writes only this vmoptions file.
   Existing roots and edited options are left alone; deleting the root repeats the seed.
