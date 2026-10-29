@@ -28,17 +28,19 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 ### Slots, hide and focus
 
 - One session holds at most one Rebased overlay: `Session.rebasedOverlay`, `Session.parkedRebased` or
-  `PaneOverlay.rebased`. `rebasedPlacement` derives its current slot, a parked IDE as `pane: nil`;
-  `updateRebasedOverlay` writes by id after swap or promotion.
+  `PaneOverlay.rebased`. `rebasedPlacement` derives its current slot, a parked IDE as the slot it left
+  (`ParkedRebased.pane`); `updateRebasedOverlay` writes by id after swap or promotion.
   So while an IDE is parked, an open for another project answers `overlay already open` over an empty slot.
   Pane holders have no terminal surface: `paneOverlayIsProgram` excludes them.
-- A pane IDE hides through its slot's bit, `PaneOverlay.hidden`. A session-wide IDE never sets
-  `overlayHidden`: hiding parks it in `parkedRebased` with its size and empties the slot, so any overlay opens.
+- An IDE never sets a hidden bit: hiding parks it in `parkedRebased` with its slot (and a session-wide one's
+  size) and empties the slot, so any overlay opens there. A pane park clears the slot directly, never through
+  `closePaneOverlay` or `teardownPaneOverlay`, which release and so end a review.
   This breaks upstream's rule that a hidden occupant keeps its slot, for this IDE only.
-  Showing seats it back through the helper `openRebasedOverlay` uses, closing a HUD, and refuses while
-  `AppStore.sessionSlotFree` is false: `overlay already open` for a program, page or remote reservation,
-  the presenter message for a presenting viewer. The user closes the occupant; nothing closes it for them.
-  `rebasedHidden` reads the pane bit or the parked state; there is no hidden bit on `RebasedOverlay`.
+  Showing seats it back, closing a session HUD, and refuses while the slot is taken: `overlay already open`
+  for a program, page or remote reservation (the pane form for a pane), `pane not visible` for a pane the deck
+  does not lay out, the presenter message for a presenting viewer. The user closes the occupant; nothing
+  closes it for them. A parked pane IDE follows a swap and a promotion, and is released when its pane closes.
+  `rebasedHidden` reads the parked state or a slot bit; there is no hidden bit on `RebasedOverlay`.
   A hidden IDE keeps the holder, view and callback while the `*Visible` predicates expose the terminal.
   Both deck branches render held Rebased slots, including hidden pane ones; they never create an overlay
   terminal for them. A hidden panel is transparent, with no backdrop, text or hit testing.
@@ -231,8 +233,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   `session overlay close --overlay ID` closes only that holder, in either slot; it excludes `--pane`.
 - Read-back while held:
   `rebasedOverlay: {project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`, `hidden` derived
-  from the slot bit or the parked state. A parked IDE has no `pane`; the session reads `overlay: false`, and
-  `hiddenOverlays` names `session` while no program or page holds the slot, since a bare show brings it back.
+  from the slot bit or the parked state. A parked IDE keeps the `pane` it left; a session-wide one reads
+  `overlay: false`, and `hiddenOverlays` names its slot (`session`, `left`, `right`) while nothing else holds
+  it, since a bare show brings it back.
   With one there, `overlay` and `hiddenOverlays` describe that occupant.
   `view` is `{request, kind, target, state, detail?}`; kind is `diff`, `working-tree` or `file`.
   `diff` is the last range asked for; `view.state: opened` confirms installation, with a file count

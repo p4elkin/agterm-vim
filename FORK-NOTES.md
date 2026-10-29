@@ -35,7 +35,7 @@ is the `.claude/rules` file that owns the design.
 - **Rebased in an overlay** — the IntelliJ-platform git client runs inside agterm, docked to the window,
   session-wide or in one split pane, for a live review: commit-range or working-tree diffs, files, and
   `--on-close`. It hides through upstream's overlay hide (⇧⌘J, `session overlay hide|show|toggle`) as well as
-  its own toggle; a hidden session-wide IDE leaves the slot, so a picker or page opens meanwhile. A remote row's repository opens from an ssh-fetched mirror on the Mac.
+  its own toggle; a hidden IDE, session-wide or in a pane, leaves its slot, so a picker or page opens meanwhile. A remote row's repository opens from an ssh-fetched mirror on the Mac.
   With mutagen on the Mac the mirror's working tree and the host's `~/.m2` are synced, so working-tree diffs,
   files and Maven resolution work on a remote row, and `--on-close` runs on the host. Unused remote mirrors are removed after `rebasedMirrorMaxAgeDays`, also on demand (`rebased mirror prune`).
   `.claude/rules/rebased-overlay.md`.

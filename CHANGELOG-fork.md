@@ -43,6 +43,9 @@ publishes an empty body with only a warning on stderr.
 - A hidden session-wide Rebased or IntelliJ overlay no longer blocks other overlays: a picker, page or HUD
   opens while it is hidden. Showing it again answers `overlay already open` until that overlay closes, and
   the chord beeps. `tree` reads `overlay: false` for it, with `session` still in `hiddenOverlays`.
+- A hidden pane IDE (the live review's, over the left pane) frees its pane the same way, so plannotator,
+  a page or a program opens there while the IDE is hidden and the review stays alive. Showing it again is
+  refused until that overlay closes. `tree` keeps its `pane` and names the pane in `hiddenOverlays`.
 
 ### Added
 

@@ -59,19 +59,26 @@ extension Session {
         return paneOverlay(pane)?.hidden ?? false
     }
 
-    /// slotEffectivelyHidden is `overlayHidden`, and true for the session-wide slot while a parked IDE is all
-    /// it would show. Opens keep reading the raw bit, or a parked IDE would block them.
+    /// slotEffectivelyHidden is `overlayHidden`, and true for a slot while a parked IDE is all it would show.
+    /// Opens keep reading the raw slot, or a parked IDE would block them.
     public func slotEffectivelyHidden(_ pane: OverlayPane?) -> Bool {
-        overlayHidden(pane) || (pane == nil && !coverOverlayActive && parkedRebased != nil)
+        overlayHidden(pane) || parkedOnly(in: pane)
+    }
+
+    /// parkedOnly says the IDE parked from `slot` is all that slot would show: nothing else holds it now.
+    func parkedOnly(in slot: OverlayPane?) -> Bool {
+        guard let parked = parkedRebased, parked.pane == slot else { return false }
+        return slot.map { paneOverlay($0) == nil } ?? !coverOverlayActive
     }
 
     /// hideableOverlaySlots lists the slots `pane` scopes that hold a program or page, nil standing for the
     /// session-wide slot; every slot of the session for a nil `pane`. A HUD, an ask and an origin-only
-    /// remote reservation hold nothing that can be hidden; a parked IDE keeps the session-wide slot listed.
+    /// remote reservation hold nothing that can be hidden; a parked IDE keeps the slot it left listed.
     public func hideableOverlaySlots(_ pane: OverlayPane?) -> [OverlayPane?] {
-        if let pane { return paneOverlay(pane) == nil ? [] : [pane] }
-        let session = coverOverlayActive || parkedRebased != nil
-        return (session ? [nil] : []) + OverlayPane.allCases.filter { paneOverlay($0) != nil }
+        let held = { (slot: OverlayPane) in self.paneOverlay(slot) != nil || self.parkedRebased?.pane == slot }
+        if let pane { return held(pane) ? [pane] : [] }
+        let session = coverOverlayActive || (parkedRebased != nil && parkedRebased?.pane == nil)
+        return (session ? [nil] : []) + OverlayPane.allCases.filter(held)
     }
 
     /// anyOverlayShown says a slot `pane` scopes holds a program or page that is not hidden: what a toggle hides.

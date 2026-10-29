@@ -492,7 +492,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Read back `paneOverlays`, ordered left-then-right.
 - `session.overlay.hide|show|toggle [--pane]` set a per-slot hidden bit (`Session.overlayHidden`,
   `PaneOverlay.hidden`, which travels with the struct through swap and promotion) on program and page slots only;
-  a session-wide Rebased IDE leaves its slot instead ([[rebased-overlay]]).
+  a Rebased IDE leaves its slot instead ([[rebased-overlay]]).
   Bare scope is every such slot of the session; toggle hides all when any is shown, else shows all. A HUD, an
   ask and a remote PROGRAM reservation are not hideable: an empty scope answers `no overlay`, a reserved one
   `overlay is shown on another Mac`. A page shown on the presenting Mac is in scope: the request goes to that
@@ -576,11 +576,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the occupant's interactivity, a hidden program staying interactive behind its own hiding gates; and
   `overlay.result`'s running check reads occupancy.
   A Rebased overlay (fork only, [[rebased-overlay]]) occupies the session slot or one
-  `PaneOverlay.rebased` slot. A pane IDE hides through its slot's bit; a session-wide one parks out of the slot.
+  `PaneOverlay.rebased` slot. Hiding parks either form out of its slot.
   `rebasedPlacement` locates the single holder by id; `paneOverlayIsProgram` excludes pages and
   Rebased from terminal-surface paths.
   `rebasedOverlayActive` is occupancy and `rebasedOverlayVisible` its visible twin; `rebasedHidden` reads
-  the pane slot's bit or the parked state. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
+  the parked state or a slot bit. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
   to the IDE instead of its terminal.
   A shown IDE has no terminal focus target or font size; `htmlHidesTerminal` stays false because the
   IDE holds its keys.

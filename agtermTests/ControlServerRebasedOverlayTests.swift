@@ -413,7 +413,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         func promoteToPrimaryPane() {}
     }
 
-    func testPaneToggleRefocusesTheUncoveredTerminalAndKeepsTheHolder() throws {
+    func testPaneToggleRefocusesTheUncoveredTerminalAndParksTheHolder() throws {
         let (store, session) = try addSession()
         store.selectSession(session.id)
         store.toggleSplit(session.id)
@@ -427,7 +427,9 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         actions.rebasedRefocus = { current in refocused = current.topmostSurface === surface }
         XCTAssertEqual(actions.toggleRebasedOverlay(), .hidden)
         XCTAssertTrue(refocused)
-        XCTAssertEqual(session.leftOverlay?.rebased?.id, opened.overlay)
+        XCTAssertNil(session.leftOverlay)
+        XCTAssertEqual(session.rebasedPlacement?.overlay.id, opened.overlay)
+        XCTAssertEqual(session.rebasedPlacement?.pane, .left)
         XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
         XCTAssertEqual(server.buildTree(in: store).workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString }?.rebasedOverlay?.hidden, true)
         XCTAssertEqual(actions.toggleRebasedOverlay(), .shown)

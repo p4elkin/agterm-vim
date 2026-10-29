@@ -47,15 +47,16 @@ extension AppStore {
         return setOverlaysHidden(slot.session.id, pane: slot.pane, hidden: true) == nil
     }
 
-    /// setSlotHidden parks a session-wide IDE instead of setting its slot's bit, and a show of the empty slot
-    /// unparks it; nil unless that unpark is refused.
+    /// setSlotHidden parks an IDE instead of setting its slot's bit, and a show of the slot it left, while that
+    /// slot is empty, unparks it; nil unless that unpark is refused.
     @discardableResult
     func setSlotHidden(_ session: Session, slot: OverlayPane?, _ hidden: Bool) -> RebasedOverlayOpenFailure? {
-        if slot == nil, session.rebasedOverlay != nil {
-            if hidden { parkRebasedOverlay(session) }
+        if session.rebasedPlacement?.pane == slot, session.parkedRebased == nil,
+           slot.map({ session.paneOverlay($0)?.rebased != nil }) ?? (session.rebasedOverlay != nil) {
+            if hidden { parkRebasedOverlay(session, slot: slot) }
             return nil
         }
-        if slot == nil, session.parkedRebased != nil, !session.coverOverlayActive {
+        if session.parkedOnly(in: slot) {
             return hidden ? nil : unparkRebasedOverlay(session)
         }
         guard session.slotEffectivelyHidden(slot) != hidden else { return nil }
