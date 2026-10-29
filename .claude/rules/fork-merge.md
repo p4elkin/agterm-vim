@@ -146,7 +146,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
     `tree` tag reads `hiddenOverlays` even with `overlay` false.
   - `AppStore+Panes.swift`: pane close release; swap and promotion move the whole value.
   - `TerminalZoom.swift`, `DashboardCover.swift`: IDEs have no terminal target; hidden holders uncover panes.
-  - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`;
+  - `AppActions.swift`: ⌘W skips hidden holders and confirms a shown IDE's close through `closeConfirmer`;
     `init` connects `RebasedOverlayReleases.onHiddenChange`.
   - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to
     their terminal.

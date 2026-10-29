@@ -25,6 +25,10 @@ publishes an empty body with only a warning on stderr.
 - The IDE toggle on a remote row with no IDE open reopens the last folder that row opened, instead of
   failing on this Mac's home directory (`found no repository at /Users/...`). It remembers the folder until
   agterm quits; before the first open the row's cwd is used as before.
+- Closing the IDE overlay in the last row that shows a project now closes that project in the IDE as well,
+  saving its editors first, so its memory is freed. Opening it again loads it anew instead of showing it at
+  once. ⌘W over a pane IDE (when agterm, not the IDE, holds the keys) now closes the IDE after the same
+  confirm a session-wide one shows, instead of offering to close the whole session.
 - The embedded IntelliJ IDEA loads the platform's Recent Files, Navbar, Services and Bookmarks plugins, so
   ⌘E, the navigation bar popup and their actions (IdeaVim mappings included) work in the overlay. An IDE
   folder seeded before this keeps its old list: delete

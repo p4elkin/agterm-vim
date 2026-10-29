@@ -65,8 +65,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   An open or explicit toggle-show marks the holder for one focus attempt at its first visible show,
   through `isFocusedPane`.
   The mark clears even when focus moved away; visibility reports alone never arm another attempt.
-- ⌘W over a pane IDE, a hidden pane IDE or a hidden session-wide IDE confirms before closing the session.
-  A shown session-wide IDE confirms before closing only the overlay, leaving the session open.
+- ⌘W over a hidden IDE (pane or session-wide) or an IDE on the unfocused pane confirms before closing the session.
+  A shown session-wide IDE, or one on the focused pane, confirms before closing only the overlay, leaving the session open.
   Both dialogs name the review and ignore `confirmCloseSession`; Cancel preserves the holder.
   `closeConfirmer` is the hosted-test seam; XCUITest's explicit bypass still applies.
   While an IDE window is key, its own ⌘W goes to the IDE.
@@ -134,7 +134,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   A fresh project's first link swaps in a new settings object after the activity, so it re-applies on
   `activated()` and `projectImportCompleted()`, forcing one more import each time, at most 3 times.
 - The plugin publishes a `BiFunction` under the system property `agterm.rebased.bridge`. The host calls it
-  for `open`, `hide`, `show`, `diff`, `openFile`, `port` and `saveAll`, and registers the native
+  for `open`, `close`, `hide`, `show`, `diff`, `openFile`, `port` and `saveAll`, and registers the native
   `hostEvent` on its class, then calls `hello`; the plugin queues events until then.
   JNI keeps a checked strong global reference from its first successful lookup, published under `state_lock`,
   for the JVM lifetime, including event-registration retries.
@@ -253,6 +253,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   control socket and widened PATH.
 - `RebasedOverlayReleases` routes close, pane destruction, session/window/workspace teardown and
   frame close to one release.
+  A release that leaves no entry on a project with a frame calls `close`, which saves its documents and
+  disposes it, so its memory does not outlive the overlay. `closingProjects` swallows that frame's
+  `frameClosed`, which would otherwise end a slot reopened on the project before the event arrived.
   `removeEntry` succeeds once before `RebasedOnCloseRunner` starts detached `/bin/sh -c` with null stdio.
   Spawn failures are logged; no caller waits for command completion.
 - On a remote row the capture keeps the host (`RebasedOnClose.host`) and the host's cwd, and the runner spawns

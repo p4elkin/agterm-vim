@@ -284,7 +284,9 @@ final class AppActions {
         // the focused pane's own overlay is the last cover: without this rung ⌘W over one falls straight
         // through and closes the SESSION. An overlay on the other pane is not in front of the user, so it
         // does not intercept — that pane stays live and ⌘W keeps its ordinary meaning.
-        if let pane = session.focusedOverlayPane, session.paneOverlay(pane)?.rebased == nil {
+        if let pane = session.focusedOverlayPane {
+            if let review = session.paneOverlay(pane)?.rebased, !ContentView.shouldBypassCloseConfirmation,
+               !closeConfirmer("End the Rebased review of \(review.project)?", "The session will stay open.") { return true }
             store.closePaneOverlay(session.id, pane: pane)
             return true
         }

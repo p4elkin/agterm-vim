@@ -344,13 +344,22 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
         XCTAssertEqual(node.rebasedOverlay?.diff, "main..topic")
     }
 
-    func testCloseHidesTheFrame() throws {
-        let (_, session) = try addSession()
-        XCTAssertTrue(openRebased(session).ok)
-        frameOpened(session)
-        XCTAssertTrue(server.closeSessionOverlay(session.id.uuidString, window: nil, pane: nil).ok)
-        XCTAssertNil(session.rebasedOverlay)
-        XCTAssertEqual(runtime.calls.last, "hide \(RebasedHost.canonical(stateDir.path))")
+    func testTheLastCloseOfAProjectClosesItInTheIDE() throws {
+        let project = RebasedHost.canonical(stateDir.path)
+        let (_, first) = try addSession()
+        let (_, second) = try addSession()
+        XCTAssertTrue(openRebased(first).ok)
+        frameOpened(first)
+        XCTAssertTrue(openRebased(second).ok)
+        XCTAssertTrue(server.closeSessionOverlay(first.id.uuidString, window: nil, pane: nil).ok)
+        XCTAssertNil(first.rebasedOverlay)
+        XCTAssertFalse(runtime.calls.contains("close \(project)"))
+        XCTAssertTrue(server.closeSessionOverlay(second.id.uuidString, window: nil, pane: nil).ok)
+        XCTAssertEqual(runtime.calls.last, "close \(project)")
+        XCTAssertTrue(openRebased(first).ok)
+        XCTAssertEqual(runtime.calls.last, "open \(project)")
+        RebasedHost.shared.handle(event: "frameClosed", payload: stateDir.path)
+        XCTAssertNotNil(first.rebasedOverlay)
     }
 
     func testResizeChangesTheSharedOverlaySize() throws {
@@ -468,7 +477,7 @@ final class ControlServerRebasedOverlayTests: XCTestCase {
             accepted = true
             XCTAssertTrue(actions.closeActiveSession())
             XCTAssertEqual(messages.count, 2)
-            if scenario == "shownSession" {
+            if scenario == "shownSession" || scenario == "left" {
                 XCTAssertTrue(store.workspaces.flatMap(\.sessions).contains { $0.id == session.id })
                 XCTAssertNil(session.rebasedOverlay)
                 XCTAssertFalse(store.undoPendingClose())

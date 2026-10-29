@@ -103,6 +103,8 @@ final class RebasedHost {
     private var frameNumbers: [String: Int] = [:]
     // a project closed in the IDE can still have state this JVM run writes back under `system/`
     private var openedThisRun: Set<String> = []
+    // projects this host asked the IDE to close; their frame's close event must not end a slot opened since
+    private var closingProjects: Set<String> = []
     // in memory only, keyed by canonical project: the first show after a relaunch touches again
     private var lastTouched: [String: Date] = [:]
     private(set) var visible: [String: UUID] = [:]
@@ -478,6 +480,7 @@ final class RebasedHost {
     // A frame that arrives after its overlays failed stays hidden for the next open instead of reviving them.
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
+        closingProjects.remove(project)
         openedThisRun.insert(project)
         beginPortLookup()
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
@@ -491,6 +494,7 @@ final class RebasedHost {
     }
 
     private func frameClosed(project: String) {
+        if closingProjects.remove(project) != nil { return }
         frameNumbers[project] = nil
         visible[project] = nil
         let closing = entries.values.filter { $0.project == project }
@@ -727,9 +731,19 @@ final class RebasedHost {
         } else {
             hide(entry)
             for dialog in queued { surface(dialog, session: entry.session) }
+            closeIfUnused(entry.project)
         }
         if lastShownByProject[entry.project] == entry.id { lastShownByProject[entry.project] = nil }
         return entry
+    }
+
+    // An open project holds IDE memory for the rest of the run, so the last slot to let go of it closes it.
+    private func closeIfUnused(_ project: String) {
+        guard case .running = jvm, frameNumbers[project] != nil,
+              !entries.values.contains(where: { $0.project == project }) else { return }
+        frameNumbers[project] = nil
+        closingProjects.insert(project)
+        _ = runtime.call("close", project)
     }
 
     private func surface(_ dialog: NSWindow, session: UUID) {

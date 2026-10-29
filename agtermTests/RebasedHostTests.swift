@@ -1185,10 +1185,10 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(host.status.projects, [])
     }
 
-    func testReleaseHidesTheFrame() {
+    func testReleaseHidesTheFrameAndClosesTheProject() {
         startAndShow(first)
         store.closeOverlay(first.id)
-        XCTAssertEqual(runtime.calls.last, "hide \(project)")
+        XCTAssertEqual(runtime.calls.suffix(2), ["hide \(project)", "close \(project)"])
         XCTAssertEqual(frames.log.last, "detach frame")
         XCTAssertFalse(host.isShown(in: first.id))
     }
@@ -1269,7 +1269,7 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(runtime.calls, ["open \(project)"])
     }
 
-    func testALateFrameStaysHiddenAndServesTheRetry() {
+    func testALateFrameStaysHiddenAndTheRetryOpensItAgain() {
         open(first)
         host.handle(event: "ready", payload: "")
         fire(RebasedHost.readyDeadline)
@@ -1279,7 +1279,11 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(runtime.calls.last, "hide \(project)")
         XCTAssertTrue(frames.log.isEmpty)
         store.closeOverlay(first.id)
+        XCTAssertEqual(runtime.calls.last, "close \(project)")
         open(first)
+        XCTAssertEqual(runtime.calls.last, "open \(project)")
+        host.handle(event: "frameClosed", payload: project)
+        host.handle(event: "frameOpened", payload: "\(project)\t7")
         XCTAssertEqual(state(first), .shown)
         XCTAssertEqual(frames.log, ["adopt frame in host1"])
         XCTAssertEqual(runtime.starts, 1)
@@ -1361,6 +1365,7 @@ final class RebasedHostTests: XCTestCase {
 
     func testReopeningAKnownFrameIntoAHiddenSlotWaits() {
         startAndShow(first)
+        open(second)
         store.closeOverlay(first.id)
         host.setSlotVisible(false, session: first.id)
         let before = frames.log.count
