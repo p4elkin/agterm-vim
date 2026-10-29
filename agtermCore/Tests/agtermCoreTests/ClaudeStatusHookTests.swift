@@ -204,6 +204,27 @@ struct ClaudeStatusHookTests {
         }
     }
 
+    @Test func pulseModOwnsTheTurnStatuses() throws {
+        // under the agent-pulse mod the mod writes active and completed itself, with notes; a second
+        // writer here repaints the row between the mod's writes (a Stop's completed lands ~3 s before
+        // the mod's turn.complete)
+        for args in [["completed", "--auto-reset"], ["active", "--blink"]] {
+            let result = try run(chain: ["login", "claude"], args: args, extraEnv: ["AGTERM_PULSE_MOD": "1"])
+            #expect(result.calls.isEmpty)
+            #expect(result.exit == 0)
+        }
+    }
+
+    @Test func pulseModLeavesBlockedAndMarkToTheAdapter() throws {
+        // a mod no longer sees classic.* events where the built-in sec-default plugin is seated, so a
+        // permission prompt reaches agterm only through this settings hook; mark is no status at all
+        for args in [["blocked"], ["mark"]] {
+            let result = try run(chain: ["login", "claude"], args: args, extraEnv: ["AGTERM_PULSE_MOD": "1"])
+            #expect(result.calls == [args.joined(separator: " ")])
+            #expect(result.exit == 0)
+        }
+    }
+
     @Test func outsideAgtermExitsSilently() throws {
         // no session id: nothing to address, and a hook must never fail the turn it fired from
         let result = try run(chain: ["login", "claude"], args: ["completed", "--auto-reset"], sessionID: nil)

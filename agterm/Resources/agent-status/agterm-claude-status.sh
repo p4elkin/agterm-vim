@@ -22,6 +22,15 @@ set -u
 
 [ -n "${AGTERM_SESSION_ID:-}" ] || exit 0
 
+# Under the agent-pulse mod (AGTERM_PULSE_MOD=1) the mod writes the turn statuses itself, with notes.
+# A second writer repaints the row between them: Stop's `completed` lands ~3 s before the mod's own
+# turn-end write. `blocked` stays here because a mod no longer sees classic.* events where Claude
+# Code's built-in sec-default plugin is seated, so a permission prompt reaches agterm only through
+# this settings hook; `mark` is not a status.
+if [ "${AGTERM_PULSE_MOD:-}" = 1 ]; then
+  case "${1:-}" in active | completed) exit 0 ;; esac
+fi
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
 status_wrapper=${AGTERM_STATUS_WRAPPER:-"$script_dir/agterm-agent-status.sh"}
 
