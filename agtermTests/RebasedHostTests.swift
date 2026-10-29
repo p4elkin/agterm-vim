@@ -730,6 +730,21 @@ final class RebasedHostTests: XCTestCase {
         XCTAssertEqual(runtime.starts, 0)
     }
 
+    func testAnOpenWithoutAFolderOnARemoteRowReusesTheLastFolderThatFetched() throws {
+        let (remote, calls) = try remoteRow(refresh: .failure(.init(message: "offline")))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s", sizePercent: nil).get())
+        XCTAssertTrue(store.closeRebasedOverlay(remote.id, id: try XCTUnwrap(remote.rebasedOverlay?.id)))
+        let copy = mirrored
+        host.mirrorRefresh = { mirror, _, _ in
+            calls.append(mirror)
+            return .success(copy)
+        }
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo/sub", sizePercent: nil).get())
+        XCTAssertTrue(store.closeRebasedOverlay(remote.id, id: try XCTUnwrap(remote.rebasedOverlay?.id)))
+        XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: nil, sizePercent: nil).get())
+        XCTAssertEqual(calls.paths, ["/home/s", "/home/s/repo/sub", "/home/s/repo/sub"])
+    }
+
     func testARangeOnAnOpenRemoteOverlayRefreshesTheMirrorFirst() throws {
         let (remote, calls) = try remoteRow(refresh: .success(mirrored))
         XCTAssertNoThrow(try host.openOverlay(in: store, session: remote.id, cwd: "/home/s/repo", sizePercent: nil).get())

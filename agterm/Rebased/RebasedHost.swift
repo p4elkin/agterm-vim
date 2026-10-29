@@ -120,6 +120,8 @@ final class RebasedHost {
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
     // sessions whose mirror is being refreshed; a second open would race the same git directory
     var fetching: Set<UUID> = []
+    // a remote row's focused cwd is this Mac's, so an open without `--cwd` reuses the last folder that fetched
+    private var lastRemotePaths: [UUID: String] = [:]
     private var slots: [UUID: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -197,7 +199,7 @@ final class RebasedHost {
             return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
         }
         if let host = session.remoteHost {
-            let path = cwd ?? session.focusedCwd
+            let path = cwd ?? lastRemotePaths[id] ?? session.focusedCwd
             // the command runs on the host, in its own login environment; nothing of this Mac's goes with it
             let captured = onClose.map { RebasedOnClose(command: $0, cwd: path, environment: [:], host: host) }
             return openRemote(in: store, session: session,
@@ -284,14 +286,15 @@ final class RebasedHost {
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id, sync = sync
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
         onMirrorQueue({ result.set { try refresh(mirror, directory, sync).get() } }, { [weak self] in
-            self?.mirrored(result.value, session: sessionID, overlay: overlayID, request: request)
+            self?.mirrored(result.value, path: path, session: sessionID, overlay: overlayID, request: request)
         })
         return .success(.init(overlay: overlayID, request: request))
     }
 
-    private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, session sessionID: UUID, overlay overlayID: UUID,
-                          request: String?) {
+    private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, path: String, session sessionID: UUID,
+                          overlay overlayID: UUID, request: String?) {
         fetching.remove(sessionID)
+        if case .success? = result { lastRemotePaths[sessionID] = path }
         guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedPlacement?.overlay,
               current.id == overlayID else { return }
         switch (result, current.state == .fetching) {

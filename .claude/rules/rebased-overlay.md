@@ -271,7 +271,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, remote-tracking branches, tags and HEAD,
   detached. With mutagen on this Mac its working tree is synced from the host (Synced mirrors below);
   without it, uncommitted work on the host is not in it. Edits made in the IDE never reach the host.
-- `--cwd` (or the row's cwd) is the host's path. `RebasedMirrorRefresh` asks the host for its repository top
+- `--cwd` is the host's path. Without it the row reuses the last path that fetched this run, else its cwd,
+  which on a mosh row is this Mac's home. `RebasedMirrorRefresh` asks the host for its repository top
   over ssh (`git upload-pack` does not look upward), then `git fetch`es over ssh with `BatchMode`, off the
   main actor. The slot reads `fetching` with `source: host:path` until it lands, then opens on the mirror.
 - Every open refreshes, so a range names the host's newest commits. One for the repository already shown

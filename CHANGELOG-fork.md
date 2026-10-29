@@ -22,6 +22,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- The IDE toggle on a remote row with no IDE open reopens the last folder that row opened, instead of
+  failing on this Mac's home directory (`found no repository at /Users/...`). It remembers the folder until
+  agterm quits; before the first open the row's cwd is used as before.
 - The embedded IntelliJ IDEA loads the platform's Recent Files, Navbar, Services and Bookmarks plugins, so
   ⌘E, the navigation bar popup and their actions (IdeaVim mappings included) work in the overlay. An IDE
   folder seeded before this keeps its old list: delete
