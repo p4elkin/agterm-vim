@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !agtermApp.isHostedUnitTest {
             NSApp.activate()
         }
-        // libghostty is already booted: `SettingsModel.init` touches `GhosttyApp.shared` during App.init,
+        // libghostty is already booted: `restoredRuntime` touches `GhosttyApp.shared` during App.init,
         // before NSApp exists. This keeps the dependency explicit ahead of the re-side below.
         _ = GhosttyApp.shared
         // then re-side the config to the launch appearance, while NSApp exists and no scene has mounted —

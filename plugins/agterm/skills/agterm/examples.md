@@ -294,6 +294,9 @@ agtermctl session move --after "$anchor" --target "$server" --target "$logs"
 
 # close several sessions with one grace-period undo
 agtermctl session close --target "$server" --target "$logs"
+
+# close one session with ⌘W's undo grace: undo inside it brings the running shell back
+agtermctl session close --target "$server" --undoable
 ```
 
 `--after`/`--before` are mutually exclusive with each other, with `--to`, and with a destination
@@ -1175,7 +1178,7 @@ file is read once per command; nothing watches it, so push each change with an `
 
 ```bash
 agtermctl session go --to next            # step selection to the next session
-agtermctl session go --to next-attention  # jump to the next blocked/completed session
+agtermctl session go --to next-attention  # jump to the next blocked/completed session (plus active when enabled)
 agtermctl workspace go --to next          # step a whole workspace, landing on its first session
 agtermctl workspace go --to prev          # wraps at both ends; no --target, it is relative
 w=$(agtermctl window new "scratch" --json | jq -r '.result.id')

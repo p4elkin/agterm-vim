@@ -33,6 +33,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Changed
 
+- The recency dwell picker left Settings ▸ Agent Status, so the tab fits the window again with upstream's
+  new Navigation toggle. The 20-second default is unchanged; set `recencyDwell` in `settings.json` to change it.
+
 - Hide Overlays (⇧⌘J, View ▸ Hide Overlays, `session overlay hide|show|toggle`) hides and shows a Rebased or
   IntelliJ overlay too, and takes its window off the screen. The Rebased toggle and the overlay hide now
   share one hidden state, so `tree` reports a hidden IDE in `hiddenOverlays`.

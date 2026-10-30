@@ -29,7 +29,8 @@ Full detail for every `agtermctl` command. See `SKILL.md` for the model and addr
   `exitCode` (overlay result), `count` (diagnostics/search), `restore` (the restore-mode policy),
   `zmx` (the daemon inventory), `remote` (another Mac's attachable sessions, for `zmx tree`),
   `affected` (things actually changed: sessions
-  for a batch close/move, daemons killed for `zmx prune`), `tree` (the tree), `windows` (window list), `app` (the serving app's identity, for
+  for a batch close/move, daemons killed for `zmx prune`), `undoable` (beside `id` or `affected`, for
+  `session close --undoable`), `tree` (the tree), `windows` (window list), `app` (the serving app's identity, for
   `version`), `rebasedMirrors` (fork only, for `rebased mirror list|prune`). The process exit code is non-zero when
   `ok` is false.
 - **Options go after the subcommand**: `agtermctl session type "ls" --target active`, never before it.
@@ -329,19 +330,20 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-two top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-three top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
 it is Immediately, which records on selection; typing in a session records it without waiting, and control
 `session select` records immediately too — though that selection still does not appear in
 `tree.sessionRecency`, which drops the ACTIVE session, so what the immediacy buys is the session you
-LEAVE: select A then B, and A is in B's list rather than skipped),
+LEAVE: select A then B, and A is in B's list rather than skipped), `attentionIncludesActive` (whether
+next-attention/prev-attention also stop on `active` sessions, Settings ▸ Agent Status; no command sets it),
 `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
-`sidebar mode`), `linkOpenMode` (`browser` or `overlay`, app-wide, the read side of `browser links`),
+`sidebar mode`), `linkOpenMode` (`browser`, `overlay`, `overlay95`, `overlay75` or `overlay50`, app-wide, the read side of `browser links`),
 `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view is arranged, the read side
 of `sidebar flagged-layout`; app-wide, so every window reports the same value, under the ordinary tree
 too), `sidebarWidth` (the sidebar divider position in points, the read side of
@@ -546,9 +548,16 @@ buys nothing. A caller with no tree uses `version`.
   pane's directory, and for a remote source it is that cwd after the local rule, so it can read as home.
   It is the control half of the sidebar row's **Duplicate Session** context-menu item
   (single-selection only).
-- `session close [--target T ...] [--window W]` — close one session, or repeat `--target` to close
+- `session close [--target T ...] [--undoable] [--window W]` — close one session, or repeat `--target` to close
   several sessions in the same window/store. Batch close honors the GUI grace-undo setting: one grouped
   undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.
+  A single target closes at once unless `--undoable` asks for the same grace, which keeps its shell running until
+  the grace lapses: undo (Reopen Closed Item) brings it back, and for a local session so do Reopen Last Closed
+  Item and `recent open` (a remote session gets no Recent Closed entry). With `--undoable` the reply carries
+  `result.undoable`: true for an undoable close, false when Settings turned undo off and it closed at once. An
+  app predating the flag ignores it and closes a single target at once, so for a single target an ok reply
+  without `undoable` means the shell is already gone. The human output appends `(undoable)` or `(not undoable)` to `ok`
+  or the session count.
 - `session select [--target] [--window W]`.
 - `session rename <name> [--target] [--window W]`. A name over 1024 UTF-8 bytes (after trimming) is
   rejected, here and in `session new --name` and `zmx new --name`.
@@ -559,7 +568,8 @@ buys nothing. A caller with no tree uses `version`.
   flagged sessions in flagged mode, the marked workspaces' sessions while the focus filter is applied,
   else all sessions (clearing the flag / suspending the filter restores the full set). next/prev wrap around at the ends (last→first,
   first→last); first/last jump to the ends of that set; next-attention/prev-attention step only through the filtered
-  sessions needing attention (status blocked/completed), wrapping. Returns the newly selected id.
+  sessions needing attention (status blocked/completed, plus active when the tree reports
+  `attentionIncludesActive: true`), wrapping. Returns the newly selected id.
 - `session move --to-window <new|name|id> [<workspace> | --workspace-name N] [--window-name N] [--target ...]`
   — move the session(s) to another window: into `<workspace>` (an id in the destination, not with `new`), or
   the workspace named N (reused or created), else one named after the first session's workspace. Not
@@ -896,8 +906,9 @@ error keeps those names for compatibility.
   (the `background` key, not an image). Takes no opacity: the color is drawn at the Settings window
   translucency (solid when translucency is off; blurred/translucent when on), so it honors your
   opacity/blur instead of forcing the pane opaque like the image/text watermark. macOS Reduce
-  Transparency temporarily presents it as opaque and unblurred without changing the saved opacity/blur;
-  the requested presentation returns when Reduce Transparency is disabled. Errors on a malformed color
+  Transparency temporarily presents it as opaque and unblurred without changing the saved opacity/blur,
+  unless Settings ▸ Appearance ▸ Ignore Reduce Transparency is on; the requested presentation returns
+  when Reduce Transparency is disabled. Errors on a malformed color
   (must be a `#rrggbb` hex value).
 - `session background clear [--target] [--window W]` — remove the session's background.
   An image/text watermark makes the pane render OPAQUE, overriding window translucency (an image is
@@ -1942,7 +1953,7 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `new_session_in_workspace`, `rebased_toggle` (fork only),
 `open_directory`, `rename_session`, `duplicate_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_horizontal_split`, `toggle_scratch`, `toggle_sidebar`,
-`focus_workspace`, `toggle_workspace_filter`, `quick_terminal`,
+`focus_workspace`, `toggle_workspace_filter`, `edit_flagged_sessions`, `edit_focused_workspaces`, `quick_terminal`,
 `session_palette`, `command_palette`, `custom_command_palette`, `dashboard`, and the navigation actions (`previous_session`, `next_session`,
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
 `previous_window`, `next_window`, `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open
@@ -2005,11 +2016,12 @@ before another clear's removal has finished. A socket request queues behind a so
 socket serves one request at a time. With nothing ever saved it answers ok. Clearing local data does not sign you out on the server.
 App-global; refuses a target or `--window`. There is no read-back beyond the reply.
 
-`agtermctl browser links [browser|overlay]` - set where a clicked `http` or `https` link in a terminal
+`agtermctl browser links [browser|overlay|overlay95|overlay75|overlay50]` - set where a clicked `http` or `https` link in a terminal
 opens, or with no mode print the current one. `browser` (default) hands the link to the system browser.
 `overlay` opens it in a full session web overlay as `session overlay open --url URL --browse --js
---navigation --persistent` would, without selecting the session. The link still goes to the browser when
-it was clicked in a HUD, a program overlay or the quick terminal, when a HUD is up on the session, when the
+--navigation --persistent` would, without selecting the session; `overlay95`, `overlay75` and `overlay50` add
+`--size-percent 95`, `75` or `50`. The link still goes to the browser when
+it was ⌘⇧-clicked in a program that does not capture the mouse, when it was clicked in a HUD, a program overlay or the quick terminal, when a HUD is up on the session, when the
 session's window has a zoomed terminal, when the session-wide overlay slot is taken, when the saved
 browser store cannot be used, or when the overlay cannot be opened. A plain `http` link uses the overlay
 only for a host the page could load: an unqualified name such as `localhost`, a `.local` name, or an IP

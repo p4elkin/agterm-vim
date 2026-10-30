@@ -49,10 +49,7 @@ final class SettingsModel {
         self.settings = settingsStore.load()
         self.committedTheme = settings.theme
         self.committedDarkTheme = settings.darkTheme
-        // write NOW: GhosttyApp's loadConfig runs in applicationDidFinishLaunching, AFTER this App.init,
-        // and the SEEDED default theme (agterm) is memory-only, never in settings.json — without this the
-        // launch config carries no theme line and the terminal renders ghostty's built-in until the next
-        // settings change. Idempotent: no-ops when the file already matches.
+        // a no-op at launch, where agtermApp.init already wrote it; keeps a model built elsewhere current.
         _ = writeGhosttyConfig()
         // mirror the persisted settings into their shared channels before any settings change fires.
         applyWindowTranslucency()
@@ -208,6 +205,7 @@ final class SettingsModel {
     /// from `settings.json` on the next save; the Settings picker maps `.compact` back to nil.
     func setToolbarMode(_ mode: ToolbarMode?) { settings.toolbarMode = mode?.rawValue; settings.compactToolbar = nil; persistAndApply() }
     func setNotificationBadgeEnabled(_ value: Bool?) { settings.notificationBadgeEnabled = value; persistAndApply() }
+    func setIgnoreReduceTransparency(_ value: Bool?) { settings.ignoreReduceTransparency = value; persistAndApply() }
     func setDockBounce(_ mode: DockBounce?) { settings.dockBounce = mode?.rawValue; persistAndApply() }
     /// Persist the system sound played when a notification is delivered (nil/empty = none). Not a ghostty
     /// key; the `NotificationManager` mirror is read on the next notification, like `dockBounce`.
@@ -370,27 +368,24 @@ final class SettingsModel {
         OverlayRedirectController.shared.setEnabled(value)
     }
     /// Persist the user-idle auto-follow timeout (nil = off) and push it into every open window's `AppStore`
-    /// (a newly opened window seeds itself via `applyAutoFollow(to:)`).
+    /// (a newly opened window seeds itself via `applyWindowSettings(to:)`).
     func setAutoFollowAttention(_ value: String?) {
         settings.autoFollowAttention = value
         try? settingsStore.save(settings)
-        applyAutoFollowToAllWindows()
+        applyWindowSettingsToAllWindows()
     }
     /// Persist whether auto-follow stays put on a running (`active`) session (nil/false = off) and fan it out.
     func setAutoFollowStayOnActive(_ value: Bool?) {
         settings.autoFollowStayOnActive = value
         try? settingsStore.save(settings)
-        applyAutoFollowToAllWindows()
+        applyWindowSettingsToAllWindows()
     }
-    /// Persist how long a session must stay selected before it joins the recency order and push it into every
-    /// open window's store. Unlike its auto-follow neighbors the picker writes a raw value for every case: nil
-    /// means `s20` here, so the zero-wait `immediate` has to be stored to mean anything.
-    func setRecencyDwell(_ value: String?) {
-        settings.recencyDwell = value
+    /// Persist whether attention navigation also stops on `active` sessions (nil = off) and fan it out.
+    func setAttentionIncludesActive(_ value: Bool?) {
+        settings.attentionIncludesActive = value
         try? settingsStore.save(settings)
-        applyRecencyDwellToAllWindows()
+        applyWindowSettingsToAllWindows()
     }
-
     /// Apply a new background opacity live WITHOUT saving — the live-drag half of the slider; each tick
     /// reschedules `backgroundSaveDebouncer`, so the disk write coalesces to one on settle.
     func previewBackgroundOpacity(_ value: Double?) {
@@ -792,7 +787,8 @@ final class SettingsModel {
 
     private func applyWindowTranslucency() {
         GhosttyApp.shared.setWindowTranslucency(opacity: settings.backgroundOpacity ?? 1,
-                                                blurRadius: settings.backgroundBlur ?? 0)
+                                                blurRadius: settings.backgroundBlur ?? 0,
+                                                ignoreReduceTransparency: settings.ignoreReduceTransparency == true)
     }
 
     private func applyNotificationsEnabled() {
@@ -843,18 +839,21 @@ final class SettingsModel {
         GhosttyApp.shared.setAutoHideSidebarInactiveWindows(settings.autoHideSidebarInactiveWindows ?? false)
     }
 
-    /// Push the current auto-follow configuration into one window's store, from `ContentView.resolveStore`
-    /// so a newly opened window honors the setting. The store is host-free and can't read settings itself.
-    func applyAutoFollow(to store: AppStore) {
+    /// Push the per-window settings (auto-follow, attention navigation) into one window's store, from
+    /// `ContentView.resolveStore` so a newly opened window honors them. The store is host-free and can't
+    /// read settings itself.
+    func applyWindowSettings(to store: AppStore) {
         let timeout = AppSettings.AutoFollowAttention(tolerant: settings.autoFollowAttention).timeout
         store.setAutoFollow(timeout: timeout, stayOnActive: settings.autoFollowStayOnActive ?? false)
+        store.attentionIncludesActive = settings.attentionIncludesActive ?? false
     }
 
-    /// Fan auto-follow out to every open window's store — the settings-change broadcast and the launch seed
-    /// from the scene `.task`. Idempotent: re-pushing the same values no-ops in `AppStore.setAutoFollow`.
-    func applyAutoFollowToAllWindows() {
+    /// Fan the per-window settings out to every open window's store — the settings-change broadcast and the
+    /// launch seed from the scene `.task`. Idempotent: re-pushing the same values no-ops in
+    /// `AppStore.setAutoFollow`.
+    func applyWindowSettingsToAllWindows() {
         for store in library.openIDs().compactMap({ library.store(for: $0) }) {
-            applyAutoFollow(to: store)
+            applyWindowSettings(to: store)
         }
     }
 
@@ -864,8 +863,8 @@ final class SettingsModel {
         store.setRecencyDwell(AppSettings.RecencyDwell(tolerant: settings.recencyDwell).dwell)
     }
 
-    /// Fan the recency dwell out to every open window's store — the settings-change broadcast and the launch
-    /// seed from the scene `.task`. Idempotent: an unchanged value no-ops in `AppStore.setRecencyDwell`.
+    /// Fan the recency dwell out to every open window's store, the launch seed from the scene `.task`.
+    /// Idempotent: an unchanged value no-ops in `AppStore.setRecencyDwell`.
     func applyRecencyDwellToAllWindows() {
         for store in library.openIDs().compactMap({ library.store(for: $0) }) {
             applyRecencyDwell(to: store)
@@ -910,9 +909,12 @@ final class SettingsModel {
                                                completed: settings.effectiveStatusShape(for: .completed))
     }
 
+    private func writeGhosttyConfig() -> Bool { Self.writeGhosttyConfig(settings) }
+
     /// Write the ghostty config lines (font/size/theme + the translucency pins) to the file
     /// `GhosttyApp.loadConfig` reads. Returns true when the content changed, so the caller can skip the reload.
-    private func writeGhosttyConfig() -> Bool {
+    /// `agtermApp.init` calls it before libghostty boots, which loads the file once.
+    static func writeGhosttyConfig(_ settings: AppSettings) -> Bool {
         let url = GhosttyApp.settingsConfigURL
         // emit the raw single/dual theme, no appearance resolution: a dual value is stable across flips,
         // so `appearanceChanged` reloads directly rather than diffing this text.

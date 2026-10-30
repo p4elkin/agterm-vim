@@ -357,7 +357,14 @@ struct LinkPolicyTests {
     func overlayModeOpensPaneAndScratchWebLinksOnTheOwningSession(_ raw: String, _ origin: LinkPolicy.ClickOrigin) throws {
         let url = try #require(URL(string: raw))
         #expect(LinkPolicy.route(for: raw, mode: .overlay, origin: origin, localHosts: Self.localHosts)
-            == .overlay(url, session: Self.session))
+            == .overlay(url, session: Self.session, sizePercent: nil))
+    }
+
+    @Test(arguments: [(LinkOpenMode.overlay, nil), (.overlay95, 95), (.overlay75, 75), (.overlay50, 50)] as [(LinkOpenMode, Int?)])
+    func eachOverlayModeCarriesItsSizeToTheRoute(_ mode: LinkOpenMode, _ percent: Int?) throws {
+        let url = try #require(URL(string: "https://example.com/a"))
+        #expect(LinkPolicy.route(for: "https://example.com/a", mode: mode, origin: .pane(Self.session), localHosts: Self.localHosts)
+            == .overlay(url, session: Self.session, sizePercent: percent))
     }
 
     // regression: a plain-http page the app's web views cannot load was routed to the overlay
@@ -372,7 +379,7 @@ struct LinkPolicyTests {
     func overlayModeTakesPlainHttpOnlyFromHostsAWebViewMayLoad(_ raw: String, _ overlay: Bool) throws {
         let url = try #require(URL(string: raw))
         let route = LinkPolicy.route(for: raw, mode: .overlay, origin: .pane(Self.session), localHosts: Self.localHosts)
-        #expect(route == (overlay ? .overlay(url, session: Self.session) : .browser(url)))
+        #expect(route == (overlay ? .overlay(url, session: Self.session, sizePercent: nil) : .browser(url)))
     }
 
     @Test(arguments: [LinkPolicy.ClickOrigin.hud, .programOverlay, .quick])
@@ -394,5 +401,31 @@ struct LinkPolicyTests {
             == .reveal(URL(fileURLWithPath: "/tmp/x.md", isDirectory: false)))
         #expect(LinkPolicy.route(for: "x-custom://run", mode: mode, origin: origin, localHosts: Self.localHosts) == .ignore)
         #expect(LinkPolicy.route(for: "file://elsewhere/tmp/x.md", mode: mode, origin: origin, localHosts: Self.localHosts) == .ignore)
+    }
+
+    @Test(arguments: [LinkOpenMode.overlay, .overlay95, .overlay75, .overlay50],
+          [LinkPolicy.ClickOrigin.pane(session), .scratch(session)])
+    func commandShiftAsksForTheBrowserInEveryOverlayMode(_ mode: LinkOpenMode, _ origin: LinkPolicy.ClickOrigin) {
+        #expect(LinkPolicy.wantsBrowser(modifiers: [.command, .shift], mode: mode, origin: origin, mouseCaptured: false))
+        #expect(!LinkPolicy.wantsBrowser(modifiers: [.command, .shift], mode: .browser, origin: origin, mouseCaptured: false))
+    }
+
+    @Test(arguments: [
+        KeyModifiers.command.rawValue, KeyModifiers.shift.rawValue, 0,
+        KeyModifiers([.command, .shift, .option]).rawValue, KeyModifiers([.command, .shift, .control]).rawValue,
+        KeyModifiers([.command, .option]).rawValue,
+    ])
+    func onlyTheExactCommandShiftChordAsksForTheBrowser(_ raw: Int) {
+        #expect(!LinkPolicy.wantsBrowser(modifiers: KeyModifiers(rawValue: raw), mode: .overlay, origin: .pane(Self.session), mouseCaptured: false))
+    }
+
+    @Test(arguments: [LinkPolicy.ClickOrigin.pane(session), .scratch(session)])
+    func commandShiftUnderMouseCaptureFollowsTheSetting(_ origin: LinkPolicy.ClickOrigin) {
+        #expect(!LinkPolicy.wantsBrowser(modifiers: [.command, .shift], mode: .overlay, origin: origin, mouseCaptured: true))
+    }
+
+    @Test(arguments: [LinkPolicy.ClickOrigin.hud, .programOverlay, .quick])
+    func sessionlessOriginsNeverTakeTheOverride(_ origin: LinkPolicy.ClickOrigin) {
+        #expect(!LinkPolicy.wantsBrowser(modifiers: [.command, .shift], mode: .overlay, origin: origin, mouseCaptured: false))
     }
 }

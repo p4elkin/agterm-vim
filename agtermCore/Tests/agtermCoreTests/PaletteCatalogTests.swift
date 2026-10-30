@@ -53,7 +53,9 @@ struct PaletteCatalogTests {
             "Delete Workspace",
             "Show Flagged Sessions",
             "Clear Flagged",
+            "Edit Flagged Sessions…",
             "Clear Focus",
+            "Edit Focused Workspaces…",
             "Add Workspace to Focus",
             "Toggle Workspace Filter",
             "Expand Workspaces",
@@ -66,7 +68,7 @@ struct PaletteCatalogTests {
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 58)
+        #expect(PaletteCommand.allCases.count == 60)
     }
 
     @Test func idsRoundTripThroughRawValue() {
@@ -210,7 +212,7 @@ struct PaletteCatalogTests {
                                              canStepWorkspaces: true,
                                              canStepWindows: true,
                                              activeSessionHasSplit: true, hasPendingClose: true,
-                                             hasRecentClosed: true, hasActiveSession: true,
+                                             hasRecentClosed: true, hasActiveSession: true, hasSessions: true,
                                              hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
 
     /// The commands whose menu item carries no `modalActive` term at all.
@@ -249,11 +251,31 @@ struct PaletteCatalogTests {
                                      canStepWorkspaces: true,
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
-                                     hasRecentClosed: true, hasActiveSession: false,
+                                     hasRecentClosed: true, hasActiveSession: false, hasSessions: true,
                                      hasCurrentWorkspace: true, hasRemotes: true, activeSessionHasOverlay: true)
         for command in PaletteCommand.allCases {
             #expect(command.isEnabled(in: context) == !Self.needSession.contains(command), "\(command)")
         }
+    }
+
+    @Test func flaggedEditorNeedsAnySessionNotAnActiveOne() {
+        #expect(PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasSessions: true)))
+        #expect(!PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasActiveSession: false)))
+        #expect(PaletteCommand.editFlaggedSessions.isVisible(in: PaletteContext()), "stays listed, inert")
+        #expect(!PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasSessions: true, pickerActive: true)))
+    }
+
+    @Test func membershipEditorsStayListedInEitherSidebarMode() {
+        let tree = PaletteContext(sidebarShowsWorkspaceTree: true, hasSessions: true, hasCurrentWorkspace: true)
+        let flagged = PaletteContext(sidebarShowsFlaggedOnly: true, hasSessions: true, hasCurrentWorkspace: true)
+        for context in [tree, flagged] {
+            #expect(PaletteCommand.editFlaggedSessions.isEnabled(in: context))
+            #expect(PaletteCommand.editFocusedWorkspaces.isEnabled(in: context))
+        }
+        #expect(PaletteCommand.editFlaggedSessions.title == "Edit Flagged Sessions…")
+        #expect(PaletteCommand.editFocusedWorkspaces.title == "Edit Focused Workspaces…")
+        #expect(PaletteCommand.editFlaggedSessions.builtinAction == .editFlaggedSessions)
+        #expect(PaletteCommand.editFocusedWorkspaces.builtinAction == .editFocusedWorkspaces)
     }
 
     @Test func attachRemoteNeedsAConfiguredRemote() {
@@ -272,11 +294,11 @@ struct PaletteCatalogTests {
                                      canStepWorkspaces: true,
                                      canStepWindows: true,
                                      activeSessionHasSplit: true, hasPendingClose: true,
-                                     hasRecentClosed: true, hasActiveSession: true,
+                                     hasRecentClosed: true, hasActiveSession: true, hasSessions: true,
                                      hasCurrentWorkspace: false, hasRemotes: true, activeSessionHasOverlay: true)
         let needWorkspace: Set<PaletteCommand> = [.renameWorkspace, .focusWorkspace, .addWorkspaceToFocus,
                                                   .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
-                                                  .attachRemote]
+                                                  .attachRemote, .editFocusedWorkspaces]
         for command in PaletteCommand.allCases {
             #expect(command.isEnabled(in: context) == !needWorkspace.contains(command), "\(command)")
         }

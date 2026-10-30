@@ -40,8 +40,8 @@ paths:
 - **`PaletteItem.isEnabled` is a closure over live state, never a flag captured when the list was built.**
   `filtered` refreshes only on appear, query and mode, so a snapshot goes stale under an open palette: a
   session exits, a pending close expires, control mutates the tree. The row asks it during body evaluation
-  and `runIfEnabled()` asks it again at the keystroke, returning whether it ran — which is the only thing
-  that dismisses the palette, so an inert row cannot close it on a keystroke that did nothing.
+  and `runIfEnabled()` asks it again at the keystroke, returning whether it ran, so an inert row cannot close
+  the palette on a keystroke that did nothing. A row that ran closes it unless the mode `keepsOpenOnRun`.
   `PaletteItem.indicator` is a closure for the same reason: a session row reads its live `agentIndicator`
   in the row body, so an agent finishing under an open ⌃P or attention palette updates its glyph.
 - `toggleQuickTerminal` gates on all `uiActionsEnabled`, including terminal zoom and dashboard.
@@ -237,8 +237,8 @@ paths:
   because the key monitor fires this from the quick terminal with agterm inactive.
 - When selection moves, GUI callers reveal a captured blocked/completed pane; unchanged plain navigation
   only refocuses, preventing a one-item wrap from resetting split focus. Modal focus guards still apply.
-- Attention navigation defaults to Control-Option-Up/Down, includes blocked/completed only, wraps, and
-  excludes current. If it finds no other target, GUI callers may use the current live indicator solely to
+- Attention navigation defaults to Control-Option-Up/Down, includes blocked/completed (plus active under
+  `attentionIncludesActive`, see [[settings]]), wraps, and excludes current. If it finds no other target, GUI callers may use the current live indicator solely to
   reveal its tagged pane. Control changes selection only.
 - `revealActiveBlockedPane` focuses right only when the split surface exists, explicitly chooses primary
   for left/nil, and shows/focuses scratch. Promotion retags right to left. Idle/active never change pane or
@@ -253,9 +253,9 @@ paths:
   and Enter target cannot diverge; sort by score then title. Built-in palettes match label plus subtitle;
   caller-supplied pickers match the label only, so subtitle consequence text cannot filter a safe row out
   and leave a destructive one preselected. Ctrl-P opens sessions; Ctrl-Shift-P opens actions.
-- An empty query skips ranking in two cases: attention mode and a caller-supplied picker. Both keep their
-  source order, because every row scores 0 and the tie-break would re-sort A→Z and replace the row Return
-  runs. Every other palette lists everything A→Z.
+- An empty query skips ranking in three cases: attention mode, the two membership editors, and a
+  caller-supplied picker. All keep their source order, because every row scores 0 and the tie-break would
+  re-sort A→Z and replace the row Return runs. Every other palette lists everything A→Z.
 - `PaletteMode.newSessionWorkspace` (fork only) is the workspace picker for `new_session_in_workspace`.
   It reuses the caller-supplied-items seam rather than adding a picker: `WindowContentView` mounts
   `CommandPalette` with `items: paletteNewSessionWorkspaces()`, `allowCustom: true`,
@@ -273,6 +273,14 @@ paths:
   shared-seam rule: the headless equivalent is `session.new --workspace`. Being keyless, it also owes the
   `rebuild()` merge line, which serves the single-chord `map` alone — `equivalent(for:)` is nil for a
   leader and for every `nmap` — see [[keymap]].
+- Edit Flagged Sessions (`.flaggedEditor`) lists every session of the frontmost window in tree order, focus-hidden
+  ones included; Edit Focused Workspaces (`.focusEditor`) lists every workspace. Both are `keepsOpenOnRun`:
+  Return or a click toggles the row through `setFlag`/`setFocusMembership` and the palette stays open on the same
+  query, order and highlight, and a click moves the highlight first so the next Return hits that row. Each row
+  captures its id and store, never the active session, and reads membership live through `PaletteItem.mark`.
+  Focus membership follows [[sidebar]]. One deferred opener per editor serves the palette row, the
+  keymap, the View menu and the flagged empty-state link; opening them is keep-in-sync exempt like every palette,
+  `session.flag` and `workspace.focus` being the scripted forms.
 - Attention mode lists every open window's non-idle sessions (`WindowLibrary.attentionAcrossWindows`),
   ordered blocked, active, completed and then newest `statusChangedAt`, with nil last, as one combined
   sort. Items carry a subtitle naming the window once more than one is open, and `isEnabled` asking the OWNING
@@ -282,8 +290,8 @@ paths:
   in the action palette. The titlebar bell opens a popover, not this palette. Palette opening is
   keep-in-sync exempt.
 - Every session list draws the status glyph TRAILING, as the sidebar does, with per-call color/shape
-  through the sidebar's helpers and nothing for idle: ⌃P, attention, Ctrl-Tab, both titlebar popovers, and
-  a pick whose items carry status (Attach Remote).
+  through the sidebar's helpers and nothing for idle: ⌃P, attention, the session editor, Ctrl-Tab, both
+  titlebar popovers, and a pick whose items carry status (Attach Remote).
 - Ctrl-J/Ctrl-K move the selection through `CommandPalette.selectionStep`, which resolves the key with
   `chordKey` from `NSApp.currentEvent`; `KeyPress` carries only the typed character, which is not `j`/`k`
   on a non-Latin layout. See [[keymap]] for the layout rule.

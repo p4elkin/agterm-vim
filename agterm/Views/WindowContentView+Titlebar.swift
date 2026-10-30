@@ -218,7 +218,7 @@ extension WindowContentView {
         Button {
             actions.toggleSidebar()
         } label: {
-            Label("Toggle Sidebar", systemImage: "sidebar.left")
+            Label("Toggle Sidebar", systemImage: InterfaceElement.sidebarToggle.symbolName!)
         }
         .help(helpHint("Toggle Sidebar", .toggleSidebar))
         .accessibilityIdentifier("sidebar-toggle-button")
@@ -237,7 +237,7 @@ extension WindowContentView {
         let symbol: String
         let a11y: String
         if !hasSplit {
-            symbol = "rectangle.split.2x1"; a11y = "none"
+            symbol = InterfaceElement.split.symbolName!; a11y = "none"
         } else if isSplit {
             symbol = axis == .topBottom ? "rectangle.split.1x2.fill" : "rectangle.split.2x1.fill"
             a11y = axis == .topBottom ? "both-horizontal" : "both"
@@ -251,7 +251,6 @@ extension WindowContentView {
         return Button {
             actions.toggleCurrentSplit()
         } label: {
-            // a Label (icon + title) so the toolbar's "Icon and Text" mode has text; hidden in icon-only mode.
             Label("Split", systemImage: symbol)
         }
         .help(helpHint(isSplit ? "Hide split" : (hasSplit ? "Show split" : "Split right"), shortcutAction))
@@ -267,7 +266,7 @@ extension WindowContentView {
         return Button {
             actions.toggleScratch()
         } label: {
-            Label("Scratch", systemImage: active ? "rectangle.inset.filled" : "rectangle")
+            Label("Scratch", systemImage: active ? "rectangle.inset.filled" : InterfaceElement.scratch.symbolName!)
         }
         .help(helpHint(active ? "Hide scratch terminal" : "Show scratch terminal", .toggleScratch))
         .disabled(store.activeSession == nil)
@@ -285,7 +284,7 @@ extension WindowContentView {
         return Button {
             actions.toggleOverlays()
         } label: {
-            Label("Overlays", systemImage: anyHidden ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle")
+            Label("Overlays", systemImage: anyHidden ? "rectangle.on.rectangle.slash" : InterfaceElement.overlayToggle.symbolName!)
         }
         .help(helpHint(anyShown ? "Hide Overlays" : "Show Overlays", .toggleOverlay))
         // this window's own covers, the set `PaletteContext.modalActive` holds for the frontmost window
@@ -301,7 +300,7 @@ extension WindowContentView {
         Button {
             actions.toggleQuickTerminal()
         } label: {
-            Label("Quick Terminal", systemImage: "terminal")
+            Label("Quick Terminal", systemImage: InterfaceElement.quickTerminal.symbolName!)
         }
         .help(helpHint("Quick Terminal", .quickTerminal))
         .disabled(pick.modalPending)
@@ -356,7 +355,7 @@ struct TitlebarLabel: View {
                 }
                 if let host = composition.host {
                     HStack(spacing: 4) {
-                        Image(systemName: "cloud")
+                        Image(systemName: InterfaceElement.remoteHost.symbolName!)
                             .fixedSize()
                             .accessibilityHidden(true)
                         RemoteHostTextLayout {

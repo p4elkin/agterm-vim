@@ -938,10 +938,15 @@
                 <strong style="color: #e6e1d7">Settings ▸ General ▸ Flagged view layout</strong> set to Workspace tree, nested
                 under their workspaces with the ones holding nothing flagged left out. A workspace row's
                 <strong style="color: #e6e1d7">Flag All Sessions</strong> flags every session in it at once, and reads
-                <strong style="color: #e6e1d7">Unflag All Sessions</strong> once they all are. Or <strong style="color: #e6e1d7">focus</strong> a
+                <strong style="color: #e6e1d7">Unflag All Sessions</strong> once they all are.
+                <strong style="color: #e6e1d7">View ▸ Edit Flagged Sessions…</strong> lists every session in the window, so Return
+                or a click flags or unflags one without leaving the flagged view; the empty flagged view links to it.
+                Or <strong style="color: #e6e1d7">focus</strong> a
                 set of workspaces to collapse the tree to just their sessions. Focus one workspace to zoom to it, or mark
                 several from their row menus and apply the filter once with the sidebar's grid button — marking never
-                narrows the tree on its own, and suspending the filter keeps the set for one click back. Creating a workspace
+                narrows the tree on its own, and suspending the filter keeps the set for one click back.
+                <strong style="color: #e6e1d7">View ▸ Edit Focused Workspaces…</strong> marks and unmarks workspaces the same way
+                as the flagged editor. Creating a workspace
                 while the filter is on adds it to the set, and selecting a session outside the set suspends the filter rather
                 than discarding it. The set is per-window and remembered across restarts. If narrowing
                 the sidebar would hide the session you are working in, agterm moves you to the most recent session still
@@ -1462,7 +1467,7 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed, right-click-to-paste,
-                <strong style="color: #e6e1d7">Open links in</strong> (Browser, or Session overlay to show a ⌘-clicked web
+                <strong style="color: #e6e1d7">Open links in</strong> (Browser, or Session overlay at full size, 95%, 75% or 50% to show a ⌘-clicked web
                 link over its session; see <a href="#links" style="color: #6d82f3">links</a>), whether clicking a workspace
                 row expands or collapses it (on by default; the disclosure triangle always does), a
                 <strong style="color: #e6e1d7">Flagged view layout</strong> that picks a flat list, with or without each row's workspace name, or a workspace tree for the
@@ -1492,7 +1497,8 @@
                 You can also close, minimize, or zoom the window from the keyboard or the Window menu.
                 With macOS Reduce Transparency enabled, agterm temporarily presents translucent windows, command palettes, and
                 session switchers as opaque and unblurred without changing the saved opacity or blur; disabling it restores those
-                settings. Reduce Motion keeps status colors and glyphs visible but suppresses their repeating sidebar and dashboard
+                settings. Turn on <strong style="color: #e6e1d7">Ignore Reduce Transparency</strong> (off by default) to keep the
+                window's saved opacity and blur anyway; palettes and switchers stay opaque. Reduce Motion keeps status colors and glyphs visible but suppresses their repeating sidebar and dashboard
                 pulses.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -1500,7 +1506,7 @@
                   style="position: absolute; left: 0; top: 1px; color: #6d82f3; font-family: &quot;JetBrains Mono&quot;, monospace"
                   >›</span
                 ><strong style="color: #e6e1d7">Interface</strong> — turn individual chrome controls on or off (each shown by
-                default): in the title bar the sidebar toggle, the session name, the window name, the remote host, the
+                default, each toggle beside the icon its control shows): in the title bar the sidebar toggle, the session name, the window name, the remote host, the
                 session context, the recent-sessions, scratch, split, dashboard, and quick-terminal buttons, plus three
                 controls off by default, the workspace name (shown before the session name, cut to 24 characters), the
                 custom-commands button, and the hide-overlays button, which stays in place and is dimmed while the session
@@ -1523,8 +1529,8 @@
                   >›</span
                 ><strong style="color: #e6e1d7">Agent Status</strong> — the status-glyph colors and shapes, the blocked-session
                 sound, a <strong style="color: #e6e1d7">Status reset</strong> choice for when typing into a blocked or completed
-                session clears its glyph (on the first key, on Enter, or disabled), and an idle timeout to auto-follow blocked
-                sessions. A <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, sound, and
+                session clears its glyph (on the first key, on Enter, or disabled), whether attention navigation also stops on
+                active sessions, and an idle timeout to auto-follow blocked sessions. A <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, sound, and
                 status reset back to the shipped values.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -1757,7 +1763,7 @@
                 color: #cbc6bc;
               "
             >
-              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote
+              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote<br />edit_flagged_sessions&nbsp;&nbsp;&nbsp;edit_focused_workspaces
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">toggle_fullscreen</span> is the one
@@ -2230,7 +2236,10 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session close</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session move</span> accept repeated
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--target</span> options and print the
-              number of sessions actually changed. Add
+              number of sessions actually changed. With
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--undoable</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session close</span> appends
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">(undoable)</span> or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">(not undoable)</span> to its output, after
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ok</span> or the count. Add
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--json</span> for the raw response,
               or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--socket PATH</span> to override
               the socket. The exit code is zero on success, non-zero on error.
@@ -2408,6 +2417,8 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="color: #6b727a">&nbsp;&nbsp;# move a batch as one ordered block</span
               ><br />agtermctl session close --target 9f3c --target abcd
               <span style="color: #6b727a">&nbsp;&nbsp;# one grace-period undo for the batch</span
+              ><br />agtermctl session close --target <span style="color: #f2b45c">9f3c</span> --undoable
+              <span style="color: #6b727a">&nbsp;&nbsp;# close one with ⌘W's undo grace</span
               ><br />agtermctl workspace go --to next
               <span style="color: #6b727a">&nbsp;&nbsp;&nbsp;# step to the next workspace and select its first session</span
               ><br />agtermctl workspace move --to top
@@ -3201,12 +3212,17 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
             </p>
             <p id="links" style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               A ⌘-click on a web link opens it in your browser. With
-              <strong style="color: #e6e1d7">Settings ▸ General ▸ Open links in</strong> set to Session overlay, or
+              <strong style="color: #e6e1d7">Settings ▸ General ▸ Open links in</strong> set to a Session overlay choice, or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl browser links overlay</span>, an http or https link
-              opens in a web overlay over its session instead: JavaScript on, navigation buttons, and the saved browser
+              opens in a web overlay over its session instead, full size or at 95%, 75% or 50%
+              (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">overlay95</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">overlay75</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">overlay50</span>): JavaScript on, navigation buttons, and the saved browser
               store, so a login made there lasts. That store is agterm's own; nothing is taken from your browser. The page
-              may go on to other sites, and its strip always names the site shown. The link still opens in the browser
-              when it sits in a HUD, when a HUD is up on the session, when the terminal is zoomed, when the session
+              may go on to other sites, and its strip always names the site shown. A ⌘⇧-click sends that one link to the
+              browser instead, except in a program that captures the mouse, where ⌘⇧-click is the ordinary link click and
+              follows this setting. Where the override applies, use Shift-click to extend a selection.
+              The link also opens in the browser when it sits in a HUD, when a HUD is up on the session, when the terminal is zoomed, when the session
               already has an overlay, or in the quick terminal. So does a plain http link to anything but a local
               address (localhost, a .local name, an IP address), which the overlay could not load.
             </p>
@@ -3234,7 +3250,7 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">vim</span> — ⌘-hover stops underlining
               and ⌘-click opens nothing, because links are detected only while reporting is off. Same in Ghostty.app, and
               per-program rather than per-kind of app. Hold shift as well (⌘⇧-hover, ⌘⇧-click) to reach the link anyway, unless the
-              program claimed shift for itself. In
+              program claimed shift for itself. That click follows Open links in. In
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ghostty.conf</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">mouse-shift-capture = never</span> makes
               shift always win, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc"
@@ -3470,6 +3486,12 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">completed</span> status that stays
               when you visit it, so it shows up in attention navigation again. It never replaces a live status, and typing in the
               session's main pane, Clear Status, or the agent's next update clears it as usual.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              Attention navigation (⌃⌥↑/↓) steps through blocked and completed sessions. Turn on
+              <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Attention navigation includes active sessions</strong>
+              (off by default) to stop on <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> sessions too, in the same sidebar
+              order. Landing on an active session keeps the existing pane selection.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               When the sidebar is hidden the glyphs go with it, so an optional

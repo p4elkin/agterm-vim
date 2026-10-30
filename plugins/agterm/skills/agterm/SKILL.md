@@ -134,10 +134,11 @@ control address for `surface zoom` and `surface cursor` (`left`, `right`, `scrat
 read-only top-level fields — `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `recencyDwellMs` (how long a session must stay
 selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately; typing and
-control `session select` both record without waiting it out),
+control `session select` both record without waiting it out), `attentionIncludesActive` (whether attention
+navigation also stops on active sessions),
 `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), `linkOpenMode` (`browser` or `overlay`, app-wide —
+(`tree` or `flagged` — the read side of `sidebar mode`), `linkOpenMode` (`browser`, `overlay`, `overlay95`, `overlay75` or `overlay50`, app-wide —
 the read side of `browser links`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree`, app-wide —
 the read side of `sidebar flagged-layout`), `sidebarWidth` (the sidebar divider position in
 points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`, `quickVisible` (whether the
@@ -386,8 +387,9 @@ omitted when expanded).
   source's focused-pane cwd (equal to the source node's `tree.cwd` unless the source is a split focused
   off its primary pane, where `tree.cwd` reports the primary, or a remote session, where it can read as
   home).
-- `session close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
-  grace-period undo.
+- `session close [--target T ...] [--undoable]` — close one session, or repeat `--target` to close a batch with one
+  grace-period undo. `--undoable` gives a single target that grace too, as ⌘W does, so undo (⌘Z) or, for a local
+  session, `recent open` inside it brings the running shell back; `result.undoable` says whether it applied (false when Settings turns undo off).
 - `session select` · `session rename <name>` · `session reveal` (select the focused pane's cwd in Finder).
 - `session go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions.
 - `session move <workspace>` (relocate) or `session move --to up|down|top|bottom` (reorder within the
@@ -731,7 +733,7 @@ with `--error-position POS` and `--error-pane left|right`; see
 
 **hooks** — `hooks reload` — re-read `hooks.conf` (prints the parse-diagnostic count); `hooks list` — every `on <kind> <shell...>` line with its running pid and elapsed seconds, pending and dropped counts, last failure, and a retired marker for a removed line whose script still runs. A hook gets the event JSON on stdin plus `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`; one process per line at a time with a 256-deep queue behind it. Both commands are app-global and refuse a target or `--window`.
 
-**browser** - `browser clear` - remove every cookie and all site data that `--persistent` URL overlays saved; refused while one is open. `browser links [browser|overlay]` - set or print where a clicked web link in a terminal opens: the system browser (default) or a full session web overlay with saved logins; read back from `linkOpenMode` in `tree`. Both app-global, no target or `--window`.
+**browser** - `browser clear` - remove every cookie and all site data that `--persistent` URL overlays saved; refused while one is open. `browser links [browser|overlay|overlay95|overlay75|overlay50]` - set or print where a clicked web link in a terminal opens: the system browser (default) or a session web overlay with saved logins, full size or at 95%, 75% or 50%; read back from `linkOpenMode` in `tree`. Both app-global, no target or `--window`.
 
 **config** - `config reload` - re-read the agterm-scoped `ghostty.conf` (prints the diagnostic count).
 

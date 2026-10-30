@@ -62,7 +62,7 @@ private struct NonRestorableWindow: NSViewRepresentable {
 }
 
 /// A terse one-line caption under a control; only non-obvious controls carry one, so tabs fit unscrolled.
-private struct SettingHint: View {
+struct SettingHint: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
@@ -131,6 +131,9 @@ private struct GeneralSettingsView: View {
                 Picker("Open links in", selection: linkOpenMode) {
                     Text("Browser").tag(LinkOpenMode.browser)
                     Text("Session overlay").tag(LinkOpenMode.overlay)
+                    Text("Session overlay at 95%").tag(LinkOpenMode.overlay95)
+                    Text("Session overlay at 75%").tag(LinkOpenMode.overlay75)
+                    Text("Session overlay at 50%").tag(LinkOpenMode.overlay50)
                 }
                 .accessibilityIdentifier("settings-link-open-mode")
                 Toggle("Click a workspace row to expand or collapse", isOn: workspaceRowClickExpands)
@@ -279,242 +282,6 @@ private struct GeneralSettingsView: View {
     }
 }
 
-/// Appearance tab: Terminal (font family, size, cursor, theme) and Window (toolbar mode, background opacity + blur,
-/// sidebar tint + font size, pane/backdrop mute), each persisting and live-applying via `SettingsModel`.
-private struct AppearanceSettingsView: View {
-    let model: SettingsModel
-    private let themes = SettingsCatalog.themeNames()
-    private let fonts = SettingsCatalog.monospacedFontFamilies()
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var body: some View {
-        Form {
-            Section("Terminal") {
-                HStack(spacing: 16) {
-                    Picker("Font name", selection: fontFamily) {
-                        Text("Default").tag(String?.none)
-                        ForEach(fonts, id: \.self) { Text($0).tag(String?.some($0)) }
-                    }
-                    .accessibilityIdentifier("settings-font-family")
-                    .frame(maxWidth: .infinity)
-
-                    Divider()
-
-                    Stepper(value: fontSize, in: 8 ... 32, step: 1) {
-                        Text("Font size: \(Int(model.settings.fontSize ?? 13))")
-                    }
-                    .accessibilityIdentifier("settings-font-size")
-                    .frame(maxWidth: .infinity)
-                }
-
-                HStack(spacing: 16) {
-                    // "Default" is a state, not a synonym for Block: it emits no `cursor-style`, so the
-                    // config chain still picks the shape, where Block writes an override that beats it.
-                    Picker("Cursor shape", selection: cursorStyle) {
-                        Text("Default").tag(AppSettings.CursorStyle?.none)
-                        Text("Block").tag(AppSettings.CursorStyle?.some(.block))
-                        Text("Bar").tag(AppSettings.CursorStyle?.some(.bar))
-                        Text("Underline").tag(AppSettings.CursorStyle?.some(.underline))
-                    }
-                    .accessibilityIdentifier("settings-cursor-style")
-                    .frame(maxWidth: .infinity)
-
-                    Divider()
-
-                    // three rows, not a toggle: Default emits nothing, which is the only state that leaves
-                    // DEC mode 12 able to drive the blink.
-                    Picker("Cursor blink", selection: cursorBlink) {
-                        Text("Default").tag(Bool?.none)
-                        Text("Blink").tag(Bool?.some(true))
-                        Text("Steady").tag(Bool?.some(false))
-                    }
-                    .accessibilityIdentifier("settings-cursor-blink")
-                    .frame(maxWidth: .infinity)
-                }
-
-                // the CURRENT appearance's theme; while following, the on-screen side. The "default ghostty"
-                // row shows only when NOT following — a dual conditional needs two named themes.
-                Picker("Theme", selection: themeForCurrentAppearance) {
-                    if !following { Text("default ghostty").tag(String?.none) }
-                    ForEach(themes, id: \.self) { Text($0).tag(String?.some($0)) }
-                }
-                .accessibilityIdentifier("settings-theme")
-
-                Toggle("Follow system appearance", isOn: followSystemAppearance)
-                    .accessibilityIdentifier("settings-follow-appearance")
-
-                // only while following: the OTHER appearance's theme. ghostty resolves the active side at
-                // runtime, so a light/dark flip rewrites no config.
-                if following {
-                    Picker(GhosttyApp.currentIsDark() ? "Light theme" : "Dark theme", selection: alternateTheme) {
-                        ForEach(themes, id: \.self) { Text($0).tag(String?.some($0)) }
-                    }
-                    .accessibilityIdentifier("settings-theme-dark")
-                    SettingHint("Used when macOS is in \(GhosttyApp.currentIsDark() ? "light" : "dark") mode.")
-                }
-            }
-
-            Section("Window") {
-                Picker("Toolbar", selection: toolbarMode) {
-                    Text("Normal").tag(ToolbarMode.normal)
-                    Text("Compact").tag(ToolbarMode.compact)
-                    Text("Hidden").tag(ToolbarMode.hidden)
-                }
-                .accessibilityIdentifier("settings-toolbar-mode")
-
-                HStack {
-                    Text("Background Opacity")
-                    Slider(value: backgroundOpacity, in: 0 ... 1,
-                           onEditingChanged: { editing in if !editing { model.commitBackgroundSettings() } })
-                        .accessibilityIdentifier("settings-bg-opacity")
-                    Text("\(Int(((model.settings.backgroundOpacity ?? 1) * 100).rounded()))%")
-                        .monospacedDigit()
-                        .frame(width: 42, alignment: .trailing)
-                }
-
-                HStack {
-                    Text("Background Blur")
-                    Slider(value: backgroundBlur, in: 0 ... 100,
-                           onEditingChanged: { editing in if !editing { model.commitBackgroundSettings() } })
-                        .accessibilityIdentifier("settings-bg-blur")
-                    Text("\(model.settings.backgroundBlur ?? 0)")
-                        .monospacedDigit()
-                        .frame(width: 42, alignment: .trailing)
-                }
-                .disabled((model.settings.backgroundOpacity ?? 1) >= 1)
-                if reduceTransparency {
-                    SettingHint("Reduce Transparency is on; saved opacity and blur apply when it is off.")
-                } else {
-                    SettingHint("Blur needs opacity below 100%.")
-                }
-
-                HStack {
-                    Text("Sidebar Tint")
-                    Slider(value: sidebarBackgroundShift, in: 0 ... 10, step: 1)
-                        .accessibilityIdentifier("settings-sidebar-shift")
-                    Text(sidebarShiftLabel)
-                        .monospacedDigit()
-                        .frame(width: 64, alignment: .trailing)
-                }
-
-                Stepper(value: sidebarFontSize, in: AppSettings.sidebarFontSizeRange, step: 1) {
-                    Text("Sidebar font size: \(Int(model.settings.effectiveSidebarFontSize))")
-                }
-                .accessibilityIdentifier("settings-sidebar-font-size")
-
-                Stepper(value: interfaceFontSize, in: AppSettings.interfaceFontSizeRange, step: 1) {
-                    Text("Palette and switcher font size: \(Int(model.settings.effectiveInterfaceFontSize))")
-                }
-                .accessibilityIdentifier("settings-interface-font-size")
-
-                HStack {
-                    Text("Inactive pane and backdrop mute")
-                    Slider(value: inactivePaneMuteStrength, in: 0 ... 10, step: 1)
-                        .accessibilityIdentifier("settings-inactive-pane-mute")
-                    Text("\(model.settings.inactivePaneMuteStrength ?? AppSettings.defaultInactivePaneMuteStrength)")
-                        .monospacedDigit()
-                        .frame(width: 42, alignment: .trailing)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .padding()
-    }
-
-    private var fontFamily: Binding<String?> {
-        Binding(get: { model.settings.fontFamily }, set: { model.setFontFamily($0) })
-    }
-
-    private var fontSize: Binding<Double> {
-        Binding(get: { model.settings.fontSize ?? 13 }, set: { model.setFontSize($0) })
-    }
-
-    /// nil is the From config row; a shape this version does not offer (a future one, or a hand-written
-    /// `block_hollow`) resolves to nil too, so the picker shows From config rather than a blank selection.
-    private var cursorStyle: Binding<AppSettings.CursorStyle?> {
-        Binding(get: { model.settings.effectiveCursorStyle }, set: { model.setCursorStyle($0) })
-    }
-
-    /// Passed through as ghostty's own three states; nil is Program controlled (see `AppSettings.cursorBlink`).
-    private var cursorBlink: Binding<Bool?> {
-        Binding(get: { model.settings.cursorBlink }, set: { model.setCursorBlink($0) })
-    }
-
-    /// The sidebar row-text size.
-    private var sidebarFontSize: Binding<Double> {
-        Binding(get: { model.settings.effectiveSidebarFontSize },
-                set: { model.setSidebarFontSize($0 == AppSettings.defaultSidebarFontSize ? nil : $0) })
-    }
-
-    /// The palette, picker and session-switcher text size.
-    private var interfaceFontSize: Binding<Double> {
-        Binding(get: { model.settings.effectiveInterfaceFontSize },
-                set: { model.setInterfaceFontSize($0 == AppSettings.defaultInterfaceFontSize ? nil : $0) })
-    }
-
-    /// Whether the terminal follows the macOS appearance — reveals the alternate picker.
-    private var following: Bool { model.settings.followSystemAppearance == true }
-
-    /// Picker 1: the CURRENT appearance's theme — the dark slot while following in dark mode, else `theme`.
-    private var themeForCurrentAppearance: Binding<String?> {
-        Binding(get: { model.settings.activeTheme(isDark: GhosttyApp.currentIsDark()) },
-                set: { model.setThemeForCurrentAppearance($0) })
-    }
-
-    /// Picker 2, only while following: the OTHER appearance's theme — light slot in dark mode, dark in light.
-    private var alternateTheme: Binding<String?> {
-        Binding(get: { GhosttyApp.currentIsDark() ? model.settings.theme : model.settings.darkTheme },
-                set: { model.setAlternateTheme($0) })
-    }
-
-    /// The "Follow system appearance" toggle — `setFollowSystemAppearance` seeds/collapses the two slots.
-    private var followSystemAppearance: Binding<Bool> {
-        Binding(get: { model.settings.followSystemAppearance == true },
-                set: { model.setFollowSystemAppearance($0) })
-    }
-
-    /// PREVIEWS live (apply without save) per drag tick and debounces; `onEditingChanged` flushes on release.
-    private var backgroundOpacity: Binding<Double> {
-        Binding(get: { model.settings.backgroundOpacity ?? 1 },
-                set: { model.previewBackgroundOpacity($0 >= 1 ? nil : $0) })
-    }
-
-    /// Previews and flushes like `backgroundOpacity`.
-    private var backgroundBlur: Binding<Double> {
-        Binding(get: { Double(model.settings.backgroundBlur ?? 0) },
-                set: { model.previewBackgroundBlur($0 <= 0 ? nil : Int($0.rounded())) })
-    }
-
-    /// Neutral is 5.
-    private var sidebarBackgroundShift: Binding<Double> {
-        Binding(get: { Double(model.settings.sidebarBackgroundShift ?? AppSettings.defaultSidebarBackgroundShift) },
-                set: { value in
-                    let strength = Int(value.rounded())
-                    model.setSidebarBackgroundShift(strength == AppSettings.defaultSidebarBackgroundShift ? nil : strength)
-                })
-    }
-
-    /// "None" at the neutral center, else the direction and magnitude away from it (e.g. "Lighter 2").
-    private var sidebarShiftLabel: String {
-        let offset = (model.settings.sidebarBackgroundShift ?? AppSettings.defaultSidebarBackgroundShift)
-            - AppSettings.defaultSidebarBackgroundShift
-        if offset == 0 { return "None" }
-        return offset < 0 ? "Lighter \(-offset)" : "Darker \(offset)"
-    }
-
-    /// `.compact` is the default; `.normal`/`.hidden` write an explicit mode.
-    private var toolbarMode: Binding<ToolbarMode> {
-        Binding(get: { model.settings.effectiveToolbarMode },
-                set: { model.setToolbarMode($0 == .compact ? nil : $0) })
-    }
-
-    /// nil (the default) reads as `defaultInactivePaneMuteStrength`.
-    private var inactivePaneMuteStrength: Binding<Double> {
-        Binding(get: { Double(model.settings.inactivePaneMuteStrength ?? AppSettings.defaultInactivePaneMuteStrength) },
-                set: { let v = Int($0.rounded()); model.setInactivePaneMuteStrength(v == AppSettings.defaultInactivePaneMuteStrength ? nil : v) })
-    }
-}
-
 /// Interface tab: per-element title-bar and sidebar chrome visibility, grouped by surface, two toggles per
 /// row so the tab keeps fitting the fixed 540×680 window as the element set grows, plus the quick terminal's
 /// panel size — that panel belongs to no window, so it is not a Window setting. A toggle off adds the
@@ -526,12 +293,12 @@ private struct InterfaceSettingsView: View {
 
     var body: some View {
         Form {
-            twoColumnSection("Title Bar", elements: InterfaceElement.allCases.filter { $0.section == .titleBar }) {
+            twoColumnSection("Title Bar", elements: InterfaceElement.settingsOrder(in: .titleBar)) {
                 EmptyView()
             }
             // the multi-window toggle rides the Sidebar section: the tab is full at 540x680, and its own
             // section header would push the quick-terminal Size off the bottom.
-            twoColumnSection("Sidebar", elements: InterfaceElement.allCases.filter { $0.section == .sidebar }) {
+            twoColumnSection("Sidebar", elements: InterfaceElement.settingsOrder(in: .sidebar)) {
                 Toggle("Show sidebar only in the active window", isOn: autoHideSidebarInactiveWindows)
                     .accessibilityIdentifier("settings-auto-hide-inactive-sidebars")
             }
@@ -584,8 +351,21 @@ private struct InterfaceSettingsView: View {
 
     /// One element's show/hide toggle: ON = visible (the default), so hiding is the opt-in that writes.
     private func toggle(for element: InterfaceElement) -> some View {
-        Toggle(element.displayName, isOn: binding(for: element))
-            .accessibilityIdentifier("settings-interface-\(element.rawValue)")
+        Toggle(isOn: binding(for: element)) {
+            HStack(spacing: 6) {
+                Group {
+                    if let symbol = element.symbolName {
+                        Image(systemName: symbol).foregroundStyle(.secondary)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 18).accessibilityHidden(true)
+                Text(element.displayName)
+            }
+        }
+        .accessibilityLabel(element.displayName)
+        .accessibilityIdentifier("settings-interface-\(element.rawValue)")
     }
 
     private func binding(for element: InterfaceElement) -> Binding<Bool> {
@@ -671,8 +451,8 @@ private struct NotificationsSettingsView: View {
 
 /// Agent Status tab: Colors and Shapes (a row per state — active/blocked/completed — with that glyph's color
 /// well and shape picker), Sound, Typing (which keystroke clears a blocked/completed glyph), Auto-follow (idle
-/// timeout + stay-on-active), Recent sessions (the dwell before a selection joins the Ctrl-Tab order), and a
-/// Reset clearing the first three.
+/// timeout + stay-on-active), and a Reset clearing the first three. The recency dwell has no control here; see
+/// `settings.md`.
 private struct AgentStatusSettingsView: View {
     /// Gap between a glyph row's color well and its shape picker.
     private static let controlSpacing: CGFloat = 8
@@ -710,7 +490,9 @@ private struct AgentStatusSettingsView: View {
                 .accessibilityIdentifier("settings-status-clear")
             }
 
-            Section("Auto-follow") {
+            Section("Navigation") {
+                Toggle("Attention navigation includes active sessions", isOn: attentionIncludesActive)
+                    .accessibilityIdentifier("settings-attention-includes-active")
                 Picker("Auto-follow blocked sessions", selection: autoFollowAttention) {
                     Text("Disabled").tag(AppSettings.AutoFollowAttention.off)
                     Text("5 sec idle").tag(AppSettings.AutoFollowAttention.s5)
@@ -724,19 +506,6 @@ private struct AgentStatusSettingsView: View {
                     .accessibilityIdentifier("settings-auto-follow-stay-active")
                     .disabled(autoFollowAttention.wrappedValue == .off)
                 SettingHint("Only applies while auto-follow is on.")
-            }
-
-            Section("Recent sessions") {
-                Picker("Count a session as visited after", selection: recencyDwell) {
-                    Text("Immediately").tag(AppSettings.RecencyDwell.immediate)
-                    Text("5 sec").tag(AppSettings.RecencyDwell.s5)
-                    Text("10 sec").tag(AppSettings.RecencyDwell.s10)
-                    Text("20 sec").tag(AppSettings.RecencyDwell.s20)
-                    Text("30 sec").tag(AppSettings.RecencyDwell.s30)
-                    Text("60 sec").tag(AppSettings.RecencyDwell.s60)
-                }
-                .accessibilityIdentifier("settings-recency-dwell")
-                SettingHint("A session joins the recent list once you stay this long, or as soon as you type.")
             }
 
             Section {
@@ -873,14 +642,10 @@ private struct AgentStatusSettingsView: View {
                 set: { model.setAutoFollowAttention($0 == .off ? nil : $0.rawValue) })
     }
 
-    /// The dwell before a selection joins the recency order; nil or an unknown stored value resolves to `.s20`.
-    /// Every case is written back raw, the default included: nil already means `.s20`, so collapsing it would
-    /// leave no way to store the zero-wait `immediate`.
-    private var recencyDwell: Binding<AppSettings.RecencyDwell> {
-        Binding(get: { AppSettings.RecencyDwell(tolerant: model.settings.recencyDwell) },
-                set: { model.setRecencyDwell($0.rawValue) })
+    private var attentionIncludesActive: Binding<Bool> {
+        Binding(get: { model.settings.attentionIncludesActive ?? false },
+                set: { model.setAttentionIncludesActive($0 ? true : nil) })
     }
-
     /// Inverted view of the stored `autoFollowStayOnActive` so the toggle reads forward — ON = do leave a
     /// running session — instead of a double negative. The nil default means "follow away", so it shows ON.
     private var autoFollowAwayFromRunning: Binding<Bool> {

@@ -13,6 +13,9 @@ public protocol ControlActions {
     func goSession(window: String?, direction: SessionNavigation) -> ControlResponse
     func closeSession(_ target: String?, window: String?) -> ControlResponse
     func closeSessions(_ targets: [String], window: String?) -> ControlResponse
+    /// The `session.close --undoable` forms; their defaults refuse an undoable request.
+    func closeSession(_ target: String?, window: String?, undoable: Bool) -> ControlResponse
+    func closeSessions(_ targets: [String], window: String?, undoable: Bool) -> ControlResponse
     func renameSession(_ target: String?, window: String?, name: String) -> ControlResponse
     func revealSession(_ target: String?, window: String?) -> ControlResponse
     func createWorkspace(window: String?, name: String?, collapsed: Bool) -> ControlResponse
@@ -466,13 +469,17 @@ public struct ControlDispatcher {
             }
             return actions.goSession(window: request.args?.window, direction: dir)
         case .sessionClose:
+            let window = request.args?.window
+            let undoable = request.args?.undoable == true
             if let targets = request.args?.targets {
                 guard !targets.isEmpty else {
                     return ControlResponse(ok: false, error: "session.close requires at least one --target")
                 }
-                return actions.closeSessions(targets, window: request.args?.window)
+                return undoable ? actions.closeSessions(targets, window: window, undoable: true)
+                    : actions.closeSessions(targets, window: window)
             }
-            return actions.closeSession(request.target, window: request.args?.window)
+            return undoable ? actions.closeSession(request.target, window: window, undoable: true)
+                : actions.closeSession(request.target, window: window)
         case .sessionRename:
             guard let name = request.args?.name else {
                 return ControlResponse(ok: false, error: "session.rename requires a name")

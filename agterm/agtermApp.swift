@@ -104,6 +104,10 @@ struct agtermApp: App {
         // before anything else reads or writes the state directory (the lock adds only `agterm.lock`):
         // `WindowLibrary`'s bootstrap seeds a window and saves it, which would read as an earlier launch.
         let hadPriorState = FirstRunWelcome.hasPriorState(in: stateDirectory)
+        // restoredRuntime's first GhosttyApp.shared touch loads this file once, so it must be current first;
+        // the seeded default theme lives only in memory, never in settings.json.
+        let settingsStore = SettingsStore(directory: stateDirectory)
+        _ = SettingsModel.writeGhosttyConfig(settingsStore.load())
         // the pacer exists before the library so the model can discard the key of a pane it removes before
         // that pane's window ever mounts; the registry that routes grants comes after
         let pacer = SpawnPacer()
@@ -115,9 +119,7 @@ struct agtermApp: App {
         _library = State(initialValue: library)
         let actions = AppActions(library: library)
         _actions = State(initialValue: actions)
-        // settings persist alongside the workspace snapshot (same AGTERM_STATE_DIR override); built before the
-        // control server so it can drive `keymap.reload`, safe since both need only the library.
-        let settingsStore = SettingsStore(directory: stateDirectory)
+        // built before the control server so it can drive `keymap.reload`, safe since both need only the library.
         let settingsModel = SettingsModel(library: library, settingsStore: settingsStore)
         _settingsModel = State(initialValue: settingsModel)
         captureOnExit = AppDelegate.makeExitCapture(
@@ -132,8 +134,8 @@ struct agtermApp: App {
         _controlServer = State(initialValue: controlServer)
         actions.remoteAttacher = controlServer
         LinkOpener.shared.mode = { settingsModel.settings.effectiveLinkOpenMode }
-        LinkOpener.shared.overlay = { [weak controlServer] url, session in
-            controlServer?.openLinkOverlay(url, session: session) ?? false
+        LinkOpener.shared.overlay = { [weak controlServer] url, session, percent in
+            controlServer?.openLinkOverlay(url, session: session, sizePercent: percent) ?? false
         }
         let liveReset = LiveResetCoordinator(settingsModel: settingsModel,
                                              selection: { [weak controlServer] in controlServer?.liveResetSelection() })
@@ -300,9 +302,9 @@ struct agtermApp: App {
                                 ?? .refused("the control server is not running")
                         }
                         NotificationCenter.default.post(name: .agtermNewSessionHostChanged, object: nil)
-                        // seed auto-follow into every open store now the model is wired: idempotent and
-                        // order-independent of resolveStore/onAppear (later windows seed in resolveStore).
-                        settingsModel.applyAutoFollowToAllWindows()
+                        // seed the per-window settings into every open store now the model is wired: idempotent
+                        // and order-independent of resolveStore/onAppear (later windows seed in resolveStore).
+                        settingsModel.applyWindowSettingsToAllWindows()
                         settingsModel.applyRecencyDwellToAllWindows()
                         actions.customCommandRunner = customCommandRunner
                         // the action hub opens the .themes palette for the "Select Theme…" launcher + menu.

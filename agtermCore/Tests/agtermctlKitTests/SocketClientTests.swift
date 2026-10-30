@@ -380,6 +380,8 @@ struct SocketClientTests {
             new_session_in_workspace    -
             rebased_toggle              -
             attach_remote               cmd+shift+r
+            edit_flagged_sessions       -
+            edit_focused_workspaces     -
 
         commands:
             Deploy  cmd+shift+y
@@ -922,6 +924,16 @@ struct SocketClientTests {
     func formatResponseAffectedSessions(_ affected: Int, _ expected: String) {
         let response = ControlResponse(ok: true, result: ControlResult(affected: affected))
         #expect(SocketClient.formatResponse(response) == expected)
+    }
+
+    @Test(arguments: [
+        (ControlResult(id: "9f3c", undoable: true), "ok (undoable)"),
+        (ControlResult(id: "9f3c", undoable: false), "ok (not undoable)"),
+        (ControlResult(affected: 2, undoable: true), "2 sessions (undoable)"),
+        (ControlResult(affected: 1, undoable: false), "1 session (not undoable)")
+    ])
+    func formatResponseUndoableClose(_ result: ControlResult, _ expected: String) {
+        #expect(SocketClient.formatResponse(ControlResponse(ok: true, result: result)) == expected)
     }
 
     @Test func formatResponseError() {

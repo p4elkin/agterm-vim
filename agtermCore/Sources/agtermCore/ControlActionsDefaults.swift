@@ -212,6 +212,20 @@ public extension ControlActions {
         ControlResponse(ok: false, error: "sidebar.width is not supported by this control host")
     }
 
+    func closeSession(_ target: String?, window: String?, undoable: Bool) -> ControlResponse {
+        guard !undoable else {
+            return ControlResponse(ok: false, error: "session.close --undoable is not supported by this control host")
+        }
+        return closeSession(target, window: window)
+    }
+
+    func closeSessions(_ targets: [String], window: String?, undoable: Bool) -> ControlResponse {
+        guard !undoable else {
+            return ControlResponse(ok: false, error: "session.close --undoable is not supported by this control host")
+        }
+        return closeSessions(targets, window: window)
+    }
+
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?,
                               points: OverlayPointSize) -> ControlResponse {
         guard points.isEmpty else {

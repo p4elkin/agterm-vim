@@ -232,8 +232,8 @@ paths:
 - The wash is neutral only at full window opacity. Below it the wash color is opaque while the backing is
   not, so the body rises to `m + p(1-m)` against a title bar left at `p`; scaling by the rendered opacity
   shrinks that gap but no fill closes it. Scale by what the window actually renders at, not the saved
-  setting: fullscreen and Reduce Transparency force it opaque, and scaling there under-mutes to nothing at
-  a saved 0. Fullscreen is per-window, so it needs its own notification pair, not an app-global mirror.
+  setting: fullscreen and Reduce Transparency (unless ignored) force it opaque, and scaling there
+  under-mutes to nothing at a saved 0. Fullscreen is per-window, so it needs its own notification pair, not an app-global mirror.
 - Take the covered session's own solid background when it set one, else the theme color. Neither that field
   nor a live OSC 11 color is observed, so the color is whatever it was when the wash was last drawn.
 

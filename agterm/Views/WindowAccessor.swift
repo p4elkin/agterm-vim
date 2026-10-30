@@ -342,7 +342,8 @@ struct WindowAccessor: NSViewRepresentable {
             WindowAppearance.sync(window: window, background: background,
                                   chrome: .init(opacity: GhosttyApp.shared.windowOpacity,
                                                 blurRadius: GhosttyApp.shared.windowBlurRadius,
-                                                toolbarMode: GhosttyApp.shared.toolbarMode))
+                                                toolbarMode: GhosttyApp.shared.toolbarMode,
+                                                reduceTransparency: GhosttyApp.shared.windowReducesTransparency))
         }
     }
 }

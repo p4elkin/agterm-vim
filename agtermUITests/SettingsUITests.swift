@@ -46,6 +46,26 @@ final class SettingsUITests: XCTestCase {
                       "moving the opacity slider should persist a sub-1 backgroundOpacity to settings.json")
     }
 
+    func testIgnoreReduceTransparencyTogglePersistsAndAppearanceTabFits() throws {
+        let toggle = settingsControl(tab: "Appearance", control: "settings-ignore-reduce-transparency")
+
+        let last = app.descendants(matching: .any)["settings-inactive-pane-mute"].firstMatch
+        XCTAssertTrue(last.waitForExistence(timeout: 5), "the Appearance tab's last control should exist")
+        let window = app.windows.containing(.any, identifier: "settings-ignore-reduce-transparency").firstMatch
+        XCTAssertLessThanOrEqual(last.frame.maxY, window.frame.maxY, "the Appearance tab's last control should be on screen")
+        let before = last.frame.minY
+        last.scroll(byDeltaX: 0, deltaY: -80)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(last.frame.minY, before, accuracy: 0.5, "the Appearance tab should not scroll")
+
+        toggle.click()
+        XCTAssertTrue(poll { self.settingsBool("ignoreReduceTransparency") == true },
+                      "turning the toggle on should persist ignoreReduceTransparency=true")
+        toggle.click()
+        XCTAssertTrue(poll { self.settingsObject()?["ignoreReduceTransparency"] == nil },
+                      "turning the toggle off should remove ignoreReduceTransparency from settings.json")
+    }
+
     func testNotificationsTogglePersists() throws {
         // type-agnostic match (a grouped-Form Toggle surfaces as a switch/checkbox depending on macOS)
         let toggle = settingsControl(tab: "Notifications", control: "settings-notifications")
@@ -130,6 +150,16 @@ final class SettingsUITests: XCTestCase {
         overlay.click()
         XCTAssertTrue(poll { self.settingsValue("linkOpenMode") == "overlay" },
                       "selecting 'Session overlay' should persist linkOpenMode=overlay to settings.json")
+
+        for (label, raw) in [("Session overlay at 95%", "overlay95"), ("Session overlay at 75%", "overlay75"),
+                             ("Session overlay at 50%", "overlay50")] {
+            picker.click()
+            let item = app.menuItems[label]
+            XCTAssertTrue(item.waitForExistence(timeout: 5), "the link picker should offer '\(label)'")
+            item.click()
+            XCTAssertTrue(poll { self.settingsValue("linkOpenMode") == raw },
+                          "selecting '\(label)' should persist linkOpenMode=\(raw) to settings.json")
+        }
 
         picker.click()
         let browser = app.menuItems["Browser"]
@@ -383,6 +413,24 @@ final class SettingsUITests: XCTestCase {
 
         XCTAssertTrue(poll { self.settingsBool("confirmCloseSession") == true },
                       "turning confirm-before-closing on should persist confirmCloseSession=true")
+    }
+
+    func testAttentionIncludesActiveTogglePersists() throws {
+        let toggle = settingsControl(tab: "Agent Status", control: "settings-attention-includes-active")
+        let window = app.windows.containing(.any, identifier: "settings-attention-includes-active").firstMatch
+        let reset = app.buttons["settings-status-reset"]
+        XCTAssertTrue(reset.waitForExistence(timeout: 5), "the tab's last control should exist")
+        XCTAssertLessThanOrEqual(reset.frame.maxY, window.frame.maxY, "Reset to defaults should be on screen")
+        let before = reset.frame.minY
+        reset.scroll(byDeltaX: 0, deltaY: -80)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(reset.frame.minY, before, accuracy: 0.5, "the Agent Status tab should not scroll")
+        toggle.click()
+        XCTAssertTrue(poll { self.settingsBool("attentionIncludesActive") == true },
+                      "turning attention-includes-active on should persist attentionIncludesActive=true")
+        toggle.click()
+        XCTAssertTrue(poll { self.settingsBool("attentionIncludesActive") == nil },
+                      "turning it off (the default) should remove the attentionIncludesActive key")
     }
 
     func testWorkspaceRowClickExpandsTogglePersists() throws {

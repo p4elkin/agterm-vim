@@ -237,6 +237,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   unique target remains the legacy hard path. Multi-target close follows `closeGraceUndoEnabled`, creates
   one grouped undo/reopen record, and returns actual `affected`; selecting any recent group member restores
   the group and selects that member.
+  `undoable` opts a single target into the same grace,
+  falling back to the hard close when the setting is off.
+  Every ok reply to a request with `undoable: true` carries `result.undoable`,
+  the only way to tell the two apart;
+  an older server drops the field and hard-closes a single target.
+  `ControlActions` keeps the two-argument forms,
+  and the defaults of the `undoable:` overloads refuse an undoable request
+  rather than quietly hard-closing it.
 - `session.move` accepts exactly one placement intent:
   - `--to up|down|top|bottom` reorders one session in its workspace.
   - workspace relocates and appends.
@@ -352,7 +360,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   double-click reset and the first-layout seed set the value directly. A shown split therefore always
   reports a ratio, so absence means no split or one never shown, never "at the default".
 - `session.go --to next|prev|first|last|next-attention|prev-attention` operates on current selection in
-  the placement store, wraps within filtered scope, and returns selected ID. It has no target.
+  the placement store, wraps within filtered scope, and returns selected ID. It has no target. The
+  attention steps include `active` while the window's `attentionIncludesActive` tree field is true.
 - `notify` requires body, defaults title and session, skips OSC focus suppression, increments unseen, and
   posts under the session's control slot (see [[notifications]]). When banners are disabled, return `ControlNotify.bannersOffNote` (#286); delivered
   requests omit text. Read through `unseen`.
@@ -622,8 +631,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `HtmlOverlayRegistry` owns the saved store. The open adapter asks `persistentStoreFailure()` before it
   accepts a persistent page and builds the page before replying, so the page counts as open from the moment
   the open answers ok; every other page is still built when a view first asks for it.
-- `browser.links` sets or reads `AppSettings.linkOpenMode` (`browser` | `overlay`), app-global like
-  `browser.clear`; no mode reads, and the reply's `text` is the effective mode either way. It writes through
+- `browser.links` sets or reads `AppSettings.linkOpenMode`
+  (`browser` | `overlay` | `overlay95` | `overlay75` | `overlay50`), app-global like `browser.clear`;
+  the numbered modes open the page at that `sizePercent` (`LinkOpenMode.overlaySizePercent`).
+  No mode reads, and the reply's `text` is the effective mode either way. It writes through
   `SettingsModel.setLinkOpenMode`, the Settings picker's setter. Read back as top-level `tree.linkOpenMode`.
   Poll-only: no event reports a change, and nothing is restored but the setting itself.
 - A URL page opened with `--browse` (`HtmlOverlay.browse`, read back as `browse`) may take its main frame to
@@ -637,7 +648,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   host ATS exempts by syntax (unqualified, `.local`, an IP literal): the store would accept any other and
   the load would then fail, with no refusal for the browser fallback to act on. Explicit `--url` is not
   narrowed. That opens `--url --browse --js --navigation
-  --persistent` full-size on the click's owning session, without selecting it, and returns false, sending
+  --persistent` on the click's owning session at the mode's `sizePercent` (full size for `overlay`), without
+  selecting it, and returns false, sending
   the link to the browser, when a HUD is up on the session, when its window has a zoomed terminal, or when
   `openSessionOverlay` refuses. The HUD and zoom checks come first because the store would ACCEPT those
   opens: one closes the HUD for good, the other shows nothing. A HUD, a program overlay and the quick
@@ -1345,11 +1357,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   grandchild stay out; a group whose leader already exited has no parentage to test, so every survivor
   qualifies. The capture (`.command`) stays leader-only, because a non-nil capture sets `hadForeground`,
   which preempts `initialCommand` in `restorePlan` and would drop the exec path.
-- Top-level tree includes idle/auto-follow, recency dwell, live sidebar visibility/mode, workspace filter,
-  quick visibility, zoom, dashboard, session recency, and picker state. Prefer live tree sidebar state over
-  cached window list.
-- Top-level tree includes idle/auto-follow, live sidebar visibility/mode/width, workspace filter, quick
-  visibility, zoom, dashboard, pick, and GUI ask state. Prefer live tree sidebar state over cached window list.
+- Top-level tree includes idle/auto-follow, recency dwell, attention-includes-active, live sidebar
+  visibility/mode/width, workspace filter, quick visibility, zoom, dashboard, session recency, pick, and
+  GUI ask state. Prefer live tree sidebar state over cached window list.
   `sidebarWidth` is tree-only: nothing needs width discovery across windows, which is all the cached
   `window.list` copy would add.
   `quickVisible` and a `quick` `zoomedSurface` are APP-level, so every projected window reports the same
@@ -1506,7 +1516,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `killed session NAME` line, which zmx prints after draining to EOF.
 - `zmx kill` requires an explicit target, pane and `--force`, and the dispatcher refuses without any of
   them before the host is called. Not because other close commands are recoverable — `session.close` is
-  already immediate and `session.split.close` has no Reopen path — but because this destroys a backend
+  immediate by default and `session.split.close` has no Reopen path — but because this destroys a backend
   process reaching a claim no window shows and every client attached to it. Resolution runs against the
   INVENTORY rather than `ControlTargetResolver`, which searches open stores only; `--window` scopes the
   claims before the session resolves. `absent`, `unreadable`, `pendingClose`, `unknown`, `conflicted` and

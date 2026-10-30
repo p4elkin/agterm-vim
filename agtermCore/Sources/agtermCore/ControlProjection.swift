@@ -681,6 +681,9 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// nil when the dwell is Immediately (omitted from the JSON). The read side of the GUI-only Recent
     /// sessions setting, and like `autoFollowMs` it has no command that sets it.
     public let recencyDwellMs: Int?
+    /// Whether the projected window's attention navigation also stops on `active` sessions. Always populated
+    /// by the app, optional for version skew. The read side of a GUI-only setting with no control setter.
+    public let attentionIncludesActive: Bool?
     /// Whether the projected window's sidebar is visible. LIVE, built fresh from the window's store per
     /// request — the read side of the write-only `sidebar` command. Always present on a `tree` response (the
     /// producer passes a non-optional `Bool`), unlike `idleMs`/`autoFollowMs`; the `window.list` copy omits
@@ -697,8 +700,8 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// is dormant. The read side of `sidebar.flagged-layout` and a term of the workspace-row visibility
     /// predicate on `ControlWorkspaceNode.focused`.
     public let sidebarFlaggedLayout: String?
-    /// Where a clicked web link from terminal output opens: `LinkOpenMode.rawValue` (`browser` | `overlay`),
-    /// the effective value, so the default reads `browser`. APP-WIDE, the read side of `browser.links`; nil
+    /// Where a clicked web link from terminal output opens: `LinkOpenMode.rawValue` (`browser` | `overlay` |
+    /// `overlay95` | `overlay75` | `overlay50`), the effective value, so the default reads `browser`. APP-WIDE, the read side of `browser.links`; nil
     /// in a host-produced tree and from an older server.
     public let linkOpenMode: String?
     /// The projected window's sidebar divider position in points - the read side of `sidebar.width`, and the
@@ -760,7 +763,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
     public let rebased: ControlRebasedNode?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
-                recencyDwellMs: Int? = nil,
+                recencyDwellMs: Int? = nil, attentionIncludesActive: Bool? = nil,
                 sidebarVisible: Bool? = nil, sidebarMode: String? = nil, sidebarFlaggedLayout: String? = nil,
                 sidebarWidth: Double? = nil, workspaceFilter: Bool? = nil,
                 quickVisible: Bool? = nil,
@@ -778,6 +781,7 @@ public struct ControlTree: Codable, Sendable, Equatable {
         self.idleMs = idleMs
         self.autoFollowMs = autoFollowMs
         self.recencyDwellMs = recencyDwellMs
+        self.attentionIncludesActive = attentionIncludesActive
         self.sidebarVisible = sidebarVisible
         self.sidebarMode = sidebarMode
         self.sidebarFlaggedLayout = sidebarFlaggedLayout

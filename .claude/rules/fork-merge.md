@@ -72,6 +72,8 @@ declined:
   - "agterm/Control/ControlServer+Forward.swift"
   # declined 2026-10-25 by Sasha: fork-only, so no merge can conflict in it
   - "agterm/Rebased/RebasedOnCloseRunner.swift"
+  # declined 2026-10-26 by Sasha: fork-only, so no merge can conflict in it
+  - "agterm/Rebased/RebasedHost.swift"
 ---
 
 ## Keeping the fork current with upstream

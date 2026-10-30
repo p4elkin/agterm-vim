@@ -173,6 +173,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// Additional session targets for batch-capable commands (`session.close`, `session.move`). When set,
     /// the command uses this ordered list instead of the top-level single `target`.
     public var targets: [String]?
+    /// For `session.close`: ask for the undo grace and a `result.undoable` answer.
+    public var undoable: Bool?
     /// Target workspace for `session.new` (the workspace to add to) and `session.move` (the destination).
     /// Resolved by id / unique prefix / `active`, never by name — use `workspaceName` for name targeting.
     /// For `sidebar.parked` it is the SCOPE: id/`active` edits that workspace's revealed exception,
@@ -548,7 +550,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 workingTree: Bool? = nil, file: String? = nil, project: String? = nil, onClose: String? = nil, overlay: String? = nil,
                 cancelButton: String? = nil, input: String? = nil,
                 placeholder: String? = nil, choices: [ControlAskChoice]? = nil, multiple: Bool? = nil,
-                checked: [String]? = nil, other: String? = nil) {
+                checked: [String]? = nil, other: String? = nil, undoable: Bool? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -660,6 +662,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.multiple = multiple
         self.checked = checked
         self.other = other
+        self.undoable = undoable
     }
 }
 
@@ -773,6 +776,8 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var recent: [ControlRecentItem]?
     /// What `recent.open` reopened and where.
     public var recentOpen: ControlRecentOpen?
+    /// Whether `session.close --undoable` left the close undoable; absent for a plain close.
+    public var undoable: Bool?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -791,10 +796,11 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
                 restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil, overlay: String? = nil, request: String? = nil,
                 installed: AppIdentity? = nil,
-                recent: [ControlRecentItem]? = nil, recentOpen: ControlRecentOpen? = nil) {
+                recent: [ControlRecentItem]? = nil, recentOpen: ControlRecentOpen? = nil, undoable: Bool? = nil) {
         self.overlayRedirect = overlayRedirect
         self.rebasedMirrors = rebasedMirrors
         self.bookmarks = bookmarks
+        self.undoable = undoable
         self.recent = recent
         self.recentOpen = recentOpen
         self.restart = restart

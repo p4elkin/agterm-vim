@@ -55,6 +55,7 @@ final class GhosttyApp {
     /// radius, opaque by default. NOT ghostty-resolved: `WindowAppearance.sync` reads, `SettingsModel` writes.
     private(set) var windowOpacity: Double = 1
     private(set) var windowBlurRadius: Int = 0
+    private(set) var ignoreReduceTransparency = false
     /// Title-bar row state: normal stacks the cwd subtitle, compact is one short row, hidden drops the row and
     /// the traffic lights for a full-bleed terminal; defaults `.compact` (a nil `settings.toolbarMode`). NOT
     /// ghostty-resolved: `SettingsModel` writes, the reader (`WindowContentView` / `WindowAppearance.sync`)
@@ -213,9 +214,16 @@ final class GhosttyApp {
 
     /// Set the window translucency the chrome applies. `SettingsModel` calls this and every setter below at
     /// launch and on each change; the window re-syncs on `.agtermAppearanceChanged`.
-    func setWindowTranslucency(opacity: Double, blurRadius: Int) {
+    func setWindowTranslucency(opacity: Double, blurRadius: Int, ignoreReduceTransparency: Bool) {
         windowOpacity = opacity
         windowBlurRadius = blurRadius
+        self.ignoreReduceTransparency = ignoreReduceTransparency
+    }
+
+    var windowReducesTransparency: Bool {
+        AppSettings.windowReducesTransparency(
+            system: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+            ignoring: ignoreReduceTransparency)
     }
 
     func setToolbarMode(_ mode: ToolbarMode) {
@@ -438,7 +446,7 @@ final class GhosttyApp {
     }
 
     /// Whether the app is currently in the dark appearance. `NSApp` is an implicitly-unwrapped global still nil
-    /// during the very early `GhosttyApp.shared` init (it boots from `SettingsModel.init`, before AppKit wires
+    /// during the very early `GhosttyApp.shared` init (it boots from `restoredRuntime`, before AppKit wires
     /// `NSApp`), so chain through it safely; that early window resolves no theme (ghostty picks the side from
     /// the color scheme set at surface creation), so the light default there is harmless.
     static func currentIsDark() -> Bool {

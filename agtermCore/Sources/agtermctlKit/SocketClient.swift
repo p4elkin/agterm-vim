@@ -307,8 +307,12 @@ struct SocketClient {
         if let exitCode = response.result?.exitCode {
             return "exit \(exitCode)"
         }
+        if let undoable = response.result?.undoable {
+            let closed = response.result?.affected.map(formatAffected) ?? "ok"
+            return "\(closed) (\(undoable ? "undoable" : "not undoable"))"
+        }
         if let affected = response.result?.affected {
-            return affected == 1 ? "1 session" : "\(affected) sessions"
+            return formatAffected(affected)
         }
         if let count = response.result?.count {
             // keymap.reload reports its parse-diagnostic count; 0 reads as a clean reload.
@@ -347,6 +351,10 @@ struct SocketClient {
         return bookmarks.map { node in
             "\(node.needle) \(node.sessionName ?? node.session): \(node.prompt)"
         }.joined(separator: "\n")
+    }
+
+    static func formatAffected(_ affected: Int) -> String {
+        affected == 1 ? "1 session" : "\(affected) sessions"
     }
 
     static func formatIdentity(_ identity: AppIdentity) -> String {

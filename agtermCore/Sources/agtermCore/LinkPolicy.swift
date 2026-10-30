@@ -95,7 +95,7 @@ public enum LinkPolicy {
     /// whatever handler the scheme maps to.
     public enum Route: Equatable, Sendable {
         case browser(URL)
-        case overlay(URL, session: UUID)
+        case overlay(URL, session: UUID, sizePercent: Int?)
         case reveal(URL)
         case ignore
     }
@@ -295,9 +295,21 @@ public enum LinkPolicy {
         return openPathExtensions.contains(name[name.index(after: dot)...].lowercased())
     }
 
+    /// wantsBrowser reports whether a ⌘⇧ link click overrides the overlay setting and goes to the browser.
+    /// Under mouse capture ⌘⇧ is the only link click, so there it follows the setting.
+    public static func wantsBrowser(modifiers: KeyModifiers, mode: LinkOpenMode, origin: ClickOrigin,
+                                    mouseCaptured: Bool) -> Bool {
+        guard modifiers == [.command, .shift], mode != .browser, !mouseCaptured else { return false }
+        switch origin {
+        case .pane, .scratch: return true
+        case .hud, .programOverlay, .quick: return false
+        }
+    }
+
     /// Maps a raw link to its route: `disposition` decides open, reveal or ignore, then a web link the
     /// overlay can show (`overlayCanShow`), clicked in a pane or the scratch terminal, goes to that session's
-    /// overlay when `mode` is `overlay`. Whether the overlay is free right now is the caller's check.
+    /// overlay at the mode's size when `mode` is an overlay one. Whether the overlay is free right now is the
+    /// caller's check.
     public static func route(for raw: String, mode: LinkOpenMode, origin: ClickOrigin,
                              localHosts: Set<String> = localHostNames) -> Route {
         switch disposition(for: raw, localHosts: localHosts) {
@@ -305,9 +317,10 @@ public enum LinkPolicy {
         case .ignore, .xchat, .openPath, .ref: return .ignore
         case .reveal(let url): return .reveal(url)
         case .open(let url):
-            guard mode == .overlay, overlayCanShow(url) else { return .browser(url) }
+            guard mode != .browser, overlayCanShow(url) else { return .browser(url) }
             switch origin {
-            case .pane(let session), .scratch(let session): return .overlay(url, session: session)
+            case .pane(let session), .scratch(let session):
+                return .overlay(url, session: session, sizePercent: mode.overlaySizePercent)
             case .hud, .programOverlay, .quick: return .browser(url)
             }
         }

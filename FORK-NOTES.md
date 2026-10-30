@@ -254,6 +254,8 @@ sidebar reordered the jump-back list into the order you had just walked. A new *
 setting makes a session wait before it counts: `immediate`, 5, 10, 20, 30 or 60 seconds, defaulting to
 20 — not to the zero-wait case, because an existing `settings.json` has no key and a threshold that
 only worked once configured would never reach anyone.
+It has no Settings control: the Agent Status tab is sized to upstream's rows, so set `recencyDwell`
+in `settings.json`.
 
 - Typing into a session promotes it immediately, without waiting the dwell out.
 - ⚠️ `session select` also records immediately, and it is the ONLY command that does. It names one

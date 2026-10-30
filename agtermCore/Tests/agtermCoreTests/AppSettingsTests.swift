@@ -132,6 +132,24 @@ struct AppSettingsTests {
         }
     }
 
+    @Test func ignoreReduceTransparencyDefaultsNilAndOmitsFromJSON() throws {
+        #expect(AppSettings().ignoreReduceTransparency == nil)
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("ignoreReduceTransparency"))
+    }
+
+    @Test func ignoreReduceTransparencyRoundTripsAndIsNotAConfigLine() throws {
+        let original = AppSettings(backgroundOpacity: 0.63, ignoreReduceTransparency: true)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded.ignoreReduceTransparency == true)
+        #expect(original.ghosttyConfigLines() == AppSettings(backgroundOpacity: 0.63).ghosttyConfigLines())
+    }
+
+    @Test(arguments: [(false, false, false), (false, true, false), (true, false, true), (true, true, false)])
+    func windowReducesTransparencyOnlyWhenSystemIsOnAndNotIgnored(system: Bool, ignoring: Bool, expected: Bool) {
+        #expect(AppSettings.windowReducesTransparency(system: system, ignoring: ignoring) == expected)
+    }
+
     @Test func mouseScrollMultiplierAlwaysEmittedAtDefaultThree() {
         #expect(AppSettings().ghosttyConfigLines().contains("mouse-scroll-multiplier = 3"))
     }
@@ -746,6 +764,21 @@ struct AppSettingsTests {
         #expect(AppSettings.RecencyDwell(tolerant: legacy.recencyDwell).dwell == 20)
     }
 
+    @Test func attentionIncludesActiveDefaultsNilAndOmitsFromJSON() throws {
+        #expect(AppSettings().attentionIncludesActive == nil)
+        let json = String(decoding: try JSONEncoder().encode(AppSettings()), as: UTF8.self)
+        #expect(!json.contains("attentionIncludesActive"))
+        let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"theme":"Nord"}"#.utf8))
+        #expect(legacy.attentionIncludesActive == nil)
+    }
+
+    @Test func attentionIncludesActiveRoundTripsAndIsNotAConfigLine() throws {
+        let original = AppSettings(attentionIncludesActive: true)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded.attentionIncludesActive == true)
+        #expect(original.ghosttyConfigLines() == AppSettings().ghosttyConfigLines())
+    }
+
     @Test func hiddenInterfaceElementsDefaultsNilAndShowsEverythingNotHiddenByDefault() {
         let settings = AppSettings()
         #expect(settings.hiddenInterfaceElements == nil)
@@ -773,6 +806,22 @@ struct AppSettingsTests {
         #expect(hidden.isInterfaceElementHidden(.remoteHost))
         #expect(!hidden.isInterfaceElementHidden(.sessionName))
         #expect(!AppSettings(hiddenInterfaceElements: ["sessionName"]).isInterfaceElementHidden(.remoteHost))
+    }
+
+    @Test func everyControlElementHasADistinctSymbolAndTextElementsHaveNone() {
+        let textOnly: Set<InterfaceElement> = [.workspaceName, .sessionName, .windowName, .sessionContext]
+        for element in InterfaceElement.allCases {
+            #expect((element.symbolName == nil) == textOnly.contains(element), "\(element)")
+        }
+        let symbols = InterfaceElement.allCases.compactMap(\.symbolName)
+        #expect(Set(symbols).count == symbols.count)
+    }
+
+    @Test func settingsOrderListsTextOnlyElementsFirst() {
+        let titleBar = InterfaceElement.settingsOrder(in: .titleBar)
+        #expect(Array(titleBar.prefix(4)) == [.workspaceName, .sessionName, .windowName, .sessionContext])
+        #expect(Array(titleBar.dropFirst(4)) == InterfaceElement.allCases.filter { $0.section == .titleBar && $0.symbolName != nil })
+        #expect(InterfaceElement.settingsOrder(in: .sidebar) == InterfaceElement.allCases.filter { $0.section == .sidebar })
     }
 
     @Test func workspaceNameIsAnOptInTitleBarInterfaceElement() throws {
