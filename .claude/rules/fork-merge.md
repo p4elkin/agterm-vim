@@ -198,15 +198,14 @@ the gates, and the author is already editing `FORK-NOTES.md` — see "The two fo
 [[release]], which now carries the clause.
 
 **When the job asks.** Every run computes candidates: files the FORK changed since the last merge
-that sit on the key path, minus `flagged`, minus `declined`. A run with an empty remainder says
+that sit on the key path and exist upstream, minus `flagged`, minus `declined`. A run with an empty remainder says
 nothing.
 
 ⚠️ **A candidate has nothing to do with whether anything conflicted.** It asks whether the fork grew
 something that would be dangerous the NEXT time upstream touched it. So the two are independent in
-both directions: a clean merge can carry new candidates, and an ugly merge can carry none. Worse,
-70-odd fork-added files can never conflict at all, because upstream has no version of them — zero
-conflicts and maximum unwatched fork behaviour, the same inversion the silent files show one layer
-up.
+both directions: a clean merge can carry new candidates, and an ugly merge can carry none.
+A fork-only file is never a candidate: upstream has no version of it, so no merge can put a hunk in it
+and a flag would gate nothing (Sasha, 2026-10-30, on `RebasedHost.swift`).
 
 ⚠️ **`declined` is only ever appended to on an explicit answer, never on silence.** A merger session
 writes it when a person says which candidates matter and which do not, and commits that edit with
