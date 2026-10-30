@@ -112,13 +112,9 @@ extension ControlServer {
         // a failed listing drops the cached leaders, so a daemon that is gone cannot answer for the pane
         zmxForegroundResolver?.acceptLeaderSnapshot(client.sessionLeaderPIDs())
         let shell = ProcessInfo.processInfo.environment["SHELL"].map(CommandRestore.basename)
-        let observed = ForegroundProcess.observed(for: view, shellBasename: shell, zmxResolver: zmxForegroundResolver)
-        var isDirectory: ObjCBool = false
-        let directory = observed.flatMap { ForegroundProcess.workingDirectory(of: $0.pid) }
-            .flatMap { FileManager.default.fileExists(atPath: $0, isDirectory: &isDirectory) && isDirectory.boolValue ? $0 : nil }
-        return RestartReplay.resolve(
-            .init(foreground: observed?.foreground, isDaemonLeader: observed?.pid == leader, workingDirectory: directory),
-            shell: shell, denylist: GhosttyApp.shared.restoreDenylist)
+        let observation = ForegroundProcess.replayObservation(for: view, shellBasename: shell,
+                                                              zmxResolver: zmxForegroundResolver, leader: leader)
+        return RestartReplay.resolve(observation, shell: shell, denylist: GhosttyApp.shared.restoreDenylist)
     }
 
     private func resolveRestartTarget(_ target: String?, window: String?, options: ControlSessionRestartOptions)
@@ -190,7 +186,7 @@ extension ControlServer {
 
     /// shell returns the leader pid `zmx list` reports for `daemon` once it differs from `otherThan`, nil
     /// when none shows up in time.
-    private func shell(daemon: String, otherThan: pid_t?, client: ZmxClient, within wait: Duration) async -> pid_t? {
+    func shell(daemon: String, otherThan: pid_t?, client: ZmxClient, within wait: Duration) async -> pid_t? {
         let deadline = ContinuousClock.now + wait
         while ContinuousClock.now < deadline {
             if let pid = client.sessionRecords(timeout: 1)?.first(where: { $0.name == daemon })?.leaderPID,

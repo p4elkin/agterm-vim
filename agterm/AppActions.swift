@@ -274,7 +274,8 @@ final class AppActions {
         if terminalZoomActive { frontmostTerminalZoom?.clear(); return true }
         if let dashboard = frontmostDashboard, dashboard.isOpen { dashboard.close(); focusActiveSession(); return true }
         guard let store, let session = store.activeSession else { return false }
-        if session.hudActive || session.coverOverlayVisible {
+        // a page companion's page is the row, so Cmd-W takes the session close with its confirmation and undo
+        if session.hudActive || (session.coverOverlayVisible && session.content == .terminal) {
             if let review = session.rebasedOverlay, !ContentView.shouldBypassCloseConfirmation,
                !closeConfirmer("End the Rebased review of \(review.project)?", "The session will stay open.") { return true }
             store.closeOverlay(session.id)
@@ -291,7 +292,7 @@ final class AppActions {
             return true
         }
         // handled either way — returning true on cancel keeps the File menu from closing the whole window.
-        guard confirmCloseSession(session) else { return true }
+        guard confirmCloseSession(session, companions: store.companions(of: session.id)) else { return true }
         closeSessionAfterConfirmation(session.id, in: store)
         focusActiveSession()
         return true
@@ -333,7 +334,7 @@ final class AppActions {
     func closeSession(_ id: UUID, in store: AppStore) {
         guard uiActionsEnabled else { return }
         guard let session = store.session(withID: id) else { return }
-        guard confirmCloseSession(session) else { return }
+        guard confirmCloseSession(session, companions: store.companions(of: session.id)) else { return }
         closeSessionAfterConfirmation(id, in: store)
     }
 
@@ -364,9 +365,9 @@ final class AppActions {
         library.clearRecentClosedItems()
     }
 
-    private func confirmCloseSession(_ session: Session) -> Bool {
+    private func confirmCloseSession(_ session: Session, companions: [Session]) -> Bool {
         guard !ContentView.shouldBypassCloseConfirmation else { return true }
-        let detail = closeConfirmationText(for: [session])
+        let detail = closeConfirmationText(for: [session], companions: companions)
         if let review = session.rebasedPlacement?.overlay {
             return closeConfirmer("Close “\(session.displayName)” and end the Rebased review of \(review.project)?", detail)
         }
@@ -425,6 +426,7 @@ final class AppActions {
     /// The session whose open overlay is the hooks editor, so its close reloads the hooks. Nil when none.
     var hooksEditOverlaySession: UUID?
     weak var remoteAttacher: (any RemoteAttaching)?
+    weak var companionDuplicator: (any CompanionDuplicating)?
 
     /// Open `hooks.conf` in the user's editor in a 95% overlay over the active session, exactly like
     /// `editKeymap`; exiting reloads the hooks.

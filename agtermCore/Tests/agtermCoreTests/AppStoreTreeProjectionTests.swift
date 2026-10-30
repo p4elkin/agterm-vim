@@ -345,6 +345,8 @@ struct AppStoreTreeProjectionTests {
         store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .right), forSession: b.id)
         b.statusChangedAt = Date(timeIntervalSince1970: 1_700_000_000) // wall-clock stamp, pinned to compare
         store.selectSession(b.id)
+        a.lastSelectedAt = Date(timeIntervalSince1970: 1_600_000_000)
+        b.lastSelectedAt = Date(timeIntervalSince1970: 1_700_000_100)
 
         let tree = store.controlTree()
 
@@ -361,7 +363,7 @@ struct AppStoreTreeProjectionTests {
                                                    backedByZmx: false),
                                ],
                                // store-only session: a surface slot with nothing in it has no terminal
-                               realized: false)
+                               realized: false, lastSelectedAt: 1_600_000_000)
         ])
         #expect(tree.workspaces[1].sessions == [
             ControlSessionNode(id: b.id.uuidString, name: "remote:~/b", cwd: "/live/b",
@@ -383,8 +385,30 @@ struct AppStoreTreeProjectionTests {
                                 ControlSurfaceNode(id: TerminalSurfaceID(sessionID: b.id, surface: .overlay).rawValue,
                                                    kind: "overlay", active: true, visible: true),
                                ],
-                               realized: false, splitCwd: "/live/b")
+                               realized: false, splitCwd: "/live/b", lastSelectedAt: 1_700_000_100)
         ])
+    }
+
+    @Test func selectionStampsTheSessionEnteredAndTheSessionLeft() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let a = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/a"))
+        let b = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/b", select: false))
+        let never = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/c", select: false))
+        a.lastSelectedAt = Date(timeIntervalSince1970: 1)
+        let before = Date()
+
+        store.selectSession(b.id)
+
+        let after = Date()
+        let aStamp = try #require(a.lastSelectedAt)
+        #expect((before...after).contains(aStamp))
+        #expect(b.lastSelectedAt == aStamp)
+        #expect(never.lastSelectedAt == nil)
+        let nodes = store.controlTree().workspaces[0].sessions
+        #expect(nodes.map(\.lastSelectedAt) == [aStamp.timeIntervalSince1970, aStamp.timeIntervalSince1970, nil])
+        let bare = try String(decoding: JSONEncoder().encode(nodes[2]), as: UTF8.self)
+        #expect(!bare.contains("lastSelectedAt"))
     }
 
     @Test func controlTreeProjectsSessionContext() throws {
@@ -412,6 +436,52 @@ struct AppStoreTreeProjectionTests {
         session.context = "PR #517"
         let set = try String(decoding: JSONEncoder().encode(store.controlTree()), as: UTF8.self)
         #expect(set.contains("\"context\":\"PR #517\""))
+    }
+
+    @Test func aCompanionReportsItsParentAndAFoldedParentReportsCollapsed() throws {
+        let g = try CompanionGroup()
+        g.store.setSessionExpanded(g.parent.id, expanded: false)
+
+        let nodes = try #require(g.store.controlTree().workspaces.first { $0.id == g.work.id.uuidString }?.sessions)
+        let byID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+
+        #expect(nodes.map(\.id) == g.order.map(\.uuidString))
+        #expect(byID[g.first.id.uuidString]?.parent == g.parent.id.uuidString)
+        #expect(byID[g.parent.id.uuidString]?.parent == nil)
+        #expect(byID[g.parent.id.uuidString]?.collapsed == true)
+        #expect(byID[g.first.id.uuidString]?.collapsed == nil)
+    }
+
+    @Test func aFoldedParentWhoseLastCompanionClosedNoLongerReportsCollapsed() throws {
+        let g = try CompanionGroup()
+        g.store.setSessionExpanded(g.parent.id, expanded: false)
+        g.store.closeSession(g.first.id)
+        g.store.closeSession(g.second.id)
+
+        let node = try #require(g.store.controlTree().workspaces.flatMap(\.sessions).first { $0.id == g.parent.id.uuidString })
+
+        #expect(node.collapsed == nil)
+    }
+
+    @Test func aPageCompanionReportsItsContentAndATerminalOmitsIt() throws {
+        let g = try CompanionGroup()
+        let page = try g.store.addPageCompanion(to: g.parent.id, overlay: HtmlOverlay(source: .file(path: "/tmp/p.html", grantRoot: nil))).get()
+
+        let nodes = g.store.controlTree().workspaces.flatMap(\.sessions)
+
+        #expect(nodes.first { $0.id == page.id.uuidString }?.content == "page")
+        #expect(nodes.first { $0.id == g.parent.id.uuidString }?.content == nil)
+    }
+
+    @Test func parentAndCollapsedAreOmittedFromJSONForAPlainSession() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        _ = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/a"))
+
+        let json = try String(decoding: JSONEncoder().encode(store.controlTree()), as: UTF8.self)
+
+        #expect(!json.contains("\"parent\""))
+        #expect(!json.contains("\"collapsed\""))
     }
 
     @Test func controlTreeReportsSidebarVisibility() {
@@ -466,6 +536,25 @@ struct AppStoreTreeProjectionTests {
         #expect(store.controlTree(paneForeground: { _ in nil }, flaggedLayout: .tree).sidebarFlaggedLayout == "tree")
         store.setSidebarMode(.flagged)
         #expect(store.controlTree(paneForeground: { _ in nil }, flaggedLayout: .flat).sidebarFlaggedLayout == "flat")
+    }
+
+    @Test func controlTreeReportsTheSavedFlaggedOrderAndOmitsItWhenNothingIsFlagged() throws {
+        let store = makeStore()
+        let ws = store.addWorkspace(name: "work")
+        let a = try #require(store.addSession(toWorkspace: ws.id, cwd: "/a"))
+        let b = try #require(store.addSession(toWorkspace: ws.id, cwd: "/b"))
+        let empty = try #require(String(data: JSONEncoder().encode(store.controlTree()), encoding: .utf8))
+        #expect(store.controlTree().flaggedOrder == nil)
+        #expect(!empty.contains("\"flaggedOrder\""))
+
+        store.setFlag(true, forSession: b.id)
+        store.setFlag(true, forSession: a.id)
+        let tree = store.controlTree()
+
+        #expect(tree.flaggedOrder == [b.id.uuidString, a.id.uuidString])
+        #expect(tree.workspaces.first { $0.id == ws.id.uuidString }?.sessions.map(\.id) == [a.id.uuidString, b.id.uuidString])
+        let json = try #require(String(data: JSONEncoder().encode(tree), encoding: .utf8))
+        #expect(json.contains("\"flaggedOrder\""))
     }
 
     @Test func controlTreeReportsQuickVisibleFromClosure() {
@@ -833,9 +922,9 @@ struct AppStoreTreeProjectionTests {
         let right = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/"))), persistent: true,
                                 browse: true)
         let left = HtmlOverlay(source: .file(path: "/tmp/a/bare.html", grantRoot: nil), chromeless: true)
-        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: wide, sizePercent: 70) == nil)
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: right, sizePercent: nil) == nil)
         #expect(store.openHtmlOverlay(session.id, pane: .left, overlay: left, sizePercent: nil) == nil)
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: wide, sizePercent: 70) == nil)
         store.setHtmlLoadState(right.id, state: .failed, error: "not found")
         store.setHtmlPage(wide.id, HtmlPageInfo(page: "/tmp/a/second.html", title: "Second", canGoBack: true, canGoForward: false))
 
@@ -879,8 +968,8 @@ struct AppStoreTreeProjectionTests {
         session.surface = SpySurface(paneToken: "left")
         session.splitSurface = SpySurface(paneToken: "right")
         let page = HtmlOverlay(source: .file(path: "/tmp/a/p.html", grantRoot: nil))
-        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
         #expect(store.openPaneOverlay(session.id, pane: .right, command: "htop") == nil)
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
         #expect(store.controlTree().workspaces[0].sessions[0].hiddenOverlays == nil)
 
         #expect(store.setOverlaysHidden(session.id, pane: nil, hidden: true) == nil)

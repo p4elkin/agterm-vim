@@ -2,19 +2,18 @@
 # Build pinned libghostty and zmx artifacts from upstream source.
 #
 # We build from source rather than downloading a prebuilt artifact so the toolchain is fully
-# self-owned: the inputs are pinned upstream revisions, zig, Xcode's Metal Toolchain, and the additive
-# patches in patches/ghostty. No fork or daily-build release is involved; zmx takes the patches in
-# scripts/zmx-patches over its plain pin.
+# self-owned: pinned upstream revisions, local patches, zig, and Xcode's Metal Toolchain. libghostty
+# takes scripts/ghostty-patches and then the fork's additive patches/ghostty; zmx takes the patches in
+# scripts/zmx-patches over its plain pin. No fork or daily-build release is involved.
 #
-# GHOSTTY_REV is a plain pin for reproducibility, not a workaround. It was held at a 2026-04-30
-# pre-regression commit while later builds blanked the scrollback on a font-size increase; that is
+# GHOSTTY_REV selects the upstream commit; local patches are applied after checkout. It was held at a
+# 2026-04-30 pre-regression commit while later builds blanked the scrollback on a font-size increase; that is
 # fixed upstream and re-verified by hand before this bump. Re-test the font-increase case when moving
 # it, and check `minimum_zig_version` in build.zig.zon against ZIG_FORMULA.
 #
 # One-time cost: the build (a few minutes, plus a Metal Toolchain download on first run) is skipped
-# whenever the staged artifacts match the current rev. Presence alone is not enough — an xcframework
-# built from a different rev is indistinguishable from a current one, so the stamp, not the directory,
-# is what says a rebuild can be skipped.
+# whenever the staged artifacts match the current revision and patch digest. Presence alone is not
+# enough — the stamp, not the directory, determines whether the staged artifacts can be reused.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -34,6 +33,9 @@ XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 # TERMINFO=dirname(GHOSTTY_RESOURCES_DIR)/terminfo derivation resolves xterm-ghostty.
 RESOURCES_MARKER="agterm/Resources/terminfo"
 STAMP_FILE=".ghostty-build-stamp"
+GHOSTTY_PATCH_DIR="scripts/ghostty-patches"
+GHOSTTY_PATCH_DIGEST="$(cat "$GHOSTTY_PATCH_DIR"/*.patch | shasum -a 256 | cut -c1-16)"
+GHOSTTY_STAMP="$GHOSTTY_REV $GHOSTTY_PATCH_DIGEST"
 ZMX_STAGE_DIR="agterm/Resources/zmx"
 ZMX_STAMP_FILE=".zmx-build-stamp"
 # applied in name order over the plain pin; scripts/zmx-patches/README.md says what each one is for.
@@ -60,7 +62,7 @@ build_key() {
   if compgen -G "patches/ghostty/*.patch" >/dev/null; then
     patches="$(cat patches/ghostty/*.patch | shasum -a 256 | cut -d" " -f1)"
   fi
-  printf '%s patches:%s\n' "$GHOSTTY_REV" "${patches:-none}"
+  printf '%s patches:%s\n' "$GHOSTTY_STAMP" "${patches:-none}"
 }
 
 # stage agterm's own bundled theme(s) from the committed source into the (gitignored,
@@ -91,8 +93,16 @@ if [[ ! -f "$STAMP_FILE" || "$(cat "$STAMP_FILE")" != "$BUILD_KEY" ]]; then
   need_res=true
 fi
 
+# --zmx-only serves CI's Unit tests job, whose session-host fixtures need zmx and nothing from libghostty.
+# It overrides the stale-stamp check above, so a libghostty pin change cannot pull Metal or a ghostty build in.
+case "${1:-}" in
+  "") ;;
+  --zmx-only) need_xc=false; need_res=false ;;
+  *) echo "usage: $0 [--zmx-only]" >&2; exit 2 ;;
+esac
+
 if ! $need_xc && ! $need_res && ! $need_zmx; then
-  echo "GhosttyKit, resources and zmx already present"
+  echo "staged artifacts already current"
   stage_custom_themes
   exit 0
 fi
@@ -171,6 +181,11 @@ if $need_xc || $need_res; then
   git -C "$ghostty_build" remote add origin "$GHOSTTY_REPO"
   git -C "$ghostty_build" fetch -q --depth 1 origin "$GHOSTTY_REV"
   git -C "$ghostty_build" -c advice.detachedHead=false checkout -q FETCH_HEAD
+
+  for ghostty_patch in "$GHOSTTY_PATCH_DIR"/*.patch; do
+    echo "applying libghostty/$(basename "$ghostty_patch")..."
+    git -C "$ghostty_build" apply --whitespace=nowarn "$PWD/$ghostty_patch"
+  done
 
   # Local patches on top of the pinned upstream tree. Each is additive and carries its own
   # rationale in patches/ghostty/README.md; the build fails loudly if one stops applying, which

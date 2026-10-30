@@ -30,6 +30,18 @@ struct AppStoreReplicaPageTests {
                          pane: pane, sizePercent: size, follow: follow)
     }
 
+    // closing a viewer's page companion closed its row, whose release closed its page, which closed the row again
+    @Test func aReplicaPageCompanionClosesOnceWithItsPage() throws {
+        let (store, parent) = try attached(split: false)
+        let row = try store.addReplicaPageCompanion(to: parent.id, page: page(), select: false).get()
+        #expect(row.parentID == parent.id && row.content == .page && row.remoteHost == "buildbox")
+
+        #expect(store.closeOverlay(row.id))
+
+        #expect(store.session(withID: row.id) == nil)
+        #expect(store.session(withID: parent.id) != nil)
+    }
+
     @Test func aFilePageIsShownSessionWideUnderItsOwnId() throws {
         let (store, session) = try attached()
 
@@ -137,8 +149,8 @@ struct AppStoreReplicaPageTests {
 
     @Test func hidingTheReplicaLeavesItsNeighbourAlone() throws {
         let (store, session) = try attached()
-        #expect(store.presentReplicaPage(page(), forSession: session.id) == nil)
         #expect(store.openPaneOverlay(session.id, pane: .right, command: "top") == nil)
+        #expect(store.presentReplicaPage(page(), forSession: session.id) == nil)
         let changes = Changes()
         store.onReplicaPageChanged = { changes.ids.append($0) }
         let local = try #require(session.htmlOverlay?.id)
@@ -160,6 +172,33 @@ struct AppStoreReplicaPageTests {
         store.setOverlaysHidden(session.id, pane: nil, hidden: true)
 
         #expect(changes.ids == [try #require(session.htmlOverlay?.id)])
+    }
+
+    @Test func aLocalPaneOpenerOverTheReplicaLeavesItsReportedStateAlone() throws {
+        let (store, session) = try attached()
+        #expect(store.presentReplicaPage(page(), forSession: session.id) == nil)
+        let local = try #require(session.htmlOverlay?.id)
+        let changes = Changes()
+        store.onReplicaPageChanged = { changes.ids.append($0) }
+
+        #expect(store.openPaneOverlay(session.id, pane: .right, command: "top") == nil)
+
+        #expect(!session.htmlOverlayVisible)
+        #expect(store.replicaPageState(local, appliedSeq: 1)?.hidden == false)
+        #expect(changes.ids.isEmpty)
+    }
+
+    @Test func anOriginHideOutlivesALocalPaneOpener() throws {
+        let (store, session) = try attached()
+        #expect(store.presentReplicaPage(page(), forSession: session.id) == nil)
+        #expect(store.openPaneOverlay(session.id, pane: .right, command: "top") == nil)
+
+        store.setReplicaPageHidden(Self.origin.uuidString, forSession: session.id, hidden: true)
+        #expect(store.closePaneOverlay(session.id, pane: .right))
+
+        #expect(!session.htmlOverlayVisible)
+        let local = try #require(session.htmlOverlay?.id)
+        #expect(store.replicaPageState(local, appliedSeq: 1)?.hidden == true)
     }
 
     @Test func theStateMirrorsWhatThePageReported() throws {

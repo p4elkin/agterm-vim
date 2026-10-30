@@ -97,6 +97,25 @@ struct AppStorePendingCloseTests {
         #expect(Set(store.pendingCloseMembers().map(\.session.id)) == [first.id, second.id])
     }
 
+    @Test func batchCloseStampsTheActiveSessionLeftWhenUndoSelectsABatchMate() throws {
+        let store = store()
+        let first = addSession(store, name: "one")
+        let second = addSession(store, name: "two")
+        _ = addSession(store, name: "three")
+        store.selectedSessionID = first.id
+        first.lastSelectedAt = Date(timeIntervalSince1970: 1)
+        defer { store.finalizeAllPendingCloses() }
+
+        let before = Date()
+        #expect(store.softCloseSessions([first.id, second.id], grace: 60))
+        let after = Date()
+        #expect(store.undoPendingClose(selecting: second.id))
+
+        #expect(store.selectedSessionID == second.id)
+        let stamp = try #require(first.lastSelectedAt)
+        #expect((before...after).contains(stamp))
+    }
+
     @Test func finalizingOnePendingSessionKeepsItsBatchMatesAndOtherRecordsUndoable() {
         let store = store()
         let first = addSession(store, name: "one")

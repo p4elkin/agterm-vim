@@ -49,6 +49,10 @@ enum HeadlessRequests {
         request(.workspaceCollapse, target: target),
         request(.workspaceExpand, target: target),
         request(.workspaceFlag, target: target) { $0.mode = "toggle" },
+        request(.workspaceTint, target: target) {
+            $0.mode = "set"
+            $0.tint = "red"
+        },
         request(.sidebar),
         request(.sidebarMode),
         request(.sidebarFlaggedLayout),
@@ -78,6 +82,15 @@ enum HeadlessRequests {
         request(.sessionDuplicate, target: target),
         request(.sessionFlag, target: target),
         request(.sessionPark, target: target),
+        request(.sessionTint, target: target) {
+            $0.mode = "set"
+            $0.tint = "red"
+        },
+        request(.sessionCollapse, target: target),
+        request(.sessionExpand, target: target),
+        request(.sessionCompanionNew, target: target),
+        request(.sessionCompanionPage, target: target) { $0.url = "https://example.com" },
+        request(.sessionCompanionDuplicate, target: target),
         request(.sessionFocus, target: target),
         request(.sessionResize, target: target) { $0.ratio = 0.5 },
         request(.sessionBackground, target: target),
@@ -118,6 +131,7 @@ enum HeadlessRequests {
         request(.rebasedMirrorList),
         request(.rebasedMirrorPrune),
         request(.sessionOverlayPageServe, target: "t"),
+        request(.sessionCompanionPageAttach, target: target),
         request(.recentList),
         request(.recentOpen, target: "r"),
         request(.recentClear),

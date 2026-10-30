@@ -60,6 +60,14 @@ paths:
   script it. A HUD over the starting session shows the two ssh waits and a failure, the latter hiding
   itself after `remoteAttachErrorSeconds`; a window with no session falls back to `notifyCommandFailure`.
 
+- New Companion (`new_companion`, keyless) sits beside Duplicate Session in the row menu and the Session
+  menu, with a palette row. On a remote row it asks the origin through `RemoteAttaching.createRemoteCompanion`,
+  showing the two ssh waits in the Attach Remote HUD.
+- Duplicate as Companion (`duplicate_companion`, keyless) follows it in both menus, with a palette row; it is in
+  `terminalOnly` and takes the same remote route. `AppActions` reaches the local planner through
+  `CompanionDuplicating`, which `ControlServer` implements, so the GUI and `session.companion.duplicate` share one
+  planner; a refusal shows in a timed `RemoteAttachHud` over the session, falling back to `notifyCommandFailure`.
+
 ## Dock menu
 
 - `applicationDockMenu` exposes New Session, New Window, Quick Terminal, Dashboard, captured-window MRU
@@ -205,8 +213,9 @@ paths:
 - This preserves the current workspace when possible, remains inside flagged/focused views while they
   contain survivors, and lets `disableFocusIfSelectionOutsideSet` reveal a whole-tree fallback while
   preserving membership.
-- If MRU is empty, narrowed modes use `nearestInScopeTarget` over flattened sidebar order; unfiltered tree
-  uses the sole `reselectionTarget` caller. Do not choose the first flagged row because it destroys locality.
+- If MRU is empty, narrowed modes use `nearestInScopeTarget` over flattened sidebar order; the flat and plain
+  flagged lists first walk the saved `flaggedOrder` from the closed id's slot (`nearestInSavedFlaggedOrder`),
+  so every caller passes the closed id; unfiltered tree uses the sole `reselectionTarget` caller. Do not choose the first flagged row because it destroys locality.
   Closing the last flagged session widens to the whole tree rather than leaving no terminal.
 - Workspace removal uses `workspaceRemovalTarget`: most recent visible, then first visible, then positional.
   Preserve `softCloseSessions.removedBeforeActive` for fallback index adjustment. The named
@@ -240,6 +249,11 @@ paths:
 - Attention navigation defaults to Control-Option-Up/Down, includes blocked/completed (plus active under
   `attentionIncludesActive`, see [[settings]]), wraps, and excludes current. If it finds no other target, GUI callers may use the current live indicator solely to
   reveal its tagged pane. Control changes selection only.
+- Under `attentionNavigationAcrossWindows` the GUI step walks windows in library order and each window's
+  `navigableSessions` in sidebar order, skipping a window `uiActionsEnabled(for:)` refuses. The attention
+  commands then stay enabled without an active session, so an empty window can step out. A target in
+  another window goes through `selectAttention` one main-queue tick later, as the attention palette does;
+  a same-window target selects at once. `session.go` never crosses windows.
 - `revealActiveBlockedPane` focuses right only when the split surface exists, explicitly chooses primary
   for left/nil, and shows/focuses scratch. Promotion retags right to left. Idle/active never change pane or
   dismiss scratch. Navigation, palettes, sidebar, Dock menu, titlebar attention, and auto-follow share it.
@@ -253,9 +267,13 @@ paths:
   and Enter target cannot diverge; sort by score then title. Built-in palettes match label plus subtitle;
   caller-supplied pickers match the label only, so subtitle consequence text cannot filter a safe row out
   and leave a destructive one preselected. Ctrl-P opens sessions; Ctrl-Shift-P opens actions.
-- An empty query skips ranking in three cases: attention mode, the two membership editors, and a
+- An empty query skips ranking in four cases: attention mode, ⌃P sessions, the two membership editors, and a
   caller-supplied picker. All keep their source order, because every row scores 0 and the tie-break would
-  re-sort A→Z and replace the row Return runs. Every other palette lists everything A→Z.
+  re-sort A→Z and replace the row Return runs. ⌃P's source order is `AppStore.listOrdered`: A→Z by label,
+  each parent followed by its companions. Every other palette lists everything A→Z.
+- Flat session lists title a companion `parent › child` through `AppStore.listLabel(for:)`: ⌃P, ⌃Tab, the
+  attention palette, both titlebar popovers, the Dock menu, dashboard captions, the flagged editor and every
+  flagged layout. The sidebar tree, rename and Copy Name keep the bare `displayName`.
 - `PaletteMode.newSessionWorkspace` (fork only) is the workspace picker for `new_session_in_workspace`.
   It reuses the caller-supplied-items seam rather than adding a picker: `WindowContentView` mounts
   `CommandPalette` with `items: paletteNewSessionWorkspaces()`, `allowCustom: true`,

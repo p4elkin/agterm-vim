@@ -32,6 +32,8 @@ struct HeadlessCatalogTests {
         "font.reset", "keymap.reload", "keymap.list", "keymap.run", "config.reload", "quick", "quick.type", "quick.text",
         "dashboard", "debug.appearance", "session.go", "session.move",
         "session.duplicate", "session.park", "session.resize", "recent.list", "recent.open", "recent.clear",
+        "workspace.tint", "session.collapse", "session.expand", "session.companion.new", "session.companion.page",
+        "session.companion.duplicate",
     ])
     func windowAndUICommandsAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "no windows or UI")
@@ -47,7 +49,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
         "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.screen", "browser.clear",
-        "rebased.mirror.list", "rebased.mirror.prune",
+        "rebased.mirror.list", "rebased.mirror.prune", "session.companion.page.attach",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")
@@ -56,7 +58,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit", "session.overlay.copy",
         "session.overlay.text", "pick.open", "pick.result", "pick.cancel",
-        "session.flag", "session.select", "session.reveal", "session.focus", "session.background",
+        "session.flag", "session.tint", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
         "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",

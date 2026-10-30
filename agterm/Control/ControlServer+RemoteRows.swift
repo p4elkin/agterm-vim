@@ -27,8 +27,8 @@ extension ControlServer {
                                 remoteSessionID: record.remoteSessionID, presentationVersion: record.presentationVersion,
                                 transport: record.transport, left: left, right: record.daemonsByPane[.right],
                                 splitAxis: record.splitAxis, name: name.value, namePending: name.pending)
-            let placement = RemoteRowPlacement(store: store, workspace: entry.workspaceID,
-                                               position: min(entry.position, count), select: false)
+            let placement = RemotePlacement(store: store, workspace: entry.workspaceID,
+                                            position: min(entry.position, count), select: false)
             _ = insertRemoteRow(row, at: placement, claim: false)
         }
     }

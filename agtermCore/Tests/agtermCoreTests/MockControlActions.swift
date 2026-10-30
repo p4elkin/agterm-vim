@@ -34,10 +34,18 @@ class MockControlActionsBase {
         case workspaceFocus(target: String?, window: String?, ControlWorkspaceFocusMode)
         case workspaceFilter(window: String?, ControlToggleMode)
         case workspaceExpansion(target: String?, window: String?, expanded: Bool)
+        case sessionExpansion(target: String?, window: String?, expanded: Bool)
+        case companionNew(target: String?, options: CompanionOptions, window: String?)
+        case companionPage(target: String?, window: String?, options: ControlSessionOverlayOpenOptions)
+        case companionDuplicate(target: String?, window: String?, select: Bool)
+        case companionPageAttach(target: String?, window: String?)
         case workspaceFlag(target: String?, window: String?, ControlToggleMode)
         case sessionFlag(target: String?, window: String?, String?)
         case sessionPark(target: String?, window: String?, ControlToggleMode)
+        case flaggedMove(target: String?, window: String?, anchor: String, FlaggedOrderPlacement)
         case sessionContext(target: String?, window: String?, context: String?)
+        case sessionTint(target: String?, window: String?, ControlTintUpdate)
+        case workspaceTint(target: String?, window: String?, ControlTintUpdate)
         case markSessionSeen(target: String?, window: String?)
         case sessionStatus(target: String?, window: String?, ControlSessionStatusUpdate)
         case sessionMark(target: String?, window: String?)
@@ -356,6 +364,31 @@ class MockControlActionsBase {
         return nextWorkspaceFilterResponse
     }
 
+    func attachCompanionPage(_ target: String?, window: String?) -> ControlResponse {
+        calls.append(.companionPageAttach(target: target, window: window))
+        return ControlResponse(ok: true)
+    }
+
+    func duplicateAsCompanion(_ target: String?, window: String?, select: Bool) -> ControlResponse {
+        calls.append(.companionDuplicate(target: target, window: window, select: select))
+        return ControlResponse(ok: true)
+    }
+
+    func createPageCompanion(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        calls.append(.companionPage(target: target, window: window, options: options))
+        return ControlResponse(ok: true)
+    }
+
+    func createCompanion(_ target: String?, options: CompanionOptions, window: String?) -> ControlResponse {
+        calls.append(.companionNew(target: target, options: options, window: window))
+        return ControlResponse(ok: true)
+    }
+
+    func setSessionExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse {
+        calls.append(.sessionExpansion(target: target, window: window, expanded: expanded))
+        return ControlResponse(ok: true)
+    }
+
     func setWorkspaceExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse {
         calls.append(.workspaceExpansion(target: target, window: window, expanded: expanded))
         return ControlResponse(ok: true)
@@ -373,6 +406,22 @@ class MockControlActionsBase {
 
     func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         calls.append(.sessionPark(target: target, window: window, mode))
+        return ControlResponse(ok: true)
+    }
+
+    func moveFlaggedSession(_ target: String?, window: String?, anchor: String,
+                            placement: FlaggedOrderPlacement) -> ControlResponse {
+        calls.append(.flaggedMove(target: target, window: window, anchor: anchor, placement))
+        return ControlResponse(ok: true)
+    }
+
+    func setSessionTint(_ target: String?, window: String?, update: ControlTintUpdate) -> ControlResponse {
+        calls.append(.sessionTint(target: target, window: window, update))
+        return ControlResponse(ok: true)
+    }
+
+    func setWorkspaceTint(_ target: String?, window: String?, update: ControlTintUpdate) -> ControlResponse {
+        calls.append(.workspaceTint(target: target, window: window, update))
         return ControlResponse(ok: true)
     }
 

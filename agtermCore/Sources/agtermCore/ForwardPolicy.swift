@@ -27,7 +27,7 @@ public enum ForwardPolicy {
             return .served
         case .sessionOverlayReload, .sessionOverlayNavigate, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
              .pickOpen, .pickResult, .pickCancel,
-             .sessionFlag, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
+             .sessionFlag, .sessionTint, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,
@@ -43,7 +43,8 @@ public enum ForwardPolicy {
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
-             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize,
+             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
+             .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
              .recentList, .recentOpen, .recentClear:
             return .refused("no windows or UI")
         // a forwarded scratch would open a login shell on the Mac
@@ -51,7 +52,7 @@ public enum ForwardPolicy {
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
              .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
-             .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe:
+             .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe, .sessionCompanionPageAttach:
             return .refused("a Mac feature")
         }
     }

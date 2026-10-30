@@ -58,7 +58,8 @@ The event kinds and payloads are:
   suppression checks, including when desktop banners are disabled.
 - `session.created` / `session.closed`: session `name`, emitted when the session enters or leaves a
   visible window tree. Undo emits a new `session.created`; grace-period finalization does not emit a
-  second close.
+  second close. A companion's `session.created` also carries `parent`, the parent's id; the human line
+  reads `HH:MM:SS session.created NAME parent=ID`.
 - `session.parked`: session `name` and the resulting `parked` boolean. Both edges fire, so unlike the
   tree node's true-only field the payload carries `false` too. It is its own kind rather than a
   `tree.changed` payload, which is coalesced per window and re-emitted empty.
@@ -68,7 +69,8 @@ The event kinds and payloads are:
   selected `session new` (after its `session.created`), and the reselection after the active session
   closes. Re-selecting the selected session and raising another window emit nothing.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
-  are coalesced for 100 ms per window, as is a `session context` set or clear that changes the value,
+  are coalesced for 100 ms per window, as is a `session context` set or clear that changes the value, a
+  `session tint` or `workspace tint` that changes the row's tint,
   and an overlay, page or HUD opening or closing (`session hud update` emits nothing). It says the tree
   moved, never what happened: a page opened and closed inside the 100 ms shows as one event.
   Read `tree --json` for the current snapshot.
@@ -217,7 +219,7 @@ session not laid out yet),
 `paneOverlays` (the panes covered by their own pane-scoped overlay — `["left"]`, `["right"]` or
 `["left","right"]`, omitted when neither is; the read side of `session overlay open --pane`, reported
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
-`htmlOverlays` (the pages in the overlay slots, see `session overlay open --html` and `--url`; `overlay` and
+`htmlOverlays` (the pages in the overlay slots, see `session overlay open --html`, `--url` and `--image`; `overlay` and
 `paneOverlays` count them as covers too),
 `rebasedOverlay` (fork only: `{project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`),
 where `state` is `fetching`, `starting`, `shown` or `failed`; `pane` is absent for a session-wide holder.
@@ -250,7 +252,9 @@ either style handed over for a remote session), with `pane` omitted for session-
 `replica: true` on that Mac for the copy it draws; omitted when the session ask slot is empty), `scratch` (scratch shown), `flagged` (in the
 flagged working-set), `parked` (the row is kept, its agent is not — true-only, so an unparked session
 carries no field; the read side of `session park`), `context` (what the session is about — the `session context` value, or on an attached row without
-one the origin's mirrored context; omitted when neither is set), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
+one the origin's mirrored context; omitted when neither is set), `tint`/`tintOn` (the sidebar row's tint color
+and the parts it colors, e.g. `["icon"]` or `["icon","name"]`, the read side of `session tint`; both omitted when
+untinted), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
 as `status`, so it is never reported without a `status`), `statusBlink` (`true` when the status glyph is
@@ -267,6 +271,15 @@ that changes only the note — not only on a change of state, so a hook re-pushi
 `now - statusChangedAt` reads as how long ago the status was last WRITTEN, including idle.
 Automatic and manual clears and pane promotion also count.
 Ephemeral like `unseen`: never persisted, so it is absent after a restart even for a restored session),
+`lastSelectedAt` (when the session last became or stopped being its window's selected session, in epoch
+seconds on the same clock; persisted, omitted when no selection has been recorded, which includes a
+session restored from a build that did not record it, so absence is not proof of never being used.
+Read it with `active`: an active session is selected right now),
+`parent` (a companion's parent session id, the read side of `session new --parent`; omitted for a
+top-level session), `collapsed` (true only for a parent whose companions are folded, the read side of
+`session collapse`/`expand`; omitted otherwise),
+`content` (`"page"` for a page companion, the read side of `session overlay open --companion`; omitted for a
+terminal session. Such a node has no terminal, so `realized` is false and `cwd` reports the parent's directory),
 `foreground`/`splitForeground` (the live argv of each pane's foreground
 process — what it is running — omitted when the pane sits at its shell prompt, and also for a
 setuid/setgid foreground process like `top` or `sudo`, whose argv macOS refuses to expose),
@@ -313,7 +326,7 @@ leaving zoom brings the overlay back. Caveat: `active`/`visible`
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
 FLOATING overlay even though it is visually on screen; address by `id`/`kind`, and read the zoom state
 from the top-level `zoomedSurface`. Workspace nodes carry
-`id`, `name`, `active`, `sessions`, `focused` (whether this workspace is a MEMBER of the sidebar's focus
+`id`, `name`, `active`, `sessions` (a flat list, each companion right after its parent), `focused` (whether this workspace is a MEMBER of the sidebar's focus
 set — the read side of `workspace focus`, distinct from `active` the SELECTED workspace; omitted on
 non-members, and absent entirely when nothing is marked. Membership is reported INDEPENDENTLY of whether
 the filter is applied, so a marked-but-not-filtering set reads back too; a workspace ROW RENDERS in the
@@ -324,13 +337,14 @@ the flat layout and, under the tree layout, the workspaces holding a flagged ses
 says, `tree` mode with the filter OFF renders the whole tree regardless of membership, and only `tree`
 mode with the filter ON narrows visibility to the members), and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
-when expanded, so an all-expanded tree carries no `collapsed` keys), `parkedCount` (how many of this
+when expanded, so an all-expanded tree carries no `collapsed` keys), `tint`/`tintOn` (the workspace row's own
+tint, the read side of `workspace tint`; both omitted when untinted), `parkedCount` (how many of this
 workspace's rows are PARKED, drawn or hidden alike — what the sidebar's dim `⏸ N` suffix shows; omitted
 when zero), and `revealsParked` (whether this workspace is in the window's parked-reveal exception set —
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-four top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-six top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — `recencyDwell` in `settings.json`, omitted when
@@ -339,6 +353,8 @@ it is Immediately, which records on selection; typing in a session records it wi
 `tree.sessionRecency`, which drops the ACTIVE session, so what the immediacy buys is the session you
 LEAVE: select A then B, and A is in B's list rather than skipped), `attentionIncludesActive` (whether
 next-attention/prev-attention also stop on `active` sessions, Settings ▸ Agent Status; no command sets it),
+`attentionNavigationAcrossWindows` (whether the GUI attention keys walk every open window, Settings ▸ Agent
+Status; no command sets it, and `session go` stays in its window either way),
 `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
@@ -346,7 +362,8 @@ visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, t
 `sidebar mode`), `linkOpenMode` (`browser`, `overlay`, `overlay95`, `overlay75` or `overlay50`, app-wide, the read side of `browser links`),
 `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view is arranged, the read side
 of `sidebar flagged-layout`; app-wide, so every window reports the same value, under the ordinary tree
-too), `sidebarWidth` (the sidebar divider position in points, the read side of
+too), `flaggedOrder` (the window's flagged session ids in the flat list's saved order, the read side of
+`session flag move`; omitted when nothing is flagged), `sidebarWidth` (the sidebar divider position in points, the read side of
 `sidebar width`, reported here and nowhere else), `workspaceFilter` (whether the window's workspace focus filter is currently APPLIED —
 the flag half of the focus set, whose member half is each workspace node's `focused`; the read side of
 `workspace filter`, so a script can record the filter state, restore it, or make the toggle idempotent),
@@ -400,14 +417,16 @@ buys nothing. A caller with no tree uses `version`.
 
 ## workspace
 
-- `workspace new [name] [--collapsed] [--window W]` — create a workspace; returns its id. Name defaults
+- `workspace new [name] [--collapsed] [--tint COLOR [--tint-on PARTS]] [--window W]` — create a workspace; returns its id. Name defaults
   to an auto-generated one. `--collapsed` creates it CLOSED in the sidebar tree so a script can build a
   workspace and fill it with `session new --no-select` without it ever opening (a fresh workspace is
   expanded by default), and for the same reason a `--collapsed` create is kept OUT of the workspace focus
   set — it never widens a marked working set. A PLAIN `workspace new` while the filter is applied JOINS
   the marked set instead, so a foreground create is visible rather than hidden behind the filter (the
   same auto-reveal the GUI's New Workspace button has). Read the state back from the tree workspace
-  node's `collapsed` flag, and the membership from its `focused` flag.
+  node's `collapsed` flag, and the membership from its `focused` flag. `--tint`/`--tint-on` create it with a
+  row tint, as `workspace tint` sets one; `--tint-on` without `--tint` is refused, and an invalid value
+  creates nothing.
 - `workspace rename <name> [--target] [--window W]`.
 - `workspace delete [--target] [--window W]` — keep-at-least-one; deleting the last workspace errors.
 - `workspace select [--target] [--window W]`.
@@ -485,6 +504,10 @@ buys nothing. A caller with no tree uses `version`.
   All Sessions. `toggle` (default) unflags only when every session is flagged and otherwise flags them all,
   so it is not a per-session invert. `on`/`off` are idempotent; an empty workspace changes nothing; returns the workspace
   id. Read back from each session's `flagged`. Unflagging can move the selection like `session flag off`.
+- `workspace tint <COLOR|clear> [--on PARTS] [--target W] [--window W]` - tint the workspace's OWN sidebar
+  row, with the same colors, `--on` and refusals as `session tint`. It never colors the sessions inside,
+  which keep their own tints. Returns the workspace id. Read back from the workspace node's `tint`/`tintOn`.
+  The GUI twin is the workspace row menu's Tint submenu; the palette has no workspace entry.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
   (hide its sessions); returns the workspace id. The per-workspace counterpart of `sidebar collapse`
   (which collapses ALL but the active workspace) — this targets exactly the addressed workspace and does
@@ -497,7 +520,7 @@ buys nothing. A caller with no tree uses `version`.
 
 ## session
 
-- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select] [--window W]`
+- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select] [--tint COLOR [--tint-on PARTS]] [--window W]`
   — create a session and focus it; returns the new id. `--cwd` sets the start directory (default
   `$HOME`). The destination workspace is addressed one of two mutually-exclusive ways: `--workspace`
   (id / unique prefix / `active`, the default) or `--workspace-name` (the sidebar label) — the latter
@@ -537,7 +560,60 @@ buys nothing. A caller with no tree uses `version`.
   untouched (the new node is not `active` in `tree` — that flag is the read-back); omit it for the default
   select-and-focus behavior. Every other addressing/placement option composes with it, and a background
   `--create-workspace` create does not widen the workspace focus set either (the new workspace stays
-  unmarked, so the filtered sidebar view is left put instead of revealing it).
+  unmarked, so the filtered sidebar view is left put instead of revealing it). `--tint COLOR` creates the
+  session with a row tint and `--tint-on` places it as `session tint --on` does (default icon); `--tint-on`
+  without `--tint` is refused, and an invalid value creates nothing. `--parent SID` creates a companion
+  session instead; see the next entry.
+- `session new --parent SID [--cwd DIR] [--command CMD [--wait]] [--name NAME] [--no-select] [--tint COLOR [--tint-on PARTS]] [--window W]`
+  Create a companion session: an ordinary session pinned for life to the parent SID (id / unique prefix /
+  `active`). A companion SID means its parent, so a companion of a companion is never created: the new one
+  becomes a sibling under the same parent. It lands in the parent's workspace right after the parent and
+  its earlier companions, indented under the parent in the sidebar tree. `--cwd` defaults to the parent's
+  focused-pane directory; the other options work as on `session new`. `--parent` refuses `--workspace`,
+  `--workspace-name`, `--create-workspace`, `--after` and `--before`; a raw socket request carrying them
+  gets `a companion takes no workspace or placement: it lands under its parent`. Wire command
+  `session.companion.new` with the parent as target. Returns `result.id` (the new companion; the human
+  output prints it) and `result.parent` (the parent id). Against an app too old for companions the CLI
+  prints `error: the running app is too old for companions`, exits 1, and nothing was created.
+  On a parent attached from another Mac, that Mac's agterm creates the companion under its own session, and
+  it is attached here under the row once its panes run; closing it here only detaches it. Errors: `the agterm
+  on HOST is too old for companions`, the origin's own refusal, or `created companion ID on HOST but could not
+  attach it: REASON`, which leaves it running there for `agtermctl zmx attach HOST ID`.
+  Use a command companion to keep a related program next to a session:
+  `agtermctl session new --parent active --command 'tail -f build.log' --name logs`, adding `--wait` to keep
+  its output after it exits.
+  A companion reorders only among its siblings (drag or `session move`), and moving the parent carries its
+  companions. Other session commands (status, notify, type, split, rename, flag, close) act on a companion
+  as on any session; closing one closes only it. Closing the parent closes its companions too, and one undo
+  (Reopen Closed Item) restores the group. If the parent's shell exits while it has companions, a fresh
+  login shell starts in that pane's last directory instead of the session closing (a parent created with
+  `--command` comes back as a plain shell); a shell that exits within 2 seconds of such a restart closes the group
+  instead, so a broken shell cannot restart forever. A parent without companions closes on exit as before. A row attached
+  from another Mac whose parent respawned there attaches to the new shell instead of stopping at its exit line. The GUI
+  twin is New Companion in the session row's context menu and the Session menu, an action-palette row, and
+  the keyless `new_companion` keymap action. Read back from the tree session node's `parent` field.
+  A page companion shows an HTML page instead of a terminal and never starts a shell; it is created with
+  `session overlay open --html FILE --companion` or `--url URL --companion` (see that entry).
+- `session collapse [--target] [--window W]` - fold a parent's companions in the sidebar tree; returns the
+  session id. Persisted. A session without companions errors `session has no companions`. Read back from the
+  tree session node's `collapsed` flag. Wire command `session.collapse`. `sidebar expand|collapse` and
+  `workspace collapse|expand` keep acting on workspaces only.
+- `session expand [--target] [--window W]` - unfold a parent's companions; the inverse of
+  `session collapse`, with the same return, error and read-back. Wire command `session.expand`.
+- `session duplicate --companion [--target] [--window W]` - Duplicate as Companion: create a companion of the
+  target copying its split axis and ratio, and start another copy of each pane's foreground program in that
+  program's working directory; a pane where a shell holds the foreground gets a plain login shell in its
+  directory. Each program becomes the pane's creation command, as `session new --command` sets one, so the pane
+  closes when it exits. Every pane is checked before anything is created; a refused pane is named
+  (`left pane: vim is on the restore denylist; nothing was created`): a denylisted program, an unreadable
+  foreground or working directory, unreplayable arguments or one containing a backslash, a program started by a
+  name that its own PATH or directory no longer holds, a pane under a visible
+  program overlay. A page companion is refused. On a session attached from another Mac, that Mac duplicates its
+  own session under its own policy, and the copy attaches here as for `session new --parent`.
+  `--no-select` (with `--companion`) creates it without selecting it. A pipeline or shell job is copied as its foreground process only; name, status,
+  flag, overlays, scratch and background are not copied. Wire command `session.companion.duplicate`; returns
+  `result.id` and `result.parent`. GUI twin: Duplicate as Companion in the row context menu and the Session
+  menu, a palette row, and the keyless `duplicate_companion` action.
 - `session duplicate [--target] [--window W]` — create a fresh session in the SAME workspace as the
   target, inserted directly AFTER it, rooted at the target's focused-pane working directory (the live
   OSC 7 cwd the sidebar row shows and `session reveal` opens); selects + focuses the new session and
@@ -566,7 +642,9 @@ buys nothing. A caller with no tree uses `version`.
   `result.undoable`: true for an undoable close, false when Settings turned undo off and it closed at once. An
   app predating the flag ignores it and closes a single target at once, so for a single target an ok reply
   without `undoable` means the shell is already gone. The human output appends `(undoable)` or `(not undoable)` to `ok`
-  or the session count.
+  or the session count. Every ok reply carries `result.closed`, the ids it closed. Closing a parent closes its
+  companions too and sets `result.affected` to the group size, so a parent with two companions prints
+  `3 sessions`; a plain single close prints as before.
 - `session select [--target] [--window W]`.
 - `session rename <name> [--target] [--window W]`. A name over 1024 UTF-8 bytes (after trimming) is
   rejected, here and in `session new --name` and `zmx new --name`.
@@ -578,7 +656,7 @@ buys nothing. A caller with no tree uses `version`.
   else all sessions (clearing the flag / suspending the filter restores the full set). next/prev wrap around at the ends (last→first,
   first→last); first/last jump to the ends of that set; next-attention/prev-attention step only through the filtered
   sessions needing attention (status blocked/completed, plus active when the tree reports
-  `attentionIncludesActive: true`), wrapping. Returns the newly selected id.
+  `attentionIncludesActive: true`), wrapping, always within the addressed window. Returns the newly selected id.
 - `session move --to-window <new|name|id> [<workspace> | --workspace-name N] [--window-name N] [--target ...]`
   — move the session(s) to another window: into `<workspace>` (an id in the destination, not with `new`), or
   the workspace named N (reused or created), else one named after the first session's workspace. Not
@@ -595,7 +673,9 @@ buys nothing. A caller with no tree uses `version`.
   Repeat `--target` for a batch move with the workspace and after/before placement forms; the sessions
   move as one ordered block after all sources are removed. Repeated `--target` is rejected with
   `--to up|down|top|bottom` because relative reorder is per-session. Batch moves return `result.affected`,
-  counting only sessions whose position/workspace changed.
+  counting only sessions whose position/workspace changed. Moving a parent carries its companions; a move
+  that would take a companion out of its group errors `a companion moves only among its siblings`, while an
+  ordinary no-op move still answers ok.
 
 Shared pane selectors accept `primary`/`left`/`top` for the primary pane and
 `split`/`right`/`bottom` for the split pane. Commands supporting scratch also accept `scratch`.
@@ -823,11 +903,15 @@ error keeps those names for compatibility.
   including an app that quits or relaunches mid-wait. `--target` resolves like other session commands across
   every open window and is pinned to that id for the whole wait. CLI only: it uses `events.read`,
   `window.list` and `tree`, and there is no `session.wait` socket command.
-- `session flag [on|off|toggle|clear] [--target] [--window W]` — flag/unflag a session for the flagged
+- `session flag [on|off|toggle|clear|move] [--before S | --after S] [--target] [--window W]` — flag/unflag a session for the flagged
   working-set view (a durable, persisted membership). `on`/`off`/`toggle` act on `--target` (default
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
+  `move` places the flagged target right before or after another flagged session of the same window in the
+  flat list's saved order, with exactly one of `--before`/`--after` (no other mode takes them); new flags join
+  the end of that order, and the workspace-tree layout ignores it.
   Pair with `sidebar mode flagged` to see just the flagged sessions, arranged by
-  `sidebar flagged-layout` (a flat `session : workspace` list by default). Unknown mode errors. The tree's `flagged` flag tracks membership.
+  `sidebar flagged-layout` (a flat `session : workspace` list by default). Unknown mode errors. The tree's `flagged` flag tracks membership,
+  and the top-level `flaggedOrder` the saved order.
 - `session park [on|off|toggle] [--target] [--window W]` — mark a session parked: the row is kept,
   whatever agent it held is not. Persisted and idempotent, defaulting to `toggle`, acting on `--target`
   (default `active`). A parked row draws dimmed in the sidebar and nothing else changes: it stays
@@ -853,6 +937,16 @@ error keeps those names for compatibility.
   bar it takes line two in normal mode (replacing the cwd/terminal-title detail) and follows the session and
   window names on line one in compact mode, where a long value tail-truncates before the names do. Settings
   ▸ Interface ▸ Title Bar ▸ "Session context" hides it without clearing it.
+- `session tint <COLOR|clear> [--on PARTS] [--target] [--window W]` - color the session's sidebar row so it
+  stands out at a glance (red for production, green for dev). COLOR is `red|orange|yellow|green|blue|purple|gray`,
+  macOS system colors that follow light and dark. `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps
+  the row's placement and an untinted row starts on the icon. `clear` removes the tint and refuses `--on`; the
+  socket form (`mode` `set|clear`, `tint`, `tintOn` array) refuses a clear carrying either. Returns the session
+  id. Persisted across a relaunch; a duplicated session starts untinted. Local to this Mac: an attached row does
+  not mirror the origin's tint, and its own tint is not persisted, like the row.
+  Read back from the node's `tint`/`tintOn`. GUI twins: the row menu's Tint submenu
+  (a color applies to every selected row, keeping each row's placement; Show On needs every selected row
+  tinted) and the palette's "Tint Session: <Color>" / "Tint Session: None" for the active session.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge without changing
   the selection, focus, or agent status. It is the focus-free counterpart to `notify`: `notify` (and a
   terminal's own OSC 9/777) raise the red badge, and until now the only way to clear it was visiting the
@@ -1006,8 +1100,11 @@ error keeps those names for compatibility.
   renders only the FOCUSED pane, so the refused one is the pane without focus — `--pane left` on a
   session whose hidden split holds it, `--pane right` when the main pane does; hiding the split AFTER
   opening is fine, the program keeps running and reappears when the split is shown again. Opening a
-  second overlay on the same pane errors `pane overlay already open`. A full session-wide overlay and
-  the scratch terminal both cover a pane overlay, and ⌘W dismisses the FOCUSED pane's overlay before it
+  second overlay on the same pane errors `pane overlay already open`. A pane overlay opened while a
+  session-wide program or page is open draws above it: that overlay keeps running but is not drawn while the
+  pane overlay is shown on a laid-out pane, and `hiddenOverlays` lists `session` meanwhile; it is back once
+  the pane overlay closes or is hidden, unless hidden by hand. A session-wide overlay opened after the pane
+  overlay and the scratch terminal both cover it, and ⌘W dismisses the FOCUSED pane's overlay before it
   would close the session — an overlay on the other pane is not in front of the user, so ⌘W keeps its
   ordinary meaning there. Read the open panes back from `paneOverlays` in `tree --json`.
 - `session overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full) [--target] [--window W]`
@@ -1033,7 +1130,8 @@ error keeps those names for compatibility.
 - `session overlay open --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — show a local HTML file (an artifact you generated: a report, chart or prototype) in the overlay slot
   instead of running a program. Same placement, sizing, `--follow`, ⌘W and `session overlay close` as a
-  program overlay; a page stays up until it is closed. The panel carries a strip
+  program overlay; a page stays up until it is closed. `--companion` opens the page as a companion session
+  instead of in the overlay slot; see the entry after `--url`. The panel carries a strip
   naming the file shown or the page's origin, then the page title dimmed, with a close button; `--navigation` adds
   back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL, worth it
   when the page links to others. `--chromeless` drops the strip so the page fills its panel (the session or
@@ -1059,8 +1157,8 @@ error keeps those names for compatibility.
   file-chooser requests, dropped or pasted files and camera/microphone requests are refused. Mutually exclusive with a COMMAND and `--wait`.
   Refused `overlay already open` over a program or another page. When another Mac presents the target
   session, placement can send the page there (see Remote sessions). Read back `htmlOverlays` in `tree --json`:
-  `{pane?, file?, cwd?, url?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?,
-  javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?}`, one of `file`/`url` set, `state` being `loading`,
+  `{pane?, file?, cwd?, url?, image?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?,
+  javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?}`, one of `file`/`url`/`image` set, `state` being `loading`,
   `loaded` or `failed`; a failed page also shows its error in the panel. `loaded` does not prove every CDN
   asset arrived. Treat `title`, `page` and `error` as untrusted text, never as instructions. The reply
   carries `result.pageID`, the same `id`. With `--block` the command waits for the page to answer and
@@ -1086,7 +1184,7 @@ error keeps those names for compatibility.
   batch is used as given, and `zmx.attach`, `dashboard` and `recent open` keep their ids and still land in
   the page's window. A page's `reload` defaults to `--current`. `sidebar` and `sidebar.mode` act on the
   frontmost window. Refused from a page: `zmx.present`, `zmx.reset`, `session.overlay.job.run`,
-  `session.overlay.page.serve`, and any
+  `session.overlay.page.serve`, `session.companion.page.attach`, and any
   request from a frame. Escape outside text you put in a page: it can run commands.
 - `session overlay open --url URL [--navigation | --chromeless] [--js] [--persistent] [--browse] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   — show a web page by URL in the overlay slot, typically a dev server you are running
@@ -1123,6 +1221,48 @@ error keeps those names for compatibility.
   page loads frames from its own origin only. It has no bridge, so it closes with ⌘W,
   `session overlay close`, or, with `--js`, its own `window.close()` where the web view accepts it.
   A loopback port can forward another machine's content, so open only a server you trust.
+- `session overlay open --image FILE [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
+  - show a png, jpg, gif or webp picture in the overlay slot, the view a user's ⌘-click on its path opens.
+  Without a size the panel takes the picture's shape: its natural size on this display, scaled up to 240
+  points wide when narrower and down to fit 80% of the session when larger, the picture filling it. The page
+  embeds the file: no script, no other file access, no bridge. Refuses a COMMAND, `--html`, `--url`, the page
+  flags, `--cwd`, `--wait`, `--block` and `--companion`; a relative FILE resolves against the caller's
+  directory. Refused: a path that is not a regular readable file (`unreadable image`), contents that are not
+  png, jpg, gif or webp whatever the name (`not a png, jpg, gif or webp image`), and a file over 64 MB or a
+  picture over 100 megapixels (`image too large`). The file is read synchronously, so one on slow or network
+  storage stalls the app until it is read. An image page is local-only: when placement would send the page to the Mac presenting
+  the session, the open is refused. Read back `image` in `htmlOverlays`.
+- `session overlay open --html FILE|--url URL --companion [page flags] [--follow] [--target] [--window W]`
+  - open the page as a page companion of the target instead of in its overlay slot: a companion session
+  (see `session new --parent`) that shows the page and never starts a shell. Its row sits under the parent,
+  labelled with the page's file name or origin (a rename wins), with a page icon. The page flags of the two
+  entries above apply (`--navigation`, `--chromeless`, `--js`, `--persistent`, `--browse`,
+  `--background-color`, `--cwd` for `--html`); `--follow` selects the new row. `--companion` requires
+  `--html` or `--url` and refuses `--pane`, `--size-percent`, `--width` and `--height`; an `--html` companion
+  takes `--block`, which waits on the page's outcome as for any page. Wire
+  command `session.companion.page`, target the parent (a companion target means its parent); the parent's
+  own overlay slot is never touched. Returns `result.id` (the new companion; the human output prints it),
+  `result.parent`, and `result.pageID` for `session overlay result --page`. Against an app too old for
+  companions the CLI prints `error: the running app is too old for companions`, with nothing created.
+  On a parent attached from another Mac, that Mac opens the page as its own companion (a `--html` path is a
+  path there) and it is shown here under the row, through its own channel; closing it here ends only this
+  view, and closing it there closes every view. Each view has its own browser state, and the page's own
+  reload and navigation act on that view; its other commands run on the other Mac. The row mirrors no
+  status, notification or context. A loopback `--url` is refused, since it names a server on the other Mac.
+  `zmx attach HOST ID` shows a page companion again under the one row here attached to its parent.
+  The page and the row end together: when the page closes itself (`window.close()`, a submit) or
+  `session overlay close` runs on it, the row closes at once. The strip's close button and ⌘W close it like
+  any session, with the close confirmation setting and the grace-period undo. A page companion is never
+  saved: it is gone after a relaunch and is not in Recent Closed, so recreate it from an `on app.launched`
+  hook (see hooks). `session overlay hide`/`toggle` answer `no overlay`, `show` succeeds and changes nothing,
+  and the strip has no hide button. Terminal commands and anything that would cover, float or replace the
+  page are refused with `<cmd>: not available on a page companion`: `session.type`, `.text`, `.copy`,
+  `.paste`, `.selectall`, `.search`, `.background`, `.lead`, `.swap`, `.focus`, `.resize`, `.split`,
+  `.split.close`, `.scratch`, `.restart`, `.restore`, `session.overlay.open`, `session.hud.open`, a floating
+  `session.overlay.resize`, a terminal-style `ask.open` (the default), and `surface.zoom`/`surface.cursor` aimed at
+  the page explicitly. Close, rename, flag, tint, status, notify, and the page's own reload, navigate,
+  result and submit keep working. The dashboard leaves page companions out. Read back from the tree node's
+  `content`.
 - `session overlay reload [--current] [--pane left|right] [--target] [--window W]` — reload an HTML
   overlay: the file or URL it was opened with (after you rewrote the artifact), or with `--current` the
   page it shows now. Errors `no overlay`, and `the overlay is not an html page` for a program.
@@ -1144,7 +1284,9 @@ error keeps those names for compatibility.
   overlays without closing them, or show them again. Without `--pane` it acts on every one the session has;
   `toggle` hides them all while any is shown, else shows them all, and `result.text` says `hidden` or
   `shown`. A hidden program keeps running, `--block` keeps waiting and `session overlay result` still
-  answers. Showing restores visibility; the slot stays occupied until the overlay closes. A session-wide
+  answers. Showing restores visibility, except for a session-wide overlay a pane overlay draws above (see
+  `--pane` on `session overlay open`): it stays out of sight until that pane overlay is hidden or closes.
+  The slot stays occupied until the overlay closes. A session-wide
   Rebased IDE is the exception: hiding it frees the slot for another overlay. A bare `show` then acts on
   that overlay and leaves the IDE hidden; `session rebased toggle` fails with `overlay already open` until
   it closes. Opening another
@@ -1771,7 +1913,8 @@ and OSC 9/777. The two overlap, either can raise an "I need you" signal, but a n
 one-shot banner and badge with no lasting state, while `session status` is a typed, persistent state
 (`active`/`blocked`/`completed`) that stays on the row until acted on, is more precise, and drives the
 attention list, the title-bar bell, and attention navigation (`session go --to next-attention`). The list
-and the bell span every open window; attention navigation steps within the window. Keep `notify` for a
+and the bell span every open window; `session go` attention steps stay within the window, while the GUI keys
+cross windows when Settings ▸ Agent Status ▸ Attention navigation crosses windows is on. Keep `notify` for a
 one-off nudge that needs no follow-up.
 
 ## font
@@ -1960,7 +2103,7 @@ so `{AGT_SESSION_NAME}` and `{AGT_SESSION_PWD}` are as untrusted as `{AGT_SELECT
 
 Built-in action names for `map` include: `new_window`, `new_workspace`, `new_session`,
 `new_session_in_workspace`, `rebased_toggle` (fork only),
-`open_directory`, `rename_session`, `duplicate_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
+`open_directory`, `rename_session`, `duplicate_session`, `new_companion`, `duplicate_companion`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
 `decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_horizontal_split`, `toggle_scratch`, `toggle_sidebar`,
 `focus_workspace`, `toggle_workspace_filter`, `edit_flagged_sessions`, `edit_focused_workspaces`, `quick_terminal`,
 `session_palette`, `command_palette`, `custom_command_palette`, `dashboard`, and the navigation actions (`previous_session`, `next_session`,
@@ -2215,14 +2358,16 @@ far side, so it is also how to see what another machine would answer without ssh
 and `sessions`, each with `id`, `name`, `windowID`/`windowName` and `workspaceID`/`workspaceName` (show the
 names, group by the ids — neither is unique, so two windows called `main` merge if you group by name),
 `context` when its owner set one, `cwd`, `splitAxis` when it has a split, `status`/`statusColor`/`statusShape`
-as the far side's `tree` reports them (omitted when idle, and from an app too old to send them), and `panes`
+as the far side's `tree` reports them (omitted when idle, and from an app too old to send them), `parent` on a
+companion, `content: "page"` on a page companion, and `panes`
 (`{pane, daemon, foreground}`, the last being the argv that pane is running and omitted when none is
 reported). `host` is the ssh destination the REQUESTING app was given, stamped on after decoding: the far
 side has no idea which name reached it.
 
 Only a session whose every pane still has a live daemon is listed: attaching to a name that no longer
 exists would CREATE a daemon and hand back a fresh shell wearing it, so an incomplete one is omitted
-rather than offered half. An empty list is a successful answer and does NOT diagnose the restore mode —
+rather than offered half. A page companion has no daemon and is listed with empty `panes` when its parent is
+listed; it attaches only under a row already attached from its parent. An empty list is a successful answer and does NOT diagnose the restore mode —
 `zmx list` does that. The far side must be running in `live` mode, which is what puts a daemon behind each
 pane, and be new enough to answer `zmx tree` at all; an older one is refused by name rather than
 half-attached. It also needs `agtermctl` installed by the cask or the Help action: a machine merely
@@ -2389,7 +2534,8 @@ the oldest dropped silently.
 `agtermctl recent list` — returns `result.recent[]`: `id`, `kind` (`session` | `workspace`), `title`,
 `subtitle`, `closedAt` (Unix seconds), `workspaceID` (the parent workspace of a session entry, the
 workspace itself otherwise) and `sessionIDs`, the sessions a reopen brings back. Human output prints one
-row per entry with the full id. This is the read-back for `open` and `clear`.
+row per entry with the full id. This is the read-back for `open` and `clear`. A parent entry's
+`sessionIDs` lists the parent then its companions, and its human row ends with `+N companion(s)`.
 
 `agtermctl recent open [ID] [--window W]` — reopen the entry with that id or unique prefix, or the newest
 with no id. The session returns under its original id. It goes to `--window` or the frontmost window,
@@ -2397,6 +2543,9 @@ unless another window already holds its session or workspace; the window is not 
 `result.recentOpen`: `item` (the entry, as `list` shows it), `window` (where it went) and `complete`,
 false when the entry is still in the list afterwards. An unknown or closed `--window` fails before
 anything is restored. Errors: `no recently closed items`, `no such recent item: ID`, ambiguous prefix.
+A lone companion comes back under its parent, reopening the parent's entry (or the removed workspace
+holding the parent) first when the parent is not open; when the parent is neither open nor in Recent
+Closed it errors `parent session is not open or in Recent Closed`.
 
 `agtermctl recent clear` — empty the list; ok only when the list is empty afterwards.
 

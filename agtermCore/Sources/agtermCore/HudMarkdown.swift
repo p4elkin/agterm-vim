@@ -102,7 +102,7 @@ enum HudMarkdown {
         let raw = url.absoluteString
         // the fork's path, ref and xchat links act only from a pane's session, which a HUD has none of
         switch LinkPolicy.disposition(for: raw) {
-        case .open, .reveal: break
+        case .open, .reveal, .image: break
         case .xchat, .openPath, .ref, .ignore: return nil
         }
         guard raw.unicodeScalars.allSatisfy({ (0x21...0x7e).contains($0.value) }) else { return nil }

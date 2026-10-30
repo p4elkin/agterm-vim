@@ -22,11 +22,13 @@ public enum Command: String, Codable, Sendable {
     case workspaceCollapse = "workspace.collapse"
     case workspaceExpand = "workspace.expand"
     case workspaceFlag = "workspace.flag"
+    case workspaceTint = "workspace.tint"
     case sessionType = "session.type"
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
     case sessionPark = "session.park"
     case sessionContext = "session.context"
+    case sessionTint = "session.tint"
     case sessionSeen = "session.seen"
     case sessionRestore = "session.restore"
     /// Advance the session's turn counter (fork only, see `TurnMark`). Returns the new number in
@@ -42,6 +44,14 @@ public enum Command: String, Codable, Sendable {
     case sessionBookmarkList = "session.bookmark.list"
     case sessionBookmarkGo = "session.bookmark.go"
     case sessionBookmarkRemove = "session.bookmark.remove"
+    case sessionCollapse = "session.collapse"
+    case sessionCompanionNew = "session.companion.new"
+    case sessionCompanionPage = "session.companion.page"
+    case sessionCompanionDuplicate = "session.companion.duplicate"
+    /// A viewer asking for one attachment of a page companion: a single-use token for `session.overlay.page.serve`
+    /// plus what the page shows.
+    case sessionCompanionPageAttach = "session.companion.page.attach"
+    case sessionExpand = "session.expand"
     case sessionRestart = "session.restart"
     case sessionBackground = "session.background"
     case sessionSplit = "session.split"
@@ -191,6 +201,11 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// fill it with `session.new --no-select` without it opening. Omitted/`false` = expanded; read back as
     /// the `tree` workspace node's `collapsed`.
     public var collapsed: Bool?
+    /// The tint color for `session.tint`/`workspace.tint` mode `set`, and the creation tint on `session.new`
+    /// and `workspace.new`; one of `TintColor`.
+    public var tint: String?
+    /// The row parts the tint colors (`icon`, `name`); omitted on a set keeps the stored parts, else icon.
+    public var tintOn: [String]?
     /// For `window.new`: create the window already MINIMIZED to the Dock (the CLI's `--minimized`), so a
     /// script can build project windows without each flashing on screen and stealing focus; omitted/`false`
     /// presents it. Read back as the `window.list` node's `minimized`. The new window also hands frontmost
@@ -501,6 +516,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var persistent: Bool?
     /// browse lets a `--url` page's main frame leave its first origin for any HTTP(S) site (`--browse`).
     public var browse: Bool?
+    /// image is the absolute path of the picture `session.overlay.open --image` shows instead of running `command`.
+    public var image: String?
     /// value is the answer `session.overlay.submit` hands back from a page, empty being a real answer, or
     /// the initial text of an `ask.open` input field.
     public var value: String?
@@ -545,12 +562,13 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, rebased: Bool? = nil, diff: String? = nil,
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, image: String? = nil, rebased: Bool? = nil, diff: String? = nil,
                 olderThanDays: Int? = nil, dryRun: Bool? = nil,
                 workingTree: Bool? = nil, file: String? = nil, project: String? = nil, onClose: String? = nil, overlay: String? = nil,
                 cancelButton: String? = nil, input: String? = nil,
                 placeholder: String? = nil, choices: [ControlAskChoice]? = nil, multiple: Bool? = nil,
-                checked: [String]? = nil, other: String? = nil, undoable: Bool? = nil) {
+                checked: [String]? = nil, other: String? = nil, undoable: Bool? = nil,
+                tint: String? = nil, tintOn: [String]? = nil) {
         self.name = name
         self.cwd = cwd
         self.targets = targets
@@ -558,6 +576,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.workspaceName = workspaceName
         self.createWorkspace = createWorkspace
         self.collapsed = collapsed
+        self.tint = tint
+        self.tintOn = tintOn
         self.minimized = minimized
         self.force = force
         self.host = host
@@ -655,6 +675,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.project = project
         self.onClose = onClose
         self.overlay = overlay
+        self.image = image
         self.cancelButton = cancelButton
         self.input = input
         self.placeholder = placeholder
@@ -778,6 +799,12 @@ public struct ControlResult: Codable, Sendable, Equatable {
     public var recentOpen: ControlRecentOpen?
     /// Whether `session.close --undoable` left the close undoable; absent for a plain close.
     public var undoable: Bool?
+    /// The new companion's parent id, the receipt a companion creation answers with.
+    public var parent: String?
+    /// Every session id `session.close` closed, a parent's companions included.
+    public var closed: [String]?
+    /// The page a `session.companion.page.attach` handed out, token included.
+    public var companionPage: PresentationPage?
 
     public init(id: String? = nil, tree: ControlTree? = nil, text: String? = nil,
                 windows: [ControlWindowNode]? = nil, exitCode: Int? = nil, count: Int? = nil,
@@ -796,7 +823,11 @@ public struct ControlResult: Codable, Sendable, Equatable {
                 pageID: String? = nil, pageOutcome: ControlHtmlPageOutcome? = nil,
                 restart: ControlRestartReceipt? = nil, rebasedMirrors: ControlRebasedMirrors? = nil, overlay: String? = nil, request: String? = nil,
                 installed: AppIdentity? = nil,
-                recent: [ControlRecentItem]? = nil, recentOpen: ControlRecentOpen? = nil, undoable: Bool? = nil) {
+                recent: [ControlRecentItem]? = nil, recentOpen: ControlRecentOpen? = nil, undoable: Bool? = nil,
+                parent: String? = nil, closed: [String]? = nil, companionPage: PresentationPage? = nil) {
+        self.companionPage = companionPage
+        self.parent = parent
+        self.closed = closed
         self.overlayRedirect = overlayRedirect
         self.rebasedMirrors = rebasedMirrors
         self.bookmarks = bookmarks
@@ -907,6 +938,13 @@ public enum OverlayHtmlError {
     public static let persistentRequiresURL = "session.overlay.open: --persistent requires --url"
     public static let persistentUnavailable = "persistent browser storage is not available"
     public static let browseRequiresURL = "session.overlay.open: --browse requires --url"
+    public static let oneSource = "session.overlay.open takes one of a command, --html, --url or --image"
+    /// imageOptions: a picture page runs no script, navigates nowhere and reads only its own file.
+    public static let imageOptions =
+        "session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse"
+    public static let imageNotAbsolute = "session.overlay.open: --image must be an absolute path"
+    public static let imageType = "session.overlay.open: --image must be a png, jpg, jpeg, gif or webp file"
+    public static let companionNeedsPage = "a page companion needs --html or --url"
     /// presenter: a page is shown on this Mac, so it is refused while another Mac presents the session.
     public static let presenter = "a viewer presents this session: an html overlay would open where nobody sees it"
     public static let noOverlay = "no overlay"

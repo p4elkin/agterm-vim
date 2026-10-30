@@ -67,12 +67,15 @@ extension WorkspaceSidebar.Coordinator {
             cell.imageView?.image = store.focusedWorkspaceIDs.contains(node.id) ? focusedWorkspaceIcon : workspaceIcon
             cell.imageView?.toolTip = nil
             cell.imageView?.setAccessibilityIdentifier("workspace-icon")
+            cell.tint = workspace?.tint
         case .session:
             field.stringValue = rowLabel(forSession: node.id)
             field.font = .systemFont(ofSize: GhosttyApp.shared.sidebarFontSize)
             field.setAccessibilityIdentifier("session-row")
-            field.setAccessibilityLabel(nil)
             let session = store.session(withID: node.id)
+            // the row's value carries its name, so the companion role goes in the label
+            field.setAccessibilityLabel(session?.parentID != nil ? "companion" : nil)
+            cell.setCompanionMarker(foldedAttention(forSession: node.id).map(\.displayName))
             applyBadge(toCell: cell, count: effectiveUnseen(session?.unseenCount ?? 0))
             cell.statusIcon.apply(effectiveIndicator(forSession: node.id))
             // the split-rectangle icon (matching the toolbar split button) shows in BOTH modes so a split
@@ -85,17 +88,20 @@ extension WorkspaceSidebar.Coordinator {
             // rather than in either caller; `setColors` below turns it into the actual colors.
             cell.parked = session?.parked == true
             let notice = session.flatMap(presentationNotice(for:))
-            cell.imageView?.image = iconForSession(split: showSplitIcon, axis: session?.splitAxis ?? .leftRight,
-                                                   flagged: flagged, remote: session?.remoteHost != nil,
-                                                   disconnected: notice != nil)
+            cell.imageView?.image = session?.content == .page
+                ? (flagged ? flaggedPageSessionIcon : pageSessionIcon)
+                : iconForSession(split: showSplitIcon, axis: session?.splitAxis ?? .leftRight, flagged: flagged,
+                                 remote: session?.remoteHost != nil, disconnected: notice != nil)
             cell.imageView?.toolTip = notice
             cell.imageView?.setAccessibilityIdentifier("session-icon")
+            cell.tint = session?.tint
         }
-        // text/icon colors track the terminal theme; a selected row uses the selection foreground.
-        // this build-time tint is a first guess — row(forItem:) can miss (-1) while the row map is in
-        // flux during a reload or expand/collapse animation. SidebarRowView.didAddSubview re-asserts
-        // the tint from the row's live isSelected when the cell attaches, and its isSelected didSet
-        // keeps it in step afterwards; refreshSelectionAppearance re-runs it on theme changes.
+        // text/icon colors track the terminal theme, a selected row the selection foreground, and a row
+        // tint overrides the parts it colors. This build-time pass is a first guess: row(forItem:) can
+        // miss (-1) while the row map is in flux during a reload or expand/collapse animation.
+        // SidebarRowView.didAddSubview re-asserts the colors from the row's live isSelected when the cell
+        // attaches, and its isSelected didSet keeps them in step afterwards; refreshSelectionAppearance
+        // re-runs it on theme changes.
         let selected = outlineView.selectedRowIndexes.contains(outlineView.row(forItem: item))
         cell.setColors(selected: selected)
         return cell
@@ -228,7 +234,24 @@ extension WorkspaceSidebar.Coordinator {
                 addBtn.heightAnchor.constraint(equalToConstant: 16),
             ]
         } else {
-            constraints.append(field.trailingAnchor.constraint(equalTo: statusIcon.leadingAnchor, constant: -6))
+            let marker = NSImageView()
+            marker.translatesAutoresizingMaskIntoConstraints = false
+            marker.image = NSImage(systemSymbolName: "square.stack.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular))
+            marker.contentTintColor = .controlAccentColor
+            marker.setAccessibilityIdentifier("companion-marker")
+            marker.isHidden = true
+            cell.addSubview(marker)
+            cell.companionMarker = marker
+            let width = marker.widthAnchor.constraint(equalToConstant: 0)
+            cell.companionMarkerWidthConstraint = width
+            constraints += [
+                field.trailingAnchor.constraint(equalTo: marker.leadingAnchor, constant: -6),
+                marker.trailingAnchor.constraint(equalTo: statusIcon.leadingAnchor),
+                marker.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                marker.heightAnchor.constraint(equalToConstant: 14),
+                width,
+            ]
         }
 
         NSLayoutConstraint.activate(constraints)
@@ -264,9 +287,8 @@ extension WorkspaceSidebar.Coordinator {
         return btn
     }
 
-    /// The row's label: the session `displayName` in tree mode, or `session : workspace` (the session
-    /// name then its owning workspace name) in the `flat` flagged layout, so a flagged row from a different
-    /// workspace stays distinguishable. The cell path (`cellForRow`) only has the node id, so it resolves
+    /// The row's label: the session `displayName` in tree mode, its `listLabel` in the flagged layouts, and
+    /// `label : workspace` in the `flat` one, so a flagged row from a different workspace stays distinguishable. The cell path (`cellForRow`) only has the node id, so it resolves
     /// the session by id (and the workspace only in flagged mode, where the name is shown — tree mode
     /// skips that O(n) scan); the reconcile path passes the already-loaded session + name (see
     /// `rowLabel(for:workspaceName:)`) to stay off the O(n) lookups.

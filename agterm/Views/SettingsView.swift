@@ -493,6 +493,8 @@ private struct AgentStatusSettingsView: View {
             Section("Navigation") {
                 Toggle("Attention navigation includes active sessions", isOn: attentionIncludesActive)
                     .accessibilityIdentifier("settings-attention-includes-active")
+                Toggle("Attention navigation crosses windows", isOn: attentionNavigationAcrossWindows)
+                    .accessibilityIdentifier("settings-attention-across-windows")
                 Picker("Auto-follow blocked sessions", selection: autoFollowAttention) {
                     Text("Disabled").tag(AppSettings.AutoFollowAttention.off)
                     Text("5 sec idle").tag(AppSettings.AutoFollowAttention.s5)
@@ -505,7 +507,6 @@ private struct AgentStatusSettingsView: View {
                 Toggle("Auto-follow away from a running session", isOn: autoFollowAwayFromRunning)
                     .accessibilityIdentifier("settings-auto-follow-stay-active")
                     .disabled(autoFollowAttention.wrappedValue == .off)
-                SettingHint("Only applies while auto-follow is on.")
             }
 
             Section {
@@ -646,6 +647,12 @@ private struct AgentStatusSettingsView: View {
         Binding(get: { model.settings.attentionIncludesActive ?? false },
                 set: { model.setAttentionIncludesActive($0 ? true : nil) })
     }
+
+    private var attentionNavigationAcrossWindows: Binding<Bool> {
+        Binding(get: { model.settings.attentionNavigationAcrossWindows ?? false },
+                set: { model.setAttentionNavigationAcrossWindows($0 ? true : nil) })
+    }
+
     /// Inverted view of the stored `autoFollowStayOnActive` so the toggle reads forward — ON = do leave a
     /// running session — instead of a double negative. The nil default means "follow away", so it shows ON.
     private var autoFollowAwayFromRunning: Binding<Bool> {

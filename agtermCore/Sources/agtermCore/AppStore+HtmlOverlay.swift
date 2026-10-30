@@ -52,7 +52,9 @@ extension AppStore {
             session.setPaneOverlayExitCode(nil, pane: pane)
             session.remoteOverlays.clearFailure(pane)
             session.mintPaneOverlayGeneration(pane)
-            session.setPaneOverlay(PaneOverlay(html: overlay, backgroundColor: backgroundColor), pane: pane)
+            var slot = PaneOverlay(html: overlay, backgroundColor: backgroundColor)
+            slot.holdsSessionCover = session.coverOverlayActive
+            session.setPaneOverlay(slot, pane: pane)
             if overlay.replicaOf == nil { HtmlPageOutcomes.shared.register(overlay.id) }
             scheduleTreeChanged()
             return nil
@@ -156,7 +158,7 @@ extension AppStore {
         let remote = Dictionary(remotePageNodes(session).map { ($0.pane, $0.page) }, uniquingKeysWith: { first, _ in first })
         let nodes = ([nil] + OverlayPane.allCases).compactMap { (pane: OverlayPane?) -> ControlHtmlOverlayNode? in
             let local = pane.map { session.paneOverlay($0)?.html } ?? (session.htmlOverlayActive ? session.htmlOverlay : nil)
-            if let local { return htmlOverlayNode(local, pane: pane, zoom: zoom, hidden: session.overlayHidden(pane)) }
+            if let local { return htmlOverlayNode(local, pane: pane, zoom: zoom, hidden: session.overlayOutOfSight(pane)) }
             guard let page = remote[pane] else { return nil }
             return htmlOverlayNode(page.overlay, pane: pane, zoom: nil, hidden: page.hidden, remote: true)
         }
@@ -165,13 +167,14 @@ extension AppStore {
 
     private func htmlOverlayNode(_ page: HtmlOverlay, pane: OverlayPane?, zoom: Double?, hidden: Bool,
                                  remote: Bool = false) -> ControlHtmlOverlayNode {
-        var file: String?, cwd: String?, url: String?
+        var file: String?, cwd: String?, url: String?, image: String?
         switch page.source {
         case .file(let path, let grantRoot): (file, cwd) = (path, grantRoot)
         case .url(let address): url = address.absoluteString
         case .replica(let path): file = path
+        case .image(let path): image = path
         }
-        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, state: page.loadState.rawValue,
+        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, image: image, state: page.loadState.rawValue,
                                       error: page.loadError, page: page.current?.page, title: page.current?.title,
                                       canGoBack: page.current?.canGoBack, canGoForward: page.current?.canGoForward,
                                       navigation: page.navigation ? true : nil, javascript: page.javascript,

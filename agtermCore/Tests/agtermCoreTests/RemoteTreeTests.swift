@@ -12,6 +12,17 @@ struct RemoteTreeTests {
 
     // MARK: - building the candidate list
 
+    @Test(arguments: [
+        (RemoteCommandResult(status: 64, stdout: "", stderr: "Error: Unknown option '--parent'"), true),
+        (RemoteCommandResult(status: 64, stdout: " \n", stderr: ""), true),
+        (RemoteCommandResult(status: 64, stdout: #"{"ok":false,"error":"x"}"#, stderr: ""), false),
+        (RemoteCommandResult(status: 1, stdout: "", stderr: "Error: Unknown option '--parent'"), false),
+        (RemoteCommandResult(status: 255, stdout: "", stderr: "ssh: connect to host"), false),
+    ])
+    func onlyAUsageExitWithNothingOnStdoutIsAnArgumentRefusal(result: RemoteCommandResult, refused: Bool) {
+        #expect(result.refusedArguments == refused)
+    }
+
     @Test func aPlainSessionResolvesToOneLeftDaemon() throws {
         let windows = [window(name: "main", workspace: "work",
                               sessions: [node(id: "s1", name: "build", cwd: "/repo")])]
@@ -29,6 +40,21 @@ struct RemoteTreeTests {
         #expect(tree.sessions[0].splitAxis == nil)
         #expect(tree.sessions[0].windowName == "main")
         #expect(tree.sessions[0].workspaceName == "work")
+    }
+
+    @Test func aPageCompanionIsListedWithNoPanesOnlyUnderAListedParent() throws {
+        let page = ControlSessionNode(id: "pg", name: "report", cwd: "/srv", active: false, split: false, backedByZmx: nil, parent: "s1", content: "page")
+        let orphan = ControlSessionNode(id: "pg2", name: "lost", cwd: "/srv", active: false, split: false, backedByZmx: nil, parent: "gone", content: "page")
+        let windows = [window(name: "main", workspace: "work",
+                              sessions: [node(id: "s1", name: "build", cwd: "/repo"), page, orphan])]
+
+        let tree = try RemoteTreeMerger.candidates(windows: windows,
+                                                   inventory: inventory(entries: [entry(session: "s1", pane: "left", daemon: Self.left)]))
+
+        #expect(tree.sessions.map { $0.id } == ["s1", "pg"])
+        #expect(tree.sessions[1].panes.isEmpty)
+        #expect(tree.sessions[1].parent == "s1")
+        #expect(tree.sessions[1].content == "page")
     }
 
     @Test func everyOpenWindowIsOffered() throws {

@@ -386,6 +386,18 @@ public struct PresentationPageState: Codable, Equatable, Sendable {
     }
 }
 
+/// PresentationRespawns is how often the origin respawned each of a session's panes, by daemon name, in one
+/// origin app lifetime: `epoch` changes on every launch, so a counter that restarted is never read as older.
+public struct PresentationRespawns: Codable, Equatable, Sendable {
+    public let epoch: String
+    public let generations: [String: Int]
+
+    public init(epoch: String, generations: [String: Int]) {
+        self.epoch = epoch
+        self.generations = generations
+    }
+}
+
 /// PresentationSnapshot is the replaceable state a subscriber starts from.
 public struct PresentationSnapshot: Codable, Equatable, Sendable {
     public var status: PresentationStatus?
@@ -395,14 +407,17 @@ public struct PresentationSnapshot: Codable, Equatable, Sendable {
     /// The origin's custom name, nil when it has none. Read only from an origin whose hello listed `name`:
     /// an older one sends no key, which would otherwise read as a cleared name.
     public var name: String?
+    /// respawns is nil from an origin that predates parent respawn.
+    public var respawns: PresentationRespawns?
 
     public init(status: PresentationStatus?, hud: PresentationHud?, context: String? = nil, layout: PresentationLayout? = nil,
-                name: String? = nil) {
+                name: String? = nil, respawns: PresentationRespawns? = nil) {
         self.status = status
         self.hud = hud
         self.context = context
         self.layout = layout
         self.name = name
+        self.respawns = respawns
     }
 }
 
@@ -456,6 +471,8 @@ public struct PresentationFrame: Equatable, Sendable {
         case pageClosed(PresentationPageChange)
         case pageCommand(PresentationPageCommand)
         case pageState(PresentationPageState)
+        /// The origin respawned a pane's shell under the same daemon name; carries that pane's new count alone.
+        case respawn(PresentationRespawns)
         /// A kind this build does not speak. Kept, with its ordering, so a newer peer does not break the stream.
         case unknown(String)
 
@@ -495,6 +512,7 @@ public struct PresentationFrame: Equatable, Sendable {
             case .pageClosed: return "page.closed"
             case .pageCommand: return "page.command"
             case .pageState: return "page.state"
+            case .respawn: return "pane.respawn"
             case .unknown(let kind): return kind
             }
         }
@@ -514,6 +532,7 @@ public struct PresentationFrame: Equatable, Sendable {
 extension PresentationFrame: Codable {
     private enum CodingKeys: String, CodingKey {
         case kind, gen, rev, hello, snapshot, status, context, name, layout, hud, notify, sound, ask, overlay, forward, page
+        case respawn
     }
 
     public init(from decoder: Decoder) throws {
@@ -557,6 +576,7 @@ extension PresentationFrame: Codable {
         case "page.closed": body = .pageClosed(try container.decode(PresentationPageChange.self, forKey: .page))
         case "page.command": body = .pageCommand(try container.decode(PresentationPageCommand.self, forKey: .page))
         case "page.state": body = .pageState(try container.decode(PresentationPageState.self, forKey: .page))
+        case "pane.respawn": body = .respawn(try container.decode(PresentationRespawns.self, forKey: .respawn))
         default: body = .unknown(kind)
         }
     }
@@ -590,6 +610,7 @@ extension PresentationFrame: Codable {
             try container.encode(change, forKey: .page)
         case .pageCommand(let command): try container.encode(command, forKey: .page)
         case .pageState(let state): try container.encode(state, forKey: .page)
+        case .respawn(let respawns): try container.encode(respawns, forKey: .respawn)
         case .ping, .ack, .seen, .presenterAcquire, .presenterTake, .presenterGranted, .presenterRefused, .unknown: break
         }
     }

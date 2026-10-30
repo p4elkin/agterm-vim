@@ -25,6 +25,26 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.close --overlay"))
     }
 
+    func attachCompanionPage(_: String?, window _: String?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.page.attach"))
+    }
+
+    func duplicateAsCompanion(_: String?, window _: String?, select _: Bool) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.duplicate"))
+    }
+
+    func createPageCompanion(_: String?, window _: String?, options _: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.page"))
+    }
+
+    func createCompanion(_: String?, options _: CompanionOptions, window _: String?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.new"))
+    }
+
+    func setSessionExpansion(_: String?, window _: String?, expanded: Bool) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message(expanded ? "session.expand" : "session.collapse"))
+    }
+
     func reloadSessionOverlay(_: String?, window _: String?, pane _: OverlayPane?, current _: Bool) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.reload"))
     }
@@ -63,6 +83,11 @@ public extension ControlActions {
 
     func setFlaggedViewLayout(_: ControlFlaggedLayoutMode) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("sidebar.flagged-layout"))
+    }
+
+    func moveFlaggedSession(_: String?, window _: String?, anchor _: String,
+                            placement _: FlaggedOrderPlacement) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.flag move"))
     }
 
     func setWorkspaceFlag(_: String?, window _: String?, mode _: ControlToggleMode) -> ControlResponse {
@@ -236,6 +261,31 @@ public extension ControlActions {
 
     func setSessionContext(_: String?, window _: String?, context _: String?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.context"))
+    }
+
+    func setSessionTint(_: String?, window _: String?, update _: ControlTintUpdate) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.tint"))
+    }
+
+    func setWorkspaceTint(_: String?, window _: String?, update _: ControlTintUpdate) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("workspace.tint"))
+    }
+
+    /// A host that predates tints creates an untinted session through its own form and refuses a tint,
+    /// so the request never answers ok over a tint it dropped.
+    func createSession(_ options: ControlSessionCreateOptions, tint: SidebarTint?) -> ControlResponse {
+        guard tint == nil else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.new --tint"))
+        }
+        return createSession(options)
+    }
+
+    /// The workspace twin of the session default above.
+    func createWorkspace(window: String?, name: String?, collapsed: Bool, tint: SidebarTint?) -> ControlResponse {
+        guard tint == nil else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("workspace.new --tint"))
+        }
+        return createWorkspace(window: window, name: name, collapsed: collapsed)
     }
 
     func windowGo(direction _: WorkspaceNavigation) -> ControlResponse {

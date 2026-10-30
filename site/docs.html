@@ -40,7 +40,7 @@
     <meta name="theme-color" content="#191d20" />
     <link rel="preload" href="/assets/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/style.css?v=2" />
+    <link rel="stylesheet" href="/style.css?v=3" />
   </head>
   <body>
     <div
@@ -900,10 +900,48 @@
                 <strong style="color: #e6e1d7">Duplicate Session</strong> from a single session's context menu for a fresh shell in the
                 same workspace, right after it, in its current directory — only the directory carries over. Shift-click and ⌘-click
                 select multiple sessions for batch flag, close, move, and drag. Right-clicking inside the selection keeps the whole
-                batch, so <strong style="color: #e6e1d7">Flag</strong>, <strong style="color: #e6e1d7">Close</strong>, and
+                batch, so <strong style="color: #e6e1d7">Flag</strong>, <strong style="color: #e6e1d7">Tint</strong>, <strong style="color: #e6e1d7">Close</strong>, and
                 <strong style="color: #e6e1d7">Move to</strong> act on all of it; right-clicking a row outside narrows the menu to
                 that row. Dragged sessions keep running, shell and scrollback
                 intact.
+              </li>
+              <li id="companions" style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
+                <span
+                  style="
+                    position: absolute;
+                    left: 0;
+                    top: 2px;
+                    color: #6d82f3;
+                    font-family: &quot;JetBrains Mono&quot;, monospace;
+                  "
+                  >›</span
+                ><strong style="color: #e6e1d7">Companions</strong> keep related shells or programs next to a session: a log tail, a
+                watcher, a second shell for the same task. A companion is an ordinary session pinned to its parent, listed right
+                after it and indented under it in the tree; the parent's disclosure triangle folds them away, and a folded parent
+                shows a small marker when a hidden companion is blocked, completed, or has unread notifications.
+                <strong style="color: #e6e1d7">New Companion</strong> in the session row's context menu, the Session menu, or the
+                action palette opens a login shell in the parent's current directory; bind it with the
+                <code style="color: #e6e1d7">new_companion</code> action in <code style="color: #e6e1d7">keymap.conf</code>.
+                <strong style="color: #e6e1d7">Duplicate as Companion</strong> beside it copies the session's split layout into a new
+                companion and starts another copy of each pane's program in its directory (<code style="color: #e6e1d7">duplicate_companion</code>);
+                when a pane's program cannot be copied, nothing is created and a panel over the session names the pane.
+                On a session attached from another Mac, both ask that Mac to create the companion under its own session and attach
+                it here; closing it here only detaches it. A page companion opened on such a session is that Mac's page, shown
+                here through its own channel, and it stays there when you close it here.
+                Companions reorder only among themselves, and moving the parent carries them. Closing a companion closes only it;
+                closing the parent closes the group, and one Reopen Closed Item brings it all back. While a parent has companions,
+                its shell exiting starts a fresh shell in the same directory instead of closing the session (one that exits again
+                within 2 seconds closes the group), and a Mac viewing that
+                session attaches to the new shell. Flat lists such as
+                the ⌃P palette, the Ctrl-Tab switcher and the Dock menu label a companion <code style="color: #e6e1d7">parent › child</code>; the tree, rename
+                and Copy Name keep the bare name. From a script:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">agtermctl session new --parent active --command 'tail -f build.log' --name logs</span>,
+                with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--wait</span> to keep the output after it exits.
+                A <strong style="color: #e6e1d7">page companion</strong> shows an HTML page or URL instead of a shell, labelled with the file name
+                or origin:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">agtermctl session overlay open --html report.html --companion</span>.
+                It closes when the page closes, and it is not saved across a relaunch; recreate it from an
+                <code style="color: #e6e1d7">app.launched</code> <a href="#hooks" style="color: #6d82f3">hook</a>.
               </li>
               <li style="font-size: 15.5px; line-height: 1.65; color: #cbc6bc; padding-left: 22px; position: relative">
                 <span
@@ -936,7 +974,9 @@
                 >Narrow a crowded sidebar two ways: <strong style="color: #e6e1d7">flag</strong> sessions across workspaces into a
                 working-set view (a flag is durable and survives a move), shown as one flat list or, with
                 <strong style="color: #e6e1d7">Settings ▸ General ▸ Flagged view layout</strong> set to Workspace tree, nested
-                under their workspaces with the ones holding nothing flagged left out. A workspace row's
+                under their workspaces with the ones holding nothing flagged left out. Drag to reorder: the flat
+                list keeps its own order per window, across workspaces, which next/previous session follows; in the
+                workspace tree a drag moves sessions between workspaces as it does in the ordinary tree. A workspace row's
                 <strong style="color: #e6e1d7">Flag All Sessions</strong> flags every session in it at once, and reads
                 <strong style="color: #e6e1d7">Unflag All Sessions</strong> once they all are.
                 <strong style="color: #e6e1d7">View ▸ Edit Flagged Sessions…</strong> lists every session in the window, so Return
@@ -1080,7 +1120,7 @@
                   do the same. With <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--html</span>
                   the overlay shows a local HTML page instead, such as a report or chart an agent just generated, or with
                   <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--url</span> a web page such as a running dev server, under a strip
-                  naming the file or site, then the page's title dimmed, with hide and close buttons and, with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span>,
+                  naming the file or site, then the page's title dimmed, with a close button, a hide button while the title-bar hide-overlays button is enabled, and, with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--navigation</span>,
                   back, forward, reload, open in browser, and Show in Finder for a file or Copy Link for a URL;
                   ⌘W closes it like any overlay. A file page opened with <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--chromeless</span>
                   has no strip, so a dashboard fills its session or split pane like a native view; a web page may drop it too when served
@@ -1530,7 +1570,7 @@
                 ><strong style="color: #e6e1d7">Agent Status</strong> — the status-glyph colors and shapes, the blocked-session
                 sound, a <strong style="color: #e6e1d7">Status reset</strong> choice for when typing into a blocked or completed
                 session clears its glyph (on the first key, on Enter, or disabled), whether attention navigation also stops on
-                active sessions, and an idle timeout to auto-follow blocked sessions. A <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, sound, and
+                active sessions and whether it crosses windows, and an idle timeout to auto-follow blocked sessions. A <strong style="color: #e6e1d7">Reset to defaults</strong> button clears the colors, shapes, sound, and
                 status reset back to the shipped values.
               </div>
               <div style="font-size: 15px; line-height: 1.6; color: #cbc6bc; padding-left: 22px; position: relative">
@@ -1763,7 +1803,7 @@
                 color: #cbc6bc;
               "
             >
-              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote<br />edit_flagged_sessions&nbsp;&nbsp;&nbsp;edit_focused_workspaces
+              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />new_companion&nbsp;&nbsp;&nbsp;duplicate_companion<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote<br />edit_flagged_sessions&nbsp;&nbsp;&nbsp;edit_focused_workspaces
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">toggle_fullscreen</span> is the one
@@ -2411,7 +2451,9 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               ><br />agtermctl session new --cwd ~/src/agterm --no-select
               <span style="color: #6b727a">&nbsp;&nbsp;# create in the background without switching to it</span
               ><br />agtermctl session duplicate --target <span style="color: #f2b45c">9f3c</span>
-              <span style="color: #6b727a">&nbsp;&nbsp;# a fresh shell in that session's workspace and cwd, right after it</span><br />agtermctl session move --after
+              <span style="color: #6b727a">&nbsp;&nbsp;# a fresh shell in that session's workspace and cwd, right after it</span><br />agtermctl session new --parent active
+              --command <span style="color: #f2b45c">'tail -f build.log'</span> --name logs
+              <span style="color: #6b727a">&nbsp;&nbsp;# a companion session under the current one; session collapse folds it</span><br />agtermctl session move --after
               <span style="color: #f2b45c">9f3c</span> <span style="color: #6b727a">&nbsp;&nbsp;# place after an anchor (its workspace is used; relocates cross-workspace)</span
               ><br />agtermctl session move <span style="color: #f2b45c">"$ws"</span> --target 9f3c --target abcd
               <span style="color: #6b727a">&nbsp;&nbsp;# move a batch as one ordered block</span
@@ -2618,7 +2660,10 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               assume <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">--pane "$AGTERM_PANE"</span> still
               names its current slot. A pane that is not on screen is refused with
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">pane not visible</span>; hiding the
-              split after opening is fine, the program keeps running and reappears when the split comes back.
+              split after opening is fine, the program keeps running and reappears when the split comes back. A pane overlay
+              opened while a session-wide program or page is open draws above it: the session overlay keeps running but steps
+              out of sight while the pane overlay is shown, and comes back when that pane overlay closes or is hidden, unless
+              you hid it yourself.
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">close</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">result</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">copy</span> and
@@ -3141,7 +3186,7 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               >) is the place to customize agterm. It sits next to
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span> and gets the same
               treatment: a fully commented starter file is written on first launch, so a fresh one changes nothing. It is always loaded,
-              and is scoped to agterm so the standalone Ghostty.app never reads it. Put any ghostty config key there. Values agterm emits
+              and is scoped to agterm so the standalone Ghostty.app never reads it. Put any ghostty terminal config key there. Values agterm emits
               from Settings use <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">font-family</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">font-size</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">theme</span>,
@@ -3172,6 +3217,12 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               this file, so an <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env</span> line naming
               one of them has no effect. Other
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">env</span> keys reach every new shell.
+              Keys for Ghostty.app's own window and split chrome are mostly not read, because agterm draws its own.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">split-divider-color</span> is:
+              it colors the split divider, which otherwise takes a faint line from the theme.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unfocused-split-fill</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">unfocused-split-opacity</span> are not;
+              Settings ▸ Appearance sets how much the inactive pane dims.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keybind</span> here follows ghostty's
@@ -3227,11 +3278,16 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               address (localhost, a .local name, an IP address), which the overlay could not load.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
-              A ⌘-click on a
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link — the kind
+              A ⌘-click on a local path — a plain one printed in the output, such as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">/tmp/shot.png</span> or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">~/notes.md</span>, or a
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">file://</span> link, the kind
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">ls --hyperlink</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">eza</span>, and many compilers emit —
-              <strong style="color: #e6e1d7">reveals</strong> the file in Finder instead of opening it. A terminal renders untrusted
+              shows a png, jpg, gif or webp picture over its session, sized to the picture up to 80% of the session, and
+              <strong style="color: #e6e1d7">reveals</strong> any other file in Finder instead of opening it. A picture shown
+              from the HUD or the quick terminal, or while the session's overlay is busy, is revealed too. In a session
+              attached from another Mac, a plain path names a file on that Mac, so it is ignored. A terminal renders untrusted
               program output, so a link could point at a
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.app</span> or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.command</span>; revealing selects the file
@@ -3492,6 +3548,8 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Attention navigation includes active sessions</strong>
               (off by default) to stop on <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">active</span> sessions too, in the same sidebar
               order. Landing on an active session keeps the existing pane selection.
+              <strong style="color: #e6e1d7">Attention navigation crosses windows</strong> (off by default) lets the
+              keys walk every open window, window by window in sidebar order, raising the window it lands in.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               When the sidebar is hidden the glyphs go with it, so an optional
@@ -3563,6 +3621,43 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               Hide it without clearing it under <strong style="color: #e6e1d7">Settings ▸ Interface</strong>. It reads back on
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as the session's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">context</span> field.
+            </p>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A <strong style="color: #e6e1d7">row tint</strong> tells sessions apart at a glance, red for production and green for
+              development, say. Pick one from <strong style="color: #e6e1d7">Tint</strong> in a session or workspace row menu: None or one of
+              seven colors (red, orange, yellow, green, blue, purple, gray), which follow light and dark mode, then
+              <strong style="color: #e6e1d7">Show On</strong> Icon, Name, or Icon and Name. On a multi-row selection Show On is available
+              only when every selected row is tinted. The command palette offers "Tint Session: Red" through "Tint
+              Session: None" for the active session. A workspace tint colors only the workspace row, never the
+              sessions in it.
+            </p>
+            <div
+              style="
+                background: #15191c;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                padding: 18px 20px;
+                font-family: &quot;JetBrains Mono&quot;, monospace;
+                font-size: 13.5px;
+                line-height: 1.95;
+                overflow-x: auto;
+                color: #e6e1d7;
+              "
+            >
+              agtermctl session tint red --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span><br />agtermctl
+              session tint green --on icon,name --target <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span
+              ><br />agtermctl workspace tint red<br />agtermctl session tint clear --target
+              <span style="color: #5ea1f2">"$AGTERM_SESSION_ID"</span>
+            </div>
+            <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
+              A tint on a local session or workspace survives quit and relaunch, and a duplicated session starts
+              without one. It stays on this Mac: a session attached from another Mac does not show the origin's tint,
+              and a tint set on that row goes away with it.
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">session new --tint</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">workspace new --tint</span> create a
+              row already tinted. The tint reads back on <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tint</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tintOn</span>. On an older agterm, an emoji and a
+              PROD or DEV word in the session or workspace name gives a visible marker, at the cost of pinning the
+              name: the row no longer shows the live terminal title.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               To wire it up automatically, <strong style="color: #e6e1d7">Help ▸ Install Agent Status Hooks…</strong> installs a

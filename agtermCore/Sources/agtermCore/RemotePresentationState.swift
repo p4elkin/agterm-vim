@@ -52,6 +52,9 @@ public struct RemoteBinding: Equatable, Sendable {
 
     public func localPane(forRemote identity: UUID) -> UUID? { localByRemotePane[identity] }
 
+    /// daemonsByPane is the origin daemon each local pane attaches to.
+    public var daemonsByPane: [UUID: String] { daemonsByLocalPane }
+
     public func daemon(forLocalPane identity: UUID) -> String? { daemonsByLocalPane[identity] }
 
     /// A fresh attach line for local pane `identity`, nil without an origin, a daemon for it, or an address.

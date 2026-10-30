@@ -386,6 +386,13 @@ final class SettingsModel {
         try? settingsStore.save(settings)
         applyWindowSettingsToAllWindows()
     }
+    /// Persist whether attention navigation walks every open window (nil = off) and fan it out.
+    func setAttentionNavigationAcrossWindows(_ value: Bool?) {
+        settings.attentionNavigationAcrossWindows = value
+        try? settingsStore.save(settings)
+        applyWindowSettingsToAllWindows()
+    }
+
     /// Apply a new background opacity live WITHOUT saving — the live-drag half of the slider; each tick
     /// reschedules `backgroundSaveDebouncer`, so the disk write coalesces to one on settle.
     func previewBackgroundOpacity(_ value: Double?) {
@@ -710,8 +717,9 @@ final class SettingsModel {
     private func starterGhosttyConfigText() -> String {
         """
         # agterm-scoped ghostty config — applies ONLY to agterm, not the standalone Ghostty.app.
-        # Put any ghostty config key here to override agterm's bundled defaults and your global
+        # Put any ghostty terminal config key here to override agterm's bundled defaults and your global
         # ~/.config/ghostty/config. Full key reference: https://ghostty.org/docs/config
+        # Keys for Ghostty.app's own window and split chrome are mostly not read; split-divider-color is.
         #
         # Edit this file and run File ▸ Reload Config (or relaunch) to apply. Blank lines and lines
         # starting with `#` are ignored. Most keys apply to open terminals on reload, but layout keys
@@ -827,8 +835,10 @@ final class SettingsModel {
         GhosttyApp.shared.setHiddenInterfaceElements(settings.resolvedHiddenInterfaceElements)
     }
 
+    // the one setter of both copies: GhosttyApp's drives rendering, the library's drives navigation
     private func applyFlaggedViewLayout() {
         GhosttyApp.shared.setFlaggedViewLayout(settings.effectiveFlaggedViewLayout)
+        library.setFlaggedLayout(settings.effectiveFlaggedViewLayout)
     }
 
     private func applyHtmlOverlayZoom() {
@@ -846,6 +856,8 @@ final class SettingsModel {
         let timeout = AppSettings.AutoFollowAttention(tolerant: settings.autoFollowAttention).timeout
         store.setAutoFollow(timeout: timeout, stayOnActive: settings.autoFollowStayOnActive ?? false)
         store.attentionIncludesActive = settings.attentionIncludesActive ?? false
+        let acrossWindows = settings.attentionNavigationAcrossWindows ?? false
+        if store.attentionNavigationAcrossWindows != acrossWindows { store.attentionNavigationAcrossWindows = acrossWindows }
     }
 
     /// Fan the per-window settings out to every open window's store — the settings-change broadcast and the

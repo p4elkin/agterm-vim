@@ -89,6 +89,18 @@ struct AppStoreRemoteLayoutTests {
         #expect(store.remoteLayoutAddedPane(layout, forSession: session.id) == nil)
     }
 
+    @Test func aLocalPaneHeldExitIsIgnoredByTheRemoteHandlers() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", command: "sleep 1", wait: true))
+
+        store.remotePaneHeld(session.paneIdentity, forSession: session.id)
+
+        #expect(!store.remotePaneIsHeld(session.paneIdentity, forSession: session.id))
+        #expect(!store.canCloseRemovedRemotePane(session.paneIdentity, forSession: session.id))
+        #expect(store.session(withID: session.id) != nil)
+    }
+
     @Test func layoutReordersOnlyExistingReplicasAndKeepsFocusOnItsPane() throws {
         let (store, session) = try attached()
         let primary = session.paneIdentity

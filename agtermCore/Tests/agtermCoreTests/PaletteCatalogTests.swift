@@ -9,6 +9,8 @@ struct PaletteCatalogTests {
             "Open Directory…",
             "Rename Session",
             "Duplicate Session",
+            "New Companion",
+            "Duplicate as Companion",
             "Rename Workspace",
             "Close Session",
             "Reopen Last Closed Item",
@@ -68,7 +70,7 @@ struct PaletteCatalogTests {
     }
 
     @Test func catalogHasTheExpectedStaticCommandCount() {
-        #expect(PaletteCommand.allCases.count == 60)
+        #expect(PaletteCommand.allCases.count == 62)
     }
 
     @Test func idsRoundTripThroughRawValue() {
@@ -233,8 +235,8 @@ struct PaletteCatalogTests {
     }
 
     private static let needSession: Set<PaletteCommand> = [
-        .renameSession, .duplicateSession, .clearStatus, .toggleFlag, .toggleSplit, .toggleHorizontalSplit,
-        .swapPanes, .toggleScratch, .toggleRebased, .toggleOverlay, .find,
+        .renameSession, .duplicateSession, .newCompanion, .duplicateCompanion, .clearStatus, .toggleFlag, .toggleSplit,
+        .toggleHorizontalSplit, .swapPanes, .toggleScratch, .toggleRebased, .toggleOverlay, .find,
         .previousSession, .nextSession, .previousAttentionSession, .nextAttentionSession,
         .firstSession, .lastSession,
     ]
@@ -258,11 +260,41 @@ struct PaletteCatalogTests {
         }
     }
 
+    @Test func aPageCompanionDisablesTerminalOnlyCommands() {
+        let page = PaletteContext(activeSessionHasSplit: true, hasActiveSession: true, activeSessionIsPage: true)
+        #expect(!PaletteCommand.toggleSplit.isEnabled(in: page))
+        #expect(!PaletteCommand.find.isEnabled(in: page))
+        #expect(!PaletteCommand.toggleScratch.isEnabled(in: page))
+        #expect(PaletteCommand.renameSession.isEnabled(in: page))
+        #expect(PaletteCommand.closeSession.isEnabled(in: page))
+    }
+
+    @Test func newCompanionNeedsAnActiveSession() {
+        #expect(PaletteCommand.newCompanion.isEnabled(in: PaletteContext(hasActiveSession: true)))
+        #expect(!PaletteCommand.newCompanion.isEnabled(in: PaletteContext()))
+        #expect(PaletteCommand.newCompanion.builtinAction == .newCompanion)
+    }
+
+    @Test func duplicateAsCompanionNeedsATerminal() {
+        #expect(PaletteCommand.duplicateCompanion.isEnabled(in: PaletteContext(hasActiveSession: true)))
+        #expect(!PaletteCommand.duplicateCompanion.isEnabled(in: PaletteContext(hasActiveSession: true, activeSessionIsPage: true)))
+        #expect(PaletteCommand.duplicateCompanion.builtinAction == .duplicateCompanion)
+    }
+
     @Test func flaggedEditorNeedsAnySessionNotAnActiveOne() {
         #expect(PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasSessions: true)))
         #expect(!PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasActiveSession: false)))
         #expect(PaletteCommand.editFlaggedSessions.isVisible(in: PaletteContext()), "stays listed, inert")
         #expect(!PaletteCommand.editFlaggedSessions.isEnabled(in: PaletteContext(hasSessions: true, pickerActive: true)))
+    }
+
+    @Test(arguments: [PaletteCommand.previousAttentionSession, .nextAttentionSession])
+    func attentionStepsAcrossWindowsNeedNoActiveSession(_ command: PaletteCommand) {
+        #expect(!command.isEnabled(in: PaletteContext(hasActiveSession: false)))
+        #expect(command.isEnabled(in: PaletteContext(hasActiveSession: false, attentionNavigationAcrossWindows: true)))
+        #expect(!command.isEnabled(in: PaletteContext(attentionNavigationAcrossWindows: true, terminalZoomActive: true)))
+        #expect(!command.isEnabled(in: PaletteContext(attentionNavigationAcrossWindows: true, dashboardOpen: true)))
+        #expect(!command.isEnabled(in: PaletteContext(attentionNavigationAcrossWindows: true, pickerActive: true)))
     }
 
     @Test func membershipEditorsStayListedInEitherSidebarMode() {

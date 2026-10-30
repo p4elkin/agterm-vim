@@ -99,6 +99,10 @@ public final class WindowLibrary {
     /// carries the observation.
     @ObservationIgnored var stores: [UUID: AppStore]
 
+    /// flaggedLayout is the app-wide flagged layout, copied onto every store as it is made, before its restore
+    /// picks a selection.
+    @ObservationIgnored public internal(set) var flaggedLayout: FlaggedViewLayout
+
     /// Bumped on every open-set change, the observable stand-in for `stores` membership: a background
     /// window opening or closing changes neither `windows` nor (necessarily) `frontmostWindowID`, so a
     /// view reading the attention list or a row's eligibility would otherwise keep its stale answer.
@@ -164,12 +168,15 @@ public final class WindowLibrary {
     }
 
     /// Creates the library rooted at `directory`, running migration/recovery and the strict pane inventory.
+    /// `flaggedLayout` is the saved setting, needed before the stores it restores pick their selections.
     public init(directory: URL = PersistenceStore.defaultDirectory,
                 paneFinalizer: (([UUID]) -> Void)?,
                 launchInventorySink: ((Set<UUID>?) -> Void)? = nil,
                 launchPaneDrop: (([UUID]) -> Void)? = nil,
-                controlEventRing: ControlEventRing? = nil) {
+                controlEventRing: ControlEventRing? = nil,
+                flaggedLayout: FlaggedViewLayout = .flat) {
         self.directory = directory
+        self.flaggedLayout = flaggedLayout
         self.recentClosedStore = RecentClosedStore(directory: directory)
         self.bookmarks = BookmarkCenter(persistence: BookmarkPersistence(directory: directory))
         self.appRecency = AppSessionRecency(persistence: AppSessionRecencyPersistence(directory: directory))
@@ -777,6 +784,7 @@ public final class WindowLibrary {
             paneFinalizer: paneFinalizer,
             launchPaneDrop: launchPaneDrop
         )
+        store.flaggedLayout = flaggedLayout
         wireAppRecency(store, windowID: windowID)
         return store
     }

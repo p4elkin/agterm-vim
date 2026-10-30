@@ -101,7 +101,9 @@ enum EventFormatter {
             return "\(time) \(event.kind.rawValue) \(name) \(event.payload.title ?? name): \(event.payload.body ?? "")"
         case .sessionParked:
             return "\(time) \(event.kind.rawValue) \(name) parked=\(event.payload.parked == true ? "on" : "off")"
-        case .sessionCreated, .sessionClosed, .treeChanged:
+        case .sessionCreated:
+            return "\(time) \(event.kind.rawValue) \(name)" + (event.payload.parent.map { " parent=\($0)" } ?? "")
+        case .sessionClosed, .treeChanged:
             return "\(time) \(event.kind.rawValue) \(name)"
         case .sessionSelected:
             return "\(time) \(event.kind.rawValue) \(name) previous=\(event.payload.previous ?? "-")"

@@ -73,9 +73,10 @@ extension AppStore {
         }
         for index in workspaces.indices { workspaces[index].sessions.removeAll { gone.contains($0.id) } }
         ids.forEach(removeFromRecency)
-        if let active {
+        if let active, let activeID = selectedSessionID {
             reselectAfterDetach(closeReselectionTarget(after: (workspaceIndex: active.workspaceIndex,
-                                                               sessionIndex: active.sessionIndex - removedBeforeActive)))
+                                                               sessionIndex: active.sessionIndex - removedBeforeActive),
+                                                       removing: activeID))
         } else {
             pruneSidebarSelection()
         }

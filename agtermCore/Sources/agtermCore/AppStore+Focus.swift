@@ -185,8 +185,7 @@ extension AppStore {
     }
 
     /// Whether the sidebar has workspace rows: always in the ordinary tree, and in flagged mode only under
-    /// the tree layout. The layout is app-wide state the store does not hold, so the caller passes it in.
-    /// The precondition of every expand/collapse path.
+    /// the tree layout. The precondition of every expand/collapse path.
     public func rendersWorkspaceRows(flaggedLayout: FlaggedViewLayout) -> Bool {
         sidebarMode == .tree || flaggedLayout == .tree
     }
@@ -199,7 +198,13 @@ extension AppStore {
     /// (and via it `session.go`, attention-nav), the Ctrl-Tab MRU candidates and the ⌃P session palette
     /// (`AppActions.paletteSessions`) — all one filter.
     public var navigableSessions: [Session] {
-        (sidebarMode == .flagged ? flaggedSessions : visibleWorkspaces.flatMap(\.sessions)).filter(isRowVisible)
+        let candidates: [Session]
+        if sidebarMode == .flagged {
+            candidates = flaggedLayout == .tree ? flaggedSessions : orderedFlaggedSessions
+        } else {
+            candidates = visibleWorkspaces.flatMap(\.sessions)
+        }
+        return candidates.filter(isRowVisible)
     }
 
     /// Moves the selection back inside the visible set whenever the active session is outside it — a narrowing

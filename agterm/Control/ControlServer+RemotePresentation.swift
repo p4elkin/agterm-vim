@@ -138,6 +138,7 @@ extension ControlServer {
                       store.applyRemoteSnapshotName(name, forSession: id) else { return }
                 remoteClients[id]?.rename(store.session(withID: id)?.customName)
             },
+            respawns: { [weak self] respawns, seed in self?.applyRemoteRespawns(respawns, seed: seed, forSession: id) },
             warn: { reason in
                 remoteLogger.warning("presentation stream for \(id, privacy: .public): \(reason, privacy: .public)")
             })
@@ -183,7 +184,9 @@ extension ControlServer {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                guard !self.remoteClients.isEmpty || !RemoteReconnectBook.shared.isEmpty else {
+                // respawn entries keep it alive so the last row's own prune still runs after that row is gone
+                guard !self.remoteClients.isEmpty || !RemoteReconnectBook.shared.isEmpty
+                        || !RemoteRespawnBook.shared.entries.isEmpty else {
                     self.remoteTick = nil
                     return
                 }

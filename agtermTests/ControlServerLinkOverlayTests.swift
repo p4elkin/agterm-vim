@@ -27,6 +27,7 @@ final class ControlServerLinkOverlayTests: XCTestCase {
 
     override func tearDown() async throws {
         await MainActor.run {
+            server.stop()
             server = nil
             library = nil
             try? FileManager.default.removeItem(at: stateDir)
@@ -137,8 +138,94 @@ final class ControlServerLinkOverlayTests: XCTestCase {
         let response = server.font(session.id.uuidString, window: nil, pane: nil, action: "increase_font_size:1")
         XCTAssertFalse(response.ok)
         XCTAssertEqual(response.error, "Rebased overlay has no terminal font size")
-        XCTAssertFalse(server.openLinkOverlay(try XCTUnwrap(URL(string: "http://127.0.0.1:1/")), session: session.id))
+        XCTAssertFalse(server.openLinkOverlay(try XCTUnwrap(URL(string: "http://127.0.0.1:1/")), session: session.id, sizePercent: nil))
         XCTAssertEqual(session.rebasedOverlay, overlay)
+    }
+
+    func testAnImageOpensSizedToThePictureWithoutSelectingIt() async throws {
+        let (store, session) = try addSession()
+        let (_, other) = try addSession()
+        store.selectSession(other.id)
+        let path = try writePNG(width: 2000, height: 1000)
+        let windowID = try XCTUnwrap(library.windowID(forSession: session.id))
+        let window = TripleDensityWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        WindowRegistry.shared.register(windowID, window: window)
+        defer { WindowRegistry.shared.unregister(windowID) }
+
+        let shown = await openImage(URL(fileURLWithPath: path), session: session.id)
+
+        XCTAssertTrue(shown)
+        XCTAssertEqual(session.htmlOverlay?.source, .image(path: path))
+        XCTAssertEqual(session.overlaySizePercent, ImagePage.basePercent)
+        let natural = ImagePage.natural(pixelWidth: 2000, pixelHeight: 1000, orientation: 1, scale: 3)
+        XCTAssertEqual(session.overlayPoints, ImagePage.points(natural: natural, zoom: HtmlOverlayRegistry.shared.zoom,
+                                                               bounds: session.hudPaneFrames.detail))
+        XCTAssertEqual(store.selectedSessionID, other.id)
+        store.closeOverlay(session.id)
+    }
+
+    func testAnImageOpenedWithASizeKeepsIt() throws {
+        let (store, session) = try addSession()
+        let path = try writePNG(width: 2000, height: 1000)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: 60,
+                                                       backgroundColor: nil, page: .image(path: path))
+
+        XCTAssertTrue(server.openSessionOverlay(session.id.uuidString, window: nil, options: options).ok)
+
+        XCTAssertEqual(session.overlaySizePercent, 60)
+        XCTAssertTrue(session.overlayPoints.isEmpty)
+        store.closeOverlay(session.id)
+    }
+
+    func testAMissingOrNonImageFileIsRefusedAndOpensNothing() async throws {
+        let (_, session) = try addSession()
+        let fake = stateDir.appendingPathComponent("fake.png")
+        try Data("not a picture".utf8).write(to: fake)
+        let missing = stateDir.appendingPathComponent("missing.png")
+
+        let fakeShown = await openImage(fake, session: session.id)
+        let missingShown = await openImage(missing, session: session.id)
+        XCTAssertFalse(fakeShown)
+        XCTAssertFalse(missingShown)
+        let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: nil,
+                                                       backgroundColor: nil, page: .image(path: missing.path))
+        XCTAssertEqual(server.openSessionOverlay(session.id.uuidString, window: nil, options: options),
+                       ControlResponse(ok: false, error: "session.overlay.open: unreadable image: \(missing.path)"))
+        XCTAssertNil(session.htmlOverlay)
+    }
+
+    func testAnImageLeavesAHudUpAndOpensNoPage() async throws {
+        let (store, session) = try addSession()
+        let path = try writePNG(width: 100, height: 100)
+        XCTAssertTrue(store.openHud(session.id, command: "/bin/cat", spec: HudSpec(message: "recap"), file: "/tmp/hud",
+                                    size: HudPanelSize(widthPercent: 40, heightPercent: 20)))
+
+        let shown = await openImage(URL(fileURLWithPath: path), session: session.id)
+
+        XCTAssertFalse(shown)
+        XCTAssertTrue(session.hudActive)
+        store.closeOverlay(session.id)
+    }
+
+    private func openImage(_ url: URL, session id: UUID) async -> Bool {
+        await withCheckedContinuation { continuation in
+            server.openImageLink(url, session: id) { continuation.resume(returning: $0) }
+        }
+    }
+
+    private final class TripleDensityWindow: NSWindow {
+        override var backingScaleFactor: CGFloat { 3 }
+    }
+
+    private func writePNG(width: Int, height: Int) throws -> String {
+        let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        let url = stateDir.appendingPathComponent("shot-\(width)x\(height).png")
+        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
+        return url.path
     }
 
     private func addSession() throws -> (AppStore, Session) {

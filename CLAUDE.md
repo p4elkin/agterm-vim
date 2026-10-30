@@ -39,6 +39,11 @@ C-boundary concurrency before changing the bridge.
   Set only a short `/tmp` `AGTERM_STATE_DIR` so app and inherited CLI derive the same socket.
   Prepend the Debug app's `Contents/MacOS` to PATH for custom commands; login shells may restore the
   deployed CLI, so manual commands should use the Debug binary's full path.
+- `open -n` passes the caller's environment to the app, including inherited `CLAUDE*` markers and
+  live-terminal `AGTERM_*`/`GHOSTTY_*` variables; a `claude` started in that instance warns that transcript
+  saving is off.
+  Launch through `env -u NAME ...` naming every such variable, which drops `AGTERM_STATE_DIR` too, so pass
+  the isolated one back with `open -n --env AGTERM_STATE_DIR=...`; verify with `ps eww -p <pid>`.
 - A fresh isolated state dir reads as a first launch and opens the welcome alert.
   `mkdir -p "$AGTERM_STATE_DIR/windows"` before launching to skip it: `FirstRunWelcome.hasPriorState`
   looks for `settings.json`, `workspaces.json`, or `windows` before the app writes anything.
@@ -118,7 +123,8 @@ C-boundary concurrency before changing the bridge.
   use absolute targets for resources. Each stamp makes its staged artifacts count as current. They remain
   untracked and disappear with worktree removal.
 - Symlink an artifact set only while the main checkout's matching stamp equals what the worktree's
-  `setup.sh` would write for that set: the revision for ghostty, and `ZMX_REV`, `ZMX_TARGET` and the
+  `setup.sh` would write for that set: `GHOSTTY_REV` and the digest of
+  `scripts/ghostty-patches/*.patch` for ghostty, and `ZMX_REV`, `ZMX_TARGET` and the
   digest of `scripts/zmx-patches/*.patch` and `scripts/zmx-patches/ghostty/*.patch` for zmx, so a target
   or a patch change invalidates a set whose revision still matches. When either differs, remove that
   set's artifact and stamp links before setup runs and let it build locally. `setup.sh` writes stamps
@@ -220,14 +226,16 @@ C-boundary concurrency before changing the bridge.
 ## GhosttyKit
 
 - `scripts/setup.sh` builds upstream `ghostty-org/ghostty` at `GHOSTTY_REV` using
-  `zig build -Demit-xcframework=true -Dxcframework-target=native`. No fork or disposable daily build is used.
+  `zig build -Demit-xcframework=true -Dxcframework-target=native`, after applying
+  `scripts/ghostty-patches/*.patch`. That directory documents the teardown backport and its removal.
 - `GHOSTTY_REV` is `683d8db` (2026-08-25), a plain reproducibility pin carrying upstream's hidden-surface
   GPU release.
   It sat at `4dcb09ada` (2026-04-30) from June while later builds blanked scrollback on a font-size
   increase; upstream fixed that and the case was re-verified by hand before the bump. Re-test the
   font-increase case when moving it, and check `minimum_zig_version` in `build.zig.zon` against
   `ZIG_FORMULA`. The 0.15 to 0.16 jump came with the `0ba6250` bump, not this one.
-- `.ghostty-build-stamp` records the rev the staged artifacts came from and is what decides a rebuild.
+- `.ghostty-build-stamp` records the revision and patch digest the staged artifacts came from
+  and is what decides a rebuild.
   Presence alone would serve an xcframework built from a different rev silently, so a `GHOSTTY_REV`
   change costs everyone exactly one libghostty rebuild and nobody keeps a stale core by accident.
 - Setup stages the xcframework and `zig-out/share/{ghostty,terminfo}`. All are ignored build artifacts.

@@ -20,6 +20,20 @@ final class SidebarCellView: NSTableCellView {
     /// Agent-status glyph fed from the session's `agentIndicator`; hidden on `.idle` (workspace rows always idle).
     let statusIcon = StatusIconView()
 
+    /// companionMarker shows on a folded parent whose hidden companions need attention, beside the parent's own
+    /// status glyph rather than replacing it; session cells only.
+    var companionMarker: NSImageView?
+    var companionMarkerWidthConstraint: NSLayoutConstraint?
+
+    func setCompanionMarker(_ companions: [String]) {
+        guard let companionMarker, let companionMarkerWidthConstraint else { return }
+        companionMarker.isHidden = companions.isEmpty
+        companionMarkerWidthConstraint.constant = companions.isEmpty ? 0 : 14
+        let label = companions.isEmpty ? nil : "companions need attention: " + companions.joined(separator: ", ")
+        companionMarker.setAccessibilityLabel(label)
+        companionMarker.toolTip = label
+    }
+
     /// Inline "+" button between the name and the status icon, workspace cells only (nil for session cells).
     /// Set by the cell builder; `handleSingleClick` reads it to avoid toggling expansion on a click on it.
     var addButton: NSButton?
@@ -51,6 +65,11 @@ final class SidebarCellView: NSTableCellView {
     /// high enough to keep the name legible.
     private static let parkedLabelAlpha: CGFloat = 0.45
     private static let parkedIconAlpha: CGFloat = 0.4
+
+    /// The row's tint, applied by `setColors` so a selection change keeps it; nil restores the theme colors.
+    var tint: SidebarTint? {
+        didSet { imageView?.setAccessibilityValue(tint.map { "\($0.color.rawValue) tint" }) }
+    }
     private var hoverTrackingArea: NSTrackingArea?
 
     /// Reveals or collapses the inline "+": the Finder/Xcode hover convention, so an idle row shows no button
@@ -105,23 +124,31 @@ final class SidebarCellView: NSTableCellView {
         setAddButtonVisible(false)
     }
 
-    /// setColors tints row text and icons from the theme for the row's real selection state. Never drive it
-    /// from `backgroundStyle`, which AppKit flips only while the table is first responder.
+    /// setColors tints row text and icons from the theme for the row's real selection state, except the parts
+    /// a row `tint` colors, which keep it selected or not. Never drive it from `backgroundStyle`, which AppKit
+    /// flips only while the table is first responder.
     ///
-    /// A parked row draws at reduced contrast. Selection wins over that dim: the selection pill already
-    /// recolors the row, and dimming on top of it would make the active row the hardest one to read.
+    /// A parked row draws at reduced contrast, tinted parts included. Selection wins over that dim: the
+    /// selection pill already recolors the row, and dimming on top of it would make the active row the hardest
+    /// one to read.
     func setColors(selected: Bool) {
         let app = GhosttyApp.shared
         let color = selected
             ? (app.terminalSelectionForegroundColor ?? app.terminalForegroundColor ?? .white)
             : (app.terminalForegroundColor ?? .labelColor)
         let dimmed = parked && !selected
-        textField?.textColor = dimmed ? color.withAlphaComponent(Self.parkedLabelAlpha) : color
+        let tintColor = tint.map { NSColor.tint($0.color) }
+        let labelColor = tint?.shows(.name) == true ? (tintColor ?? color) : color
+        textField?.textColor = dimmed ? labelColor.withAlphaComponent(Self.parkedLabelAlpha) : labelColor
         // the parked count is an annotation, always dim: workspace rows are never selectable, so the
         // selection exemption the parked row dim has cannot apply here.
         parkedSuffix?.textColor = color.withAlphaComponent(Self.parkedLabelAlpha)
         let iconAlpha: CGFloat = dimmed ? Self.parkedIconAlpha : (selected ? 0.85 : 0.6)
-        imageView?.contentTintColor = color.withAlphaComponent(iconAlpha)
+        if tint?.shows(.icon) == true, let tintColor {
+            imageView?.contentTintColor = dimmed ? tintColor.withAlphaComponent(Self.parkedIconAlpha) : tintColor
+        } else {
+            imageView?.contentTintColor = color.withAlphaComponent(iconAlpha)
+        }
         addButton?.contentTintColor = color.withAlphaComponent(newSessionPending ? iconAlpha * 0.4 : iconAlpha)
     }
 }

@@ -262,6 +262,36 @@ public final class HeadlessActions: ControlActions {
 
     public func setSessionFlag(_ target: String?, window: String?, mode: String?) -> ControlResponse { refuse(.sessionFlag) }
 
+    public func moveFlaggedSession(_ target: String?, window: String?, anchor: String,
+                                   placement: FlaggedOrderPlacement) -> ControlResponse {
+        refuse(.sessionFlag)
+    }
+
+    public func setSessionTint(_ target: String?, window: String?, update: ControlTintUpdate) -> ControlResponse {
+        refuse(.sessionTint)
+    }
+
+    public func setSessionExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse {
+        refuse(expanded ? .sessionExpand : .sessionCollapse)
+    }
+
+    public func createCompanion(_ target: String?, options: CompanionOptions, window: String?) -> ControlResponse {
+        refuse(.sessionCompanionNew)
+    }
+
+    public func createPageCompanion(_ target: String?, window: String?,
+                                    options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        refuse(.sessionCompanionPage)
+    }
+
+    public func duplicateAsCompanion(_ target: String?, window: String?, select: Bool) -> ControlResponse {
+        refuse(.sessionCompanionDuplicate)
+    }
+
+    public func attachCompanionPage(_ target: String?, window: String?) -> ControlResponse {
+        refuse(.sessionCompanionPageAttach)
+    }
+
     public func setWorkspaceFlag(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         refuse(.workspaceFlag)
     }
@@ -299,6 +329,14 @@ public final class HeadlessActions: ControlActions {
     // MARK: Workspaces
 
     public func createWorkspace(window: String?, name: String?, collapsed: Bool) -> ControlResponse { refuse(.workspaceNew) }
+
+    public func createWorkspace(window: String?, name: String?, collapsed: Bool, tint: SidebarTint?) -> ControlResponse {
+        refuse(.workspaceNew)
+    }
+
+    public func setWorkspaceTint(_ target: String?, window: String?, update: ControlTintUpdate) -> ControlResponse {
+        refuse(.workspaceTint)
+    }
     public func selectWorkspace(_ target: String?, window: String?) -> ControlResponse { refuse(.workspaceSelect) }
     public func goWorkspace(window: String?, direction: WorkspaceNavigation) -> ControlResponse { refuse(.workspaceGo) }
 

@@ -213,7 +213,7 @@ extension ControlDispatcher {
         return .view(nil)
     }
 
-    private enum OverlayContent {
+    enum OverlayContent {
         case rejected(ControlResponse)
         case program
         case page(HtmlSource)
@@ -227,19 +227,24 @@ extension ControlDispatcher {
         return nil
     }
 
-    private static func overlayContent(command: String, args: ControlArgs?) -> OverlayContent {
+    static func overlayContent(command: String, args: ControlArgs?) -> OverlayContent {
         let reject = { (error: String) in OverlayContent.rejected(ControlResponse(ok: false, error: error)) }
         if args?.rebased == true {
             let conflicts: [(Bool, String)] = [
                 (!command.isEmpty, "COMMAND"), (args?.html != nil, "--html"), (args?.url != nil, "--url"),
                 (args?.wait == true, "--wait"), (args?.javascript == true, "--js"),
                 (args?.navigation == true, "--navigation"), (args?.chromeless == true, "--chromeless"),
-                (args?.persistent == true, "--persistent"), (args?.browse == true, "--browse"), (args?.color != nil, "--background-color")
+                (args?.persistent == true, "--persistent"), (args?.browse == true, "--browse"), (args?.color != nil, "--background-color"),
+                (args?.image != nil, "--image")
             ]
             if let conflict = conflicts.first(where: { $0.0 }) {
                 return reject("session.overlay.open: --rebased cannot be combined with \(conflict.1)")
             }
             return .rebased
+        }
+        if let image = args?.image {
+            guard command.isEmpty, args?.html == nil, args?.url == nil else { return reject(OverlayHtmlError.oneSource) }
+            return imageContent(image, args: args)
         }
         switch (args?.html, args?.url) {
         case (nil, nil):
@@ -271,6 +276,18 @@ extension ControlDispatcher {
             if args?.chromeless == true, !HtmlSource.isLoopback(text) { return reject(OverlayHtmlError.chromelessRequiresLoopback) }
             return .page(.url(url))
         }
+    }
+
+    private static func imageContent(_ path: String, args: ControlArgs?) -> OverlayContent {
+        let reject = { (error: String) in OverlayContent.rejected(ControlResponse(ok: false, error: error)) }
+        let flags = [args?.wait, args?.navigation, args?.javascript, args?.chromeless, args?.persistent, args?.browse]
+        if args?.cwd != nil || flags.contains(true) { return reject(OverlayHtmlError.imageOptions) }
+        guard path.hasPrefix("/") else { return reject(OverlayHtmlError.imageNotAbsolute) }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        guard LinkPolicy.imageExtensions.contains(url.pathExtension.lowercased()) else {
+            return reject(OverlayHtmlError.imageType)
+        }
+        return .page(.image(path: url.path))
     }
 
     /// The extent is checked before the pane, so the same flags produce the same first error here and on

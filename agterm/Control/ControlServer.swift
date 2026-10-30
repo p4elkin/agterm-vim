@@ -30,8 +30,8 @@ final class ControlServer {
     /// pure `ControlResolve` matcher with app-side store scoping and the pinned wire-error strings.
     let resolver: ControlTargetResolver
 
-    /// The listening socket fd, or -1 when not listening. `start()` is idempotent on this.
-    private var listenFD: Int32 = -1
+    /// The accept loop that owns the listening socket, nil when not listening. `start()` is idempotent on this.
+    private var listener: ControlAcceptLoop?
 
     /// The held ownership lock fd, or -1 when this process does not own `socketPath`.
     private var lockFD: Int32 = -1
@@ -40,7 +40,7 @@ final class ControlServer {
     private var refused = false
 
     /// The bound socket path, nil when not listening (bind failed or never started).
-    var boundSocketPath: String? { listenFD >= 0 ? socketPath : nil }
+    var boundSocketPath: String? { listener != nil ? socketPath : nil }
 
     /// Suffix marking the stand-in path a refused instance advertises. Nothing ever creates it, so every
     /// connection to it fails.
@@ -189,6 +189,18 @@ final class ControlServer {
     var liveReset: LiveResetCoordinator?
     /// The scheduler's rows for `hooks.list`, wired by `agtermApp` once the controller exists.
     var hookStatus: () -> [ControlHookEntry] = { [] }
+    /// companionPageTokens are page-companion attachments handed to another Mac and not claimed yet, by token.
+    var companionPageTokens: [String: CompanionPageToken] = [:]
+    /// pendingCompanionClaims are claimed attachments whose channel is not adopted yet, by claim id.
+    var pendingCompanionClaims: [UUID: CompanionPageServing] = [:]
+    /// companionPageStreams are the live channels of page-companion attachments, by claim id.
+    var companionPageStreams: [UUID: PageServeStream] = [:]
+    /// originEpoch names this app run in respawn counts, so a viewer never reads a restarted counter as older.
+    let originEpoch = UUID().uuidString
+    /// respawnGenerations counts each session's pane respawns by daemon name, for the presentation snapshot.
+    var respawnGenerations: [UUID: [String: Int]] = [:]
+    /// The wait between polls of the origin for a remote companion it created; injectable like the clocks.
+    var remoteCompanionPause: () async -> Void = { try? await Task.sleep(for: .seconds(1)) }
     /// The last launch's reset outcome for the read-back; injectable so a hosted test stages one.
     var liveResetOutcome: () -> LiveReset.Outcome? = { GhosttyApp.shared.liveResetOutcome }
 
@@ -287,7 +299,7 @@ final class ControlServer {
     /// Bind and start listening. Idempotent — the scene `.task` re-runs when a window is recreated and a
     /// second `bind` must not be attempted. Any failure logs and returns, leaving the app to launch.
     func start() {
-        guard listenFD < 0 else { return }
+        guard listener == nil else { return }
 
         guard socketPath.utf8.count < 104 else {
             log("control socket path too long (\(socketPath.utf8.count) bytes): \(socketPath)")
@@ -336,8 +348,14 @@ final class ControlServer {
             return
         }
 
-        listenFD = fd
-        acceptLoop(fd: fd)
+        guard let loop = ControlAcceptLoop(listenFD: fd) else {
+            log("control accept loop setup failed: \(String(cString: strerror(errno)))")
+            close(fd)
+            unlink(socketPath)
+            return
+        }
+        listener = loop
+        acceptLoop(loop)
     }
 
     func stop() {
@@ -346,9 +364,9 @@ final class ControlServer {
         defer { releaseOwnership() }
         shutdownPresentationStreams()
         stopRemotePresentations()
-        guard listenFD >= 0 else { return }
-        close(listenFD)
-        listenFD = -1
+        guard let loop = listener else { return }
+        loop.stop()
+        listener = nil
         unlink(socketPath)
     }
 
@@ -411,16 +429,15 @@ final class ControlServer {
 
     /// Run the blocking accept loop on the background queue, each connection handled inline (one request →
     /// one response → close): connections are rare and short, so a per-connection thread is unnecessary.
-    private func acceptLoop(fd: Int32) {
+    private func acceptLoop(_ loop: ControlAcceptLoop) {
         acceptQueue.async {
-            while true {
-                let conn = accept(fd, nil, nil)
-                if conn < 0 {
-                    // a closed listener (stop()) makes accept fail — exit the loop.
-                    if errno == EBADF || errno == EINVAL { return }
-                    continue
-                }
+            while let conn = loop.next() {
                 ControlServer.handleConnection(conn, server: self)
+            }
+            loop.finish()
+            // a loop that ended on an error rather than stop() must not stay advertised as the bound listener
+            Task { @MainActor in
+                if self.listener === loop { self.listener = nil }
             }
         }
     }
@@ -541,8 +558,9 @@ final class ControlServer {
     /// but bounded, and stays inline to keep cache order.
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
     nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
-        cmd == .zmxTree || cmd == .zmxAttach || cmd == .zmxNew || cmd == .sessionRestart
-            || cmd == .rebasedMirrorList || cmd == .rebasedMirrorPrune
+        // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket
+        [.zmxTree, .zmxAttach, .zmxNew, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
+         .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune].contains(cmd)
     }
 
     /// Read bytes from `conn` up to (and excluding) the first newline. Returns nil on EOF-before-newline, a
@@ -613,6 +631,7 @@ final class ControlServer {
         // refresh the read cache in this same main-actor execution, so the background fast path sees the new
         // state without a separate, stallable hop.
         defer { refreshWindowCache() }
+        if let refusal = pageCompanionRefusal(request) { return refusal }
         if let response = await ControlDispatcher(actions: self).dispatch(request) {
             return response
         }
@@ -622,11 +641,13 @@ final class ControlServer {
                 .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
                 .workspaceFocus,
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
+                .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
+                .sessionCompanionPageAttach,
                 .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionRestart, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom,
                 .surfaceCursor,
-                .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen, .sessionRestore,
-                .sessionMark, .sessionRebasedShow, .sessionRebasedToggle,
+                .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionTint, .workspaceTint, .sessionSeen,
+                .sessionRestore, .sessionMark, .sessionRebasedShow, .sessionRebasedToggle,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
                 .browserClear, .browserLinks,
@@ -937,13 +958,13 @@ final class ControlServer {
     /// Session while a background `--window` target keeps focus. `at` is the anchor-relative
     /// `--after`/`--before` slot (clamped in `AppStore`), nil appends; `options.noSelect` creates in the
     /// background, selection and focus untouched.
-    func makeSessionResponse(in store: AppStore, workspaceID: UUID,
-                             options: ControlSessionCreateOptions, at index: Int? = nil) -> ControlResponse {
+    func makeSessionResponse(in store: AppStore, workspaceID: UUID, options: ControlSessionCreateOptions,
+                             tint: SidebarTint? = nil, at index: Int? = nil) -> ControlResponse {
         let cwd = options.cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let session = store.addSession(toWorkspace: workspaceID, cwd: cwd,
                                              command: options.command, name: options.name,
-                                             wait: options.wait ?? false,
-                                             at: index, select: !options.noSelect) else {
+                                             wait: options.wait ?? false, at: index, select: !options.noSelect,
+                                             tint: tint) else {
             return ControlResponse(ok: false, error: "could not create session")
         }
         if !options.noSelect, store === library.activeStore { actions.focusActiveSession() }

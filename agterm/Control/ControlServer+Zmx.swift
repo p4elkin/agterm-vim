@@ -110,6 +110,10 @@ extension ControlServer {
     /// own windows and answers with a single document. Nothing is composed across two remote calls, so
     /// there is no framing and no window where the far side's topology can move between reads.
     func remoteTree(host: String?) async -> ControlResponse {
+        await remoteTree(host: host, deadline: Self.remoteTreeDeadline)
+    }
+
+    func remoteTree(host: String?, deadline: TimeInterval) async -> ControlResponse {
         guard let host else { return localAttachableSessions() }
         let argv: [String]
         do {
@@ -119,7 +123,7 @@ extension ControlServer {
             // carrying control characters, which agtermctl would print to a terminal after JSON decoding
             return ControlResponse(ok: false, error: "invalid host")
         }
-        let result = await remoteRunner.run(argv, deadline: Self.remoteTreeDeadline)
+        let result = await remoteRunner.run(argv, deadline: deadline)
         guard result.status == 0 else {
             // stdout first: the remote's agtermctl prints a not-ok response there and exits nonzero, so
             // its own sentence never reaches stderr. ssh's own failures do. An ok-looking payload from a
@@ -233,8 +237,17 @@ extension ControlServer {
         guard let id = response.result?.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
             return .refused("\(host) created a session without an id")
         }
-        let attached = await attachRemoteRow(host: host, session: id, window: destination.map { $0.windowID.uuidString } ?? window,
-                                             transport: .ssh, destination: destination)
+        let found: (remote: ControlRemoteSession, tree: ControlRemoteTree)
+        switch await discoverRemote(host: host, session: id) {
+        case .failure(let refusal): return .createdNotAttached(remoteID: id, error: refusal.error ?? "the session could not be attached")
+        case .success(let discovered): found = discovered
+        }
+        let attached: RemoteRowInsert
+        switch remoteRow(found.remote, from: found.tree, host: host, transport: .ssh) {
+        case .failure(let refusal): attached = .refused(refusal)
+        case .success(let row):
+            attached = attachRemoteRow(row, window: destination.map { $0.windowID.uuidString } ?? window, destination: destination)
+        }
         switch attached {
         case .inserted(let row): return .attached(row)
         case .refused(let refusal): return .createdNotAttached(remoteID: id, error: refusal.error ?? "the session could not be attached")
@@ -257,33 +270,43 @@ extension ControlServer {
 
     func attachRemoteSession(host: String, session: String, window: String?,
                              transport: RemoteTransport) async -> ControlResponse {
-        switch await attachRemoteRow(host: host, session: session, window: window, transport: transport, destination: nil) {
+        let found: (remote: ControlRemoteSession, tree: ControlRemoteTree)
+        switch await discoverRemote(host: host, session: session) {
+        case .failure(let response): return response
+        case .success(let discovered): found = discovered
+        }
+        if found.remote.content == "page" {
+            switch resolveOpenWindow(window) {
+            case .failure(let response): return response
+            case .success(let (_, store)): return await attachRemotePageRow(found.remote, tree: found.tree, host: host, in: store)
+            }
+        }
+        let row: RemoteRow
+        switch remoteRow(found.remote, from: found.tree, host: host, transport: transport) {
+        case .failure(let response): return response
+        case .success(let built): row = built
+        }
+        switch attachRemoteRow(row, window: window, destination: nil) {
         case .refused(let response): return response
         case .inserted(let created): return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
         }
     }
 
-    /// Discover `session` on `host` and insert its row. Without a `destination` the window resolves after
-    /// discovery and the row is appended, selected, to its current workspace; a destination's workspace is
-    /// re-checked here because the round trip can outlive it.
-    private func attachRemoteRow(host: String, session: String, window: String?, transport: RemoteTransport,
-                                 destination: RemoteDestination?) async -> RemoteRowInsert {
-        let row: RemoteRow
-        switch await discoverRemoteRow(host: host, session: session, transport: transport) {
-        case .failure(let response): return .refused(response)
-        case .success(let found): row = found
-        }
+    /// Insert a just-discovered row. Without a `destination` the window resolves after discovery and the row is
+    /// appended, selected, to its current workspace; a destination's workspace is re-checked here because the
+    /// round trip can outlive it.
+    private func attachRemoteRow(_ row: RemoteRow, window: String?, destination: RemoteDestination?) -> RemoteRowInsert {
         let store: AppStore
         switch resolveOpenWindow(window) {
         case .failure(let response): return .refused(response)
         case .success(let (_, resolved)): store = resolved
         }
-        var placement: RemoteRowPlacement
+        var placement: RemotePlacement
         if let destination {
             guard store.workspaces.contains(where: { $0.id == destination.workspace }) else {
                 return .refused(ControlResponse(ok: false, error: "the workspace is gone"))
             }
-            placement = RemoteRowPlacement(store: store, workspace: destination.workspace)
+            placement = RemotePlacement(store: store, workspace: destination.workspace)
             if let rule = destination.newSessionRule {
                 let setting = settingsModel.settings.effectiveNewSessionPlacement
                 placement.position = store.newSessionInsertionIndex(inWorkspace: destination.workspace, placement: setting)
@@ -293,7 +316,7 @@ extension ControlServer {
             guard let workspace = store.currentWorkspaceID else {
                 return .refused(ControlResponse(ok: false, error: "no window to attach into"))
             }
-            placement = RemoteRowPlacement(store: store, workspace: workspace)
+            placement = RemotePlacement(store: store, workspace: workspace)
         }
         // attaching is the user asking for the session HERE, so every pane claims the lead at once
         let inserted = insertRemoteRow(row, at: placement, claim: true)
@@ -316,9 +339,13 @@ extension ControlServer {
             return ControlResponse(ok: false, error: "the row's origin is unknown")
         }
         let row: RemoteRow
-        switch await discoverRemoteRow(host: origin.host, session: session, transport: origin.transport) {
+        switch await discoverRemote(host: origin.host, session: session) {
         case .failure(let response): return response
-        case .success(let found): row = found
+        case .success(let found):
+            switch remoteRow(found.remote, from: found.tree, host: origin.host, transport: origin.transport) {
+            case .failure(let response): return response
+            case .success(let built): row = built
+            }
         }
         // located again after the ssh round trip: the row may have moved or closed meanwhile
         guard let store = library.store(forSession: rowID),
@@ -329,15 +356,15 @@ extension ControlServer {
         if store.workspaces.flatMap(\.sessions).contains(where: { $0.remotePresentation?.binding.remoteSessionID == session }) {
             return ControlResponse(ok: false, error: "session \(session) already has a row here")
         }
-        let placement = RemoteRowPlacement(store: store, workspace: workspace.id, position: index + 1, select: false)
+        let placement = RemotePlacement(store: store, workspace: workspace.id, position: index + 1, select: false)
         switch insertRemoteRow(row, at: placement, claim: true) {
         case .refused(let response): return response
         case .inserted: return ControlResponse(ok: true, result: ControlResult(id: session))
         }
     }
 
-    private func discoverRemoteRow(host: String, session: String,
-                                   transport: RemoteTransport) async -> ControlTargetResolver.Resolution<RemoteRow> {
+    private func discoverRemote(host: String, session: String) async
+        -> ControlTargetResolver.Resolution<(remote: ControlRemoteSession, tree: ControlRemoteTree)> {
         let discovery = await remoteTree(host: host)
         guard discovery.ok, let tree = discovery.result?.remote else { return .failure(discovery) }
         // by id only: remote session names are mutable and deliberately non-unique across workspaces, and
@@ -345,6 +372,11 @@ extension ControlServer {
         guard let remote = tree.sessions.first(where: { $0.id == session }) else {
             return .failure(ControlResponse(ok: false, error: "no attachable session \(session) on \(host)"))
         }
+        return .success((remote, tree))
+    }
+
+    private func remoteRow(_ remote: ControlRemoteSession, from tree: ControlRemoteTree, host: String,
+                           transport: RemoteTransport) -> ControlTargetResolver.Resolution<RemoteRow> {
         // by role, never by position: a payload with two lefts or no left must fail rather than quietly
         // become one pane, or the wrong one
         let byRole = Dictionary(remote.panes.map { (ZmxPaneRole(controlName: $0.pane), $0.daemon) },
@@ -358,10 +390,42 @@ extension ControlServer {
                                   name: remote.name, namePending: false))
     }
 
+    /// RemotePlacement is where an attached row goes: a workspace, or under `parent`, a remote row of the same host.
+    /// A user attach appends and selects; a restore puts the row back at `position`, unselected.
+    struct RemotePlacement {
+        let store: AppStore
+        let workspace: UUID
+        var parent: UUID?
+        var position: Int?
+        var select = true
+    }
+
+    /// attach creates the local row for `remote`, one session of `tree`, and binds its panes. Everything that can
+    /// fail is checked before the model is touched. A companion attaches over its parent's transport.
+    func attach(_ remote: ControlRemoteSession, from tree: ControlRemoteTree, host: String,
+                placement: RemotePlacement) -> ControlResponse {
+        let transport = placement.parent.flatMap {
+            placement.store.session(withID: $0)?.remotePresentation?.binding.origin?.transport
+        } ?? .ssh
+        let row: RemoteRow
+        switch remoteRow(remote, from: tree, host: host, transport: transport) {
+        case .failure(let response): return response
+        case .success(let found): row = found
+        }
+        switch insertRemoteRow(row, at: placement, claim: true) {
+        case .refused(let response): return response
+        case .inserted(let created):
+            // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck
+            // re-render can clear from under it through `onFocusChange`.
+            if placement.select { actions.focusSplitPane(created, wantSplit: created.splitFocused) }
+            return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString, parent: placement.parent?.uuidString))
+        }
+    }
+
     /// Inserts a bound remote row and opens its presentation stream. Shared by a user attach, which has just
     /// discovered the session, and a launch restore, which trusts its saved record. Nothing is inserted when
     /// a pane command cannot be built.
-    func insertRemoteRow(_ row: RemoteRow, at placement: RemoteRowPlacement, claim: Bool) -> RemoteRowInsert {
+    func insertRemoteRow(_ row: RemoteRow, at placement: RemotePlacement, claim: Bool) -> RemoteRowInsert {
         let leads = (left: ZmxLeadAttachment(claim: claim), right: ZmxLeadAttachment(claim: claim))
         let primary: String
         let split: String?
@@ -384,7 +448,7 @@ extension ControlServer {
         guard let created = store.addSession(toWorkspace: placement.workspace, cwd: NSHomeDirectory(),
                                              command: primary, name: row.name, wait: true,
                                              at: placement.position, select: placement.select,
-                                             remoteHost: row.host) else {
+                                             remoteHost: row.host, parentID: placement.parent) else {
             return .refused(ControlResponse(ok: false, error: "could not create the session"))
         }
         if let split {
@@ -646,14 +710,6 @@ enum RemoteCreateOutcome {
     case attached(Session)
     case refused(String)
     case createdNotAttached(remoteID: String, error: String)
-}
-
-/// Where a remote row goes. A user attach appends and selects; a restore puts it back where it was, unselected.
-struct RemoteRowPlacement {
-    let store: AppStore
-    let workspace: UUID
-    var position: Int?
-    var select = true
 }
 
 enum RemoteRowInsert {

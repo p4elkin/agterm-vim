@@ -320,3 +320,20 @@ public struct ControlSessionRestoreUpdate: Equatable, Sendable {
         self.paneID = paneID
     }
 }
+
+/// ControlTintUpdate is a parsed `session.tint`/`workspace.tint` request: a color with optional parts, or a
+/// clear.
+public enum ControlTintUpdate: Equatable, Sendable {
+    case set(TintColor, parts: Set<TintPart>?)
+    case clear
+
+    /// resolved is the tint this update leaves on a row that has `current`: a set without parts keeps the
+    /// row's own parts, starting at the icon.
+    public func resolved(over current: SidebarTint?) -> SidebarTint? {
+        switch self {
+        case .clear: nil
+        case let .set(color, parts?): SidebarTint(color: color, parts: parts)
+        case let .set(color, nil): SidebarTint.recolor(current, to: color)
+        }
+    }
+}

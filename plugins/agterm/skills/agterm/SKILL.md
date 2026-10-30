@@ -2,8 +2,7 @@
 name: agterm
 description: >
   Drive agterm, a native macOS terminal, via agtermctl. Use in an agterm session:
-  create, rename, close, reopen, select or
-  reorder sessions and workspaces; split panes; toggle the scratch terminal; run, hide or show overlays;
+  manage sessions, companions and workspaces; split panes; toggle the scratch terminal; run, hide or show overlays;
   read exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
   post a HUD/caption/notification; show a picker, question or input dialog; show images inline; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows; set font size and
@@ -20,7 +19,10 @@ when_to_use: >
   show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
-  flag every session in a workspace, run my custom command, tell me when the selected session changes,
+  flag every session in a workspace, tint a session or workspace row a color, make a companion session,
+  keep a related program next to a session, duplicate this session with its programs as a companion,
+  open a sub-session under this one, fold a session's companions, show a page as a companion of this
+  session, run my custom command, tell me when the selected session changes,
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
   move this workspace or session to another window,
@@ -74,6 +76,8 @@ Before starting such a process from inside agterm, scrub the variables
 (`env -u AGTERM_ENABLED -u AGTERM_PANE -u AGTERM_PANE_ID -u AGTERM_SESSION_ID -u AGTERM_SOCKET -u AGTERM_WINDOW_ID -u AGTERM_WORKSPACE_ID <cmd>`);
 see troubleshooting.md ("agent-status glyph updates the wrong session") for diagnosing and fixing an
 already-poisoned tmux server, and for the Codex shared-daemon limitation, which scrubbing does not fix.
+Claude Code background sessions (`claude --bg`) get none of the variables; troubleshooting.md ("Claude
+Code background sessions have no status") passes them in through `--settings`.
 
 ## Running agtermctl
 
@@ -135,12 +139,13 @@ read-only top-level fields — `idleMs` (ms since the last user input in the win
 (the Auto-follow timeout in ms, omitted when Disabled), `recencyDwellMs` (how long a session must stay
 selected before it joins `sessionRecency`, in ms, omitted when the setting is Immediately; typing and
 control `session select` both record without waiting it out), `attentionIncludesActive` (whether attention
-navigation also stops on active sessions),
-`sidebarVisible` (whether the window's
+navigation also stops on active sessions), `attentionNavigationAcrossWindows` (whether GUI attention
+navigation walks every open window; `session go` stays in its window), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
 (`tree` or `flagged` — the read side of `sidebar mode`), `linkOpenMode` (`browser`, `overlay`, `overlay95`, `overlay75` or `overlay50`, app-wide —
 the read side of `browser links`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree`, app-wide —
-the read side of `sidebar flagged-layout`), `sidebarWidth` (the sidebar divider position in
+the read side of `sidebar flagged-layout`), `flaggedOrder` (the window's flagged session ids in the flat list's
+saved order — the read side of `session flag move`, omitted when nothing is flagged), `sidebarWidth` (the sidebar divider position in
 points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`, `quickVisible` (whether the
 quick terminal is shown — the read side of the write-only `quick` command; app-level, so every window
 reports the same value), `zoomedSurface`, the four `dashboard*` fields, `sessionRecency` (the window's
@@ -240,7 +245,8 @@ Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.
 examples in **examples.md**; installable community workflows in **cookbook.md**.
 
 **tree** — print the workspace/session tree (`--json` for structured). Each session node carries
-`foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
+`parent` (a companion's parent id, omitted for a top-level session), `collapsed` (true only for a parent
+whose companions are folded), `foreground`/`splitForeground` (the live argv of each pane's foreground process, omitted when the pane
 is at its shell prompt, or running a setuid/setgid program like `top` or `sudo` whose argv macOS won't
 expose) — i.e. what each pane is currently running — `foregroundShell`/`splitForegroundShell` (the shell
 holding each pane's foreground as a basename, present exactly when that pane's `foreground` is omitted
@@ -259,7 +265,9 @@ the configured color or shape — the tint and the silhouette report the per-cal
 omitted before any set, and refreshed by every set including idle and a re-push of the SAME status, but
 not by a write that changes only the note, so
 `now - statusChangedAt` is how long ago the status was last written; automatic and manual clears count
-too; ephemeral, so it does not survive a restart), `background` (the background
+too; ephemeral, so it does not survive a restart), `lastSelectedAt` (when the session last became or
+stopped being its window's selected session, on the same clock; persisted, omitted when no selection has
+been recorded, so find sessions nobody has looked at in a while by age, not by absence), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
 `paneBackgrounds` (per-pane overrides from `session background --pane`; an absent pane inherits `background`),
 `unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
@@ -271,9 +279,10 @@ overlay resize` for a record-then-restore zoom of a percent-only panel), `overla
 content size in points as laid out, the read side of `--width`/`--height`), `paneOverlays` (the panes covered by their own overlay —
 `["left"]`, `["right"]` or `["left","right"]`, omitted when neither is; the read side of `session overlay
 open --pane`, independent of the session-wide `overlay` flag),
-`hiddenOverlays` (the hidden slots — `session`, `left`, `right` — omitted when none is hidden; the read
-side of `session overlay hide`; a hidden session-wide Rebased IDE leaves its slot, so with nothing else
-open it reads `overlay: false` with `session` listed),
+`hiddenOverlays` (the slots out of sight — `session`, `left`, `right` — omitted when none is; the read
+side of `session overlay hide`, and `session` also while a pane overlay draws above it, which show/toggle
+do not undo; a hidden session-wide Rebased IDE leaves its slot, so with nothing else open it reads
+`overlay: false` with `session` listed),
 `hud` (the message panel occupying the session-wide slot — `{message, detail?, spinner, backgroundColor?,
 textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}`, the two percents being the panel's width and height
 shares and `hideAfter` the configured auto-hide in seconds, 0 for a panel that stays — omitted when none is
@@ -324,7 +333,8 @@ that window, omitted when no pick is pending.
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind` over `status`, `notify`, `session.created`, `session.closed`, `session.selected` (a window's
+`--kind` over `status`, `notify`, `session.created` (carries `parent` for a
+companion), `session.closed`, `session.selected` (a window's
 selection moved; carries the session that lost it as `previous`), `session.parked`, `tree.changed`,
 `pane.split`, `pane.scratch`, `pane.focused` (a session's selection moved between its two split panes;
 carries the pane and its `paneID`), `remote.opened`, `remote.closed` and `app.launched` (once per app run, when
@@ -389,6 +399,19 @@ omitted when expanded).
   source's focused-pane cwd (equal to the source node's `tree.cwd` unless the source is a split focused
   off its primary pane, where `tree.cwd` reports the primary, or a remote session, where it can read as
   home).
+- `session new --parent SID [--cwd DIR] [--command CMD [--wait]] [--name NAME] [--no-select]` - create a
+  companion session: an ordinary session pinned for life to SID, listed right after it in its workspace and
+  indented under it in the sidebar tree (a companion SID means its parent). Use it to keep a related program
+  next to a session: `agtermctl session new --parent active --command 'tail -f build.log' --name logs`
+  (`--wait` keeps its output after it exits). `--cwd` defaults to the parent's focused directory; it refuses
+  `--workspace`/`--workspace-name`/`--create-workspace`/`--after`/`--before`. Closing the parent closes its
+  companions, and one undo restores the group. `session collapse`/`session expand` fold or unfold a parent's
+  companions. Read back as the tree node's `parent` and `collapsed`; details in reference.md.
+  `session duplicate --companion` copies a session's split layout into a new companion and starts another copy of
+  each pane's program (Duplicate as Companion); nothing is created when a pane's program cannot be copied.
+  `session overlay open --html FILE --companion` (or `--url URL --companion`) adds a page companion: a row
+  under the target session that shows the page and runs no shell. It closes when the page does and is never
+  saved, so an `on app.launched` hook recreates it after a relaunch. Read back as the node's `content: "page"`.
 - `session close [--target T ...] [--undoable]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo. `--undoable` gives a single target that grace too, as ⌘W does, so undo (⌘Z) or, for a local
   session, `recent open` inside it brings the running shell back; `result.undoable` says whether it applied (false when Settings turns undo off).
@@ -464,7 +487,7 @@ omitted when expanded).
   status is one of the values, returning at once when it already is. Exit 0 and print the status on a match,
   2 when the session closes, 124 on timeout, 1 on failure. Use it to wait for a worker started with
   `session new --command`; in a reused session wait for `active` first. Details in reference.md.
-- `session flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all; `workspace flag` covers one whole workspace).
+- `session flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all; `workspace flag` covers one whole workspace). `session flag move --before|--after <sid>` reorders a flagged session within the flat list's saved order.
 - `session park [on|off|toggle]` — mark a session parked: the row is kept, whatever agent it held is not.
   The row draws dimmed and stays selectable, navigable and where it is; only the look changes, unless
   `sidebar parked hide` is on, which takes hidden parked rows out of the tree and the navigation order.
@@ -479,6 +502,10 @@ omitted when expanded).
   origin's mirrored context; `--clear` removes that override and reveals the origin's latest value.
   The mirrored value is never persisted. Read the shown value from the tree node's `context` field;
   setting the text already shown emits no `tree.changed` event.
+- `session tint <red|orange|yellow|green|blue|purple|gray|clear> [--on icon|name|icon,name]` and `workspace tint`
+  (same arguments) - color a sidebar row so it stands out, e.g. red for production; a workspace tint colors only
+  its own row. `session new`/`workspace new` take `--tint`/`--tint-on`. Read back as the tree node's `tint`/`tintOn`;
+  details in reference.md.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a
   no-op when already zero. Read the current count from the tree node's `unseen` field. Use it so an
@@ -507,7 +534,7 @@ omitted when expanded).
   renders the pane opaque, overriding window translucency, so it shows; a `color` takes no opacity and
   honors the Settings window translucency instead.)
 - `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE])` · `session rebased toggle` (fork only).
-- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
+- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --image FILE | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
   `session overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full)` ·
   `session overlay close [--pane left|right]` ·
   `session overlay hide|show|toggle [--pane left|right]` ·
@@ -546,9 +573,8 @@ omitted when expanded).
   that session. **Pass `--follow` to select the target after opening** (a no-op if it is already active):
   use `--follow` when you want the user pulled to the overlay, omit it to open quietly on your own or
   another session.
-  `--background-color` gives the overlay pane its own solid color, independent of the session's. An
-  overlay is a real terminal (pty), which is also how you **display an image inline** — via the bundled
-  `scripts/show-image.sh` (see below).
+  `--background-color` gives the overlay pane its own solid color, independent of the session's.
+  `--image FILE` is how you **display an image inline** (see below).
 - `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud close` — post a small **passive** panel over the session saying what you are doing
@@ -837,7 +863,18 @@ resolves the DEFAULT socket, which may be another app. The same identity is on t
 
 ## Displaying an image inline
 
-This skill bundles `scripts/show-image.sh`. It opens an overlay (a real terminal) and renders the
+Show a png, jpg, gif or webp picture with `--image`; the panel takes the picture's shape and size, up to
+80% of the session:
+
+```bash
+agtermctl session overlay open --image /tmp/shot.png --target "$AGTERM_SESSION_ID"
+```
+
+The user can open the same view by ⌘-clicking a picture's path in the terminal, so printing the absolute
+path of an image you produced is often enough. When `--image` is rejected, by an older CLI as an unknown
+option or by an older app, fall back to the script below.
+
+This skill also bundles `scripts/show-image.sh`. It opens an overlay (a real terminal) and renders the
 image there via the kitty graphics protocol, which ghostty draws natively — no kitty binary and no
 external image tool, just `base64` + `printf`. Run it with the image path (optional size percent,
 default 60):

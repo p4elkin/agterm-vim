@@ -135,7 +135,8 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
 - The Rebased overlay's hooks into upstream files ([[rebased-overlay]]) need these paths preserved:
-  - `Session.swift`: `PaneOverlay.rebased`, pane release, unrealized-program cleanup, and the IDE in
+  - `PaneOverlay.swift`: `PaneOverlay.rebased`, `init(rebased:)` and `OverlayPane.generationSlot`.
+  - `Session.swift`: pane release, unrealized-program cleanup, and the IDE in
     `topmostSurface` and `programOverlayOwnsKeyboard` (which reads `coverOverlayVisible`).
   - `Session+HtmlOverlay.swift`: placement/update by id, the IDE in `coverOverlayActive`, `rebasedHidden`
     and session release.
