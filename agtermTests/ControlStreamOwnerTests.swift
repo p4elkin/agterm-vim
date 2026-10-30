@@ -150,7 +150,8 @@ final class ControlStreamOwnerTests: XCTestCase {
             let closing = peer
             peer = -1
 
-            let racer = Thread { owner.shutdown() }
+            let body: @Sendable () -> Void = { owner.shutdown() }
+            let racer = Thread(block: body)
             racer.start()
             close(closing)
             XCTAssertTrue(waitUntil { recorder.closes == 1 })

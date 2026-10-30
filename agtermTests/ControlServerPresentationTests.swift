@@ -104,10 +104,11 @@ final class ControlServerPresentationTests: XCTestCase {
     private func offMain<T: Sendable>(_ body: @escaping @Sendable () -> T) -> T? {
         let done = expectation(description: "client work finished")
         let box = Box<T>()
-        Thread {
+        let body: @Sendable () -> Void = {
             box.value = body()
             done.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
         wait(for: [done], timeout: 10)
         return box.value
     }
@@ -359,7 +360,7 @@ final class ControlServerPresentationTests: XCTestCase {
         let flood = Flood()
         let fd = client.fd
 
-        let writer = Thread {
+        let body: @Sendable () -> Void = {
             var offset = 0
             while !flood.stopped, flood.written < total {
                 let count = line[offset...].withUnsafeBufferPointer { Darwin.write(fd, $0.baseAddress, $0.count) }
@@ -372,6 +373,7 @@ final class ControlServerPresentationTests: XCTestCase {
             }
             flood.finish()
         }
+        let writer = Thread(block: body)
         writer.start()
         Thread.sleep(forTimeInterval: 0.8)
         flood.stop()

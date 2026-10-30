@@ -33,7 +33,8 @@ final class FakePageOrigin: @unchecked Sendable {
     var written: Int { state.withLock { chunksWritten } }
 
     func start() {
-        Thread { [self] in readLoop() }.start()
+        let body: @Sendable () -> Void = { [self] in readLoop() }
+        Thread(block: body).start()
     }
 
     func answerCancels() {
@@ -88,10 +89,11 @@ final class FakePageOrigin: @unchecked Sendable {
         case .resource(let id, let path):
             guard !held.contains(path) else { return }
             workers.enter()
-            Thread { [self] in
+            let body: @Sendable () -> Void = { [self] in
                 serve(id, path)
                 workers.leave()
-            }.start()
+            }
+            Thread(block: body).start()
         case .cancel(let id):
             if answerCancel { write(.failure(id: id, error: PageServeFrame.cancelled)) }
         case .bridge(let id, _):

@@ -231,12 +231,13 @@ final class ControlServerTests: XCTestCase {
         early.isInverted = true
         let replied = expectation(description: "reply written")
         let reply = OSAllocatedUnfairLock<String?>(initialState: nil)
-        Thread {
+        let body: @Sendable () -> Void = {
             let line = Self.roundTrip(#"{"cmd":"browser.clear"}"#, at: path)
             reply.withLock { $0 = line }
             early.fulfill()
             replied.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
 
         await fulfillment(of: [started], timeout: 5)
         await fulfillment(of: [early], timeout: 1)
@@ -320,7 +321,8 @@ final class ControlServerTests: XCTestCase {
     private func send(_ line: String) async -> String? {
         let path = socketPath!
         return await withCheckedContinuation { continuation in
-            Thread { continuation.resume(returning: Self.roundTrip(line, at: path, limit: 1 << 20)) }.start()
+            let body: @Sendable () -> Void = { continuation.resume(returning: Self.roundTrip(line, at: path, limit: 1 << 20)) }
+            Thread(block: body).start()
         }
     }
 
@@ -349,22 +351,25 @@ final class ControlServerTests: XCTestCase {
         let sshInFlight = expectation(description: "the ssh has started")
         runner.onEntered = { sshInFlight.fulfill() }
         let remoteFinished = expectation(description: "the remote call returns once released")
-        Thread {
+        let body: @Sendable () -> Void = {
             _ = Self.roundTrip(#"{"cmd":"zmx.tree","args":{"host":"buildbox"}}"#, at: path)
             remoteFinished.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
 
         wait(for: [sshInFlight], timeout: 5)
 
         let probeAnswered = expectation(description: "a second client is served during the ssh")
-        var probe: String?
-        Thread {
-            probe = Self.roundTrip(#"{"cmd":"window.list"}"#, at: path)
+        let probe = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let body2: @Sendable () -> Void = {
+            let line = Self.roundTrip(#"{"cmd":"window.list"}"#, at: path)
+            probe.withLock { $0 = line }
             probeAnswered.fulfill()
-        }.start()
+        }
+        Thread(block: body2).start()
 
         wait(for: [probeAnswered], timeout: 5)
-        XCTAssertNotNil(probe, "a second connection must be answered while the remote call is still waiting")
+        XCTAssertNotNil(probe.withLock { $0 }, "a second connection must be answered while the remote call is still waiting")
 
         runner.release.signal()
         wait(for: [remoteFinished], timeout: 10)
@@ -386,21 +391,26 @@ final class ControlServerTests: XCTestCase {
         let sshInFlight = expectation(description: "the origin's create has started")
         runner.onEntered = { sshInFlight.fulfill() }
         let remoteFinished = expectation(description: "the remote create returns once released")
-        Thread {
-            _ = Self.roundTrip(#"{"cmd":"session.companion.new","target":"\#(remote.id.uuidString)"}"#, at: path)
+        let remoteTarget = remote.id.uuidString
+        let parentTarget = parent.id.uuidString
+        let body: @Sendable () -> Void = {
+            _ = Self.roundTrip(#"{"cmd":"session.companion.new","target":"\#(remoteTarget)"}"#, at: path)
             remoteFinished.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
         wait(for: [sshInFlight], timeout: 5)
 
         let answered = expectation(description: "a local create and a tree are served during the ssh")
-        var created: String?
-        var tree: String?
-        Thread {
-            created = Self.roundTrip(#"{"cmd":"session.companion.new","target":"\#(parent.id.uuidString)","args":{"noSelect":true}}"#, at: path)
-            tree = Self.roundTrip(#"{"cmd":"tree"}"#, at: path)
+        let replies = OSAllocatedUnfairLock<(created: String?, tree: String?)>(initialState: (nil, nil))
+        let body2: @Sendable () -> Void = {
+            let created = Self.roundTrip(#"{"cmd":"session.companion.new","target":"\#(parentTarget)","args":{"noSelect":true}}"#, at: path)
+            let tree = Self.roundTrip(#"{"cmd":"tree"}"#, at: path)
+            replies.withLock { $0 = (created, tree) }
             answered.fulfill()
-        }.start()
+        }
+        Thread(block: body2).start()
         wait(for: [answered], timeout: 5)
+        let (created, tree) = replies.withLock { $0 }
 
         let reply = try XCTUnwrap(created.flatMap { try? JSONDecoder().decode(ControlResponse.self, from: Data($0.utf8)) })
         let id = try XCTUnwrap(reply.result?.id, created ?? "")

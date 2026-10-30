@@ -107,10 +107,11 @@ final class ControlServerOverlayJobsTests: XCTestCase {
     private func offMain<T: Sendable>(_ body: @escaping @Sendable () -> T) -> T? {
         let done = expectation(description: "helper work finished")
         let box = Box<T>()
-        Thread {
+        let body: @Sendable () -> Void = {
             box.value = body()
             done.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
         wait(for: [done], timeout: 10)
         return box.value
     }
