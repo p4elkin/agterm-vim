@@ -37,7 +37,7 @@ final class RangeDiff {
             ? GitChangeUtils.getDiffWithWorkingDir(project, root, from, null, false)
             : GitChangeUtils.getDiff(project, root, from, head, null));
         if (changes.isEmpty()) { Bridge.emit("viewOpened", request + "\t0"); return; }
-        Bridge.writeSafe(() -> {
+        Bridge.writeSafe(() -> Bridge.afterOpen(dir, () -> {
           if (Bridge.superseded(dir, request) || projectClosed(project, request)) return;
           try {
             List<ChangeDiffRequestChain.Producer> producers = new ArrayList<>();
@@ -56,7 +56,7 @@ final class RangeDiff {
           } catch (RuntimeException e) {
             failed(project, request, title, pane, dir, e);
           }
-        });
+        }));
       } catch (VcsException | RuntimeException e) {
         Bridge.writeSafe(() -> failed(project, request, title, pane, dir, e));
       }

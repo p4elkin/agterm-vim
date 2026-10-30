@@ -4,9 +4,11 @@ import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.wm.WindowManager;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.ui.mac.foundation.Foundation;
 import com.intellij.ui.mac.foundation.ID;
@@ -41,6 +43,9 @@ public final class Bridge implements BiFunction<String, String, String> {
   private static final Map<Window, String> frameProjects = new IdentityHashMap<>();
   // A view still in git or in the EDT queue when a newer one is asked for must not open over it.
   private static final Map<String, String> currentViews = new java.util.concurrent.ConcurrentHashMap<>();
+  // EDT only. A tab opened while IntelliJ restores the project's saved tabs can fail the whole load
+  // ("Tab count expected to be zero" when nothing restorable was saved), which closes the project.
+  private static final Map<String, List<Runnable>> opening = new java.util.HashMap<>();
 
   static void beginView(String dir, String request) { currentViews.put(dir, request); }
 
@@ -110,7 +115,20 @@ public final class Bridge implements BiFunction<String, String, String> {
         return;
       }
     }
-    ProjectUtil.openOrImport(Path.of(dir), null, true);
+    String key = directoryKey(dir);
+    // openOrImport pumps events, so a second open of the same folder can arrive inside it
+    if (opening.putIfAbsent(key, new ArrayList<>()) != null) return;
+    try {
+      ProjectUtil.openOrImport(Path.of(dir), null, true);
+    } finally {
+      opening.remove(key).forEach(Bridge::writeSafe);
+    }
+  }
+
+  // Runs a view on the EDT now, or once the open of its project returns.
+  static void afterOpen(String dir, Runnable view) {
+    List<Runnable> waiting = opening.get(directoryKey(dir));
+    if (waiting != null) waiting.add(view); else view.run();
   }
 
   // Closing from agterm has no dialog to ask about unsaved editors, so they are saved first.
@@ -118,6 +136,11 @@ public final class Bridge implements BiFunction<String, String, String> {
     Project p = openProject(dir);
     if (p == null) return;
     FileDocumentManager.getInstance().saveAllDocuments();
+    // a review diff is a LightVirtualFile: saved, it comes back as a mock:// tab that cannot be restored
+    var editors = FileEditorManager.getInstance(p);
+    for (var file : editors.getOpenFiles()) {
+      if (file instanceof LightVirtualFile) editors.closeFile(file);
+    }
     if (!ProjectManager.getInstance().closeAndDispose(p)) log("close refused: " + dir);
   }
 
@@ -132,6 +155,11 @@ public final class Bridge implements BiFunction<String, String, String> {
   static String[] diffFields(String arg) {
     String[] fields = arg.split("\t", 7);
     return fields.length == 7 ? fields : null;
+  }
+
+  private static String directoryKey(String dir) {
+    try { return Path.of(dir).toRealPath().toString(); }
+    catch (java.io.IOException e) { return Path.of(dir).normalize().toString(); }
   }
 
   private static boolean sameDirectory(String a, String b) {

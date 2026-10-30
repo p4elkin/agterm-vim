@@ -8,7 +8,7 @@ final class OpenFile {
   private OpenFile() {}
 
   static void show(String request, int line, String path, String dir) {
-    Bridge.writeSafe(() -> {
+    Bridge.writeSafe(() -> Bridge.afterOpen(dir, () -> {
       if (Bridge.superseded(dir, request)) return;
       var project = Bridge.openProject(dir);
       if (project == null) { Bridge.emit("viewFailed", request + "\tno open project at " + dir); return; }
@@ -28,6 +28,6 @@ final class OpenFile {
       } catch (RuntimeException e) {
         Bridge.emit("viewFailed", request + "\t" + (e.getMessage() == null ? e.toString() : e.getMessage()));
       }
-    });
+    }));
   }
 }

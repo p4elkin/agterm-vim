@@ -22,6 +22,10 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- A live review in the IDE no longer fails with `the overlay was closed before the IDE was ready` when the
+  project last saved a review diff tab. The review's own tab opened while IntelliJ was still restoring that
+  tab, IntelliJ dropped the project mid-load, and the overlay closed with it. The review tab now waits for
+  the project to finish opening, and closing a project drops its review diff tabs first.
 - The IDE toggle on a remote row with no IDE open reopens the last folder that row opened, instead of
   failing on this Mac's home directory (`found no repository at /Users/...`). It remembers the folder until
   agterm quits; before the first open the row's cwd is used as before.
