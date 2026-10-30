@@ -501,7 +501,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Read back `paneOverlays`, ordered left-then-right.
 - `session.overlay.hide|show|toggle [--pane]` set a per-slot hidden bit (`Session.overlayHidden`,
   `PaneOverlay.hidden`, which travels with the struct through swap and promotion) on program and page slots only;
-  a session-wide Rebased IDE leaves its slot instead ([[rebased-overlay]]).
+  a Rebased IDE leaves its slot instead ([[rebased-overlay]]).
   Bare scope is every such slot of the session; toggle hides all when any is shown, else shows all. A HUD, an
   ask and a remote PROGRAM reservation are not hideable: an empty scope answers `no overlay`, a reserved one
   `overlay is shown on another Mac`. A page shown on the presenting Mac is in scope: the request goes to that
@@ -585,11 +585,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the occupant's interactivity, a hidden program staying interactive behind its own hiding gates; and
   `overlay.result`'s running check reads occupancy.
   A Rebased overlay (fork only, [[rebased-overlay]]) occupies the session slot or one
-  `PaneOverlay.rebased` slot. A pane IDE hides through its slot's bit; a session-wide one parks out of the slot.
+  `PaneOverlay.rebased` slot. Hiding parks either form out of its slot.
   `rebasedPlacement` locates the single holder by id; `paneOverlayIsProgram` excludes pages and
   Rebased from terminal-surface paths.
   `rebasedOverlayActive` is occupancy and `rebasedOverlayVisible` its visible twin; `rebasedHidden` reads
-  the pane slot's bit or the parked state. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
+  the parked state or a slot bit. `paneRebasedOverlayActive` (a shown pane IDE) routes `AppActions.focusSplitPane`
   to the IDE instead of its terminal.
   A shown IDE has no terminal focus target or font size; `htmlHidesTerminal` stays false because the
   IDE holds its keys.
@@ -1390,9 +1390,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ⚠️ The Ctrl-Tab switcher and `dashboard --mru` are NOT the same list and must not be cited as matching
   it: the switcher keeps the active session at index 0, and `dashboard --mru` reads raw `recentSessions`,
   every workspace and the active session included.
-- The bundled skill counts fourteen read-only top-level tree fields, every `ControlTree` property but
+- `appSessionRecency` (fork only) is the app-wide visit order, `{session, window}` objects most recent first,
+  read from `WindowLibrary.appRecency` by `controlAppSessionRecency()`. A visit is a recency push made while
+  its window is frontmost, so a background window's script select or close reselection never counts.
+  Only sessions in an OPEN window appear, each filtered by its own window's `navigableSessions`, so it hides
+  what each window's `sessionRecency` hides; the active window's active session is dropped, other windows'
+  selected sessions stay. App-wide like `app`: the same value whatever `--window` says. Omitted when empty.
+  Set by `ControlServer.controlTree(window:)` through `with(appSessionRecency:)`; `HeadlessActions.controlTree`
+  and the remote window projection never produce it. Design and persistence: [[windows]].
+- The bundled skill counts twenty-three read-only top-level tree fields, every `ControlTree` property but
   `workspaces`, pinned by `SkillInstallTests` against the type rather than against the prose.
-  It documents `sessionRecency` even though the field is fork-only, unlike a fork-only COMMAND
+  It documents `sessionRecency` and `appSessionRecency` even though the fields are fork-only, unlike a fork-only COMMAND
   (see [[overlay-redirect]]): a read-back field upstream lacks is simply absent from that user's tree,
   where a documented command upstream lacks breaks a call the skill told them to make.
   `site/commands.html` still says seven and lists seven, and is left alone on this fork for upstream.

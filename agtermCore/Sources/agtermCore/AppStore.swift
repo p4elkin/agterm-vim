@@ -143,6 +143,9 @@ public final class AppStore {
     /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
     /// discards per-session state must hang off this, or an undone close silently loses it.
     @ObservationIgnored var sessionDidFinalize: ((UUID) -> Void)?
+    /// Told each id this window's recency pushes, and each id a real close drops; the library keeps the visit order.
+    @ObservationIgnored var onRecencyPush: ((UUID) -> Void)?
+    @ObservationIgnored var onRecencyForget: ((UUID) -> Void)?
     /// The settled selected-pane identity per session that `pane.focused` diffs against.
     @ObservationIgnored var paneFocusBaseline: [UUID: UUID] = [:]
     @ObservationIgnored let paneFocusDebouncer = Debouncer()
@@ -613,14 +616,17 @@ public final class AppStore {
     /// Arms the recency push for the current selection: it reaches the front of the Ctrl-Tab order only after
     /// `recencyDwell` of staying there, so a `j`/`k` walk past a row reschedules instead of recording it. A nil
     /// dwell records now. No-op when nothing is selected, pending arm included — the fire re-checks anyway.
-    func recordRecency() {
+    /// `appWide` false keeps the push out of the app-wide visit list (a move's fallback selection).
+    func recordRecency(appWide: Bool = true) {
         guard let pending = selectedSessionID else { return }
-        guard let recencyDwell else { return recordRecencyNow() }
+        guard let recencyDwell else { return pushRecency(pending, appWide: appWide) }
+        // a reload's repair arms here too; its fire comes after `restoringSelection` drops
+        let appWide = appWide && !restoringSelection
         recencyDwellDebouncer.schedule(after: recencyDwell) { [weak self] in
             // the selection can move on without re-arming — a close reselection, an auto-follow jump — so the
             // armed id counts only while it is still the selected one.
             guard let self, self.selectedSessionID == pending else { return }
-            self.sessionRecency.push(pending)
+            self.pushRecency(pending, appWide: appWide)
         }
     }
 
@@ -628,7 +634,19 @@ public final class AppStore {
     /// bootstrap path: a restored selection earned its place in the previous run and must not re-serve the dwell.
     /// Also the control `session.select` path, which has no one to type the dwell away.
     public func recordRecencyNow() {
-        if let selectedSessionID { sessionRecency.push(selectedSessionID) }
+        if let selectedSessionID { pushRecency(selectedSessionID, appWide: true) }
+    }
+
+    private func pushRecency(_ id: UUID, appWide: Bool) {
+        sessionRecency.push(id)
+        if appWide && !restoringSelection { onRecencyPush?(id) }
+    }
+
+    /// A real close: the id leaves this window's order and the app-wide one. A transfer uses
+    /// `removeFromRecency`, since the session lives on in another window.
+    func forgetRecency(_ id: UUID) {
+        sessionRecency.remove(id)
+        onRecencyForget?(id)
     }
 
     func removeFromRecency(_ id: UUID) {
@@ -657,7 +675,7 @@ public final class AppStore {
         removed.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
         sessionDidFinalize?(removed.id)
         WatermarkStorage.removeAllRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
-        sessionRecency.remove(sessionID)
+        forgetRecency(sessionID)
         if wasActive {
             selectedSessionID = closeReselectionTarget(after: location)
             replaceSidebarSelection(with: selectedSessionID)
@@ -698,7 +716,7 @@ public final class AppStore {
             session.scratchSurface?.teardown()
             session.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
             WatermarkStorage.removeAllRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
-            sessionRecency.remove(session.id)
+            forgetRecency(session.id)
         }
         dropFocusMember(workspaceID) // a marked root is gone; the filter goes with the last member
         workspaces.remove(at: index)

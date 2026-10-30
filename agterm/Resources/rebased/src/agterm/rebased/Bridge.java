@@ -113,6 +113,14 @@ public final class Bridge implements BiFunction<String, String, String> {
     ProjectUtil.openOrImport(Path.of(dir), null, true);
   }
 
+  // Closing from agterm has no dialog to ask about unsaved editors, so they are saved first.
+  private static void close(String dir) {
+    Project p = openProject(dir);
+    if (p == null) return;
+    FileDocumentManager.getInstance().saveAllDocuments();
+    if (!ProjectManager.getInstance().closeAndDispose(p)) log("close refused: " + dir);
+  }
+
   static Project openProject(String dir) {
     for (Project p : ProjectManager.getInstance().getOpenProjects()) {
       if (p.getBasePath() != null && sameDirectory(p.getBasePath(), dir)) return p;
@@ -216,6 +224,7 @@ public final class Bridge implements BiFunction<String, String, String> {
         return "ok";
       }
       case "open" -> { writeSafe(() -> open(arg)); return "ok"; }
+      case "close" -> { writeSafe(() -> close(arg)); return "ok"; }
       case "hide" -> { later(() -> projectFrames(arg).forEach(f -> f.setVisible(false))); return "ok"; }
       case "show" -> { later(() -> projectFrames(arg).forEach(f -> { f.setVisible(true); f.toFront(); })); return "ok"; }
       case "diff" -> {

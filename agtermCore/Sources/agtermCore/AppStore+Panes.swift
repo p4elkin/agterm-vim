@@ -142,6 +142,7 @@ extension AppStore {
             (session.splitInitialCommand, session.initialCommand)
         (session.commandWait, session.splitCommandWait) = (session.splitCommandWait, session.commandWait)
         (session.leftOverlay, session.rightOverlay) = (session.rightOverlay, session.leftOverlay)
+        if let pane = session.parkedRebased?.pane { session.parkedRebased?.pane = pane == .left ? .right : .left }
         (session.leftOverlaySurface, session.rightOverlaySurface) =
             (session.rightOverlaySurface, session.leftOverlaySurface)
         (session.leftOverlayExitCode, session.rightOverlayExitCode) =
@@ -244,8 +245,9 @@ extension AppStore {
         session.splitCommandWait = false
         session.splitRatio = nil // tearing down the split clears its geometry too, so a fresh split opens even
         // the right pane is gone, so its overlay has nothing left to cover and nobody left to read its status.
-        if session.paneOverlay(.right) != nil { scheduleTreeChanged() }
+        if session.paneOverlay(.right) != nil || session.parkedRebased?.pane == .right { scheduleTreeChanged() }
         session.teardownPaneOverlay(.right)
+        session.releaseParkedRebased(from: .right)
         dropRemoteOverlay(.right, of: session)
         // a search bar pinned to the torn-down split surface would stay stuck (the weak `searchSurface`
         // zeroes but `searchActive` stays true), so reset search on the surviving session.
@@ -317,6 +319,7 @@ extension AppStore {
         // a torn-down left overlay and a right one changing role both move the tree's pane slots
         if holdsPaneOverlay(session) { scheduleTreeChanged() }
         session.teardownPaneOverlay(.left)
+        session.releaseParkedRebased(from: .left)
         session.promotePaneOverlay()
         dropRemoteOverlay(.left, of: session)
         session.remoteOverlays.promoteRight()
@@ -525,7 +528,8 @@ extension AppStore {
 
     /// Whether either pane holds an overlay, local or handed to a viewer: what a swap or a promotion moves.
     private func holdsPaneOverlay(_ session: Session) -> Bool {
-        OverlayPane.allCases.contains { session.paneOverlay($0) != nil || session.remoteOverlays.slot($0) != nil }
+        session.parkedRebased?.pane != nil
+            || OverlayPane.allCases.contains { session.paneOverlay($0) != nil || session.remoteOverlays.slot($0) != nil }
     }
 
     /// `Session.dropUnrealizedPaneOverlays` plus the tree invalidation a dropped slot owes.

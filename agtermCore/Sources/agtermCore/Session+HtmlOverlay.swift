@@ -14,7 +14,8 @@ extension Session {
     public var coverOverlayActive: Bool { programOverlayActive || htmlOverlayActive || rebasedOverlayActive }
 
     public var rebasedPlacement: (overlay: RebasedOverlay, pane: OverlayPane?)? {
-        if let overlay = rebasedOverlay ?? parkedRebased?.overlay { return (overlay, nil) }
+        if let overlay = rebasedOverlay { return (overlay, nil) }
+        if let parked = parkedRebased { return (parked.overlay, parked.pane) }
         for pane in OverlayPane.allCases {
             if let overlay = paneOverlay(pane)?.rebased { return (overlay, pane) }
         }

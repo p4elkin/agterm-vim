@@ -366,7 +366,7 @@ public final class Session: Identifiable {
     /// htmlOverlay is the page the session-wide slot shows instead of a program; see `HtmlOverlay`.
     public var htmlOverlay: HtmlOverlay?
     public var rebasedOverlay: RebasedOverlay?
-    /// parkedRebased is a hidden session-wide IDE moved out of the slot, so the slot takes other overlays.
+    /// parkedRebased is a hidden IDE moved out of its slot, session-wide or a pane's, so the slot takes other overlays.
     public var parkedRebased: ParkedRebased?
 
     /// The percent of the pane an opaque framed panel occupies with the session still VISIBLE behind it; nil
@@ -912,6 +912,15 @@ public final class Session: Identifiable {
         setPaneOverlay(nil, pane: .right)
         setPaneOverlaySurface(nil, pane: .right)
         setPaneOverlayExitCode(nil, pane: .right)
+        if parkedRebased?.pane == .right { parkedRebased?.pane = .left }
+    }
+
+    /// releaseParkedRebased drops the IDE parked from `pane` where that pane goes away; `teardownPaneOverlay`
+    /// leaves it, since it also frees a stillborn program over a pane that stays.
+    public func releaseParkedRebased(from pane: OverlayPane) {
+        guard let parked = parkedRebased, parked.pane == pane else { return }
+        parkedRebased = nil
+        RebasedOverlayReleases.shared.release(parked.overlay)
     }
 
     /// Resolves a surface's stable spawn token (`TerminalSurface.paneToken`, baked as `AGTERM_PANE_ID` and

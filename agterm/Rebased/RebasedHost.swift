@@ -103,6 +103,8 @@ final class RebasedHost {
     private var frameNumbers: [String: Int] = [:]
     // a project closed in the IDE can still have state this JVM run writes back under `system/`
     private var openedThisRun: Set<String> = []
+    // projects this host asked the IDE to close; their frame's close event must not end a slot opened since
+    private var closingProjects: Set<String> = []
     // in memory only, keyed by canonical project: the first show after a relaunch touches again
     private var lastTouched: [String: Date] = [:]
     private(set) var visible: [String: UUID] = [:]
@@ -120,6 +122,8 @@ final class RebasedHost {
     private var pendingDialogs: [UUID: [NSWindow]] = [:]
     // sessions whose mirror is being refreshed; a second open would race the same git directory
     var fetching: Set<UUID> = []
+    // a remote row's focused cwd is this Mac's, so an open without `--cwd` reuses the last folder that fetched
+    private var lastRemotePaths: [UUID: String] = [:]
     private var slots: [UUID: NSRect] = [:]
     private var lastShown: UUID?
     private var lastShownByProject: [String: UUID] = [:]
@@ -197,7 +201,7 @@ final class RebasedHost {
             return .failure(.init(message: "a Rebased overlay is already open in this session; --on-close needs a new one"))
         }
         if let host = session.remoteHost {
-            let path = cwd ?? session.focusedCwd
+            let path = cwd ?? lastRemotePaths[id] ?? session.focusedCwd
             // the command runs on the host, in its own login environment; nothing of this Mac's goes with it
             let captured = onClose.map { RebasedOnClose(command: $0, cwd: path, environment: [:], host: host) }
             return openRemote(in: store, session: session,
@@ -284,14 +288,15 @@ final class RebasedHost {
         let refresh = mirrorRefresh, directory = stateDirectory, sessionID = session.id, sync = sync
         let result = ResultBox<RebasedMirrorRefresh.Copy>()
         onMirrorQueue({ result.set { try refresh(mirror, directory, sync).get() } }, { [weak self] in
-            self?.mirrored(result.value, session: sessionID, overlay: overlayID, request: request)
+            self?.mirrored(result.value, path: path, session: sessionID, overlay: overlayID, request: request)
         })
         return .success(.init(overlay: overlayID, request: request))
     }
 
-    private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, session sessionID: UUID, overlay overlayID: UUID,
-                          request: String?) {
+    private func mirrored(_ result: Result<RebasedMirrorRefresh.Copy, any Error>?, path: String, session sessionID: UUID,
+                          overlay overlayID: UUID, request: String?) {
         fetching.remove(sessionID)
+        if case .success? = result { lastRemotePaths[sessionID] = path }
         guard let session = store(sessionID)?.session(withID: sessionID), let current = session.rebasedPlacement?.overlay,
               current.id == overlayID else { return }
         switch (result, current.state == .fetching) {
@@ -475,6 +480,7 @@ final class RebasedHost {
     // A frame that arrives after its overlays failed stays hidden for the next open instead of reviving them.
     private func frameOpened(project: String, number: Int) {
         frameNumbers[project] = number
+        closingProjects.remove(project)
         openedThisRun.insert(project)
         beginPortLookup()
         let waiting = entries.values.filter { $0.project == project && overlayState($0) == .starting }
@@ -488,6 +494,7 @@ final class RebasedHost {
     }
 
     private func frameClosed(project: String) {
+        if closingProjects.remove(project) != nil { return }
         frameNumbers[project] = nil
         visible[project] = nil
         let closing = entries.values.filter { $0.project == project }
@@ -724,9 +731,19 @@ final class RebasedHost {
         } else {
             hide(entry)
             for dialog in queued { surface(dialog, session: entry.session) }
+            closeIfUnused(entry.project)
         }
         if lastShownByProject[entry.project] == entry.id { lastShownByProject[entry.project] = nil }
         return entry
+    }
+
+    // An open project holds IDE memory for the rest of the run, so the last slot to let go of it closes it.
+    private func closeIfUnused(_ project: String) {
+        guard case .running = jvm, frameNumbers[project] != nil,
+              !entries.values.contains(where: { $0.project == project }) else { return }
+        frameNumbers[project] = nil
+        closingProjects.insert(project)
+        _ = runtime.call("close", project)
     }
 
     private func surface(_ dialog: NSWindow, session: UUID) {

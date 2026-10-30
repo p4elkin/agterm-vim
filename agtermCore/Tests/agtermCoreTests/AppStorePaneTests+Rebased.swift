@@ -24,7 +24,9 @@ extension AppStorePaneTests {
         #expect(!session.rebasedHidesTerminal(pane == .left ? .right : .left))
         #expect(!session.rebasedHidesTerminal(.scratch))
         #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
-        #expect(session.paneOverlay(pane)?.hidden == true && session.rebasedHidden)
+        #expect(session.paneOverlay(pane) == nil && session.rebasedHidden)
+        #expect(session.parkedRebased?.pane == pane && session.rebasedPlacement?.pane == pane)
+        #expect(session.hiddenOverlayNames == [pane.rawValue])
         #expect(!session.paneOverlayVisible(pane))
         #expect(!session.paneRebasedOverlayActive(pane))
         #expect(!session.rebasedHidesTerminal(pane == .left ? .left : .right))
@@ -32,11 +34,9 @@ extension AppStorePaneTests {
         #expect(!session.programOverlayOwnsKeyboard)
         #expect(session.topmostSurface === session.activeSurface)
         #expect(session.focusTarget(wantSplit: pane == .right) === session.activeSurface)
-        #expect(session.openPaneOverlays == [pane])
-        #expect(store.openPaneOverlay(session.id, pane: pane, command: "other") == .alreadyOpen)
-        #expect(store.openHtmlOverlay(session.id, pane: pane, overlay: HtmlOverlay(source: .file(path: "/tmp/a.html", grantRoot: nil)),
-                                     sizePercent: nil) == .alreadyOpen)
+        #expect(session.openPaneOverlays.isEmpty)
         #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
+        #expect(session.paneOverlay(pane)?.rebased == overlay && session.parkedRebased == nil)
         #expect(session.paneOverlayVisible(pane))
         #expect(session.focusedOverlayPane == pane)
         #expect(session.topmostSurface == nil)
@@ -46,7 +46,7 @@ extension AppStorePaneTests {
     }
 
     @Test(arguments: ["session", "left", "right"])
-    func everyHideRouteFlipsTheIDEsSlotBitAndTellsTheApp(slot: String) throws {
+    func everyHideRouteParksTheIDEAndTellsTheApp(slot: String) throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")
         let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
@@ -65,7 +65,86 @@ extension AppStorePaneTests {
         #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: true) == nil)
         #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
         #expect(!session.rebasedHidden)
-        #expect(heard == [true, false])
+        #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: true) == nil)
+        #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: false) == nil)
+        #expect(!session.rebasedHidden && session.rebasedPlacement?.pane == pane)
+        #expect(heard == [true, false, true, false])
+    }
+
+    @Test(arguments: OverlayPane.allCases)
+    func aHiddenPaneIDELeavesItsPaneToAProgramAndAPage(pane: OverlayPane) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(store.openPaneOverlay(session.id, pane: pane, command: "plannotator") == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == .unpark(.alreadyOpen))
+        #expect(store.setOverlaysHidden(session.id, pane: pane, hidden: false) == nil)
+        #expect(session.paneOverlay(pane)?.command == "plannotator" && session.rebasedHidden)
+        #expect(store.closePaneOverlay(session.id, pane: pane))
+        #expect(store.openHtmlOverlay(session.id, pane: pane, overlay: HtmlOverlay(source: .file(path: "/tmp/a.html", grantRoot: nil)),
+                                     sizePercent: nil) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == .unpark(.alreadyOpen))
+        #expect(store.closePaneOverlay(session.id, pane: pane))
+        #expect(releases.isEmpty)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == nil)
+        #expect(session.paneOverlay(pane)?.rebased == overlay && !session.rebasedHidden)
+    }
+
+    @Test func showingAParkedPaneIDERefusesARemoteReservationOrAnUnrenderedPane() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .right) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        session.remoteOverlays.reserve(RemoteOverlaySlot(job: "job", pane: .right, owner: 1, sizePercent: nil))
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, false) == .unpark(.alreadyOpen))
+        session.remoteOverlays.remove(job: "job")
+        session.splitFocused = false
+        store.setSplitVisibility(session.id, shown: false)
+        let failure = store.setRebasedHidden(session.id, id: overlay.id, false)
+        #expect(failure == .unpark(.paneNotVisible))
+        #expect(session.rebasedHidden && session.rightOverlay == nil)
+    }
+
+    @Test(arguments: ["swap", "promote", "primary", "split", "session"])
+    func aParkedPaneIDEFollowsItsPane(path: String) throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        session.surface = SpySurface()
+        store.toggleSplit(session.id)
+        session.splitSurface = SpySurface()
+        let pane: OverlayPane = path == "primary" ? .left : .right
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        var releases: [UUID] = []
+        RebasedOverlayReleases.shared.onRelease = { releases.append($0) }
+        defer { RebasedOverlayReleases.shared.onRelease = nil }
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: pane) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        switch path {
+        case "swap":
+            #expect(store.swapPanes(session.id) == nil)
+            #expect(session.rebasedPlacement?.pane == .left && releases.isEmpty)
+        case "promote", "primary":
+            store.closePrimaryPane(session.id)
+            #expect(session.rebasedPlacement?.pane == (path == "promote" ? .left : nil))
+            #expect(releases == (path == "promote" ? [] : [overlay.id]))
+        case "split":
+            store.closeSplit(session.id)
+            #expect(session.rebasedPlacement == nil && releases == [overlay.id])
+        default:
+            store.closeSession(session.id)
+            #expect(session.rebasedPlacement == nil && releases == [overlay.id])
+        }
     }
 
     @Test func hidingAnotherSlotLeavesTheIDEAlone() throws {
@@ -338,5 +417,23 @@ extension AppStorePaneTests {
         #expect(node.rebasedOverlay?.hidden == true && node.rebasedOverlay?.pane == nil)
         #expect(store.setRebasedHidden(session.id, id: UUID(), false) == .noOverlay)
         #expect(store.setRebasedHidden(session.id, id: UUID(), false)?.message == "no Rebased overlay in this session")
+    }
+
+    @Test func aParkedPaneIDEReadsBackHiddenInItsPane() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        store.toggleSplit(session.id)
+        let overlay = RebasedOverlay(project: "/tmp/repo")
+        #expect(store.openRebasedOverlay(session.id, overlay: overlay, sizePercent: nil, pane: .left) == nil)
+        #expect(store.setRebasedHidden(session.id, id: overlay.id, true) == nil)
+        #expect(session.updateRebasedOverlay(overlay.id) { $0.state = .shown })
+        #expect(store.openRebasedOverlay(session.id, overlay: RebasedOverlay(project: "/other"), sizePercent: nil,
+                                        pane: .right) == .alreadyOpen)
+        let node = try #require(store.controlTree().workspaces.first?.sessions.first)
+        #expect(node.rebasedOverlay?.hidden == true && node.rebasedOverlay?.pane == "left")
+        #expect(node.rebasedOverlay?.state == "shown" && node.hiddenOverlays == ["left"])
+        #expect(store.closeRebasedOverlay(session.id, id: overlay.id))
+        #expect(session.rebasedPlacement == nil)
     }
 }

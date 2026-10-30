@@ -330,13 +330,51 @@ final class AppStoreTransferTests {
         #expect(store.workspaces[1].sessions.map(\.id) == [leaving.sessions[0].id])
     }
 
+    @Test func detachWorkspaceOfTheOnlyWorkspaceEmptiesTheStore() {
+        let only = Workspace(name: "only", sessions: [Session(initialCwd: "/a"), Session(initialCwd: "/b")])
+        let store = makeStore([only], selected: nil)
+        select(store, only.sessions[1].id)
+        events.removeAll()
+
+        store.detachWorkspace(only.id)
+
+        #expect(store.workspaces.isEmpty)
+        #expect(store.selectedSessionID == nil)
+        #expect(store.sessionRecency.isEmpty)
+        #expect(!kinds().contains(.sessionClosed))
+        #expect(finalized.isEmpty && dropped.isEmpty)
+        #expect(recentClosed().isEmpty)
+        #expect(writtenFiles().isEmpty)
+    }
+
+    @Test func detachSessionsOfTheOnlyWorkspaceKeepsItEmpty() {
+        let only = Workspace(name: "only", sessions: [Session(initialCwd: "/a"), Session(initialCwd: "/b")])
+        let store = makeStore([only], selected: nil)
+        select(store, only.sessions[0].id)
+
+        store.detachSessions(only.sessions.map(\.id))
+
+        #expect(store.workspaces.map(\.id) == [only.id])
+        #expect(store.workspaces[0].sessions.isEmpty)
+        #expect(store.selectedSessionID == nil)
+    }
+
     // MARK: - refusals
 
-    @Test func theLastWorkspaceIsRefused() {
+    @Test func theOnlyWorkspaceMayLeave() {
         let only = Workspace(name: "only", sessions: [Session(initialCwd: "/tmp")])
         let store = makeStore([only], selected: nil)
 
-        #expect(store.workspaceTransferRefusal(only.id) == "last workspace in window")
+        #expect(store.workspaceTransferRefusal(only.id) == nil)
+    }
+
+    @Test func theOnlyWorkspaceNamedByAPendingCloseIsRefused() {
+        let only = Workspace(name: "only", sessions: [Session(initialCwd: "/a"), Session(initialCwd: "/b")])
+        let store = makeStore([only], selected: nil)
+
+        #expect(store.softCloseSession(only.sessions[0].id, grace: 3600))
+
+        #expect(store.workspaceTransferRefusal(only.id) == "workspace has a pending close")
     }
 
     @Test func aWorkspaceNamedByAPendingCloseIsRefused() {

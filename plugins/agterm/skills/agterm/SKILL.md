@@ -145,7 +145,9 @@ points — the read side of `sidebar width`, on `tree` only), `workspaceFilter`,
 quick terminal is shown — the read side of the write-only `quick` command; app-level, so every window
 reports the same value), `zoomedSurface`, the four `dashboard*` fields, `sessionRecency` (the window's
 jump-back targets, session ids most recent first, with the active session dropped and the visible
-navigation scope applied; omitted when there is nothing to jump back to), `pickPending`,
+navigation scope applied; omitted when there is nothing to jump back to), `appSessionRecency` (the
+app-wide visit order across open windows, `{session, window}` objects most recent first, the same under
+any `--window`; omitted when empty), `pickPending`,
 `askPending` (GUI asks only), `app` (the
 serving app's `version`, plus `commit` when the build recorded one — the same value `agtermctl version`
 returns), `liveReset` (the Live sessions reset state, omitted when nothing is pending and no launch

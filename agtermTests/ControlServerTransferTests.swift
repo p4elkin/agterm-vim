@@ -111,18 +111,36 @@ final class ControlServerTransferTests: XCTestCase {
         XCTAssertNil(store.session(withID: session.id))
     }
 
-    func testARefusedMoveAnswersTheRefusalAndChangesNothing() async throws {
+    func testTheLastWorkspaceMovesAndItsEmptiedWindowIsDeleted() async throws {
         let store = try XCTUnwrap(library.activeStore)
+        let source = try XCTUnwrap(library.windowID(for: store))
         let only = try XCTUnwrap(store.workspaces.first)
-        _ = library.newWindow(name: "other")
-        let windows = library.windows.map(\.id)
+        let sessions = only.sessions.map(\.id)
+        let other = library.newWindow(name: "other")
+        // a live NSWindow for the source, as `TitleProbeView` registers it; `isReleasedWhenClosed` false per the
+        // hosted-test rule, since the registry outlives the test body
+        let sourceWindow = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 300),
+                                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        sourceWindow.isReleasedWhenClosed = false
+        WindowRegistry.shared.register(source, window: sourceWindow)
+        sourceWindow.orderFront(nil)
+        addTeardownBlock {
+            WindowRegistry.shared.unregister(source)
+            sourceWindow.orderOut(nil)
+        }
+        let sourceFile = stateDir.appendingPathComponent("windows/\(source.uuidString).json")
 
         let response = await makeActions().transferWorkspace(only.id.uuidString, window: nil, toWindow: "other",
                                                               windowName: nil)
 
-        XCTAssertEqual(response.error, "last workspace in window")
-        XCTAssertEqual(library.windows.map(\.id), windows)
-        XCTAssertEqual(store.workspaces.map(\.id), [only.id])
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(response.result?.id, other.id.uuidString)
+        XCTAssertEqual(response.result?.affected, sessions.count)
+        XCTAssertFalse(library.windows.map(\.id).contains(source))
+        let landed = try XCTUnwrap(library.store(for: other.id)?.workspaces.first { $0.id == only.id })
+        XCTAssertEqual(landed.sessions.map(\.id), sessions)
+        XCTAssertFalse(sourceWindow.isVisible, "the emptied source window is closed on screen")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceFile.path), "and its window file stays deleted")
     }
 
     func testSessionsMoveIntoANamedWorkspaceOfANamedWindow() async throws {

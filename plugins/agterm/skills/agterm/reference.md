@@ -369,6 +369,13 @@ first — the currently ACTIVE session is dropped and the visible navigation sco
 title-bar recent popover's filtering but uncapped, where that popover shows at most ten, not the raw stack;
 a session that was never selected has no entry, so the
 array can be shorter than the session count, and the key is omitted when there is nothing to jump back to),
+`appSessionRecency` (fork only: the app-wide visit order across windows, an array of
+`{"session": "<uuid>", "window": "<uuid>"}` objects, most recent first. A visit is a selection that served
+its dwell while its window was frontmost, so a script's `session select` in a background window and a
+reselection after a close behind the user do not count. Only sessions in an OPEN window appear, each
+narrowed by its own window's navigation scope as `sessionRecency` is; the active window's active session is
+dropped, other windows' selected sessions stay. App-wide like `app`, so it is the same whatever `--window`
+says; omitted when empty),
 `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending), `askPending` (the pending GUI question's id, omitted when absent),
 and `app` (which agterm is serving this socket: `version`, plus
@@ -385,7 +392,7 @@ It is omitted until Rebased first starts.
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible`,
 `autoFollowMs` and `recencyDwellMs` are on
 both; `sidebarMode`, `sidebarWidth`, `workspaceFilter`, `quickVisible`, `zoomedSurface`, the four
-`dashboard*` fields, `sessionRecency`, `pickPending`, and `askPending`
+`dashboard*` fields, `sessionRecency`, `appSessionRecency`, `pickPending`, and `askPending`
 are `tree`-only (a GUI/keyboard change would leave a cached copy stale). All of those are read-only
 projections of live GUI state. `app` is the one CONSTANT among them, and is absent from `window.list`
 for a different reason: it describes the serving app rather than a window, so repeating it on every row
@@ -419,9 +426,11 @@ buys nothing. A caller with no tree uses `version`.
   the last one; address a specific workspace by id to step the same one.
 - `workspace move --to-window <new|name|id> [--window-name N] [--target] [--window W]` — move the workspace
   to another window, or to a new one (`new`; `--window-name` names it, else it takes the workspace's name).
-  Both panes of every row keep running; scratch, overlays, HUD and search close. Refuses the window's last
-  workspace and any realized pane that is not zmx-backed. Exactly one of `--to`, `--to-window`. Returns the
-  destination window id as `result.id` and the moved session count as `result.affected`.
+  Both panes of every row keep running; scratch, overlays, HUD and search close. The window's last workspace
+  moves too: the emptied window is deleted and the destination comes to the front. Refuses a workspace a
+  pending close names as its undo target and any realized pane that is not zmx-backed. Exactly one of `--to`,
+  `--to-window`. Returns the destination window id as `result.id` and the moved session count as
+  `result.affected`.
 - `workspace focus [on|off|toggle|add] [--target] [--window W]` — mark or unmark ONE workspace in the
   sidebar's focus SET; returns the workspace id. The sidebar renders the marked workspaces when the
   filter is applied, all of them when it is not. `on` sets the marked set to just this workspace and

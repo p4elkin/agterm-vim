@@ -49,6 +49,26 @@ session drag are out of scope.
   arming a Live reset. It does not recover a crash with no later write: a valid index that names no
   entry for a window still short-circuits bootstrap past the orphan scan, which stays index-loss only
   because scanning after a clean load can resurrect a window whose snapshot removal failed.
+- The app-wide visit order (fork only) is `WindowLibrary.appRecency`, an `AppSessionRecency` of at most 100
+  session ids, persisted as `session-recency.json` (`{"sessions": [...]}`) in the state directory. Its own
+  file, not a `windows.json` field: one bad value there would fail the whole index decode. Load never throws
+  (missing or corrupt reads as none); every change that moved something writes atomically, and a failed write
+  keeps the in-memory list for the next change to retry. No debounce, so no exit flush.
+- `makeStore` wires each store (`WindowLibrary+SessionRecency.swift`). `AppStore.pushRecency` tells
+  `onRecencyPush` every id the window's own recency pushes, and the library takes it only while that window is
+  `activeWindowID`, which is when the dwell ends. That is the visit rule: a relaunch re-arming every window's
+  selection, a script select behind the user, and a close reselection in a background window all stay out,
+  while a close reselection in the frontmost window becomes a visit after the dwell. A restore never pushes
+  (`restoringSelection`). `AppStore.forgetRecency` is the real-close path (`closeSession`, `removeWorkspace`,
+  the end of a soft-close grace) and forgets from any window; an undone soft close forgets nothing, and the
+  transfer paths keep `removeFromRecency`, which never notifies.
+- `removeWindow` forgets the deleted window's sessions, from the live store when open, else from its file.
+  `closeWindow` keeps them: a closed window's sessions are only hidden from the tree field until it reopens.
+- With no usable `session-recency.json`, `init` seeds the list after bootstrap: the frontmost open window's
+  `sessionRecency.items`, then the other open windows' in window order. Closed windows are not read, and a
+  loaded file is never re-seeded.
+- The headless origin builds its own `WindowLibrary`, so it creates and seeds its own `session-recency.json`
+  in its state directory, but its tree never reports `appSessionRecency`.
 - Bootstrap never throws. Load a valid index; otherwise recover every UUID-named per-window file before
   considering legacy migration or an empty seed. Recovered files are appended before `loadStore`, named
   `window N`, all opened, and the first made frontmost. Missing/corrupt window snapshots open with a
@@ -279,6 +299,24 @@ session drag are out of scope.
   destination again, drop an unsaved new window, and leave the source untouched. Only then release the source
   surfaces, detach, save the source. Releasing earlier would strand a dead primary pane on rollback: the deck
   keys the primary host by surface revision, and a nil slot does not rebuild it.
+- Once the destination saved, `land` hands frontmost to it (`frontmostWindowID`, every destination kind) and
+  saves the index. A `new` or `loaded` destination has not mounted, so its dwell is still nil and would record
+  at once: `land` assigns the source's dwell to it first (not `setRecencyDwell`, which would arm the
+  destination's own selection), the dwell being one app setting. Then, when the destination's selection is a
+  moved session, it re-arms the destination's recency, so that session becomes a visit only if it is still
+  selected in the still-frontmost destination when the dwell ends. The attach itself (`selectAttached`) arms with
+  `appWide: false`, so a destination save that fails leaves no visit, and an empty workspace's move visits
+  nothing. The source's fallback selection (`reselectAfterDetach`) arms with `appWide: false` too and never
+  reaches the app-wide list, even if the user goes back to the source first.
+- A detach that leaves the source with no workspace deletes the window instead of saving it, in one
+  main-actor turn before any `await`: `detachWorkspace` empties the store, `land` calls `removeWindow(source)`
+  and reports it as `TransferResult.removedSourceWindow`, then `ControlServer+Transfer.transfer` closes the
+  NSWindow (`WindowRegistry.shared.close`) before `present` raises the destination and focuses its active
+  session. The order matters: with the moved sessions still listed in the source, `removeWindow` would
+  finalize the daemons the destination now shows, and the `willClose` handler would tear down the destination's
+  new surfaces, `Session` being a shared object. An empty LIVE store gives both nothing to act on, and
+  `removeWindow` forgets none of the moved sessions from the visit list. The transfer requires `stores[source]`,
+  so `removeWindow` never takes its closed-window branch, which reads the file.
 - Destination first means a crash between the saves leaves the rows in both files, never an unclaimed daemon
   for the launch reap. Both copies then share pane identities: close the duplicate with its window, not the row,
   since closing a row finalizes the daemon the other copy still shows.
@@ -290,8 +328,9 @@ session drag are out of scope.
   `ask.rejected`.
 - A remote pane waiting in `RemoteReconnectBook` keeps its entry: the moved row's fresh surface swallows keys
   until the probe answers, then reattaches once more, unclaimed, and ends correct.
-- Refused: the last workspace of a window, a workspace a pending close names as its undo target, and a realized
-  pane that is not zmx-backed (`Session.canSurviveTransfer`; remote rows count as surviving).
+- Refused: a workspace a pending close names as its undo target, and a realized pane that is not zmx-backed
+  (`Session.canSurviveTransfer`; remote rows count as surviving). Other pending closes in an emptied source are
+  finalized by `removeWindow`, as a window delete does.
 - `session move --to-window` places the batch in `<workspace>` (an id in the destination; not with `new`) or
   `--workspace-name N`, which reuses or creates, unlike `session new --workspace-name`, which needs
   `--create-workspace`. With neither, the first moved session's workspace name is used.

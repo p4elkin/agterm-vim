@@ -139,7 +139,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
     `topmostSurface` and `programOverlayOwnsKeyboard` (which reads `coverOverlayVisible`).
   - `Session+HtmlOverlay.swift`: placement/update by id, the IDE in `coverOverlayActive`, `rebasedHidden`
     and session release.
-  - `AppStore+OverlayVisibility.swift`: `setSlotHidden` parks and unparks a session-wide IDE and reports
+  - `AppStore+OverlayVisibility.swift`: `setSlotHidden` parks and unparks an IDE from any slot and reports
     each IDE hide to `RebasedOverlayReleases.onHiddenChange`; every hide route must go through it.
     `setOverlaysHidden` returns a refused unpark last.
   - `Session+OverlayVisibility.swift`: `slotEffectivelyHidden` in `hideableOverlaySlots`, `anyOverlayShown`
@@ -148,7 +148,7 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
     `tree` tag reads `hiddenOverlays` even with `overlay` false.
   - `AppStore+Panes.swift`: pane close release; swap and promotion move the whole value.
   - `TerminalZoom.swift`, `DashboardCover.swift`: IDEs have no terminal target; hidden holders uncover panes.
-  - `AppActions.swift`: ⌘W skips pane/hidden holders and confirms review close through `closeConfirmer`;
+  - `AppActions.swift`: ⌘W skips hidden holders and confirms a shown IDE's close through `closeConfirmer`;
     `init` connects `RebasedOverlayReleases.onHiddenChange`.
   - `AppActions+Focus.swift`: pane IDE focus calls `RebasedHost.focus`; hidden holders route to
     their terminal.
@@ -162,8 +162,8 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
     and id-targeted close routing.
   - `WindowContentView+Detail.swift`: held-slot IDE branches and the `RebasedSlot` visibility inputs.
   - `WindowContentView.swift`: `rebasedCovered` keeps in-window covers above the child frame.
-  - `AppStore+RemoteOverlay.swift`: a hidden pane IDE still reserves its pane; a parked session-wide IDE
-    holds no slot, so a remote job opens over it.
+  - `AppStore+RemoteOverlay.swift`: a parked IDE holds no slot, so a remote job opens over it.
+  - `AppStore+Panes.swift`: split close, promotion and swap move or release a parked pane IDE.
   - `AppDelegate.swift`: `saveBeforeQuit` and `releaseAllBeforeQuit` in `applicationWillTerminate`.
   - `agtermApp.swift`, `CustomCommandRunner.swift`: configure the Mac-built callback environment.
   - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the

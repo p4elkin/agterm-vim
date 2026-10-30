@@ -22,6 +22,21 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- The IDE toggle on a remote row with no IDE open reopens the last folder that row opened, instead of
+  failing on this Mac's home directory (`found no repository at /Users/...`). It remembers the folder until
+  agterm quits; before the first open the row's cwd is used as before.
+- Closing the IDE overlay in the last row that shows a project now closes that project in the IDE as well,
+  saving its editors first, so its memory is freed. Opening it again loads it anew instead of showing it at
+  once. ⌘W over a pane IDE (when agterm, not the IDE, holds the keys) now closes the IDE after the same
+  confirm a session-wide one shows, instead of offering to close the whole session.
+- The embedded IntelliJ IDEA loads the platform's Recent Files, Navbar, Services and Bookmarks plugins, so
+  ⌘E, the navigation bar popup and their actions (IdeaVim mappings included) work in the overlay. An IDE
+  folder seeded before this keeps its old list: delete
+  `<stateDir>/rebased/ide/<dataDirectoryName>` to seed it again, or add the four ids to its `config/idea.vmoptions`.
+- The embedded IntelliJ IDEA's Markdown preview renders in its browser form again, so Mermaid diagrams
+  draw and claude-remarks' preview notes work there. An IDE folder seeded before this needs
+  `com.intellij.modules.jcef,com.intellij.modules.json,org.jetbrains.plugins.yaml,com.intellij.mermaid` added to
+  the `idea.load.plugins.id` line of its `config/idea.vmoptions`.
 - A remote row keeps its name across a relaunch, and the name is shared with the origin: renaming the row
   on the Mac renames the session on the origin, and a rename on the origin (for example by a script that
   names a new session) reaches every Mac attached to it. A rename made while disconnected is sent when the
@@ -42,11 +57,21 @@ publishes an empty body with only a warning on stderr.
 - A hidden session-wide Rebased or IntelliJ overlay no longer blocks other overlays: a picker, page or HUD
   opens while it is hidden. Showing it again answers `overlay already open` until that overlay closes, and
   the chord beeps. `tree` reads `overlay: false` for it, with `session` still in `hiddenOverlays`.
+- A hidden pane IDE (the live review's, over the left pane) frees its pane the same way, so plannotator,
+  a page or a program opens there while the IDE is hidden and the review stays alive. Showing it again is
+  refused until that overlay closes. `tree` keeps its `pane` and names the pane in `hiddenOverlays`.
 
 ### Added
 
 - `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
   sessions to another window, or to a new one, keeping both panes of each row running through zmx.
+- `workspace move --to-window` also moves a window's last workspace: the emptied window is deleted and the
+  destination comes to the front.
+- `tree` reports `appSessionRecency`, the sessions you last visited in any open window, each with its window,
+  so a recent-session picker can offer rows from other windows and raise the right one. A visit is a session
+  you stayed on for the Recency dwell, or typed into, while its window was in front; a script's select in a
+  background window does not count. The order is kept in `session-recency.json` and survives a relaunch. The first launch builds
+  it from each open window's own recent sessions, frontmost window first.
 - A live review in the IDE now works for an agent on a remote row. With mutagen installed on the Mac
   (`brew install mutagen`, then `mutagen daemon register` once), the mirror keeps the host's working tree in
   sync, read-only on the Mac, so `--working-tree` diffs and `--file PATH[:LINE]` (a host path) work there. The

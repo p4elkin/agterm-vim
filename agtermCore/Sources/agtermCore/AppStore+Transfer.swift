@@ -7,9 +7,6 @@ extension AppStore {
 
     /// Why `workspaceID` cannot leave this window, nil when it can.
     func workspaceTransferRefusal(_ workspaceID: UUID) -> String? {
-        if workspaces.count <= 1, workspaces.contains(where: { $0.id == workspaceID }) {
-            return "last workspace in window"
-        }
         let undoTarget = pendingCloseRecords.values.contains { record in
             guard case let .sessions(close) = record else { return false }
             return close.sessions.contains { $0.workspaceID == workspaceID }
@@ -43,7 +40,7 @@ extension AppStore {
     /// Runs only after the destination saved. Unlike `removeWorkspace` nothing is finalized or recorded as
     /// closed, and the panes stay claimed for the launch reap.
     func detachWorkspace(_ workspaceID: UUID) {
-        guard canRemoveWorkspace, let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         let workspace = workspaces[index]
         let removingActive = selectedSessionID.map { id in workspace.sessions.contains { $0.id == id } } ?? false
         workspace.sessions.forEach(releaseLeavingSession)
@@ -89,7 +86,8 @@ extension AppStore {
         selectedSessionID = target
         replaceSidebarSelection(with: target)
         disableFocusIfSelectionOutsideSet(target)
-        recordRecency()
+        // the source window's fallback, not a visit
+        recordRecency(appWide: false)
     }
 
     // MARK: - Destination
@@ -142,6 +140,7 @@ extension AppStore {
         selectedSessionID = sessionID
         replaceSidebarSelection(with: sessionID)
         disableFocusIfSelectionOutsideSet(sessionID)
-        recordRecency()
+        // provisional until the destination saves; `land` records the visit after that
+        recordRecency(appWide: false)
     }
 }

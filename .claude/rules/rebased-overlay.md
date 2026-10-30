@@ -28,17 +28,19 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 ### Slots, hide and focus
 
 - One session holds at most one Rebased overlay: `Session.rebasedOverlay`, `Session.parkedRebased` or
-  `PaneOverlay.rebased`. `rebasedPlacement` derives its current slot, a parked IDE as `pane: nil`;
-  `updateRebasedOverlay` writes by id after swap or promotion.
+  `PaneOverlay.rebased`. `rebasedPlacement` derives its current slot, a parked IDE as the slot it left
+  (`ParkedRebased.pane`); `updateRebasedOverlay` writes by id after swap or promotion.
   So while an IDE is parked, an open for another project answers `overlay already open` over an empty slot.
   Pane holders have no terminal surface: `paneOverlayIsProgram` excludes them.
-- A pane IDE hides through its slot's bit, `PaneOverlay.hidden`. A session-wide IDE never sets
-  `overlayHidden`: hiding parks it in `parkedRebased` with its size and empties the slot, so any overlay opens.
+- An IDE never sets a hidden bit: hiding parks it in `parkedRebased` with its slot (and a session-wide one's
+  size) and empties the slot, so any overlay opens there. A pane park clears the slot directly, never through
+  `closePaneOverlay` or `teardownPaneOverlay`, which release and so end a review.
   This breaks upstream's rule that a hidden occupant keeps its slot, for this IDE only.
-  Showing seats it back through the helper `openRebasedOverlay` uses, closing a HUD, and refuses while
-  `AppStore.sessionSlotFree` is false: `overlay already open` for a program, page or remote reservation,
-  the presenter message for a presenting viewer. The user closes the occupant; nothing closes it for them.
-  `rebasedHidden` reads the pane bit or the parked state; there is no hidden bit on `RebasedOverlay`.
+  Showing seats it back, closing a session HUD, and refuses while the slot is taken: `overlay already open`
+  for a program, page or remote reservation (the pane form for a pane), `pane not visible` for a pane the deck
+  does not lay out, the presenter message for a presenting viewer. The user closes the occupant; nothing
+  closes it for them. A parked pane IDE follows a swap and a promotion, and is released when its pane closes.
+  `rebasedHidden` reads the parked state or a slot bit; there is no hidden bit on `RebasedOverlay`.
   A hidden IDE keeps the holder, view and callback while the `*Visible` predicates expose the terminal.
   Both deck branches render held Rebased slots, including hidden pane ones; they never create an overlay
   terminal for them. A hidden panel is transparent, with no backdrop, text or hit testing.
@@ -63,8 +65,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   An open or explicit toggle-show marks the holder for one focus attempt at its first visible show,
   through `isFocusedPane`.
   The mark clears even when focus moved away; visibility reports alone never arm another attempt.
-- ⌘W over a pane IDE, a hidden pane IDE or a hidden session-wide IDE confirms before closing the session.
-  A shown session-wide IDE confirms before closing only the overlay, leaving the session open.
+- ⌘W over a hidden IDE (pane or session-wide) or an IDE on the unfocused pane confirms before closing the session.
+  A shown session-wide IDE, or one on the focused pane, confirms before closing only the overlay, leaving the session open.
   Both dialogs name the review and ignore `confirmCloseSession`; Cancel preserves the holder.
   `closeConfirmer` is the hosted-test seam; XCUITest's explicit bypass still applies.
   While an IDE window is key, its own ⌘W goes to the IDE.
@@ -105,7 +107,14 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
 - The seed writes `config/idea.vmoptions`: standalone `idea.vmoptions` when present, followed by
   `-Xms128m`, `-Xmx1g`, `-XX:ReservedCodeCacheSize=240m`, and `idea.load.plugins.id` allowing
   `com.intellij.java`, `org.jetbrains.idea.maven`, `Git4Idea`, `IdeaVIM`, `org.jetbrains.toolbox-enterprise-client`,
-  `agterm.rebased.bridge`, `dev.sasha.clauderemarks`, `org.intellij.plugins.markdown`.
+  `agterm.rebased.bridge`, `dev.sasha.clauderemarks`, `org.intellij.plugins.markdown`, and the platform's own
+  `intellij.recentFiles.plugin`, `intellij.navbar.plugin`, `intellij.execution.serviceView.plugin` and
+  `intellij.bookmarks.plugin`: 2026.2 ships them as plugins, and without them ⌘E and their actions do nothing.
+  `com.intellij.modules.jcef` gives the Markdown preview its browser form, which Mermaid diagrams and
+  claude-remarks' preview notes both need; without it the preview falls back to a plain renderer.
+  `com.intellij.mermaid` follows with its hard dependencies `com.intellij.modules.json` and
+  `org.jetbrains.plugins.yaml`.
+  A missing action in the embedded IDE shows in `idea.log` as `Plugin '<name>' (<id>) is not required`.
   A missing source writes only this vmoptions file.
   Existing roots and edited options are left alone; deleting the root repeats the seed.
 - The whole root is staged in `rebased/ide/.<dataDirectoryName>-seed-<uuid>` and renamed into place.
@@ -129,7 +138,7 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   A fresh project's first link swaps in a new settings object after the activity, so it re-applies on
   `activated()` and `projectImportCompleted()`, forcing one more import each time, at most 3 times.
 - The plugin publishes a `BiFunction` under the system property `agterm.rebased.bridge`. The host calls it
-  for `open`, `hide`, `show`, `diff`, `openFile`, `port` and `saveAll`, and registers the native
+  for `open`, `close`, `hide`, `show`, `diff`, `openFile`, `port` and `saveAll`, and registers the native
   `hostEvent` on its class, then calls `hello`; the plugin queues events until then.
   JNI keeps a checked strong global reference from its first successful lookup, published under `state_lock`,
   for the JVM lifetime, including event-registration retries.
@@ -228,8 +237,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   `session overlay close --overlay ID` closes only that holder, in either slot; it excludes `--pane`.
 - Read-back while held:
   `rebasedOverlay: {project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`, `hidden` derived
-  from the slot bit or the parked state. A parked IDE has no `pane`; the session reads `overlay: false`, and
-  `hiddenOverlays` names `session` while no program or page holds the slot, since a bare show brings it back.
+  from the slot bit or the parked state. A parked IDE keeps the `pane` it left; a session-wide one reads
+  `overlay: false`, and `hiddenOverlays` names its slot (`session`, `left`, `right`) while nothing else holds
+  it, since a bare show brings it back.
   With one there, `overlay` and `hiddenOverlays` describe that occupant.
   `view` is `{request, kind, target, state, detail?}`; kind is `diff`, `working-tree` or `file`.
   `diff` is the last range asked for; `view.state: opened` confirms installation, with a file count
@@ -247,6 +257,9 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   control socket and widened PATH.
 - `RebasedOverlayReleases` routes close, pane destruction, session/window/workspace teardown and
   frame close to one release.
+  A release that leaves no entry on a project with a frame calls `close`, which saves its documents and
+  disposes it, so its memory does not outlive the overlay. `closingProjects` swallows that frame's
+  `frameClosed`, which would otherwise end a slot reopened on the project before the event arrived.
   `removeEntry` succeeds once before `RebasedOnCloseRunner` starts detached `/bin/sh -c` with null stdio.
   Spawn failures are logged; no caller waits for command completion.
 - On a remote row the capture keeps the host (`RebasedOnClose.host`) and the host's cwd, and the runner spawns
@@ -265,7 +278,8 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   a clone under `<stateDir>/rebased/mirrors/<host>/<hash>/<name>` holding the host's branches, remote-tracking branches, tags and HEAD,
   detached. With mutagen on this Mac its working tree is synced from the host (Synced mirrors below);
   without it, uncommitted work on the host is not in it. Edits made in the IDE never reach the host.
-- `--cwd` (or the row's cwd) is the host's path. `RebasedMirrorRefresh` asks the host for its repository top
+- `--cwd` is the host's path. Without it the row reuses the last path that fetched this run, else its cwd,
+  which on a mosh row is this Mac's home. `RebasedMirrorRefresh` asks the host for its repository top
   over ssh (`git upload-pack` does not look upward), then `git fetch`es over ssh with `BatchMode`, off the
   main actor. The slot reads `fetching` with `source: host:path` until it lands, then opens on the mirror.
 - Every open refreshes, so a range names the host's newest commits. One for the repository already shown

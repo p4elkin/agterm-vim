@@ -111,6 +111,8 @@ public final class WindowLibrary {
     /// the library is the one place every store's session-close events converge, which is where a closed
     /// session's bookmarks are dropped.
     @ObservationIgnored public let bookmarks: BookmarkCenter
+    /// The app-wide visit order across windows (fork only); see `WindowLibrary+SessionRecency.swift`.
+    @ObservationIgnored public let appRecency: AppSessionRecency
     /// One bounded run-identified ring shared by every window store for this library/app lifetime.
     @ObservationIgnored private let controlEventRing: ControlEventRing
     /// Every event after the ring sequences it, debounced `tree.changed` included: what `events.read` will show.
@@ -170,6 +172,7 @@ public final class WindowLibrary {
         self.directory = directory
         self.recentClosedStore = RecentClosedStore(directory: directory)
         self.bookmarks = BookmarkCenter(persistence: BookmarkPersistence(directory: directory))
+        self.appRecency = AppSessionRecency(persistence: AppSessionRecencyPersistence(directory: directory))
         self.controlEventRing = controlEventRing ?? ControlEventRing()
         self.paneFinalizer = paneFinalizer
         self.launchInventorySink = launchInventorySink
@@ -180,6 +183,7 @@ public final class WindowLibrary {
         self.recentClosedItems = recentClosedStore.load()
         self.frontmostWindowID = nil
         bootstrap()
+        seedAppRecencyIfFresh()
         if let launchInventorySink { launchInventorySink(prepareLaunchPaneInventory()) }
         isBootstrapping = false
     }
@@ -583,6 +587,7 @@ public final class WindowLibrary {
         for sessionID in doomed {
             WatermarkStorage.removeAllRenderedText(sessionID: sessionID, stateDir: directory)
         }
+        appRecency.forget(doomed)
         stores[id] = nil
         openSetVersion += 1
         windows.remove(at: index)
@@ -743,7 +748,7 @@ public final class WindowLibrary {
     }
 
     private func makeStore(for windowID: UUID, persistence: PersistenceStore) -> AppStore {
-        AppStore(
+        let store = AppStore(
             persistence: persistence,
             recentClosedStore: recentClosedStore,
             recentClosedDidChange: { [weak self] in self?.refreshRecentClosedItems() },
@@ -772,6 +777,8 @@ public final class WindowLibrary {
             paneFinalizer: paneFinalizer,
             launchPaneDrop: launchPaneDrop
         )
+        wireAppRecency(store, windowID: windowID)
+        return store
     }
 
     private func loadSnapshotForStore(_ persistence: PersistenceStore) -> Snapshot {
