@@ -330,10 +330,10 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-three top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-four top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
-stay selected before it joins `sessionRecency`, in milliseconds — the Recent sessions setting, omitted when
+stay selected before it joins `sessionRecency`, in milliseconds — `recencyDwell` in `settings.json`, omitted when
 it is Immediately, which records on selection; typing in a session records it without waiting, and control
 `session select` records immediately too — though that selection still does not appear in
 `tree.sessionRecency`, which drops the ACTIVE session, so what the immediacy buys is the session you
