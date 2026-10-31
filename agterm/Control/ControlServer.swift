@@ -559,7 +559,7 @@ final class ControlServer {
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
     nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
         // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket
-        [.zmxTree, .zmxAttach, .zmxNew, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
+        [.zmxTree, .zmxAttach, .zmxAttachGroup, .zmxNew, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
          .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune].contains(cmd)
     }
 
@@ -664,8 +664,8 @@ final class ControlServer {
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize,
                 .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .sessionOverlayPageServe, .dashboard, .version,
-                .rebasedMirrorList, .rebasedMirrorPrune, .recentList, .recentOpen, .recentClear:
+                .zmxAttach, .zmxAttachGroup, .zmxPresent, .zmxScreen, .sessionOverlayJobRun, .sessionOverlayPageServe, .dashboard,
+                .version, .rebasedMirrorList, .rebasedMirrorPrune, .recentList, .recentOpen, .recentClear:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
             return setDebugAppearance(args: request.args)
@@ -673,6 +673,8 @@ final class ControlServer {
             preconditionFailure("pick command returned nil from ControlDispatcher")
         case .askOpen, .askResult, .askCancel:
             preconditionFailure("ask command returned nil from ControlDispatcher")
+        case .msgSend, .msgRead, .msgAck:
+            preconditionFailure("msg command returned nil from ControlDispatcher")
         case .sessionHudOpen, .sessionHudUpdate, .sessionHudClose:
             preconditionFailure("hud command returned nil from ControlDispatcher")
         }

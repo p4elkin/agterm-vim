@@ -93,6 +93,10 @@ The event kinds and payloads are:
   `hooks.conf` is loaded and the control socket accepts connections, so a hook on it can call
   `agtermctl` at once. The restored windows and sessions are in the tree by then; their terminals may
   not be realized yet. A launch whose socket could not be bound emits none.
+- `message`: a message was queued for a pane. `session` is the recipient's session and the payload
+  carries the recipient's `paneID`, the sender's address as `from` (absent for a sender outside
+  agterm) and `messageID`; never the body. One event per delivered recipient. The human line reads
+  `HH:MM:SS message NAME pane-id=ID from=SENDER id=MESSAGE-ID`, with `from=-` for an anonymous sender.
 
 Every event has `seq` (app-wide sequence), `ts` (Unix timestamp), `kind`, optional
 `window`/`workspace`/`session` ids, and `payload`. Human mode prints one compact line. `--json` emits
@@ -306,11 +310,12 @@ the read side of `font --pane`; each omitted when that pane isn't realized. `fon
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
 `font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes and a
 promoted survivor are live-only — read them back here rather than from the snapshot), and `surfaces` (array
-of `{id, kind, active, visible, backedByZmx?, lead?, reconnect?, paneID?}` where `kind` is
+of `{id, kind, active, visible, backedByZmx?, lead?, reconnect?, paneID?, pendingMessages?}` where `kind` is
 `left`|`right`|`scratch`|`overlay`|`overlay-left`|`overlay-right`).
 Primary/split surfaces report `backedByZmx`; scratch and overlays omit it. `paneID` is the surface's
 stable token, the value `--pane-id` takes; it follows the terminal through a swap and is omitted for an
-overlay or a pane whose surface is not created yet. `lead` is `leader`, `follower`
+overlay or a pane whose surface is not created yet. `pendingMessages` counts the messages waiting in the
+pane's [msg](#msg) mailbox and is omitted at zero. `lead` is `leader`, `follower`
 or `unowned`: whether this Mac's window size is the one the pane's program sees. A pane that does not
 lead is covered. Absent until the pane's terminal reports one (see Remote sessions).
 `reconnect` is present on a remote pane whose ssh lost its connection while agterm waits to attach it
@@ -1116,8 +1121,10 @@ error keeps those names for compatibility.
   point-sized outer axis is capped at 80% of the session; a percent axis keeps 1–100. With `--size-percent` the panel
   re-sizes from that percent with exactly the point axes given; alone they change only their axes of a
   panel that is already floating (`... need a floating overlay; pass --size-percent too` on a full one);
-  `--size-percent` alone or `--full` drops them. Refused on a HUD (`a hud measures its own height`), for
-  an overlay shown on another Mac, and for one this Mac shows for another Mac. Read back `overlayWidth`/`overlayHeight`. Units are native points on
+  `--size-percent` alone or `--full` drops them. Refused on a HUD (`a hud measures its own height`) and for
+  an overlay this Mac shows for another Mac, which that Mac sizes. An overlay shown on another Mac takes them
+  there, fitted to that Mac's session; one running an agterm too old for point sizes shows the percent alone.
+  Read back `overlayWidth`/`overlayHeight`, on the Mac that shows the panel. Units are native points on
   every transport: a page converts its CSS pixels with its `htmlOverlays[].zoom`. The overlay program keeps running across the
   resize — it is a layout re-flow, never a re-spawn. Errors `no overlay` when none is open, and
   `the viewer showing this overlay is gone` for an overlay shown on another Mac whose stream has dropped. Returns the
@@ -1917,6 +1924,47 @@ and the bell span every open window; `session go` attention steps stay within th
 cross windows when Settings ▸ Agent Status ▸ Attention navigation crosses windows is on. Keep `notify` for a
 one-off nudge that needs no follow-up.
 
+## msg
+
+Per-pane mailboxes: a program leaves a message for another pane's program instead of typing into its
+terminal, and the receiver reads it when it chooses. Mailboxes live in the running app's memory; nothing
+is drawn on screen.
+
+- `agtermctl msg send TEXT|--stdin (--to SESSION:PANE ... | --all [--workspace W]) [--as SESSION:PANE-ID]`
+  (`msg.send`). PANE is a pane id (`surfaces[].paneID` from `tree --json`) or `left` (alias `primary`, `top`), `right`
+  (`split`, `bottom`) or `scratch`, resolved once at send time; a bare session is an error. Aliases of one pane are delivered
+  once. `--all` reaches every live pane in every open window except the sender and remote rows;
+  `--workspace` narrows it. A split hidden since launch has no terminal yet and is not a live pane.
+  The reply carries `messageID` (shared by every copy), `delivered` (canonical `SESSION:PANE-ID`
+  addresses) and `rejected` (`{address, reason}`, reason `mailbox full` or `unknown pane`). The CLI
+  prints the id, one stderr line per rejection, and exits 1 when anything was rejected; the delivered
+  copies stay queued.
+- `agtermctl msg read [--ack] [--wait [--timeout N]] [--as SESSION:PANE-ID]` (`msg.read`) returns the
+  oldest messages, up to 32, as `messages` (`{id, from?, to, ts, body}`) plus `remaining`, the pending messages not in this
+  batch, and removes
+  nothing; reading again returns the same prefix. Human output is `ID from SENDER` (or
+  `from outside agterm`) followed by the body; `N more pending` goes to stderr. `--ack` removes the
+  returned batch in the same mailbox operation and answers `acked` with its ids; the CLI prints nothing
+  and fails unless `acked` names exactly the returned messages. This is at most once: a reply lost on
+  the way is not redelivered. `--wait` repeats the same read every 250 ms until a message arrives;
+  `--timeout` exits 124.
+- `agtermctl msg ack ID... [--as SESSION:PANE-ID]` (`msg.ack`) removes ids from the caller's mailbox and
+  answers `acked` with those actually removed; unknown or already removed ids are not an error.
+
+Identity is always `SESSION:PANE-ID`, never a role, so a swap cannot re-point it. The CLI builds it from
+`AGTERM_SESSION_ID` and `AGTERM_PANE_ID`, or takes `--as`. The app refuses an identity whose pane is not
+a live pane of that session. `read` and `ack` require one; `send` without either variable and without
+`--as` is anonymous (`from` absent), and one variable without the other, or an empty one, is an error.
+
+Limits: body 64 KiB UTF-8; a mailbox holds 256 messages and 1 MiB of bodies, and a full one rejects
+that recipient alone.
+
+A mailbox lives while the same program runs in its pane. Closing the pane, its session, workspace or
+window, `session restart` and a respawn of the primary drop it; an undone close comes back with an empty
+mailbox. Hiding a split, a swap and a split promoted after the primary exits keep it. Nothing survives
+quitting the app. Read back `pendingMessages` on the tree surface node and the `message` event; a hook
+on `message` reacts to new mail without polling.
+
 ## font
 
 `agtermctl font inc|dec|reset [--pane left|right|scratch] [--target] [--window W]` — increase / decrease /
@@ -2359,7 +2407,8 @@ and `sessions`, each with `id`, `name`, `windowID`/`windowName` and `workspaceID
 names, group by the ids — neither is unique, so two windows called `main` merge if you group by name),
 `context` when its owner set one, `cwd`, `splitAxis` when it has a split, `status`/`statusColor`/`statusShape`
 as the far side's `tree` reports them (omitted when idle, and from an app too old to send them), `parent` on a
-companion, `content: "page"` on a page companion, and `panes`
+companion, `content: "page"` on a page companion, `companions` on a top-level session (every companion in
+sidebar order as `{id, name}`, attachable or not; `[]` for none, absent from an older origin), and `panes`
 (`{pane, daemon, foreground}`, the last being the argv that pane is running and omitted when none is
 reported). `host` is the ssh destination the REQUESTING app was given, stamped on after decoding: the far
 side has no idea which name reached it.
@@ -2391,20 +2440,31 @@ flag only when mosh is somewhere else.
 `SESSION` is the
 `id` from `zmx tree`, never the name: remote names are editable and repeat across workspaces. Returns the
 new local session's `id`; read `remoteHost` on its tree node. The remote is resolved AGAIN before anything
-is created, so a session that has gone since the listing fails and creates nothing. Everything reported
-here is a failure found before that point — a connection that starts and later drops is an ordinary pane
-exit: ssh's own 255 shows a reconnecting bar naming the host and reconnects by itself, with ssh's last
+is created, so a session that has gone since the listing fails and creates nothing. A connection that
+starts and later drops is an ordinary pane exit: ssh's own 255 shows a reconnecting bar naming the host and reconnects by itself, with ssh's last
 failed-probe message along the pane's bottom edge and on the pane's `reconnect` in `tree`; any other exit prints
 one line naming the host, the session, the pane and the exit status and holds on Ghostty's press-any-key prompt.
 agterm adds ssh keepalive (`ServerAliveInterval 5`, `ServerAliveCountMax 2`) to the pane's ssh unless the
 user's config sets a nonzero interval, so a dead link is noticed within about fifteen seconds. When the
 pane's ssh joins an existing `ControlMaster` connection, that master's settings decide instead.
 
+A terminal companion attached on its own opens under the one row in the destination window attached from
+its parent, in that row's workspace (`result.parent` names it); with no such row, or more than one, it opens on its own.
+`agtermctl zmx attach HOST SESSION --companions` (`zmx.attach.group`) attaches a top-level session and then
+each of its companions under it from one read, in the origin's companion order when reported and in the
+order of its listed rows from an older origin; a companion's id is refused. The
+reply's `id` is the parent here and `remoteGroup` carries `membershipKnown` plus one `{origin, id?, error?}`
+per member, `id` recording that the row was created, not that it still exists. Any member unavailable or failing makes the command fail with the attached rows kept and the
+error naming the parent and what is missing; `membershipKnown: false` means the origin does not report
+`companions`, so one it did not list cannot be named. An app too old for the command creates nothing.
+Companions created on the origin later are not followed.
+
 File ▸ Attach Remote… is the same flow in the GUI and has no command of its own: it offers the machines in
 `<config dir>/remotes.conf` (one `destination [label]` per line, `#` comments), asks which in the picker
-when there are several, then lists that machine's sessions and attaches the picked one. It is the
+when there are several, then lists that machine's sessions and attaches the picked one, with its
+companions when it is a top-level session. It is the
 `attach_remote` keymap action, on Cmd-Shift-R unless `keymap.conf` maps another chord. A script composes
-`zmx tree`, `pick` and `zmx attach` instead.
+`zmx tree`, `pick` and `zmx attach --companions` instead.
 
 A program in an attached session runs on the origin and talks to the origin's agterm, so what it asks
 agterm to draw would show there only. Every attach therefore also opens a presentation stream, and this
@@ -2663,7 +2723,7 @@ a terminal surface's.
 `session.overlay: --width/--height must be positive` / `session.overlay.open: --width/--height need --size-percent` /
 `session.overlay.resize: --width/--height need a floating overlay; pass --size-percent too` /
 `a hud measures its own height: --width/--height do not apply` /
-`--width/--height are not supported for an overlay shown on another Mac` /
+`--width/--height are not supported for an overlay this Mac shows for another Mac; resize it on that Mac` /
 `session.hud.open: --size-percent must be 1...100` /
 `hud helper is not bundled in this build` / `could not write the hud message` /
 `invalid position: <value> (top-left|top-center|top-right|center-left|center|center-right|bottom-left|bottom-center|bottom-right|top|bottom)`

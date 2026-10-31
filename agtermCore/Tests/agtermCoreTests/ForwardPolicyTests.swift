@@ -78,6 +78,7 @@ struct ForwardPolicyTests {
         ("zmx.prune", "a Mac feature"), ("zmx.reset", "a Mac feature"),
         ("browser.clear", "a Mac feature"), ("zmx.screen", "a Mac feature"), ("keymap.run", "no windows or UI"),
         ("rebased.mirror.list", "a Mac feature"), ("rebased.mirror.prune", "a Mac feature"),
+        ("zmx.attach.group", "a Mac feature"), ("msg.send", "no terminal surface"),
     ])
     func refusalsCarryTheirReason(_ name: String, _ reason: String) throws {
         let command = try #require(Command(rawValue: name))

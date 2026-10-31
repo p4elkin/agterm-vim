@@ -104,6 +104,9 @@ enum HeadlessRequests {
         request(.surfaceCursor, target: target),
         request(.sessionScratch, target: target),
         request(.sessionLead, target: target),
+        request(.msgSend) { $0.text = "x" },
+        request(.msgRead),
+        request(.msgAck),
 
         request(.sessionPairing, target: target) {
             $0.mode = "mirrors"
@@ -126,6 +129,7 @@ enum HeadlessRequests {
         request(.zmxScreen) { $0.name = "d" },
         request(.zmxReset) { $0.force = true },
         request(.zmxAttach, target: target) { $0.host = "h" },
+        request(.zmxAttachGroup, target: target) { $0.host = "h" },
         request(.browserClear),
         request(.browserLinks),
         request(.rebasedMirrorList),

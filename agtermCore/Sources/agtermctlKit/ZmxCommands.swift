@@ -109,6 +109,8 @@ struct Zmx: ParsableCommand {
         var mosh: String?
         @Option(help: "On a headless origin: the row whose presenting Mac attaches the session right after it.")
         var beside: String?
+        @Flag(help: "Also attach every companion of the session, under it; the session must not itself be a companion.")
+        var companions = false
         @OptionGroup var options: BasicOptions
 
         /// It creates a local session, so it echoes that session's id like every other create command.
@@ -119,6 +121,9 @@ struct Zmx: ParsableCommand {
         func validate() throws {
             if beside != nil, window != nil || transport != nil || moshServer != nil || mosh != nil {
                 throw ValidationError("--beside takes the row's own window and transport")
+            }
+            if beside != nil, companions {
+                throw ValidationError("--beside attaches one session, not its companions")
             }
             let trimmed = transport?.trimmingCharacters(in: .whitespacesAndNewlines)
             let wireTransport = trimmed?.isEmpty == true ? nil : trimmed
@@ -134,9 +139,35 @@ struct Zmx: ParsableCommand {
             if let beside {
                 return ControlRequest(cmd: .zmxAttach, target: beside, args: ControlArgs(host: host, attach: session))
             }
-            return ControlRequest(cmd: .zmxAttach, target: session,
+            return ControlRequest(cmd: companions ? .zmxAttachGroup : .zmxAttach, target: session,
                                   args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
                                                     mosh: mosh, window: window))
+        }
+
+        func run() throws {
+            guard companions else { return try defaultRun() }
+            let send = companionSend(SocketClient(path: options.socketPath()).send, json: options.json,
+                                     tooOld: "the running app is too old for group attach")
+            let reply = try send(try makeRequest())
+            if options.json {
+                print(reply.line)
+            } else {
+                printGroup(reply.response)
+            }
+            if !reply.response.ok { throw ExitCode.failure }
+        }
+
+        // the note goes out on failure too: a partial attach from an origin that lists no membership can
+        // have missed companions it never named
+        private func printGroup(_ response: ControlResponse) {
+            if response.ok {
+                print(SocketClient.formatRemoteGroup(parent: response.result?.id, group: response.result?.remoteGroup))
+            } else {
+                FileHandle.standardError.write(Data((SocketClient.formatResponse(response) + "\n").utf8))
+            }
+            if response.result?.remoteGroup?.membershipKnown == false {
+                FileHandle.standardError.write(Data((SocketClient.remoteGroupNote(host: host) + "\n").utf8))
+            }
         }
     }
 

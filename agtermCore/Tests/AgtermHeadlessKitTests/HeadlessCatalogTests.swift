@@ -40,7 +40,7 @@ struct HeadlessCatalogTests {
     }
 
     @Test(arguments: [
-        "surface.zoom", "surface.cursor", "session.scratch", "session.lead",
+        "surface.zoom", "surface.cursor", "session.scratch", "session.lead", "msg.send", "msg.read", "msg.ack",
     ])
     func terminalSurfaceCommandsAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "no terminal surface")
@@ -49,7 +49,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.pairing", "overlay-redirect.toggle", "hooks.reload", "hooks.list", "session.restore",
         "restore.clear", "restore.capture", "restore.mode", "zmx.prune", "zmx.reset", "zmx.screen", "browser.clear",
-        "rebased.mirror.list", "rebased.mirror.prune", "session.companion.page.attach",
+        "rebased.mirror.list", "rebased.mirror.prune", "session.companion.page.attach", "zmx.attach.group",
     ])
     func macFeaturesAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "a Mac feature")

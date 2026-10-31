@@ -4,13 +4,13 @@ description: >
   Drive agterm, a native macOS terminal, via agtermctl. Use in an agterm session:
   manage sessions, companions and workspaces; split panes; toggle the scratch terminal; run, hide or show overlays;
   read exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
-  post a HUD/caption/notification; show a picker, question or input dialog; show images inline; type
+  post a HUD/caption/notification; message panes; show a picker, question or input dialog; show images inline; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows; set font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
   a closed window's session screen; subscribe to status, notify, lifecycle, selection,
   pane, tree and launch events; wait on agent status.
   Covers window/workspace/session addressing, AGTERM_* variables,
-  attaching a session from another Mac, cookbook recipes, running/installed version, upgrades, diagnosing
+  attaching a session and its companions from another Mac, cookbook recipes, running/installed version, upgrades, diagnosing
   problems, filing a bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
@@ -22,11 +22,13 @@ when_to_use: >
   flag every session in a workspace, tint a session or workspace row a color, make a companion session,
   keep a related program next to a session, duplicate this session with its programs as a companion,
   open a sub-session under this one, fold a session's companions, show a page as a companion of this
-  session, run my custom command, tell me when the selected session changes,
+  session, run my custom command, send a message to the other pane or another agent, read my messages,
+  wait for a message, tell me when the selected session changes,
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
   move this workspace or session to another window,
-  attach a session from another Mac, copy this to the clipboard, was agterm upgraded under the running app,
+  attach a session from another Mac, attach a remote session with all its companions, copy this to the
+  clipboard, was agterm upgraded under the running app,
   upgrade agterm without losing sessions, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
 ---
@@ -337,8 +339,9 @@ given. Use `--json` for one bare event object per line; filter with repeatable o
 companion), `session.closed`, `session.selected` (a window's
 selection moved; carries the session that lost it as `previous`), `session.parked`, `tree.changed`,
 `pane.split`, `pane.scratch`, `pane.focused` (a session's selection moved between its two split panes;
-carries the pane and its `paneID`), `remote.opened`, `remote.closed` and `app.launched` (once per app run, when
-hooks and the socket are ready); resume with paired `--run RUN --after SEQ`; and set page size with
+carries the pane and its `paneID`), `remote.opened`, `remote.closed`, `app.launched` (once per app run, when
+hooks and the socket are ready) and `message` (mail queued for a pane; carries `paneID`, `from` and
+`messageID`, never the body); resume with paired `--run RUN --after SEQ`; and set page size with
 `--limit 1...1000`. The app retains 4,096 events for one process run. Cursor
 run changes, expiry, and ahead-of-tail errors are fatal and are never silently rebaselined. Once the stream holds a
 cursor, a refused connection is retried with that cursor for about 30 s before the stream exits.
@@ -751,6 +754,14 @@ place, and neither does turning the mode on over one.
 
 **notify** — `notify <body> [--title T]` — post a desktop notification attributed to a session. To signal that you need the user, prefer `session status` (`blocked`/`completed`), a persistent typed attention state rather than a one-shot banner; keep `notify` for a one-off nudge.
 
+**msg** — `msg send TEXT|--stdin --to SESSION:PANE [--to ...]` or `--all [--workspace W]` · `msg read [--ack] [--wait [--timeout N]]` ·
+`msg ack ID...` — per-pane mailboxes for passing a message to another pane's program without typing into its
+terminal. PANE is a pane id (`surfaces[].paneID` in `tree`) or `left`/`right`/`scratch`; `--all` reaches every live pane
+but the sender. Inside a pane the CLI acts as that pane through `AGTERM_SESSION_ID`/`AGTERM_PANE_ID` (`--as SESSION:PANE-ID`
+overrides). `read` prints `ID from SENDER` then the body, oldest first, and removes nothing until `ack`; `read --ack` takes
+the batch in one step. Mail is in memory only and is dropped when the pane closes or restarts. Read back
+`pendingMessages` on the tree surface and the `message` event. See [reference.md](reference.md#msg).
+
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). Read the resulting size back from `tree` (`fontSize`/`splitFontSize`/`scratchFontSize` per pane). A pane under an HTML overlay zooms the page instead, read back as `htmlOverlays[].zoom`.
 
 **keymap** — `keymap reload` — re-read `keymap.conf` (prints the parse-diagnostic count). `keymap run NAME [--target T] [--window W]` — start one of the user's custom commands by the name `keymap list` prints, against that session; the reply means it started, not that it succeeded. `keymap list` — show the resolved keymap AND the live menu key equivalents: every built-in with its current binds (the menu chord first, then any `|`-separated alternatives a key monitor delivers, including leader sequences), the custom commands, the parse diagnostics, and what the menu bar is actually dispatching. Use it to check a rebind took effect, to find a free chord, or to spot a chord the keymap resolved but the menu is not carrying. Built-in actions support leader sequences too (e.g. `map ctrl+space>s toggle_split`); a sequence-only bind clears the action's menu shortcut and shows the joined glyphs in the palette and tooltips instead. `keymap list` also reports the `nmap` binds in their own `normalMode` section (bind + `action` or `command`, plus `mode` where the line carries a mode word that changes the outcome), the only place normal-mode binds are visible.
@@ -813,7 +824,8 @@ chosen open local window's current workspace (default: frontmost after discovery
 keeps the frontmost window unchanged; an invalid or closed target fails. Takes the ID from that
 listing, not the name, and resolves the remote again first, so a session that has gone fails instead of
 handing back a fresh shell wearing its name. Closing it here ends only this side's connection and it is
-never restored after a relaunch. The attached row mirrors the origin session's status, context, `notify`
+never restored after a relaunch. Add `--companions` to attach the group; see
+[details](reference.md#restore). The attached row mirrors the origin session's status, context, `notify`
 notifications, HUD and the layout of attached panes over a stream that reconnects by itself
 ([details](reference.md#restore)); read
 `presentation.state` in `tree`, and expect mirrored status, context and HUD to clear while it is down. One

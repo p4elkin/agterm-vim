@@ -281,6 +281,14 @@ extension ControlServer {
             case .success(let (_, store)): return await attachRemotePageRow(found.remote, tree: found.tree, host: host, in: store)
             }
         }
+        // a companion joins its parent's group when exactly one row here shows that parent, else it stands alone
+        if found.remote.parent != nil, case .success(let (_, store)) = resolveOpenWindow(window) {
+            let parents = attachedParentRows(of: found.remote, tree: found.tree, host: host, in: store)
+            if parents.count == 1, let parent = parents.first, let workspace = store.workspace(forSession: parent.id)?.id {
+                return attach(found.remote, from: found.tree, host: host,
+                              placement: RemotePlacement(store: store, workspace: workspace, parent: parent.id))
+            }
+        }
         let row: RemoteRow
         switch remoteRow(found.remote, from: found.tree, host: host, transport: transport) {
         case .failure(let response): return response

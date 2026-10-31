@@ -24,18 +24,18 @@ extension ControlDispatcher {
             // no host is this app's own attachable sessions, which is also exactly what a `zmx tree HOST`
             // runs on the far side
             return await actions.remoteTree(host: request.args?.host?.trimmedOrNil)
-        case .zmxAttach:
+        case .zmxAttach, .zmxAttachGroup:
             // the target names a row here, not the remote session, so a plain attach would look it up on the host
             guard request.args?.attach == nil else {
                 return ControlResponse(ok: false, error: "zmx.attach --beside is for a headless origin")
             }
             guard let host = request.args?.host?.trimmedOrNil else {
-                return ControlResponse(ok: false, error: "zmx.attach requires a host")
+                return ControlResponse(ok: false, error: "\(request.cmd.rawValue) requires a host")
             }
             // no `active` default: the target names a session on ANOTHER machine, which nothing local
             // could resolve for the caller
             guard let session = request.target?.trimmedOrNil else {
-                return ControlResponse(ok: false, error: "zmx.attach requires a remote session")
+                return ControlResponse(ok: false, error: "\(request.cmd.rawValue) requires a remote session")
             }
             // the unresolved case names the id it could not find, so a control character here would reach
             // a terminal through that message
@@ -57,9 +57,15 @@ extension ControlDispatcher {
                                                                              moshServer: rawMoshServer,
                                                                              mosh: rawMosh))
             }
-            return await actions.attachRemoteSession(host: host, session: session,
-                                                     window: request.args?.window?.trimmedOrNil,
-                                                     transport: transport)
+            let window = request.args?.window?.trimmedOrNil
+            if request.cmd == .zmxAttachGroup {
+                // every member attaches over ssh, so a requested mosh is refused rather than quietly not used
+                guard transport == .ssh else {
+                    return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach.group --transport"))
+                }
+                return await actions.attachRemoteGroup(host: host, session: session, window: window)
+            }
+            return await actions.attachRemoteSession(host: host, session: session, window: window, transport: transport)
         case .zmxPresent:
             // no `active` default: a viewer names the session it attached, and a guess would stream another
             guard let session = request.target?.trimmedOrNil else {

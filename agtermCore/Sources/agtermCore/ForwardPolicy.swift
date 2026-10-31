@@ -47,12 +47,13 @@ public enum ForwardPolicy {
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
              .recentList, .recentOpen, .recentClear:
             return .refused("no windows or UI")
-        // a forwarded scratch would open a login shell on the Mac
-        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead:
+        // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces
+        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
              .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
-             .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe, .sessionCompanionPageAttach:
+             .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe, .sessionCompanionPageAttach,
+             .zmxAttachGroup:
             return .refused("a Mac feature")
         }
     }

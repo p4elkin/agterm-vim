@@ -177,6 +177,7 @@ renumbering. Do not reintroduce a count anywhere.
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
   `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
+- `msg.send`, `msg.read`, `msg.ack`
 - `sidebar`, `sidebar.mode`, `sidebar.flagged-layout`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`,
   `sidebar.width`, `mode`, `notify`
 - `font.inc`, `font.dec`, `font.reset`
@@ -185,7 +186,8 @@ renumbering. Do not reintroduce a count anywhere.
 - `keymap.reload`, `keymap.list`, `keymap.run`, `hooks.reload`, `hooks.list`, `browser.clear`, `browser.links`,
   `config.reload`, `theme.set`, `theme.list`, `restore.capture`, `restore.clear`, `restore.mode`, `version`
 - `recent.list`, `recent.open`, `recent.clear`
-- `zmx.list`, `zmx.screen`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.present`
+- `zmx.list`, `zmx.screen`, `zmx.prune`, `zmx.kill`, `zmx.reset`, `zmx.tree`, `zmx.attach`, `zmx.attach.group`,
+  `zmx.present`
 - `zmx.new` (fork only, see "Remote sessions"; left out of the bundled skill and `site/commands.html`
   like the other fork-only commands)
 - `overlay-redirect.toggle` (fork only, see [[overlay-redirect]]; `session.pairing` above is its other half)
@@ -411,6 +413,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   soft-closed page keeps serving through undo. URL pages get the same channel for lifetime only (no bridge), and a
   loopback URL is refused at both ends. `zmx tree` lists a page companion with no panes when its parent is listed; the
   Attach Remote picker hides those rows, and `zmx attach` places one only under the single row bound to its parent.
+  A terminal companion attached alone joins that row the same way (`attachedParentRows`), in the row's own workspace,
+  and stands alone when no row or several match.
   The viewer row binds the origin page session so New Companion on it makes a sibling there. `HtmlReplicaLink`
   keeps the page's own reload and navigation on the viewer's copy; every other bridge request goes to the origin.
   A channel ending while the viewer row is soft-closed finalizes that row alone (`finalizePendingClose(ofSession:)`),
@@ -608,8 +612,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `overlayWidth`/`overlayHeight` read back through it from `hudPaneFrames.detail`, so the two cannot disagree.
   Only point axes take the 80% cap, applied after a page's strip is added; a percent axis keeps 1...100.
   Units are native points on every transport, the page bridge included; a page scales by its own zoom.
-  Refused on a HUD and for a slot shown on, or replicated from, another Mac: the presentation wire carries
-  only a percent, so the refusal comes before a reservation or a send.
+  Refused on a HUD and on a slot this Mac shows for another Mac, which the origin sizes. A slot handed to the
+  presenting Mac carries its points in the request and resize frames only to a presenter listing
+  `overlay.points`, an older one getting the percent alone; the presenter caps them against its own detail
+  bounds. `resizeRemoteOverlay(_:sizePercent:points:)` resolves a resize against `RemoteOverlaySlot` the way
+  `resizeOverlayInPoints` does locally and sends the whole result, because the presenter replaces its size.
+  The origin's tree reports `remoteOverlays[].sizePercent` only: the panel's points are known on the presenter.
 - `overlay.copy`/`overlay.text` read the COVERING surface, which `session.copy`/`session.text` cannot reach
   (#434) — those address the pane the overlay hides, so a selection made in the overlay reads as
   `no selection` and `--pane right` returns the shell underneath. Both take the overlay family's own
@@ -827,7 +835,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `ask.open`), its pane
   for its own overlay commands, its window as `target` for the window-object commands and as `args.window`
   otherwise. An explicit target, `active`, window or batch resolves as over the socket; `zmx.attach`,
-  `dashboard` and `recent.open` keep their ids and still land in the page's window, and `hooks.*`, which
+  `zmx.attach.group`, `dashboard` and `recent.open` keep their ids and still land in the page's window, and `hooks.*`, which
   refuse any window, and `browser.clear`, `browser.links`, `recent.list` and `recent.clear` get none. `sidebar` and `sidebar.mode` read no window, so a page drives the frontmost one.
   `zmx.present`, `session.overlay.job.run`, `session.overlay.page.serve` and `zmx.reset` are refused: a stream hand-off and post-reply work do not fit one request and reply.
 - The theme, adapter and helper scripts install as ONE set: removing user scripts removes them all, so a
@@ -1269,6 +1277,30 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `context` is the shown value: an attached row also shows its origin's context, and the Remote sessions
   section owns that rule.
 
+## Message bus
+
+- `msg.*` is dispatcher-only: `ControlDispatcher+Messages` validates, runs the `MessageBus.shared` operation and
+  shapes the reply; `ControlActions` only resolves an address to a live pane, lists the `--all` panes and
+  reports a queued message. A host without the bus answers `MessagePaneError.unsupported`, which refuses the
+  whole command; only `.unresolved` becomes a per-recipient `unknown pane` rejection.
+- A live pane is a realized surface with a parseable token, the one definition recipients, identities and
+  `--all` share; a split hidden since launch has none. `ControlServer+Messages` resolves the session across
+  every open store with `window: nil`, never the frontmost default, then asks `AppStore.messageRecipient`.
+- An identity is `SESSION:PANE-ID` only and must be a live pane of that session, on send, read and ack alike.
+  There is no fallback to a role or the active pane, and a stale or incomplete identity never becomes an
+  anonymous send: the CLI sends without one only when neither `AGTERM_*` variable is present.
+- Disposal is per site, never by pruning panes that look dead, since close-then-undo cannot be told from a
+  live pane afterwards. `releaseLeavingSession` covers every session, workspace and window leaving; the
+  other sites are `closeSplit`, `closePrimaryPane` (the departing primary only), `closeScratch`,
+  `respawnPrimaryPane` and `session.restart` once the old program is gone, just before the new surface. The
+  restart's wait for the old program lets other requests run, so an earlier dispose would hand mail sent
+  meanwhile to the new program. A new lifetime boundary needs its own call.
+- The `message` event goes out through the recipient's store, once per delivered recipient, so
+  `window`/`workspace` are set; it never carries the body. Read back `pendingMessages` on the tree surface.
+- `read --ack` removes its batch in one synchronous mailbox operation and answers `acked`. The CLI refuses to
+  print unless `acked` names exactly the returned ids, and `--wait` repeats that same read rather than probing
+  first, since a probe leaves a gap in which another reader drains the mailbox.
+
 ## Keymap, config, theme, and sidebar
 
 - `keymap.run` starts a custom command by exact name against the addressed session, through the
@@ -1684,8 +1716,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 ## Remote sessions
 
-- `zmx.tree` lists another Mac's attachable sessions and `zmx.attach` opens one of them here. Each attach
-  imports one session, its split included; whole-workspace teleport is out of scope, and several remote
+- `zmx.tree` lists another Mac's attachable sessions and `zmx.attach` opens one of them here. `zmx.attach`
+  imports one session, its split included, and `zmx.attach.group` a top-level session with its companions;
+  whole-workspace teleport is out of scope (`docs/backlog/remote-workspace-attach.md`), and several remote
   rows may sit side by side.
 - A row carries what a PICKER needs, not only what attach needs. Without that a caller has to run a second
   ssh and join `agtermctl tree --json` by session id, paying another authentication for data the walk
@@ -1793,6 +1826,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   A host that implemented only the older attach overloads
   refuses a requested mosh with `zmx.attach --transport is not supported on this platform` through
   `ControlActionsDefaults`, never a silent ssh.
+  `zmx.attach.group` attaches every member over ssh, so the dispatcher refuses a requested mosh there
+  (`zmx.attach.group --transport is not supported on this platform`). A companion `zmx.attach` places under
+  its parent's row goes through `attach(_:placement:)` and takes the PARENT's transport, not the requested one.
 - Neither the host nor the session target is echoed into an error unless it PASSED validation. `invalid
   host` is a constant, and `zmx.attach` refuses a session carrying EMBEDDED whitespace or a control
   character through the same `RemoteSession.isPlain` the argv builders use — outer whitespace is trimmed
@@ -1818,7 +1854,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - The runner is async behind an injected seam. `ControlActions` is `@MainActor`, so a blocking wait would
   freeze the UI for the whole network deadline, and the fake is what lets the end-to-end tests run without
   a second Mac.
-- Six commands leave the accept thread, in two ways. `zmx.tree`, `zmx.attach` and `zmx.new` wait on the network,
+- Commands leave the accept thread in two ways. `zmx.tree`, `zmx.attach`, `zmx.attach.group` and `zmx.new`
+  wait on the network,
   so `handleConnection` moves each to a worker thread and that thread's descriptor close moves with it.
   `zmx.present`, `session.overlay.job.run` and `session.overlay.page.serve` are streaming hand-offs: each is
   dispatched inline, its
@@ -1842,6 +1879,15 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   a session; it never falls back or raises another window. The old `attachRemoteSession(host:session:)`
   witness remains callable. Hosts implementing only that form accept untargeted calls and refuse explicit
   window placement through the new overload's default.
+- `zmx.attach.group` is its own wire command for the Companions section's older-app reason, and the CLI's
+  `zmx attach --companions` maps the decode refusal through `companionSend`. One `zmx tree` read serves the
+  whole group: the far side lists every companion of a top-level row as `companions` (`[]` for none, absent
+  from an older origin, where the listed children stand in and `membershipKnown` is false). A companion target
+  is refused before any row exists. The parent attaches first and selected; each member re-resolves the
+  parent's store and workspace, since a page member's ssh wait lets the row move or close, and the parent is
+  checked once more after the last member. Any member unavailable or failing answers not ok with `result.id`
+  and `result.remoteGroup` kept and the attached rows left in place. File ▸ Attach Remote's use of it is in
+  [[menu-actions]].
 - The local cwd is this machine's home, not the remote one: libghostty chdirs the pane process here and a
   path that exists on the far side may not exist locally. The attached shell reports its real cwd through
   the terminal stream.
