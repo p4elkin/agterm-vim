@@ -318,7 +318,7 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         let web = try XCTUnwrap(URL(string: "https://example.com/"))
 
         let followed = recordLinks(mode: .browser, overlayOpens: true, helperStarts: true)
-        pane.openLink(web.absoluteString, wantsBrowser: false)
+        pane.openLink(web.absoluteString, intent: .normal)
 
         XCTAssertEqual(followed.helpers.map(\.0), [OpenLinkLaunch.helperName])
         XCTAssertTrue(followed.opened.isEmpty)
@@ -331,7 +331,7 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         let web = try XCTUnwrap(URL(string: "https://example.com/"))
 
         let followed = recordLinks(mode: .overlay, overlayOpens: true, helperStarts: true)
-        pane.openLink(web.absoluteString, wantsBrowser: true)
+        pane.openLink(web.absoluteString, intent: .browser)
 
         XCTAssertEqual(followed.helpers.map(\.0), [OpenLinkLaunch.helperName])
         XCTAssertTrue(followed.opened.isEmpty && followed.overlaid.isEmpty)
