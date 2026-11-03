@@ -1,3 +1,6 @@
+// Darwin only: SessionInfoMarkup parses with Foundation's markdown, which swift-corelibs lacks; on Linux
+// it keeps the source as literal text, as HudMarkdown does.
+#if canImport(Darwin)
 import Foundation
 import Testing
 @testable import agtermCore
@@ -113,3 +116,4 @@ struct SessionInfoMarkupTests {
         #expect(rejection("a&#155;b") == .controlCharacter)
     }
 }
+#endif

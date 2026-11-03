@@ -88,7 +88,12 @@ enum SessionInfoMarkup {
         return spans
     }
 
+    /// On Linux, where swift-corelibs Foundation has no markdown parser, the source is literal text, the same
+    /// fallback `HudMarkdown` takes there.
     private static func parseMarkdown(_ source: String) throws(ParseError) -> [SessionInfoSpan] {
+        #if !canImport(Darwin)
+        return [SessionInfoSpan(text: source)]
+        #else
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         let parsed: AttributedString
         do {
@@ -115,6 +120,7 @@ enum SessionInfoMarkup {
             spans.append(span)
         }
         return spans
+        #endif
     }
 
     private static func validate(_ text: String) throws(ParseError) {

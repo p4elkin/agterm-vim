@@ -276,6 +276,12 @@ struct SessionWaitCommandsTests {
     }
 
     private static func processState(_ pid: pid_t) -> String {
+        #if !canImport(Darwin)
+        // Linux has no kinfo_proc; the state letter is the third field of /proc/<pid>/stat.
+        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8),
+              let close = stat.lastIndex(of: ")") else { return "absent" }
+        return String(stat[stat.index(after: close)...].split(separator: " ").first ?? "?")
+        #else
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
@@ -284,6 +290,7 @@ struct SessionWaitCommandsTests {
         let names: [Int32: String] = [1: "SIDL", 2: "SRUN", 3: "SSLEEP", 4: "SSTOP", 5: "SZOMB"]
         let stat = Int32(info.kp_proc.p_stat)
         return "\(names[stat] ?? "\(stat)") flags=0x\(String(info.kp_proc.p_flag, radix: 16))"
+        #endif
     }
 
     @Test func cancelledWatchdogDoesNotFire() {

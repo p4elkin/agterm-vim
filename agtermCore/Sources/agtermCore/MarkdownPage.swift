@@ -39,7 +39,12 @@ public enum MarkdownPage {
     /// imageReferences lists each picture `markdown` references that names a file inside `folder`, the
     /// markdown file's own folder, after symlinks on both sides are resolved; in document order, each
     /// reference once. A remote, a `data:` or an escaping reference is left out and renders as its alt text.
+    /// On Linux, where swift-corelibs Foundation has no markdown parser, it lists none: the page itself is a
+    /// Mac overlay, and the headless origin only has to compile this.
     public static func imageReferences(in markdown: String, folder: String) -> [Image] {
+        #if !canImport(Darwin)
+        return []
+        #else
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else { return [] }
         var found: [Image] = [], seen: Set<String> = []
@@ -50,6 +55,7 @@ public enum MarkdownPage {
             found.append(Image(reference: reference, path: path))
         }
         return found
+        #endif
     }
 
     /// localPath resolves one decoded reference against `folder`, nil unless it names a file inside it. The

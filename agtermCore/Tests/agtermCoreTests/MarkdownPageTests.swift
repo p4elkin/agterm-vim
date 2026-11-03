@@ -43,6 +43,7 @@ struct MarkdownPageTests {
         #expect(html.contains("&lt;\u{301}b&gt;"))
     }
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func inlineAndReferenceImagesInsideTheFolderResolve() throws {
         let shot = try touch("img/shot.png")
         let ref = try touch("ref.jpg")
@@ -52,7 +53,9 @@ struct MarkdownPageTests {
 
         #expect(found == [image("img/shot.png", shot), image("./img/shot.png", shot), image("ref.jpg", ref)])
     }
+    #endif
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func spacedAndNonASCIINamesAreKeyedDecoded() throws {
         let spaced = try touch("my shot.png")
         let accented = try touch("café.png")
@@ -61,6 +64,7 @@ struct MarkdownPageTests {
 
         #expect(found == [image("my shot.png", spaced), image("café.png", accented)])
     }
+    #endif
 
     @Test(arguments: ["https://x.io/a.png", "data:image/png;base64,AA==", "../outside.png", "~/a.png", "/etc/hosts", "img/missing/../../.."])
     func remoteDataAndEscapingReferencesAreLeftOut(_ reference: String) throws {
@@ -74,6 +78,7 @@ struct MarkdownPageTests {
         #expect(MarkdownPage.localPath("file://" + shot, folder: folder) == nil, "the renderer drops file: sources, so none is read")
     }
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func anOutwardSymlinkIsRefusedAndAnInwardOneResolvesToItsTarget() throws {
         let fm = FileManager.default
         let outside = fm.temporaryDirectory.appendingPathComponent("agterm-md-out-\(UUID().uuidString).png").path
@@ -87,7 +92,9 @@ struct MarkdownPageTests {
 
         #expect(found == [image("in.png", shot), image("img/shot.png", shot)])
     }
+    #endif
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func aSymlinkedFolderStillContainsItsOwnPictures() throws {
         let fm = FileManager.default
         let link = fm.temporaryDirectory.appendingPathComponent("agterm-md-link-\(UUID().uuidString)").path
@@ -97,6 +104,7 @@ struct MarkdownPageTests {
 
         #expect(MarkdownPage.imageReferences(in: "![s](img/shot.png)", folder: link) == [image("img/shot.png", shot)])
     }
+    #endif
 
     @Test func limitsAreSet() {
         #expect(MarkdownPage.maxBytes == 4 << 20)

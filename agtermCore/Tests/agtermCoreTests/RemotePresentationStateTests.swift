@@ -273,6 +273,7 @@ struct RemotePresentationStateTests {
         #expect(session.agentIndicator.status == .completed)
     }
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func aMirroredInfoShowsOnARowWithNoneOfItsOwn() throws {
         let (store, session) = try attached()
 
@@ -284,7 +285,9 @@ struct RemotePresentationStateTests {
         #expect(node?.info == "**3** agents")
         #expect(node?.infoHideAfter == 30)
     }
+    #endif
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func anUnparseableMirroredInfoReadsAsNone() throws {
         let (store, session) = try attached()
         store.applyRemoteInfo(PresentationInfo(source: "previous", markdown: false, hideAfter: 0), forSession: session.id)
@@ -294,6 +297,7 @@ struct RemotePresentationStateTests {
 
         #expect(session.mirroredInfo == nil)
     }
+    #endif
 
     @Test func aLocalInfoHidesOriginUpdatesUntilItIsCleared() throws {
         let (store, session) = try attached()

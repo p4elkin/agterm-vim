@@ -151,21 +151,31 @@ struct ControlDispatcherSessionMetadataTests {
         #expect(try JSONDecoder().decode(ControlRequest.self, from: Data(json.utf8)) == request)
     }
 
-    @Test(arguments: [
-        ControlArgs(mode: "set"),
-        ControlArgs(text: "x"),
-        ControlArgs(text: "x", mode: "toggle"),
-        ControlArgs(text: "x", mode: "clear"),
-        ControlArgs(mode: "clear", markdown: true),
-        ControlArgs(mode: "clear", hideAfter: 5),
-        ControlArgs(text: "x", mode: "set", hideAfter: -1),
-        ControlArgs(text: "x", mode: "set", hideAfter: 86_401),
-        ControlArgs(text: "   ", mode: "set"),
-        ControlArgs(text: "a\nb", mode: "set"),
-        ControlArgs(text: "^[a](color: \"pink\")", mode: "set", markdown: true),
-        ControlArgs(text: "^[a](color: red)", mode: "set", markdown: true),
-        ControlArgs(text: String(repeating: "a", count: 513), mode: "set"),
-    ])
+    nonisolated static let sessionInfoRejections: [ControlArgs] = {
+        var all = [
+            ControlArgs(mode: "set"),
+            ControlArgs(text: "x"),
+            ControlArgs(text: "x", mode: "toggle"),
+            ControlArgs(text: "x", mode: "clear"),
+            ControlArgs(mode: "clear", markdown: true),
+            ControlArgs(mode: "clear", hideAfter: 5),
+            ControlArgs(text: "x", mode: "set", hideAfter: -1),
+            ControlArgs(text: "x", mode: "set", hideAfter: 86_401),
+            ControlArgs(text: "   ", mode: "set"),
+            ControlArgs(text: "a\nb", mode: "set"),
+            ControlArgs(text: String(repeating: "a", count: 513), mode: "set"),
+        ]
+        // Only a markdown parse rejects these; on Linux the source is literal text (SessionInfoMarkup).
+        #if canImport(Darwin)
+        all += [
+            ControlArgs(text: "^[a](color: \"pink\")", mode: "set", markdown: true),
+            ControlArgs(text: "^[a](color: red)", mode: "set", markdown: true),
+        ]
+        #endif
+        return all
+    }()
+
+    @Test(arguments: sessionInfoRejections)
     func sessionInfoRejectionNeverReachesTheHost(args: ControlArgs) async {
         let actions = MockControlActions()
         let dispatcher = ControlDispatcher(actions: actions)

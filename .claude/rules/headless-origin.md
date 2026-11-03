@@ -256,6 +256,9 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
 - Over a non-interactive ssh, source `~/.local/share/swiftly/env.sh` and put a real node first on PATH
   (`~/.local/share/mise/installs/node/26/bin`): the mise shim answers `node is not a valid shim` there,
   and every `OpenCodeStatusHookTests` case fails on it (measured 2026-10-03).
+- An upstream file using `AttributedString(markdown:)` compiles on the Mac and fails here: swift-corelibs
+  has no markdown parser (`MarkdownPage.imageReferences`, `SessionInfoMarkup.parseMarkdown`, 2026-11-04).
+  Guard the parse with `#if canImport(Darwin)` and fall back to plain text, as `HudMarkdown` does.
 - An upstream file using `@Observable` or `withObservationTracking` with only `import Foundation` compiles
   on the Mac and fails here: swift-corelibs does not re-export `Observation` (`RemoteReconnect.swift`,
   2026-10-03; `AppStoreAutoFollowTests`, 2026-11-03). Neither does it have `Darwin.exit`; use `Foundation.exit`.
@@ -267,12 +270,16 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
   `ok\n` extra). `.serialized` orders only its own suite.
 - Darwin-only, guarded with `#if canImport(Darwin)`:
   - whole files: `CodexStatusHookTests` (imports Darwin), `QuitReasonTests` (Apple events),
-    `HudMarkdownTests` (the markdown renderer is plain text on Linux), `HudHelperTests` (the Mac-side
+    `HudMarkdownTests` (the markdown renderer is plain text on Linux), `SessionInfoMarkupTests` (the
+    session info line takes markdown source as literal text on Linux, the same fallback), `HudHelperTests` (the Mac-side
     `hud.sh` painter; the headless origin has no surface to paint, and why the suite hangs here is unproved);
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
     four `HudTests` markdown bodies plus the bullet check in `aFramelessPanelIsAsTallAsItsText`
-    (the markdown fallback), `OverlayRedirectSshTests`' abandoned-directory
+    (the markdown fallback), the four `MarkdownPageTests` image-reference tests (`imageReferences` lists
+    none on Linux) `RemotePresentationStateTests`' two mirrored-info tests (markdown info) and the two markdown cases of
+    `ControlDispatcherSessionMetadataTests.sessionInfoRejectionNeverReachesTheHost`,
+    `OverlayRedirectSshTests`' abandoned-directory
     sweep (its fixture sets a creation date, which Linux cannot), `SocketClientTests`' two
     held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere), and the two
     `RebasedMirrorCleanupTests` that spell a path through `/private` (a Darwin symlink).
