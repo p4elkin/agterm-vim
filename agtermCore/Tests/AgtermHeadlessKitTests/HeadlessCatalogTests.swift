@@ -58,7 +58,7 @@ struct HeadlessCatalogTests {
     @Test(arguments: [
         "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit", "session.overlay.copy",
         "session.overlay.text", "pick.open", "pick.result", "pick.cancel",
-        "session.flag", "session.tint", "session.select", "session.reveal", "session.focus", "session.background",
+        "session.flag", "session.tint", "session.info", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
         "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",

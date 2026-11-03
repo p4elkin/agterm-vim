@@ -86,6 +86,7 @@ enum HeadlessRequests {
             $0.mode = "set"
             $0.tint = "red"
         },
+        request(.sessionInfo, target: target) { $0.mode = "clear" },
         request(.sessionCollapse, target: target),
         request(.sessionExpand, target: target),
         request(.sessionCompanionNew, target: target),

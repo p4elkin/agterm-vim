@@ -41,13 +41,16 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let rebasedView: RebasedView?
     public let rebasedProject: String?
     public let rebasedOnClose: String?
+    /// clicked marks a page opened by a terminal click (`HtmlOverlay.clicked`); the dispatcher never sets it.
+    public let clicked: Bool
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
                 navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false,
                 persistent: Bool = false, browse: Bool = false, rebased: Bool = false, rebasedDiff: RebasedDiff? = nil,
                 rebasedView: RebasedView? = nil, rebasedProject: String? = nil, rebasedOnClose: String? = nil,
-                points: OverlayPointSize = OverlayPointSize()) {
+                points: OverlayPointSize = OverlayPointSize(), clicked: Bool = false) {
+        self.clicked = clicked
         self.command = command
         self.cwd = cwd
         self.wait = wait

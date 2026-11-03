@@ -44,6 +44,7 @@ class MockControlActionsBase {
         case sessionPark(target: String?, window: String?, ControlToggleMode)
         case flaggedMove(target: String?, window: String?, anchor: String, FlaggedOrderPlacement)
         case sessionContext(target: String?, window: String?, context: String?)
+        case sessionInfo(target: String?, window: String?, info: SessionInfo?)
         case sessionTint(target: String?, window: String?, ControlTintUpdate)
         case workspaceTint(target: String?, window: String?, ControlTintUpdate)
         case markSessionSeen(target: String?, window: String?)
@@ -428,6 +429,11 @@ class MockControlActionsBase {
 
     func setSessionContext(_ target: String?, window: String?, context: String?) -> ControlResponse {
         calls.append(.sessionContext(target: target, window: window, context: context))
+        return ControlResponse(ok: true)
+    }
+
+    func setSessionInfo(_ target: String?, window: String?, info: SessionInfo?) -> ControlResponse {
+        calls.append(.sessionInfo(target: target, window: window, info: info))
         return ControlResponse(ok: true)
     }
 

@@ -167,20 +167,24 @@ extension AppStore {
 
     private func htmlOverlayNode(_ page: HtmlOverlay, pane: OverlayPane?, zoom: Double?, hidden: Bool,
                                  remote: Bool = false) -> ControlHtmlOverlayNode {
-        var file: String?, cwd: String?, url: String?, image: String?
+        var file: String?, cwd: String?, url: String?, image: String?, markdown: String?, text: ControlTextOverlayNode?
         switch page.source {
         case .file(let path, let grantRoot): (file, cwd) = (path, grantRoot)
         case .url(let address): url = address.absoluteString
         case .replica(let path): file = path
         case .image(let path): image = path
+        case .markdown(let path): markdown = path
+        case .text(let path, let line): text = ControlTextOverlayNode(file: path, language: TextPage.language(forFile: path), line: line)
         }
-        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, image: image, state: page.loadState.rawValue,
+        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, image: image, markdown: markdown, text: text,
+                                      state: page.loadState.rawValue,
                                       error: page.loadError, page: page.current?.page, title: page.current?.title,
                                       canGoBack: page.current?.canGoBack, canGoForward: page.current?.canGoForward,
                                       navigation: page.navigation ? true : nil, javascript: page.javascript,
                                       chromeless: page.chromeless, zoom: zoom, id: page.id.uuidString,
                                       persistent: page.persistent, browse: page.browse, hidden: hidden ? true : nil,
-                                      remote: remote ? true : nil, replica: page.replicaOf == nil ? nil : true)
+                                      remote: remote ? true : nil, replica: page.replicaOf == nil ? nil : true,
+                                      clicked: page.clicked ? true : nil)
     }
 
     private func htmlOverlay(_ sessionID: UUID, pane: OverlayPane?) -> Result<HtmlOverlay, HtmlOverlayCommandFailure> {

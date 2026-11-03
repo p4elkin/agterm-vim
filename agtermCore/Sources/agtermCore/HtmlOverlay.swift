@@ -14,10 +14,28 @@ public enum HtmlSource: Equatable, Sendable {
     /// image is a picture shown on a page of its own, embedded in the page's HTML so the page gets no file
     /// grant, theme or bridge. It never travels to another Mac.
     case image(path: String)
+    /// markdown is a markdown file the app renders with its pictures embedded: no file grant or bridge,
+    /// but themed.
+    case markdown(path: String)
+    /// text is a source, config or log file shown read-only, scrolled to `line` when one is set: no file
+    /// grant, bridge, link or navigation, but themed.
+    case text(path: String, line: Int?)
 
     /// imagePath is the picture an `.image` page shows, nil for every other source.
     public var imagePath: String? {
         if case .image(let path) = self { return path }
+        return nil
+    }
+
+    /// markdownPath is the file a `.markdown` page renders, nil for every other source.
+    public var markdownPath: String? {
+        if case .markdown(let path) = self { return path }
+        return nil
+    }
+
+    /// textPath is the file a `.text` page shows, nil for every other source.
+    public var textPath: String? {
+        if case .text(let path, _) = self { return path }
         return nil
     }
 
@@ -104,6 +122,9 @@ public struct HtmlOverlay: Equatable, Sendable {
     public let persistent: Bool
     /// browse lets a URL page's main frame leave its original origin for any HTTP(S) site.
     public let browse: Bool
+    /// clicked marks a page a terminal click opened, which `AppStore.releaseHiddenClickedPage` lets a later click
+    /// replace. Local: presentation frames do not carry it.
+    public let clicked: Bool
     /// replicaOf is the page id on the Mac that opened the page, set only on a page shown here for it.
     public let replicaOf: UUID?
     public var loadState: HtmlLoadState = .loading
@@ -117,8 +138,10 @@ public struct HtmlOverlay: Equatable, Sendable {
     public var reloadTarget = HtmlReloadTarget.original
 
     public init(source: HtmlSource, navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false,
-                persistent: Bool = false, browse: Bool = false, id: UUID = UUID(), replicaOf: UUID? = nil) {
+                persistent: Bool = false, browse: Bool = false, clicked: Bool = false, id: UUID = UUID(),
+                replicaOf: UUID? = nil) {
         self.id = id
+        self.clicked = clicked
         self.replicaOf = replicaOf
         self.source = source
         self.navigation = navigation
@@ -166,7 +189,7 @@ extension HtmlOverlay {
         switch source {
         case .file(let path, _): return URL(fileURLWithPath: current?.page ?? path).lastPathComponent
         case .replica(let path): return URL(fileURLWithPath: current?.page ?? path).lastPathComponent
-        case .image(let path): return URL(fileURLWithPath: path).lastPathComponent
+        case .image(let path), .markdown(let path), .text(let path, _): return URL(fileURLWithPath: path).lastPathComponent
         case .url(let url):
             let shown = browse ? current.map { URL(string: $0.page).flatMap(HtmlOrigin.init)?.display ?? $0.page } : nil
             return shown ?? HtmlOrigin(url)?.display ?? url.absoluteString
@@ -277,6 +300,11 @@ public enum HtmlNavigationDecision: Sendable {
 /// openExternal requires app confirmation because WebKit reports synthetic clicks as link activations.
 public enum HtmlNavigationPolicy {
     public static func decide(_ action: HtmlNavigationAction, overlay: HtmlOverlay) -> HtmlNavigationDecision {
+        // ahead of the shared exits: a text page shows only the document the app built, so not even a
+        // user-activated web link or another about: address leaves it
+        if case .text = overlay.source {
+            return action.target == .mainFrame && action.url.absoluteString == "about:blank" ? .allow : .cancel
+        }
         let scheme = action.url.scheme?.lowercased()
         let web = scheme == "http" || scheme == "https"
         if action.target == .newWindow { return web && action.userActivated ? .openExternal : .cancel }
@@ -291,6 +319,10 @@ public enum HtmlNavigationPolicy {
             let own = action.url.host?.lowercased() == overlay.id.uuidString.lowercased()
             return scheme == HtmlSource.replicaScheme && own ? .allow : .cancel
         case .image:
+            return .cancel
+        case .markdown:
+            return web && action.userActivated ? .openExternal : .cancel
+        case .text:
             return .cancel
         case .url(let original):
             guard web else { return .cancel }

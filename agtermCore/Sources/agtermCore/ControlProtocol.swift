@@ -28,6 +28,7 @@ public enum Command: String, Codable, Sendable {
     case sessionFlag = "session.flag"
     case sessionPark = "session.park"
     case sessionContext = "session.context"
+    case sessionInfo = "session.info"
     case sessionTint = "session.tint"
     case sessionSeen = "session.seen"
     case sessionRestore = "session.restore"
@@ -524,6 +525,13 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     public var browse: Bool?
     /// image is the absolute path of the picture `session.overlay.open --image` shows instead of running `command`.
     public var image: String?
+    /// markdownFile is the absolute path of the markdown file `session.overlay.open --markdown` renders; its
+    /// own field because `markdown` is the HUD's flag.
+    public var markdownFile: String?
+    /// textFile is the absolute path of the file `session.overlay.open --text` shows read-only, taken literally.
+    public var textFile: String?
+    /// line is the line, from 1, a `textFile` page opens scrolled to and marks.
+    public var line: Int?
     /// value is the answer `session.overlay.submit` hands back from a page, empty being a real answer, or
     /// the initial text of an `ask.open` input field.
     public var value: String?
@@ -578,7 +586,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
                 close: Bool? = nil, fontSize: Double? = nil, autoSize: Bool? = nil, mru: Bool? = nil,
                 html: String? = nil, current: Bool? = nil, navigation: Bool? = nil, url: String? = nil,
                 javascript: Bool? = nil, value: String? = nil, page: String? = nil, chromeless: Bool? = nil,
-                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, image: String? = nil, rebased: Bool? = nil, diff: String? = nil,
+                persistent: Bool? = nil, attach: String? = nil, browse: Bool? = nil, image: String? = nil, markdownFile: String? = nil, textFile: String? = nil,
+                line: Int? = nil, rebased: Bool? = nil, diff: String? = nil,
                 olderThanDays: Int? = nil, dryRun: Bool? = nil,
                 workingTree: Bool? = nil, file: String? = nil, project: String? = nil, onClose: String? = nil, overlay: String? = nil,
                 cancelButton: String? = nil, input: String? = nil,
@@ -693,6 +702,9 @@ public struct ControlArgs: Codable, Sendable, Equatable {
         self.onClose = onClose
         self.overlay = overlay
         self.image = image
+        self.markdownFile = markdownFile
+        self.textFile = textFile
+        self.line = line
         self.cancelButton = cancelButton
         self.input = input
         self.placeholder = placeholder
@@ -981,12 +993,22 @@ public enum OverlayHtmlError {
     public static let persistentRequiresURL = "session.overlay.open: --persistent requires --url"
     public static let persistentUnavailable = "persistent browser storage is not available"
     public static let browseRequiresURL = "session.overlay.open: --browse requires --url"
-    public static let oneSource = "session.overlay.open takes one of a command, --html, --url or --image"
+    public static let oneSource = "session.overlay.open takes one of a command, --html, --url, --image, --markdown or --text"
     /// imageOptions: a picture page runs no script, navigates nowhere and reads only its own file.
     public static let imageOptions =
         "session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse"
     public static let imageNotAbsolute = "session.overlay.open: --image must be an absolute path"
     public static let imageType = "session.overlay.open: --image must be a png, jpg, jpeg, gif or webp file"
+    public static let markdownOptions =
+        "session.overlay.open: --markdown takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse"
+    public static let markdownNotAbsolute = "session.overlay.open: --markdown must be an absolute path"
+    public static let markdownType = "session.overlay.open: --markdown must be a .md or .markdown file"
+    public static let textOptions =
+        "session.overlay.open: --text takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse"
+    public static let textNotAbsolute = "session.overlay.open: --text must be an absolute path"
+    public static let textType = "session.overlay.open: --text must be a source, config, text or log file"
+    public static let lineWithoutText = "session.overlay.open: --line requires --text"
+    public static let lineNotPositive = "session.overlay.open: --line must be 1 or more"
     public static let companionNeedsPage = "a page companion needs --html or --url"
     /// presenter: a page is shown on this Mac, so it is refused while another Mac presents the session.
     public static let presenter = "a viewer presents this session: an html overlay would open where nobody sees it"
@@ -994,6 +1016,10 @@ public enum OverlayHtmlError {
     public static let notHtml = "the overlay is not an html page"
     public static let navigation = "session.overlay.navigate requires back, forward, browser or finder"
     public static let finderRequiresFile = "show in Finder requires a file page"
+    /// markdownInOverlay: a markdown page is rendered by the app, so a browser would get the raw file instead.
+    public static let markdownInOverlay = "a markdown page opens only in its overlay"
+    /// textInOverlay: a text page is built by the app, so a browser would get the raw file instead.
+    public static let textInOverlay = "a text page opens only in its overlay"
     /// remoteFile: a file page shown for another Mac has no file here to reveal or open.
     public static let remoteFile = "the page's file is on another Mac"
     /// remotePage: Finder and Browser are refused for a file page shown on the presenting Mac.

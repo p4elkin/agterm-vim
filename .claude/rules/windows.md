@@ -175,10 +175,12 @@ session drag are out of scope.
 - `window.zoom` uses `NSWindow.zoom`: visible-frame maximize, not native fullscreen. The control toggle
   requires an open window. Read back `isZoomed` on `window.list`.
 - `WindowControlArea` handles titlebar dragging and double-click because SwiftUI titlebar views do not
-  receive native handling. Set `mouseDownCanMoveWindow = false`; double-click reads live
-  `AppleActionOnDoubleClick`: Zoom/Fill zooms, Minimize miniaturizes, Do Nothing does nothing, and an absent
-  key defaults to Zoom. `AGTERM_UITEST_DOUBLECLICK_ACTION` overrides via environment because launch
-  arguments hit FB11763863. Decorative titlebar regions disable hit testing; buttons remain above them.
+  receive native handling. Keep `mouseDownCanMoveWindow = false` and the hit-testable background shape;
+  the flag alone does not exclude the header from the window server's title-bar drag region (#856).
+  Double-click reads live `AppleActionOnDoubleClick`: Zoom/Fill zooms, Minimize miniaturizes,
+  Do Nothing does nothing, and an absent key defaults to Zoom.
+  `AGTERM_UITEST_DOUBLECLICK_ACTION` overrides via environment because launch arguments hit FB11763863.
+  Decorative titlebar regions disable hit testing; buttons remain above them.
 - `window.fullscreen` uses `toggleFullScreen`, a distinct native Space. GUI surfaces are the palette,
   `BuiltinAction.toggleFullscreen` with Ctrl-Command-F through the key monitor, AppKit's own injected
   View menu item, and the green button. Control resolves an open ID; read back the `.fullScreen` style mask.
@@ -231,6 +233,11 @@ session drag are out of scope.
 - The host answers one client at a time.
   A connected client waits up to 30 seconds for its turn before falling back to a bare attach,
   so a long enough queue of creations still yields an `app` pane.
+- After a confirmed or uncertain creation, a `session new --command` pane (`client NAME --ends-pane`)
+  attaches with a "session is gone" guard in place of its payload (`Client.attachArgv`): a command that
+  ended during the handoff ends the pane instead of leaving a login shell, and its output is lost
+  (`docs/backlog/fast-live-command-loses-output-in-host-handoff.md`). A replay, a restart and a plain shell
+  attach bare, which recreates their shell.
 - Fresh shells and Re-run never stop a live host.
 - The host's files live under `/tmp`, where macOS deletes a regular file after three days untouched
   (`/usr/libexec/tmp_cleaner`; sockets stay). The host touches its lock, log and pidfile at start and

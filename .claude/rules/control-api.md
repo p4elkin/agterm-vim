@@ -170,7 +170,7 @@ renumbering. Do not reintroduce a count anywhere.
 - `session.new`, `.duplicate`, `.companion.new`, `.companion.page`, `.companion.duplicate`, `.companion.page.attach`, `.collapse`, `.expand`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
   `.split.close`, `.swap`, `.lead`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
-  `.flag`, `.tint`, `.park`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`,
+  `.flag`, `.tint`, `.info`, `.park`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`,
   `.overlay.resize`, `.overlay.reload`, `.overlay.navigate`, `.overlay.result`, `.overlay.submit`,
   `.overlay.copy`, `.overlay.text`, `.overlay.job.run`, `.overlay.page.serve`, `.overlay.hide`, `.overlay.show`,
   `.overlay.toggle`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
@@ -584,7 +584,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ask and a remote PROGRAM reservation are not hideable: an empty scope answers `no overlay`, a reserved one
   `overlay is shown on another Mac`. A page shown on the presenting Mac is in scope: the request goes to that
   Mac and the reply does not wait for it (Remote sessions owns the sequence rule). Opening into a hidden slot is refused `overlay hidden`, a HUD open
-  checking the session slot. Close or replace clears the bit; metadata updates and a `--wait` exit keep it.
+  checking the session slot; a terminal click over a hidden clicked page is the one replacement (link bullets below). Close or replace clears the bit; metadata updates and a `--wait` exit keep it.
   Occupancy predicates keep their meaning for lifecycle, results, `--block`, page lookup and reservations;
   focus, zoom, layout, deck gates, dashboard covers and font routing read the visible layer in
   `Session+OverlayVisibility` (`coverOverlayVisible`, `programOverlayVisible`, `htmlOverlayVisible`,
@@ -736,25 +736,70 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `openSessionOverlay` refuses. The HUD and zoom checks come first because the store would ACCEPT those
   opens: one closes the HUD for good, the other shows nothing. A HUD, a program overlay and the quick
   terminal never route to the overlay.
+- The four click paths mark their pages `HtmlOverlay.clicked` (read back as `htmlOverlays[].clicked`; the
+  dispatcher never sets it, presentation frames never carry it), and a click replaces the session-wide page
+  only when it is marked and its `overlayHidden` bit is set: `AppStore.releaseHiddenClickedPage`, which also leaves a
+  slot `pageBelongsRemote` hands to the presenter. The read-back's `hidden` is `overlayOutOfSight` and a remote page
+  keeps its marker, so `clicked` plus `hidden` does not by itself mean the next click replaces it. Each path releases after every check that could still refuse its
+  open (the probe, the HUD and zoom recheck, the saved store for a web link), so a refused click keeps the old
+  page. A shown page, a hidden program and any CLI page keep the browser fallback.
 - libghostty also detects plain paths and hands them over as typed: absolute, `~/`, or a relative path it
   resolved because it exists. `LinkPolicy.isBarePath` takes them literally, never URL-parsed, so `%`, `#`
   and spaces stay in the name. A local path, bare or `file://`, with an `imageExtensions` extension routes to
-  `ControlServer.openImageLink` (the same HUD and zoom guards) and is revealed when that refuses; any other
-  local path is revealed. A pane of a session with `remoteHost` is `.remotePane`: its bare paths name files
+  `ControlServer.openImageLink` (the same HUD and zoom guards) and is revealed when that refuses; one with a
+  `markdownExtensions` extension routes to `ControlServer.openMarkdownLink` the same way, at the mode's size, 95 in
+  browser mode (`Route.markdown` carries it), and one `TextPage.isEligible` accepts routes to `openTextLink` the same
+  way; any other local path is revealed. A pane of a session with `remoteHost` is `.remotePane`: its bare paths name files
   on the far Mac and are ignored, while its scratch stays `.scratch` because that shell is local.
+- libghostty keeps a `:line[:column]` suffix in the path it hands over and resolves a relative path only when that
+  exact path exists, so `./main.go:42` arrives raw. `LinkPolicy.locations` lists the candidates for such a link, the
+  literal path first so a file named with a colon wins, then the path without the suffix; a relative link is joined to
+  the clicking pane's session cwd before any scheme parse, and a first segment with a colon is never a directory, so
+  `http://localhost:3000` stays a web link. The scratch, quick and overlay terminals pass no cwd. Every candidate has
+  passed `guardedLocalPath` (absolute, no `//`, no automount root) and a remote pane offers none, so a refused path
+  is never stat'ed. `LinkOpener` checks them off the main actor and routes the first that exists; with none on disk
+  the link keeps its typed route.
+- `LinkPolicy.ClickIntent` reads the chord. ⌘⇧ asks for the browser as before; ⌘⌥ reveals the file a local route
+  names, after that guarded routing (`Route.localFile`), from any origin, HUD panels included, and leaves a web link
+  to its web route; under mouse capture the chord is ⌘⌥⇧. libghostty matches a link only on ⌘ alone, so `linkMods`
+  drops Shift or Option for the hover, the press and an undragged release. Every drag event keeps Option, and so does
+  a reveal release after any drag event (`linkPressDragged`): libghostty redraws a rectangle selection from the mods
+  of the release's position report while the button is down. A dragged ⌘⇧ release stays normalized, Shift setting no
+  shape. Accepted: a ⌘⌥ click that sends any drag event reveals nothing, and when the program captures Shift it
+  receives ⌘⇧ for a ⌘⌥⇧ click, since the Option strip is not undone. The chord is a gesture modifier with no control
+  twin: `overlay open --text` and Finder reveal are already reachable. `wantsBrowser` stays public for the
+  agterm-linux fork's caller.
 - An image page (`HtmlSource.image`, `--image`) embeds the file as a data URI in an HTML string, so it gets no
   file grant, theme or bridge, and `presentationSource` has no remote form for it, which makes a presented
-  session refuse it through `pageBelongsRemote`. `ImageProbe.read` opens the path once and judges that
+  session refuse it through `pageBelongsRemote`. `BoundedFile.read` opens the path once and judges that
   descriptor (`fstat`): a symlink is measured at its target, and a non-regular file, an offloaded iCloud
   placeholder or one over 64 MB is refused before a byte is read. Only a PNG, JPEG, GIF or WebP signature
   (`ImagePage.mimeType(sniffing:)`) reaches ImageIO, and a header over `ImagePage.maxPixels` is refused, since
   a 560 KB PNG measured promising 144 MP. A click and a page build read off the main actor: a click rechecks the
   HUD, zoom and slot after the read and opens through `openImageOverlay`, never the synchronous probe again,
-  and a page drops a read that a close or newer reload overtook (`imageLoad`). The control path stays
+  and a page drops a read that a close or newer reload overtook (`textLoad`). The control path stays
   synchronous, its caller already holding full control, so a file on slow storage stalls the app there.
   With no size given the panel is sized once from `ImagePage.points` against the session's
   `hudPaneFrames.detail` at its window's backing scale; a later window resize does not refit. SVG is excluded
   because it is a document that can carry script.
+- A markdown page (`HtmlSource.markdown`, `--markdown`, wire `markdownFile` since `markdown` is the HUD's flag) is
+  built from text like an image page: no file grant, no bridge, no remote form, but it is themed. `MarkdownProbe`
+  reads the file through `BoundedFile` (the descriptor check `ImageProbe` shares) and embeds pictures that
+  `MarkdownPage.imageReferences` contains in the file's folder after resolving symlinks, each canonical file once
+  (`MarkdownPage.Embedded`), within a total byte and pixel budget. The renderer, bundled markdown-it and
+  highlight.js plus `render.js` (`MarkdownAssets`), runs as a user script in its own content world with page
+  JavaScript off; its image rule emits only app-embedded data URIs, so no authored source reaches WebKit, and it
+  strips every link but http(s) and fragments, since `about:` passes the navigation policy. The click and the
+  control path check only the descriptor; the page load reads pictures, under the shared `textLoad` counter.
+- A text page (`HtmlSource.text`, `--text` with `--line`, wire `textFile` and `line`) is built from text too and
+  themed, but has no links at all: its arm of `HtmlNavigationPolicy` runs before the shared new-window and `about`
+  exits and allows only a main-frame `about:blank`. `TextProbe` reads through `BoundedFile` and refuses invalid UTF-8
+  and NUL bytes in the check as well as the load, so a binary click is revealed. `TextPage.html` holds the escaped text
+  in a hidden `div` (a parser drops a newline after `<pre>`, shifting every line) under a CSP that loads nothing;
+  `text.js` writes it through `textContent`, and highlight.js's escaped value, chosen by the app's extension and
+  basename map up to `maxHighlightBytes`, is the only `innerHTML` it assigns. Markdown, HTML and SVG are not text
+  pages. `--text` is taken literally, never suffix-parsed; read back `htmlOverlays[].text` with the file, the mapped
+  language and the requested line.
 - `browser.clear` removes all website data from the saved store and keeps its id. App-global: a target or
   `--window` is refused. It answers ok without creating anything when no profile exists, and replies only
   after WebKit reports the removal done. It is refused with `N persistent page(s) still open` while any
@@ -838,8 +883,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `zmx.attach.group`, `dashboard` and `recent.open` keep their ids and still land in the page's window, and `hooks.*`, which
   refuse any window, and `browser.clear`, `browser.links`, `recent.list` and `recent.clear` get none. `sidebar` and `sidebar.mode` read no window, so a page drives the frontmost one.
   `zmx.present`, `session.overlay.job.run`, `session.overlay.page.serve` and `zmx.reset` are refused: a stream hand-off and post-reply work do not fit one request and reply.
-- The theme, adapter and helper scripts install as ONE set: removing user scripts removes them all, so a
-  separate install would lose the adapter at the next theme change. Release unregisters the handlers;
+- The theme, markdown renderer, adapter and helper scripts install as ONE set: removing user scripts removes them
+  all, so a separate install would lose the adapter or the renderer at the next theme change. Theme styling
+  (`styled`) and the bridge (`bridged`) are separate eligibilities: a markdown or text page wears the theme with no bridge. Release unregisters the handlers;
   reload keeps them.
 - `HtmlPageOutcomes` keys every page's selector outcome by page id, outside the slot, so a caller blocked
   on a page reads it after the page and its session are gone. A successful open registers `pending`;
@@ -1276,6 +1322,25 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   emits `tree.changed` when the shown value changed; re-setting the same value does neither. The tree's
   `context` is the shown value: an attached row also shows its origin's context, and the Remote sessions
   section owns that rule.
+- `session.info set TEXT|clear` sets one line drawn under the session's sidebar row ([[sidebar]] owns the
+  drawing). `set` takes optional `markdown` and `hideAfter`; `clear` refuses all three and is the explicit
+  clearing form. Each successful set replaces the whole value: an omitted `markdown` means plain text and an omitted
+  `hideAfter` cancels an earlier expiry. `SessionInfo.make` validates and parses in the dispatcher, so a
+  rejected set changes neither the line nor its deadline. The 512-byte cap is on the SOURCE, markup
+  included. Visible text must be one non-blank line with no control character, checked after entities
+  decode. Foundation drops an unknown `^[...]` attribute key and the fragment renders unstyled; lexing
+  the source to refuse it would mean a second parser beside Foundation's.
+- `hideAfter` reuses the HUD's validation and ceiling. Every successful set calls
+  `ControlServer.armInfoAutoHide`: a positive duration restarts the interval, even with identical text,
+  because the expected caller refreshes its line to keep it alive; zero or omission cancels it.
+  It carries a per-session revision like `armHudAutoHide`. The clock is elapsed lifetime and
+  runs while the display setting hides the line. `Session.onInfoDiscarded` cancels it at session, workspace
+  and window teardown. A soft close drops a timed line in `AppStore.closeTimedInfo`, so undo
+  never brings back a line whose time ran out.
+- The line is runtime-only: never snapshotted, absent after relaunch, not copied by duplicate. A set
+  does not save. It emits `tree.changed` only when the effective value changes. Read back `info` (the
+  source), `infoMarkdown` and `infoHideAfter` (configured seconds, never a countdown), all omitted
+  when there is no line, and populated from `effectiveInfo`.
 
 ## Message bus
 
@@ -1976,7 +2041,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - `ZmxLaunch.wrapsLocally` is the one gate both surface factories read, so a remote pane is never wrapped
   in a local daemon. Wrapping buys nothing for a session that never restores, and under live mode window
   close would drop the local client while the daemon kept ssh connected with no UI showing it.
-- Presentation carries status, context, the session's name, notifications, the HUD and the layout of attached panes. Such a program runs
+- Presentation carries status, context, the session's name, the info line, notifications, the HUD and the layout of attached panes. Such a program runs
   on the origin and reaches the origin's socket, so without a stream the viewer sees terminal bytes only.
   Every attach opens one: the viewer runs `ssh -T <host> agtermctl zmx present <session>`, whose far end
   bridges stdio to a `zmx.present` connection. The far-side `agtermctl` PATH precondition above applies.
@@ -2042,6 +2107,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
   session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count
   alone, as here.
+- The info line follows the same local, mirrored and effective split (`Session.info`, `mirroredInfo`,
+  `effectiveInfo`), with a local line winning and `clear` revealing the origin's. The origin sends its
+  LOCAL line's source, markdown flag and configured `hideAfter` in the `info` frame and the snapshot. The
+  viewer parses the source again and arms no timer: expiry is the origin's, and its clear reaches the
+  viewer as a nil frame. Stream end clears only the mirror.
 - A mirrored HUD carries the origin's REMAINING time, and the viewer counts that down on its own clock.
   The two expiries are not synchronized, so the panels can close a moment apart; the origin's withdrawal
   frame closes the viewer's early. A mirrored HUD yields to a HUD or program overlay this Mac's own caller
@@ -2049,8 +2119,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - Only a `notify` command is mirrored. A terminal notification (OSC 9/777) already reaches the viewer in
   the pane's bytes and its libghostty raises it, so mirroring it would show it twice. Each app records
   its own `notify` event. Notifications are not part of the snapshot: one raised while the stream is down
-  is never shown on the viewer, where status, context and HUD are restored on reconnect.
-- When the stream ends, the mirrored status, context and HUD are cleared, since nothing would ever clear them. The
+  is never shown on the viewer, where status, context, info line and HUD are restored on reconnect.
+- When the stream ends, the mirrored status, context, info line and HUD are cleared, since nothing would ever clear them. The
   client retries after 1, 2, 4, 8, 16 then 30 seconds, moves to a 300-second cap after eight failures in a
   row, and never gives up; 30 seconds without a frame counts as a failure against the origin's 10-second
   ping. One warning per failure episode or changed reason. A soft close stops the client and undo starts a
@@ -2096,7 +2166,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `session.overlay.job.run`, which is the claim itself: one winner against a 30-second launch deadline,
   after which a late claim spawns nothing. The helper runs the program under the ssh terminal, in the cwd a
   local overlay would get and with agterm's session variables over the environment and `TERM` the ssh
-  session gave the helper, and reports `started` and one outcome. The first outcome
+  session gave the helper, and reports `started` and one outcome. For `TERM=xterm-ghostty` the helper fills
+  an absent or empty `TERMINFO` from the database beside its resolved CLI, when one is found
+  (`OverlayJobRunner.terminalEnvironment`), since an ssh-spawned overlay bypasses libghostty's terminfo setup. The first outcome
   wins: the exit code where a local overlay keeps one, or `launch-failed` (refused, or nothing claimed it in
   time), `canceled` (closed, or the ssh went away) or `unknown` (the helper went away, or never reported
   starting), which does not prove the program stopped. A refused open ends `launch-failed`; nothing falls back to a local overlay, since the caller's

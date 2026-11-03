@@ -138,37 +138,7 @@ private struct MountedPage: View {
 }
 
 @MainActor
-private final class FakeBrowser: HtmlBrowser {
-    var prompts: [URL] = []
-    var answers: [(Bool) -> Void] = []
-    var dismissals = 0
-    var opened: [URL] = []
-    var available = true
-
-    func confirm(_ url: URL, over _: NSView, _ done: @escaping (Bool) -> Void) -> (() -> Void)? {
-        prompts.append(url)
-        answers.append(done)
-        return { self.dismissals += 1 }
-    }
-
-    func open(_ url: URL) -> Bool {
-        guard available else { return false }
-        opened.append(url)
-        return true
-    }
-}
-
-@MainActor
-private final class FakeSharing: HtmlSharing {
-    var revealed: [URL] = []
-    var copied: [String] = []
-
-    func reveal(_ url: URL) { revealed.append(url) }
-    func copy(_ text: String) { copied.append(text) }
-}
-
-@MainActor
-final class HtmlOverlayRegistryTests: XCTestCase {
+final class HtmlOverlayRegistryTests: HtmlPageTestCase {
     private final class StubSurface: PaneRoleMutableSurface {
         let paneToken: String
         init(_ token: String) { paneToken = token }
@@ -178,28 +148,12 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         func setPaneRole(_: SwappablePaneRole) {}
     }
 
-    private var directory: URL!
-    private var pages: URL!
     private var servers: [LoopbackServer] = []
     private var profiles: [BrowserProfile] = []
     private var removal: (@MainActor (WKWebsiteDataStore) async -> Void)!
-    private var store: AppStore!
-    private var session: Session!
-    private let registry = HtmlOverlayRegistry.shared
-    private let browser = FakeBrowser()
-    private let sharing = FakeSharing()
 
     override func setUp() async throws {
-        // not $TMPDIR: WebContent reads the app's temp directory whatever the grant, so no grant test could fail there
-        directory = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("agterm-html-reg-\(UUID().uuidString)")
-        pages = directory.appendingPathComponent("pages")
-        try FileManager.default.createDirectory(at: pages, withIntermediateDirectories: true)
-        store = AppStore(persistence: PersistenceStore(directory: directory.appendingPathComponent("state")))
-        let workspace = store.addWorkspace(name: "work")
-        session = try XCTUnwrap(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
-        registry.install()
-        registry.browser = browser
-        registry.sharing = sharing
+        try await super.setUp()
         removal = registry.removeWebsiteData
         useProfile("profile")
         try write("a.html", #"<title>A</title><script src="s.js"></script><a href="b.html">b</a>"#)
@@ -209,15 +163,13 @@ final class HtmlOverlayRegistryTests: XCTestCase {
 
     override func tearDown() async throws {
         servers.forEach { $0.stop() }
-        registry.browser = SystemBrowser()
-        registry.sharing = SystemHtmlSharing()
-        registry.setZoom(1)
-        registry.dispatch = nil
-        store.closeSession(session.id)
+        try await super.tearDown()
+    }
+
+    override func afterSessionClose() async throws {
         registry.removeWebsiteData = removal
         for profile in profiles { try await TestBrowserStore.remove(profile) }
         profiles = []
-        try? FileManager.default.removeItem(at: directory)
     }
 
     func testAPageIsCreatedOncePerIdentityAndReleasedByTheModel() throws {
@@ -1607,16 +1559,6 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         return recorded
     }
 
-    private func waitForScript(_ script: String, in view: WKWebView, _ matches: @escaping (String) -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(10)
-        while true {
-            let value = try await view.evaluateJavaScript("String(\(script))") as? String ?? ""
-            if matches(value) { return }
-            guard Date() < deadline else { return XCTFail("\(script) never matched, last: \(value)") }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-    }
-
     private func present(_ view: NSView) throws -> NSWindow {
         let window = try host(view)
         window.makeKeyAndOrderFront(nil)
@@ -1660,8 +1602,6 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         try await waitFor("title \(title)") { view.title == title }
     }
 
-    private var current: HtmlOverlay? { session.htmlOverlay ?? session.paneOverlay(.left)?.html }
-
     private func snapshotPixel(file: String) async throws -> NSColor {
         let page = registry.page(for: try open(file: file), store: store)
         let window = try host(page.webView)
@@ -1670,34 +1610,12 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         return try await bottomPixel(page.webView)
     }
 
-    private func host(_ view: NSView) throws -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
-                              backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        view.frame = try XCTUnwrap(window.contentView).bounds
-        window.contentView?.addSubview(view)
-        return window
-    }
-
     private func bottomPixel(_ view: WKWebView) async throws -> NSColor {
         let image = try await view.takeSnapshot(configuration: nil)
         let rep = try XCTUnwrap(image.representations.first as? NSBitmapImageRep
             ?? image.cgImage(forProposedRect: nil, context: nil, hints: nil).map(NSBitmapImageRep.init(cgImage:)))
         let color = try XCTUnwrap(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh - 10))
         return color.usingColorSpace(.sRGB) ?? color
-    }
-
-    private func variable(_ name: String, in view: WKWebView) async throws -> String? {
-        let value = try await view.evaluateJavaScript("getComputedStyle(document.documentElement).getPropertyValue('\(name)').trim()")
-        return value as? String
-    }
-
-    private func waitForVariable(_ name: String, _ expected: String, in view: WKWebView) async throws {
-        let deadline = Date().addingTimeInterval(10)
-        while try await variable(name, in: view) != expected {
-            guard Date() < deadline else { return XCTFail("\(name) never became \(expected)") }
-            try await Task.sleep(for: .milliseconds(50))
-        }
     }
 
     private func scriptEffects(_ view: WKWebView) async throws -> String? {
@@ -1711,15 +1629,6 @@ final class HtmlOverlayRegistryTests: XCTestCase {
     private func write(_ name: String, _ body: String) throws {
         try "<!doctype html><html><body>\(body)</body></html>"
             .write(to: pages.appendingPathComponent(name), atomically: true, encoding: .utf8)
-    }
-
-    private func writePNG(_ name: String, width: Int) throws -> String {
-        let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: 10,
-                                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
-        let url = pages.appendingPathComponent(name)
-        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
-        return url.path
     }
 
     // the drag-destination lookup AppKit runs, private and so reached through its implementation
@@ -1785,16 +1694,6 @@ final class HtmlOverlayRegistryTests: XCTestCase {
         let server = try LoopbackServer(host, routes: routes)
         servers.append(server)
         return try await server.start()
-    }
-
-    private func waitFor(_ what: String, timeout: TimeInterval = 10, _ condition: @escaping () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            guard Date() < deadline else {
-                return XCTFail("\(what) not reached within \(timeout)s: \(String(describing: current))")
-            }
-            try await Task.sleep(for: .milliseconds(50))
-        }
     }
 
     func testOnlyAReloadOrNavigationWithNoTargetIsThePagesOwn() {

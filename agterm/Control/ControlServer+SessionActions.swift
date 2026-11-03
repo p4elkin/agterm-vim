@@ -42,13 +42,9 @@ extension ControlServer: ControlActions {
                 return ControlResponse(ok: false, error: OverlayVisibilityError.hidden)
             }
             // the control path is trusted and synchronous: a file on slow storage stalls the app while it is read
-            if let path = options.page?.imagePath {
-                switch ImageProbe.load(path: path) {
-                case .failure(let failure): return ControlResponse(ok: false, error: "session.overlay.open: \(failure)")
-                case .success(let (probe, _)):
-                    return openImageOverlay(in: store, sessionID: id, path: path, probe: probe, options: options)
-                }
-            }
+            if let path = options.page?.imagePath { return openImageFile(in: store, sessionID: id, path: path, options: options) }
+            if let path = options.page?.markdownPath, let refusal = markdownFileRefusal(path) { return refusal }
+            if let path = options.page?.textPath, let refusal = textFileRefusal(path) { return refusal }
             if let page = options.page {
                 return openHtmlOverlay(in: store, sessionID: id, page: page, options: options)
             }
@@ -103,9 +99,10 @@ extension ControlServer: ControlActions {
     /// accept the page, closing the HUD for good in one case and showing nothing in the other.
     func openLinkOverlay(_ url: URL, session id: UUID, sizePercent: Int?) -> Bool {
         guard canShowLinkOverlay(session: id) else { return false }
+        releaseHiddenClickedPage(session: id, persistent: true)
         let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: sizePercent,
                                                        backgroundColor: nil, page: .url(url), navigation: true,
-                                                       javascript: true, persistent: true, browse: true)
+                                                       javascript: true, persistent: true, browse: true, clicked: true)
         return openSessionOverlay(id.uuidString, window: nil, options: options).ok
     }
 
@@ -123,7 +120,8 @@ extension ControlServer: ControlActions {
                          options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         let alreadyOpen = options.pane == nil ? "overlay already open" : PaneOverlayError.alreadyOpen
         let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
-                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse)
+                                  chromeless: options.chromeless, persistent: options.persistent, browse: options.browse,
+                                  clicked: options.clicked)
         switch store.openRemotePage(id, overlay: overlay, options: options) {
         case .opened:
             if case .file = page { schedulePageClaimExpiry(after: AppStore.pageClaimWindow) }

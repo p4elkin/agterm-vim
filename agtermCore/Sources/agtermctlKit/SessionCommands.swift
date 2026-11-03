@@ -25,7 +25,7 @@ struct Session: ParsableCommand {
                       Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
                       Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Context.self,
-                      Tint.self, Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
+                      Info.self, Tint.self, Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
                       Overlay.self, Hud.self, RebasedCommand.self, Wait.self, Collapse.self, Expand.self]
     )
 
@@ -689,8 +689,8 @@ extension Session {
 
         struct Open: RequestCommand {
             static let configuration = CommandConfiguration(
-                abstract: "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html, --url or --image.")
-            @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html, --url or --image.") var command: String?
+                abstract: "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html, --url, --image, --markdown or --text.")
+            @Argument(help: "Program to run in the overlay (e.g. revdiff); omit with --html, --url, --image, --markdown or --text.") var command: String?
             @Option(name: .long, help: "Show this local HTML file instead of running COMMAND.") var html: String?
             @Flag(name: .long, help: "Open Rebased for the local repository instead of running COMMAND.") var rebased = false
             @Flag(name: .long, help: "With --rebased --diff, compare tracked working-tree changes against the base.") var workingTree = false
@@ -711,6 +711,17 @@ extension Session {
                 fits the picture, up to 80% of the session; a larger picture is scaled down.
                 """)
             var image: String?
+            @Option(name: .long, help: """
+                Show this .md or .markdown file rendered with the terminal theme instead of running COMMAND; pictures \
+                in its own folder are shown, and a web link opens in the browser after a confirmation.
+                """)
+            var markdown: String?
+            @Option(name: .long, help: """
+                Show this source, config, text or log file read-only with the terminal theme instead of running COMMAND, \
+                highlighted when its language is known; FILE is taken literally, never as path:line.
+                """)
+            var text: String?
+            @Option(name: .long, help: "With --text, open scrolled to line N (from 1) and mark it.") var line: Int?
             @Flag(name: .long, help: "With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons.")
             var navigation = false
             @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
@@ -761,11 +772,19 @@ extension Session {
                     throw ValidationError("--companion is full size: it takes no --pane, --size-percent, --width or --height")
                 }
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
-                if [command, html, url, image].compactMap({ $0 }).count != 1 {
-                    throw ValidationError("provide exactly one of COMMAND, --html, --url or --image")
+                if [command, html, url, image, markdown, text].compactMap({ $0 }).count != 1 {
+                    throw ValidationError("provide exactly one of COMMAND, --html, --url, --image, --markdown or --text")
                 }
+                if line != nil, text == nil { throw ValidationError("--line requires --text") }
+                if let line, line < 1 { throw ValidationError("--line must be 1 or more") }
                 if image != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
                     throw ValidationError("--image takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
+                }
+                if markdown != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
+                    throw ValidationError("--markdown takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
+                }
+                if text != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
+                    throw ValidationError("--text takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
                 }
                 if command == nil, wait || (url != nil && block) { throw ValidationError("a page takes no --wait, and a --url page no --block") }
                 if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
@@ -808,6 +827,8 @@ extension Session {
                                                                      navigation: navigation ? true : nil, url: url,
                                                                      javascript: javascript ? true : nil, chromeless: chromeless ? true : nil, persistent: persistent ? true : nil,
                                                                      browse: browse ? true : nil, image: image.map(Overlay.absolutePath),
+                                                                     markdownFile: markdown.map(Overlay.absolutePath),
+                                                                     textFile: text.map(Overlay.absolutePath), line: line,
                                                                      rebased: rebased ? true : nil, diff: diff,
                                                                      workingTree: workingTree ? true : nil,
                                                                      file: try file.map(Overlay.absoluteFileTarget), project: project.map(Overlay.absolutePath),

@@ -240,20 +240,24 @@ paths:
 ## Terminal links
 
 - A clicked link arrives as `GHOSTTY_ACTION_OPEN_URL` and lands in `GhosttySurfaceView.openLink`. The
-  decision is host-free, in `agtermCore`'s `LinkPolicy.disposition(for:)`, so it is unit-tested without an
-  app; the view only performs the outcome.
-- Six dispositions. `.open` for `http`/`https`/`mailto`/`ftp`. `.reveal` for a LOCAL `file://`, selected in
-  Finder and never opened — opening goes through LaunchServices, so a click on `file:///…/X.app` or
-  `.command` would LAUNCH it. `.xchat(id:)` for agterm's own `agterm-xchat://msg/<id>`. `.openPath` for a
-  schemeless file path. `.ref` for a forge reference.
-  `.ignore` for everything else, which is most things: a terminal renders untrusted
-  program output, so any escape sequence can carry any scheme.
+  decision is host-free, in `agtermCore`'s `LinkPolicy.helperLink(for:)` and `LinkPolicy.disposition(for:)`,
+  so it is unit-tested without an app; the view only performs the outcome.
+- Upstream's dispositions come from `disposition(for:)`: `.open` for `http`/`https`/`mailto`/`ftp`, `.reveal`
+  for a LOCAL `file://`, selected in Finder and never opened — opening goes through LaunchServices, so a click
+  on `file:///…/X.app` or `.command` would LAUNCH it — `.image`, `.markdown` and `.text` pages for a local file,
+  and `.ignore` for everything else, which is most things: a terminal renders untrusted program output, so any
+  escape sequence can carry any scheme.
+- The fork's three come from `helperLink(for:)`, which `openLink` asks FIRST: `.xchat(id:)` for agterm's own
+  `agterm-xchat://msg/<id>`, `.openPath` for a schemeless file path with an `openPathExtensions` extension,
+  `.ref` for a forge reference. A path it claims never reaches upstream's markdown or text page; a `file://`
+  link still does. A ⌘⌥ reveal click skips it. Keep the fork's cases out of `disposition(for:)`: upstream's
+  tests pin that function's answer for the same paths (2026-11-03 merge).
 - `.openPath` for a path with a `/` needs no `link` rule. Ghostty's built-in link already matches it and is
   checked before any user rule, so a custom path rule could never fire; on click it delivers the
   pwd-resolved absolute path when that file exists, else the raw text with any `:N`.
   The built-in link never matches a bare name (`links.conf`), so agterm-agents' `links.conf` mints
-  `agterm-path:<name>` for one with an `openPathExtensions` extension, and `disposition(for:)` routes it to
-  `bareNameDisposition`.
+  `agterm-path:<name>` for one with an `openPathExtensions` extension, and `helperLink(for:)` routes it to
+  `bareNameLink`.
   `openFilePath` hands either to `agterm-open-path` with the pane's cwd. What `LinkPolicy` accepts, and why, is in
   `docs/plans/completed/20260929-clickable-file-paths-spec.md`.
 - `.open` of an `http`/`https` link from a pane goes to `agterm-open-link` when it is installed, which shows
@@ -267,7 +271,7 @@ paths:
   `link` rules in agterm-agents' `share/agterm-open-link/links.conf`. It is matched on the raw string, never
   through `URL(string:)`, which would move the `34` of `group/proj#34` into a fragment. The built-in path link
   claims a dotted cross-project ref (`group/my.proj!12`, or one ending a sentence) before any user rule, so the
-  schemeless branch takes back the cross-project shape only, after `openPathDisposition` refused it. If a file of
+  schemeless branch takes back the cross-project shape only, after `openPathLink` refused it. If a file of
   that name exists, ghostty delivers its absolute path, and the ref is not reclaimed. `openRef`
   passes the pane's `--cwd`; whether that directory may be trusted, a far pane's is not, is the helper's
   decision. No control command: the click is a route into a script that uses `tree`, `session hud` and
@@ -403,8 +407,12 @@ paths:
   suppress hit testing and the deck never sets `isHidden`.
 - Both dividers paint ↔ themselves: the sidebar handle from `onContinuousHover`, the split from
   `SplitProbeView`'s tracking area over the split, which covers both panes, so it repaints only inside the
-  band and gates on the deck's `visible` minus any overlay or scratch. AppKit's own divider cursor stops
-  firing once a second session is mounted, so nothing else writes it.
+  band and gates on the deck's `visible` minus any overlay or scratch.
+- AppKit's own divider cursor rect stays live on a background session's split, which the deck hides by
+  opacity only. The visible terminal's per-move writes mask it, so it surfaces only under a cover with no
+  per-move writer: a session ask left ↔ stuck over the hidden divider's column.
+  `SplitCursorRects` drops that rect while the probe's `deckVisible` is false and restores it when shown.
+  Reproduce with two split sessions at different ratios.
 - Chrome that paints its own cursor must re-assert per move and per drag tick, then again on the next
   runloop turn re-reading live hover state: a replacement lands after a synchronous `.set()` returns, and a
   deferred pass that captured hover instead strands the shape over live terminal.

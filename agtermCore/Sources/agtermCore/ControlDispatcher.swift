@@ -19,7 +19,7 @@ public struct ControlDispatcher {
         case .eventsRead:
             return dispatchEventsRead(request)
         case .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
-                .sessionReveal, .sessionMove, .sessionFlag, .sessionPark, .sessionContext, .sessionSeen,
+                .sessionReveal, .sessionMove, .sessionFlag, .sessionPark, .sessionContext, .sessionInfo, .sessionSeen,
                 .sessionStatus, .sessionRestore, .sessionMark:
             return await dispatchSessionCommand(request)
         case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
@@ -249,6 +249,8 @@ public struct ControlDispatcher {
             return dispatchSessionParked(request)
         case .sessionContext:
             return dispatchSessionContext(request)
+        case .sessionInfo:
+            return dispatchSessionInfo(request)
         case .sessionSeen:
             return actions.markSessionSeen(request.target, window: request.args?.window)
         case .sessionStatus:

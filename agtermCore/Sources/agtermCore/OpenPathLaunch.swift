@@ -1,7 +1,7 @@
 import Foundation
 
 /// The argv for `agterm-open-path`, which resolves a clicked path and opens it in an overlay
-/// (`LinkPolicy.LinkDisposition.openPath`). The path goes last, after `--`.
+/// (`LinkPolicy.HelperLink.openPath`). The path goes last, after `--`.
 public enum OpenPathLaunch {
     public static let helperName = "agterm-open-path"
 

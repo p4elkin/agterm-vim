@@ -13,7 +13,7 @@ final class AddSessionButton: NSButton {
 /// An `NSTableCellView` with a leading icon, the name field, and a trailing badge. The icon is the inherited
 /// `cell.imageView` (2x2 grid for a workspace, outlined terminal for a session), so AppKit re-tints it white on
 /// a selected row; the name is `cell.textField`, which the rename and selection wiring drives.
-final class SidebarCellView: NSTableCellView {
+class SidebarCellView: NSTableCellView {
     /// Trailing unseen-notification count — a session's `unseenCount` or a collapsed workspace's roll-up; 0 hides.
     let badge = BadgeView()
 
@@ -66,6 +66,29 @@ final class SidebarCellView: NSTableCellView {
     private static let parkedLabelAlpha: CGFloat = 0.45
     private static let parkedIconAlpha: CGFloat = 0.4
 
+    var iconWidthConstraint: NSLayoutConstraint?
+    var iconGapConstraint: NSLayoutConstraint?
+
+    static let iconWidth: CGFloat = 16
+    static let iconGap: CGFloat = 6
+
+    /// notice is the remote presentation warning.
+    var notice: String? {
+        didSet { applyNotice() }
+    }
+
+    func setIconVisible(_ visible: Bool) {
+        imageView?.isHidden = !visible
+        iconWidthConstraint?.constant = visible ? Self.iconWidth : 0
+        iconGapConstraint?.constant = visible ? Self.iconGap : 0
+        applyNotice()
+    }
+
+    private func applyNotice() {
+        imageView?.toolTip = imageView?.isHidden == false ? notice : nil
+        updateNameTooltip()
+    }
+
     /// The row's tint, applied by `setColors` so a selection change keeps it; nil restores the theme colors.
     var tint: SidebarTint? {
         didSet { imageView?.setAccessibilityValue(tint.map { "\($0.color.rawValue) tint" }) }
@@ -90,10 +113,14 @@ final class SidebarCellView: NSTableCellView {
     /// tail and nothing else exposes what was cut. A tooltip repeating already-visible text would be noise, so
     /// the width decides. Runs from `layout`, so dragging the sidebar divider re-evaluates it. Skipped mid-rename
     /// — the field editor holds the text then, and `stringValue` is whatever has been typed so far.
+    /// A hidden icon's `notice` also appears when the name fits.
     private func updateNameTooltip() {
         guard let field = textField, field.currentEditor() == nil else { return }
         let available = field.cell?.titleRect(forBounds: field.bounds).width ?? field.bounds.width
-        field.toolTip = field.attributedStringValue.size().width > available ? field.stringValue : nil
+        let name = field.attributedStringValue.size().width > available ? field.stringValue : nil
+        let hiddenNotice = imageView?.isHidden == true ? notice : nil
+        let parts = [name, hiddenNotice].compactMap(\.self)
+        field.toolTip = parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     // hover tracking for the "+" reveal, workspace cells only (session cells have no button to show)
@@ -132,10 +159,7 @@ final class SidebarCellView: NSTableCellView {
     /// selection pill already recolors the row, and dimming on top of it would make the active row the hardest
     /// one to read.
     func setColors(selected: Bool) {
-        let app = GhosttyApp.shared
-        let color = selected
-            ? (app.terminalSelectionForegroundColor ?? app.terminalForegroundColor ?? .white)
-            : (app.terminalForegroundColor ?? .labelColor)
+        let color = themeTextColor(selected: selected)
         let dimmed = parked && !selected
         let tintColor = tint.map { NSColor.tint($0.color) }
         let labelColor = tint?.shows(.name) == true ? (tintColor ?? color) : color
@@ -150,6 +174,14 @@ final class SidebarCellView: NSTableCellView {
             imageView?.contentTintColor = color.withAlphaComponent(iconAlpha)
         }
         addButton?.contentTintColor = color.withAlphaComponent(newSessionPending ? iconAlpha * 0.4 : iconAlpha)
+    }
+
+    /// themeTextColor is the row text color the theme gives for a selection state, never a row tint.
+    func themeTextColor(selected: Bool) -> NSColor {
+        let app = GhosttyApp.shared
+        return selected
+            ? (app.terminalSelectionForegroundColor ?? app.terminalForegroundColor ?? .white)
+            : (app.terminalForegroundColor ?? .labelColor)
     }
 }
 
@@ -343,7 +375,11 @@ final class SidebarRowView: NSTableRowView {
 /// identity (`===`) — nodes must be the SAME instances across reloads, never fresh structs. The coordinator
 /// caches one per workspace/session id and rebuilds only the child lists.
 final class SidebarNode {
-    enum Kind { case workspace, session }
+    enum Kind {
+        case workspace, session
+
+        var iconElement: InterfaceElement { self == .workspace ? .workspaceIcons : .sessionIcons }
+    }
 
     let kind: Kind
     let id: UUID

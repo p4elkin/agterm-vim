@@ -271,6 +271,10 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionTint)
     }
 
+    public func setSessionInfo(_ target: String?, window: String?, info: SessionInfo?) -> ControlResponse {
+        refuse(.sessionInfo)
+    }
+
     public func setSessionExpansion(_ target: String?, window: String?, expanded: Bool) -> ControlResponse {
         refuse(expanded ? .sessionExpand : .sessionCollapse)
     }

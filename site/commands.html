@@ -501,7 +501,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">right</span>, omitted when none is hidden; see
                 <a href="#overlay" style="color: #6d82f3">session overlay hide</a>),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span> (the pages in the overlay slots as
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, image?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?}</span>, one of file, url and image set; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remote</span> marks a page shown on the presenting Mac, whose live fields are as that Mac reports them, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">replica</span> the presenting Mac's copy, whose <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file</span> is the path on the origin for a file page,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, image?, markdown?, text?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?, clicked?}</span>, one of file, url, image, markdown and text set, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clicked</span> marking a page a terminal click opened (see <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser links</span> for when a click replaces it), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">text</span> being <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{file, language?, line?}</span>; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remote</span> marks a page shown on the presenting Mac, whose live fields are as that Mac reports them, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">replica</span> the presenting Mac's copy, whose <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file</span> is the path on the origin for a file page,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">state</span> being loading, loaded or failed; omitted when none is open),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hud</span> (the message panel holding the session-wide
                 slot — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}</span>, where
@@ -1068,9 +1068,9 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #f2b45c; white-space: nowrap">--command "zsh -lc 'htop'"</span>. The
                 command is persisted and runs again when a restored session launches in rerun mode.
                 All of that describes <em>Fresh shells</em> and <em>Re-run commands</em>. In <em>Live sessions</em> mode the
-                command is instead a create-only zmx payload the persistent shell runs as a login shell, so the line uses that
-                shell's syntax (zsh or fish), shell operators are interpreted, the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> is that shell's
-                rather than the launchd default, and the session stays open after the command exits.
+                command is instead a create-only zmx payload your login shell runs, so the line uses that
+                shell's syntax (zsh or fish), shell operators are interpreted, and the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">PATH</span> is that shell's
+                rather than the launchd default.
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--no-select</span> creates the session in the
@@ -1853,6 +1853,40 @@
 
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session info &lt;TEXT|--clear&gt; [--markdown] [--hide-after SECONDS] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.info</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Show one line under a session's sidebar row saying what it is doing now: a step, a count, a progress note.
+                Exactly one of TEXT or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--clear</span>, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--clear</span> refuses TEXT,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--markdown</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--hide-after</span>. TEXT is at most 512 UTF-8 bytes, markup included, and must show as one non-blank line with no control characters. A rejected
+                call leaves the line and its expiry as they were. Read back via the node's
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">info</span> (the source as sent),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">infoMarkdown</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">infoHideAfter</span> fields, all omitted when there is no line.
+              </p>
+              <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
+                Each successful set replaces the whole line: leaving out <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--markdown</span>
+                sends plain text and leaving out <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--hide-after</span> cancels an
+                earlier expiry. <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--markdown</span> allows bold, italic, code,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">^[text](color: "green")</span> with a
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session tint</span> color name, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">^[text](dim: true)</span>.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--hide-after</span> (0 to 86400, 0 for never) clears the line
+                by itself. Every successful set with a positive value restarts that interval, even with identical text, so a
+                process reporting activity passes a positive value on each refresh. The line is never saved and is gone after
+                a relaunch. Settings ▸ Interface ▸ Session info shows it always, in the flagged view only, or never, without
+                clearing it. A set or clear that changes the line shown emits
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">tree.changed</span>. A session attached from another Mac
+                also shows that Mac's line, and a line set here wins over it. Origin expiry clears the mirrored line; a line set
+                here remains until cleared or its own expiry.
+              </p>
+            </div>
+
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session tint &lt;COLOR|clear&gt; [--on PARTS] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.tint</div>
@@ -2177,6 +2211,41 @@
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session overlay open --markdown FILE [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.open</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Render a <span style="font-family: &quot;JetBrains Mono&quot;, monospace">.md</span> or <span style="font-family: &quot;JetBrains Mono&quot;, monospace">.markdown</span> file as a page in the terminal's theme, the same view a ⌘-click on its path opens. Code blocks are
+                highlighted, task lists show their boxes, and headings get the anchors README tables of contents link to. Pictures
+                kept in the file's own folder are embedded, up to 256 of them; any other picture shows its alt text, and nothing is
+                fetched from the network. Raw HTML in the file is shown as text and the page runs none of its own script; a web link opens in the
+                default browser after the usual confirmation, a <span style="font-family: &quot;JetBrains Mono&quot;, monospace">#heading</span> link scrolls, and any other link is plain text. The page
+                gets no bridge, and Open in Browser and Show in Finder are refused; the page flags, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--block</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--companion</span> are refused. A path that is not a regular file or a file over 4 MB is refused before the open answers.
+                The wire field is <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdownFile</span>, apart from the HUD's <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdown</span> flag. A markdown page is local-only, like an image page.
+                Read back <span style="font-family: &quot;JetBrains Mono&quot;, monospace">markdown</span> in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span>.
+              </p>
+            </div>
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session overlay open --text FILE [--line N] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.open</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Show a source, config, text or log file read-only in the terminal's theme, the same view a ⌘-click on its path opens:
+                line numbers, and highlighting when its name maps to a known language, up to 256 KB; a larger file shows plain.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--line N</span> opens it scrolled to line N, from 1, and marks it. FILE is taken literally, never read
+                as <span style="font-family: &quot;JetBrains Mono&quot;, monospace">path:line</span>. The page runs none of the file's text as code, loads nothing and has no links. It
+                gets no bridge, and Open in Browser and Show in Finder are refused; the page flags, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--cwd</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--block</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">--companion</span> are refused. A path that is not a regular file, a file
+                over 4 MB, or one that is not UTF-8 text or holds a NUL byte is refused before the open answers. Markdown, HTML
+                and SVG files are not text pages. The wire fields are <span style="font-family: &quot;JetBrains Mono&quot;, monospace">textFile</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">line</span>. A text
+                page is local-only, like an image page. Read back <span style="font-family: &quot;JetBrains Mono&quot;, monospace">text</span> in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span>: the
+                file, the language its name maps to, and the line it was opened at, not the line in view.
+              </p>
+            </div>
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
                 agtermctl session overlay open --html FILE|--url URL --companion [page flags] [--follow] [--target T] [--window W]
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.companion.page</div>
@@ -2306,7 +2375,8 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">overlay hidden</span>
                 while it is hidden and the usual
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">overlay already open</span>
-                once it is shown.
+                once it is shown. The one thing that replaces a hidden page is a terminal click over a page an earlier click
+                opened (see <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser links</span>).
               </p>
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 Errors <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">no overlay</span> when
@@ -3851,7 +3921,12 @@
               <p style="font-size: 13.5px; line-height: 1.6; color: #949ba4; margin: 8px 0 0">
                 The link still opens in the browser when it was ⌘⇧-clicked in a program that does not capture the mouse, when it was clicked in a HUD, a program overlay or the quick terminal,
                 when a HUD is up on the session, when the window has a zoomed terminal, when the session-wide overlay slot
-                is taken, when the saved store cannot be used, or when the overlay cannot be opened. A plain http link
+                is taken, when the saved store cannot be used, or when the overlay cannot be opened. The exception is a
+                slot holding a page an earlier click opened (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">clicked</span>
+                in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span>) that was hidden on this Mac with ⇧⌘J or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session overlay hide</span>: the click replaces it and shows the new
+                page, and a clicked picture, markdown or text file does the same. A page that is only out of sight under a newer
+                pane overlay, or one the presenting Mac shows, is not replaced. A plain http link
                 uses the overlay only for an unqualified host name such as localhost, a .local name or an IP address;
                 http to any other host name opens in the browser. mailto, ftp and file links are unaffected. Same setting as Settings ▸ General ▸ Open links in.
               </p>
@@ -4239,7 +4314,7 @@
               </div>
               <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.job.run</div>
               <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
-                The plumbing behind an overlay shown on another Mac, run by that Mac over <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ssh -tt</span> on the origin and not meant to be typed. It claims <span style="font-family: &quot;JetBrains Mono&quot;, monospace">JOB</span> on the local socket, runs its program under the ssh terminal in the working directory a local overlay would get, with agterm's session variables over the environment ssh gave it, and reports how it ended. A job can be claimed once, and only within 30 seconds of its open; a job that cannot be claimed exits 1 having launched nothing, one whose program cannot be launched exits 127, and otherwise it exits with the program's status. Losing the terminal cancels the program.
+                The plumbing behind an overlay shown on another Mac, run by that Mac over <span style="font-family: &quot;JetBrains Mono&quot;, monospace">ssh -tt</span> on the origin and not meant to be typed. It claims <span style="font-family: &quot;JetBrains Mono&quot;, monospace">JOB</span> on the local socket, runs its program under the ssh terminal in the working directory a local overlay would get, with agterm's session variables over the environment ssh gave it, and reports how it ended. When that terminal is <span style="font-family: &quot;JetBrains Mono&quot;, monospace">xterm-ghostty</span> and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TERMINFO</span> is absent or empty, it sets <span style="font-family: &quot;JetBrains Mono&quot;, monospace">TERMINFO</span> to the terminfo database bundled beside its own CLI, when one is found. A job can be claimed once, and only within 30 seconds of its open; a job that cannot be claimed exits 1 having launched nothing, one whose program cannot be launched exits 127, and otherwise it exits with the program's status. Losing the terminal cancels the program.
               </p>
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">

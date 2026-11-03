@@ -38,6 +38,15 @@ struct AppStoreRemotePageTests {
         store = AppStore(persistence: PersistenceStore(directory: dir), controlEventSink: { drafts.kinds.append($0.kind) })
     }
 
+    @Test func onlyFileAndUrlPagesTravelToAnotherMac() throws {
+        #expect(AppStore.presentationSource(.file(path: "/a.html", grantRoot: "/")) == .file(path: "/a.html", grantRoot: "/"))
+        #expect(AppStore.presentationSource(.url(try #require(URL(string: "https://x.io/")))) == .url("https://x.io/"))
+        #expect(AppStore.presentationSource(.image(path: "/a.png")) == nil)
+        #expect(AppStore.presentationSource(.markdown(path: "/a.md")) == nil)
+        #expect(AppStore.presentationSource(.text(path: "/a.go", line: 3)) == nil)
+        #expect(AppStore.presentationSource(.replica(path: "/a.html")) == nil)
+    }
+
     @Test func aPageOpensOnAPresenterThatSpeaksPages() throws {
         let (session, _) = try origin()
         let page = try url("https://example.com/review/42?token=abc")
@@ -60,6 +69,17 @@ struct AppStoreRemotePageTests {
         #expect(node.zoom == nil)
         #expect(store.remoteOverlayNodes(of: session) == [ControlRemoteOverlayNode(pane: nil, sizePercent: 70,
                                                                                    pageID: page.id.uuidString)])
+    }
+
+    @Test func aPresentedSessionRefusesATextPage() throws {
+        let (session, _) = try origin()
+        let page = HtmlOverlay(source: .text(path: "/tmp/src/main.go", line: 3))
+
+        #expect(open(session, page) == .local)
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == .presenter)
+        #expect(session.remoteOverlays.slots.isEmpty)
+        #expect(!session.overlayActive)
+        #expect(presenter.bodies.allSatisfy { if case .pageRequest = $0 { false } else { true } })
     }
 
     @Test func aPresenterWithoutPageKindsKeepsTheRefusal() throws {

@@ -2,24 +2,25 @@
 name: agterm
 description: >
   Drive agterm, a native macOS terminal, via agtermctl. Use in an agterm session:
-  manage sessions, companions and workspaces; split panes; toggle the scratch terminal; run, hide or show overlays;
-  read exit status; create and show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
-  post a HUD/caption/notification; message panes; show a picker, question or input dialog; show images inline; type
-  into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows; set font size and
+  manage sessions, companions and workspaces; split panes; toggle the scratch; run, hide or show overlays;
+  read exit status; show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
+  post a HUD/caption/notification/sidebar activity line; message panes; show a picker, question or input dialog; show images/markdown/code; type
+  into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows, font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
   a closed window's session screen; subscribe to status, notify, lifecycle, selection,
   pane, tree and launch events; wait on agent status.
   Covers window/workspace/session addressing, AGTERM_* variables,
-  attaching a session and its companions from another Mac, cookbook recipes, running/installed version, upgrades, diagnosing
+  attaching sessions and companions from another Mac, cookbook recipes, running/installed version, upgrades, diagnosing
   problems, filing a bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
   split the pane, close the overlay, hide the overlay for a moment, show a message over the session, show a question dialog, agtermctl ask,
   ask the user to type a value or a message, let the user pick one or several items from a list,
-  show an image inline, show this HTML page or artifact, make an HTML page or explainer for this and show
+  show an image inline, show this markdown file rendered, show this source file or log at a line,
+  show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
-  flag every session in a workspace, tint a session or workspace row a color, make a companion session,
+  flag every session in a workspace, tint a session or workspace row a color, show status or activity under a session in the sidebar, make a companion session,
   keep a related program next to a session, duplicate this session with its programs as a companion,
   open a sub-session under this one, fold a session's companions, show a page as a companion of this
   session, run my custom command, send a message to the other pane or another agent, read my messages,
@@ -227,10 +228,10 @@ agtermctl session new --cwd ~/proj --name worker \
   --command "zsh -lc 'claude \"\$(cat ~/brief.md)\"'"   # GUI PATH: wrap a non-default binary
 ```
 
-In Fresh shells and Re-run commands modes, the session closes when this command exits unless `--wait` holds
-the final output. In Live sessions mode the command is a create-only zmx payload, which bypasses the 1,024-byte
-PTY input cap. A surviving daemon ignores the payload; a new daemon runs it, then starts the persistent shell.
-The shell stays open after it exits and `--wait` adds no hold prompt. After a clean quit, a missing daemon
+The session closes when this command exits unless `--wait` holds the final output. In Live sessions mode the
+command is a create-only zmx payload, which bypasses the 1,024-byte PTY input cap. A surviving daemon ignores
+the payload; a new daemon runs it. A command that ends within a moment of the pane's creation can lose its
+output and leave only `agterm: session is gone`. After a clean quit, a missing daemon
 replays the captured running command inside a new persistent shell. The exclusions above start a fresh shell.
 
 `session type` drives an ALREADY-RUNNING program — it is not a launcher. Its keystrokes land in a line
@@ -505,6 +506,12 @@ omitted when expanded).
   origin's mirrored context; `--clear` removes that override and reveals the origin's latest value.
   The mirrored value is never persisted. Read the shown value from the tree node's `context` field;
   setting the text already shown emits no `tree.changed` event.
+- `session info <TEXT|--clear> [--markdown] [--hide-after SECONDS] [--target] [--window W]` - show one line of
+  current activity under the session's sidebar row: a step, a count, a progress note. `--markdown` allows
+  `**bold**`, `*italic*`, `` `code` ``, `^[text](color: "green")` and `^[text](dim: true)`. Each set replaces the
+  whole line, so pass every flag every time. A process reporting activity must pass a positive `--hide-after`
+  and set the line again before it runs out, so the line goes away if the process dies. Not kept across a
+  relaunch. Read back as the tree's `info`; details in reference.md.
 - `session tint <red|orange|yellow|green|blue|purple|gray|clear> [--on icon|name|icon,name]` and `workspace tint`
   (same arguments) - color a sidebar row so it stands out, e.g. red for production; a workspace tint colors only
   its own row. `session new`/`workspace new` take `--tint`/`--tint-on`. Read back as the tree node's `tint`/`tintOn`;
@@ -537,7 +544,7 @@ omitted when expanded).
   renders the pane opaque, overriding window translucency, so it shows; a `color` takes no opacity and
   honors the Settings window translucency instead.)
 - `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE])` · `session rebased toggle` (fork only).
-- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --image FILE | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
+- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --image FILE | --markdown FILE | --text FILE [--line N] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
   `session overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full)` ·
   `session overlay close [--pane left|right]` ·
   `session overlay hide|show|toggle [--pane left|right]` ·
@@ -577,7 +584,8 @@ omitted when expanded).
   use `--follow` when you want the user pulled to the overlay, omit it to open quietly on your own or
   another session.
   `--background-color` gives the overlay pane its own solid color, independent of the session's.
-  `--image FILE` is how you **display an image inline** (see below).
+  `--image FILE` is how you **display an image inline**, `--markdown FILE` how you **show a markdown file
+  rendered**, and `--text FILE [--line N]` how you **show a source file or log at a line** (see below).
 - `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud close` — post a small **passive** panel over the session saying what you are doing
@@ -872,6 +880,31 @@ works as a preflight from a keymap-launched script, which has no `$TERM_PROGRAM_
 socket explicitly (`--socket "$AGTERM_SOCKET"`, or `"$AGT_SOCKET"` in a keymap child): a bare call
 resolves the DEFAULT socket, which may be another app. The same identity is on the tree top level as
 `app`.
+
+## Showing a markdown file rendered
+
+Render a `.md` or `.markdown` file as a themed page with `--markdown`, at 95% here:
+
+```bash
+agtermctl session overlay open --markdown /path/to/plan.md --size-percent 95 --target "$AGTERM_SESSION_ID"
+```
+
+Pictures kept in the file's own folder show; other pictures show their alt text, raw HTML stays text, and a web
+link opens in the browser after the user confirms. The user gets the same view by ⌘-clicking the file's path, so
+printing the absolute path of a plan or report you wrote is often enough. Read back `markdown` in `htmlOverlays`.
+
+## Showing a source file or log at a line
+
+Show a source, config, text or log file read-only with `--text`, scrolled to and marking `--line`:
+
+```bash
+agtermctl session overlay open --text /path/to/main.go --line 42 --size-percent 95 --target "$AGTERM_SESSION_ID"
+```
+
+It is highlighted when its name maps to a known language, up to 256 KB, and plain above; FILE is taken literally,
+never as `path:line`. The page runs nothing, loads nothing and has no links. Markdown, HTML and SVG are not text
+pages. The user gets the same view by ⌘-clicking a path or a `path:line` location in the output, and reveals any
+file in Finder with ⌘⌥-click. Read back `text` (`{file, language?, line?}`) in `htmlOverlays`.
 
 ## Displaying an image inline
 

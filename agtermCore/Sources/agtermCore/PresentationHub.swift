@@ -49,7 +49,7 @@ public final class PresentationHub {
 
     /// The frame kinds this origin can produce.
     /// `name` is both directions: an origin listing it publishes `name` and accepts a viewer's `rename`.
-    public static let supportedKinds = ["status", "hud", "notify", "context", "layout", "sound", askFormKind, askOtherKind,
+    public static let supportedKinds = ["status", "hud", "notify", "context", "info", "layout", "sound", askFormKind, askOtherKind,
                                         "name", overlayPointsKind] + pageKinds
     /// pageKinds are the presentation kinds a presenter must speak to be handed a page.
     public static let pageKinds = ["page.request", "page.rejected", "page.close", "page.closed", "page.command",

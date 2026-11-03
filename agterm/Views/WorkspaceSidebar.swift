@@ -101,7 +101,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         _ = store.workspaces.map { workspace in
             (workspace.id, workspace.name, workspace.unseenCount, workspace.tint, workspace.sessions.map {
                 ($0.id, $0.displayName, $0.hasSplit, $0.splitAxis, $0.unseenCount, $0.agentIndicator,
-                 $0.flagged, $0.parked, $0.remoteConnection, $0.tint)
+                 $0.flagged, $0.parked, $0.remoteConnection, $0.tint, $0.effectiveInfo)
             })
         }
         _ = store.selectedSessionID
@@ -228,6 +228,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 if let node, let outline = outlineView, outline.row(forItem: node) >= 0 {
                     outline.reloadItem(node)
                 }
+                // row updates were skipped while the editor was open, and a cancel changes no model value to retrigger them
+                reconcile()
+                syncSelection()
                 focusActiveTerminal()
             }
             // the menu/palette can't reach the inline editor directly, so they post a notification. Scoped
@@ -303,6 +306,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             syncSelection()
             // agent-status colors are global, so the content diff can't see a color change — re-apply all.
             reapplyStatusGlyphs()
+            reapplyRowIconVisibility()
             updateEmptyState()
             // cheap re-assert in case a settings change requires recomputing the inset.
             applySidebarContentInset(outlineView?.enclosingScrollView)
@@ -417,6 +421,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
             var tint: SidebarTint?
             /// Names of a folded parent's companions that need attention.
             var foldedAttention: [String] = []
+            /// info is the shown info line; a change reloads the row and re-asks its height.
+            var info: [SessionInfoSpan]?
 
             func differsOnlyInNewSessionPending(from other: RowContent) -> Bool {
                 var marked = self
@@ -534,6 +540,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 if previous?.differsOnlyInNewSessionPending(from: content) == true,
                    markNewSessionPending(node, content.newSessionPending) { return }
                 outline.reloadItem(node)
+                let row = outline.row(forItem: node)
+                if content.info != previous?.info, row >= 0 { outline.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row)) }
             }
             for workspace in store.workspaces {
                 reloadIfChanged(workspace.id, rowContent(forWorkspace: workspace))
@@ -602,7 +610,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        indicator: session.agentIndicator, flagged: session.flagged,
                        parked: session.parked, focusMember: false, parkedCount: 0,
                        presentationNotice: presentationNotice(for: session), tint: session.tint,
-                       foldedAttention: foldedAttention(forSession: session.id).map(\.displayName))
+                       foldedAttention: foldedAttention(forSession: session.id).map(\.displayName),
+                       info: sessionInfo(for: session))
         }
 
         /// Rebuilds `roots` from the store, reusing cached node instances by id so NSOutlineView item

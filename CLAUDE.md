@@ -20,6 +20,9 @@ C-boundary concurrency before changing the bridge.
 - For each hideable titlebar/sidebar element, ask whether it should join host-free `InterfaceElement` and
   Settings > Interface. Never add that preference without approval.
   A control enabled there stays visible and is disabled when it cannot act; never show or hide it by state.
+- The HTML overlay displays HTML over a session; it is not a browser. Following links, history and back are the
+  browser's job, so link features that turn the overlay into one are declined.
+  What a mouse-capturing program does with a click is that program's, not agterm's.
 - A decline of a feature request that a custom command covers explains the extension model with the request
   as the worked example: README's "bind X yourself", `site/docs.html#extend`, the agent skill, the cookbook.
   It also points "can you add X" requests to Discussions ▸ Ideas instead of issues.
@@ -327,6 +330,8 @@ C-boundary concurrency before changing the bridge.
   Edge cases, minor bugs, and other small findings never block the PR: approve and merge, leaving a note
   for the contributor. That note is where a recipe finding ends: never file it in `docs/backlog/`, which
   is for code the project owns, and never edit a recipe's prose unprompted.
+- A recipe's Limits list only what the recipe causes or cannot do, never general agent behavior.
+  State what the recipe guarantees before a side effect, so the side effect never reads as misrouting.
 - agterm runs only on macOS, so POSIX portability is never a finding by itself. A shellcheck SC3xxx on a
   recipe is a CI lint gate, not a runtime defect: `/bin/sh` there is bash 3.2 and `printf %q` works.
   Never propose a bash shebang as the fix; the mac shell is zsh, and CI's `.zsh` path is `zsh -n`.

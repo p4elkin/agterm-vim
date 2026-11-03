@@ -20,5 +20,30 @@ That shape follows a close; this one has none before it, so the fix is not shown
 41132248681 (`aa772641`, with the fix) passed spam-8 in 9 s, and so did a concurrent PR's run of the old
 code, so one pass proves nothing.
 
-The next occurrence needs a stack first. The step uploads `surface-teardown` evidence, but a `sample` that
-outlives its 20 s limit leaves only `sample_errors` in `result.json`.
+Run 41408692761 (PR #864 head `560228b4`) stalled the same way: `new-0` and `new-1` in 75 and 177 ms,
+`new-2` timed out, the app `sample` timed out after 20 s and the CLI had exited before its sample ran.
+
+A stalled call now also gets a `sudo -n spindump` of the app, bounded at 15 s, and the step checks that
+collector once against a throwaway process into `spindump-check.json`. Run 41414892558 validated the previous
+two-target invocation on the runner (a readable 1.3 MB report naming its target). The next stall's evidence
+should include `spindump-NN-<op>.txt`; start there.
+
+Run 41424943333 (PR #865 head `acef8084`) stalled the same way: `new-0` and `new-1` in 57 and 131 ms, `new-2`
+timed out. All three collectors failed: the app `sample` timed out after 20 s, the CLI `sample` could not
+examine the CLI pid, and the spindump, which then also named the CLI with `-proc`, failed whole with `Cannot
+find process with pid or partial name` for that pid. Collectors start at 3 s and the CLI is killed at 5 s, so
+the spindump may have looked after the CLI was gone; the cause is not established. The CLI was dropped from
+the spindump so a lost CLI cannot cost the app snapshot; that does not guarantee the app stack next time.
+
+Run 41481808137 (PR #869 head `66b49472`) stalled one call later: `new-0` to `new-2` answered in 39 to 88 ms
+with three producers running, and `new-3` timed out after its CLI took 0.62 s to spawn. The spindump self-check
+on that runner produced a 1 MB report, yet all three in-flight collectors failed: the app `sample` timed out
+after 20 s, the CLI `sample` could not examine the CLI pid, and the app-only spindump timed out after 15 s and
+left an empty `spindump-04-new-3.txt`. A collector that works against a throwaway process and times out
+against the stalled app suggests the app or the runner resists inspection during the stall, rather than the
+collector's arguments being wrong; that is not established.
+
+Run 41525711638 (PR #874 head `2b85193d`) stalled latest so far: `new-0` to `new-6` answered in 58 to 507 ms,
+and `new-7` timed out. The spindump self-check produced a 1.3 MB report, yet every in-flight collector failed
+again: the app `sample` timed out after 20 s, the CLI `sample` could not examine the CLI pid, and the app-only
+spindump timed out after 15 s and left an empty `spindump-08-new-7.txt`. The re-run passed.

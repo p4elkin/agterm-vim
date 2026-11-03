@@ -438,6 +438,60 @@ struct HtmlOverlayTests {
         #expect(try JSONDecoder().decode(ControlRemoteOverlayNode.self, from: JSONEncoder().encode(page)) == page)
     }
 
+    @Test(arguments: [
+        ("https://example.com/", HtmlNavigationTarget.mainFrame, true, HtmlNavigationDecision.openExternal),
+        ("http://example.com/a", .newWindow, true, .openExternal),
+        ("https://example.com/", .mainFrame, false, .cancel),
+        ("https://example.com/", .subframe, false, .cancel),
+        ("about:blank#intro", .mainFrame, true, .allow),
+        ("file:///tmp/notes/other.md", .mainFrame, true, .cancel),
+        ("javascript:alert(1)", .mainFrame, true, .cancel),
+        ("data:text/html,x", .mainFrame, true, .cancel),
+    ])
+    func markdownPagePolicyHandsWebLinksOutAndKeepsEverythingElse(_ url: String, _ target: HtmlNavigationTarget,
+                                                                  _ userActivated: Bool, _ expected: HtmlNavigationDecision) throws {
+        let overlay = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"))
+        let action = HtmlNavigationAction(url: try #require(URL(string: url)), target: target, userActivated: userActivated)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == expected)
+    }
+
+    @Test func aMarkdownPageIsNamedByItsFileNeverTheTitle() {
+        var overlay = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"))
+        overlay.current = HtmlPageInfo(page: "/tmp/notes/readme.md", title: "enter your password", canGoBack: false, canGoForward: false)
+        #expect(overlay.identity == "readme.md")
+        #expect(overlay.source.markdownPath == "/tmp/notes/readme.md")
+        #expect(overlay.source.imagePath == nil)
+    }
+
+    @Test(arguments: [
+        ("about:blank", HtmlNavigationTarget.mainFrame, false, HtmlNavigationDecision.allow),
+        ("about:blank", .mainFrame, true, .allow),
+        ("about:blank", .subframe, false, .cancel),
+        ("about:blank", .newWindow, true, .cancel),
+        ("about:srcdoc", .mainFrame, false, .cancel),
+        ("about:blank#x", .mainFrame, true, .cancel),
+        ("https://example.com/", .mainFrame, true, .cancel),
+        ("http://example.com/a", .newWindow, true, .cancel),
+        ("file:///tmp/src/main.go", .mainFrame, true, .cancel),
+        ("javascript:alert(1)", .mainFrame, true, .cancel),
+        ("data:text/html,x", .mainFrame, true, .cancel),
+    ])
+    func textPagePolicyAllowsOnlyItsOwnBlankDocument(_ url: String, _ target: HtmlNavigationTarget,
+                                                     _ userActivated: Bool, _ expected: HtmlNavigationDecision) throws {
+        let overlay = HtmlOverlay(source: .text(path: "/tmp/src/main.go", line: 4))
+        let action = HtmlNavigationAction(url: try #require(URL(string: url)), target: target, userActivated: userActivated)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == expected)
+    }
+
+    @Test func aTextPageIsNamedByItsFileNeverTheTitle() {
+        var overlay = HtmlOverlay(source: .text(path: "/tmp/src/main.go", line: 4))
+        overlay.current = HtmlPageInfo(page: "/tmp/src/main.go", title: "enter your password", canGoBack: false, canGoForward: false)
+        #expect(overlay.identity == "main.go")
+        #expect(overlay.source.textPath == "/tmp/src/main.go")
+        #expect(overlay.source.markdownPath == nil)
+        #expect(HtmlSource.markdown(path: "/a.md").textPath == nil)
+    }
+
     @Test func fileIdentityIsTheFileShownNeverTheTitle() {
         var overlay = HtmlOverlay(source: .file(path: "/a/docs/index.html", grantRoot: "/a/docs"))
         #expect(overlay.identity == "index.html")

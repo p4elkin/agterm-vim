@@ -438,6 +438,47 @@ struct AppStoreTreeProjectionTests {
         #expect(set.contains("\"context\":\"PR #517\""))
     }
 
+    @Test func controlTreeProjectsSessionInfoFields() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let plain = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/a"))
+        let timed = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/b"))
+        let mirrored = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/c"))
+        _ = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/d"))
+        store.setInfo(try SessionInfo.make(source: "3 agents", markdown: false, hideAfter: 0).get(), forSession: plain.id)
+        store.setInfo(try SessionInfo.make(source: "**ci**", markdown: true, hideAfter: 60).get(), forSession: timed.id)
+        mirrored.mirroredInfo = try SessionInfo.make(source: "origin", markdown: false, hideAfter: 15).get()
+
+        let sessions = store.controlTree().workspaces[0].sessions
+
+        #expect(sessions[0].info == "3 agents")
+        #expect(sessions[0].infoMarkdown == false)
+        #expect(sessions[0].infoHideAfter == 0)
+        #expect(sessions[1].info == "**ci**")
+        #expect(sessions[1].infoMarkdown == true)
+        #expect(sessions[1].infoHideAfter == 60)
+        #expect(sessions[2].info == "origin")
+        #expect(sessions[2].infoHideAfter == 15)
+        #expect(sessions[3].info == nil)
+        #expect(sessions[3].infoMarkdown == nil)
+        #expect(sessions[3].infoHideAfter == nil)
+    }
+
+    @Test func sessionInfoFieldsAreOmittedFromJSONWhenUnset() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: work.id, cwd: "/repo/a"))
+
+        let bare = try String(decoding: JSONEncoder().encode(store.controlTree()), as: UTF8.self)
+        #expect(!bare.contains("\"info"))
+
+        store.setInfo(try SessionInfo.make(source: "x", markdown: false, hideAfter: 0).get(), forSession: session.id)
+        let set = try String(decoding: JSONEncoder().encode(store.controlTree()), as: UTF8.self)
+        #expect(set.contains("\"info\":\"x\""))
+        #expect(set.contains("\"infoMarkdown\":false"))
+        #expect(set.contains("\"infoHideAfter\":0"))
+    }
+
     @Test func aCompanionReportsItsParentAndAFoldedParentReportsCollapsed() throws {
         let g = try CompanionGroup()
         g.store.setSessionExpanded(g.parent.id, expanded: false)
@@ -909,6 +950,44 @@ struct AppStoreTreeProjectionTests {
         #expect(store.controlTree().workspaces[0].sessions[0].presentation?.mode == "presenter")
     }
 
+    @Test func aMarkdownPageProjectsOnlyItsMarkdownSource() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        let page = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: 95) == nil)
+
+        let node = try #require(store.controlTree().workspaces[0].sessions[0].htmlOverlays?.first)
+
+        #expect(node == ControlHtmlOverlayNode(pane: nil, markdown: "/tmp/notes/readme.md", state: "loading", error: nil,
+                                               id: page.id.uuidString))
+        let data = try JSONEncoder().encode(node)
+        #expect(try JSONDecoder().decode(ControlHtmlOverlayNode.self, from: data) == node)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""markdown":"\/tmp\/notes\/readme.md""#))
+        let file = ControlHtmlOverlayNode(pane: nil, file: "/tmp/r.html", state: "loaded", error: nil)
+        #expect(!String(decoding: try JSONEncoder().encode(file), as: UTF8.self).contains("markdown"))
+    }
+
+    @Test func aTextPageProjectsItsFileMappedLanguageAndRequestedLine() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp"))
+        let page = HtmlOverlay(source: .text(path: "/tmp/src/main.go", line: 42))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: 95) == nil)
+
+        let node = try #require(store.controlTree().workspaces[0].sessions[0].htmlOverlays?.first)
+
+        let text = ControlTextOverlayNode(file: "/tmp/src/main.go", language: "go", line: 42)
+        #expect(node == ControlHtmlOverlayNode(pane: nil, text: text, state: "loading", error: nil, id: page.id.uuidString))
+        let data = try JSONEncoder().encode(node)
+        #expect(try JSONDecoder().decode(ControlHtmlOverlayNode.self, from: data) == node)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""text":{"#))
+        let plain = ControlTextOverlayNode(file: "/tmp/notes.txt", language: nil, line: nil)
+        #expect(String(decoding: try JSONEncoder().encode(plain), as: UTF8.self) == #"{"file":"\/tmp\/notes.txt"}"#)
+        let file = ControlHtmlOverlayNode(pane: nil, file: "/tmp/r.html", state: "loaded", error: nil)
+        #expect(!String(decoding: try JSONEncoder().encode(file), as: UTF8.self).contains("text"))
+    }
+
     @Test func htmlOverlaysProjectEachPageWithItsLoadState() throws {
         let store = makeStore()
         let workspace = store.addWorkspace(name: "work")
@@ -920,7 +999,7 @@ struct AppStoreTreeProjectionTests {
 
         let wide = HtmlOverlay(source: .file(path: "/tmp/a/wide.html", grantRoot: "/tmp/a"), navigation: true, javascript: true)
         let right = HtmlOverlay(source: .url(try #require(URL(string: "http://localhost:5173/"))), persistent: true,
-                                browse: true)
+                                browse: true, clicked: true)
         let left = HtmlOverlay(source: .file(path: "/tmp/a/bare.html", grantRoot: nil), chromeless: true)
         #expect(store.openHtmlOverlay(session.id, pane: .right, overlay: right, sizePercent: nil) == nil)
         #expect(store.openHtmlOverlay(session.id, pane: .left, overlay: left, sizePercent: nil) == nil)
@@ -939,7 +1018,7 @@ struct AppStoreTreeProjectionTests {
             ControlHtmlOverlayNode(pane: "left", file: "/tmp/a/bare.html", state: "loading", error: nil, chromeless: true,
                                    id: left.id.uuidString),
             ControlHtmlOverlayNode(pane: "right", url: "http://localhost:5173/", state: "failed", error: "not found",
-                                   javascript: false, id: right.id.uuidString, persistent: true, browse: true),
+                                   javascript: false, id: right.id.uuidString, persistent: true, browse: true, clicked: true),
         ])
         let decoded = try JSONDecoder().decode(ControlTree.self, from: JSONEncoder().encode(store.controlTree()))
         #expect(decoded.workspaces[0].sessions[0] == node)
@@ -951,6 +1030,8 @@ struct AppStoreTreeProjectionTests {
         #expect(json.contains(#""persistent":true"#))
         #expect(json.contains(#""browse":false"#))
         #expect(json.contains(#""browse":true"#))
+        #expect(json.components(separatedBy: #""clicked":true"#).count == 2)
+        #expect(!json.contains(#""clicked":false"#))
     }
 
     @Test func aPageNodeFromAnOlderServerDecodesAsNotBrowsing() throws {
@@ -958,6 +1039,7 @@ struct AppStoreTreeProjectionTests {
             #"{"url":"http://localhost:5173/","state":"loaded","javascript":false}"#.utf8))
         #expect(!node.browse)
         #expect(node.hidden == nil)
+        #expect(node.clicked == nil)
     }
 
     @Test func hiddenOverlaysReportHiddenSlotsWhileOccupancyStays() throws {

@@ -27,7 +27,7 @@ public enum ForwardPolicy {
             return .served
         case .sessionOverlayReload, .sessionOverlayNavigate, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
              .pickOpen, .pickResult, .pickCancel,
-             .sessionFlag, .sessionTint, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
+             .sessionFlag, .sessionTint, .sessionInfo, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,

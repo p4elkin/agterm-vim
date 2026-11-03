@@ -449,7 +449,7 @@ public final class AppStore {
                                               tint: session.tint?.color.rawValue, tintOn: session.tint?.parts.map(\.rawValue),
                                               parent: session.parentID?.uuidString,
                                               collapsed: !session.isExpanded && parents.contains(session.id) ? true : nil,
-                                              content: session.content == .page ? "page" : nil)
+                                              content: session.content == .page ? "page" : nil, info: session.effectiveInfo)
                 if session.remoteHost != nil {
                     node.remoteState = session.remotePresentation?.rowState.rawValue
                     node.remoteSession = session.remotePresentation?.binding.remoteSessionID
@@ -718,6 +718,7 @@ public final class AppStore {
         removed.teardownPaneOverlays()
         removed.scratchSurface?.teardown()
         removed.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
+        removed.discardInfo()
         sessionDidFinalize?(removed.id)
         WatermarkStorage.removeAllRenderedText(sessionID: sessionID) // drop any rendered .text PNG; the session is gone
         forgetRecency(sessionID)
@@ -761,6 +762,7 @@ public final class AppStore {
             session.teardownPaneOverlays()
             session.scratchSurface?.teardown()
             session.discardHudBody() // a HUD whose surface never realized has no teardown to delete its body file
+            session.discardInfo()
             WatermarkStorage.removeAllRenderedText(sessionID: session.id) // drop any rendered .text PNG; the session is gone
             forgetRecency(session.id)
         }

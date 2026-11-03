@@ -324,6 +324,13 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let collapsed: Bool?
     /// `page` for a page companion, which has no terminal; omitted for a terminal session.
     public let content: String?
+    /// info is the sidebar info line's source as set (`Session.effectiveInfo`, so an attached row without a local
+    /// line shows its origin's). The three info fields are all present while a line is set, all omitted otherwise.
+    public let info: String?
+    /// infoMarkdown says whether `info` is read as markdown.
+    public let infoMarkdown: Bool?
+    /// infoHideAfter is the CONFIGURED expiry in seconds, 0 for none, never a countdown.
+    public let infoHideAfter: Double?
     /// The session's background watermark spec; nil/omitted when none is set. The read side of
     /// `session.background`.
     public let background: BackgroundWatermark?
@@ -421,8 +428,11 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 remoteOverlays: [ControlRemoteOverlayNode]? = nil, htmlOverlays: [ControlHtmlOverlayNode]? = nil,
                 rebasedOverlay: ControlRebasedOverlayNode? = nil, hiddenOverlays: [String]? = nil, lastSelectedAt: Double? = nil,
                 tint: String? = nil, tintOn: [String]? = nil, parent: String? = nil, collapsed: Bool? = nil,
-                content: String? = nil) {
+                content: String? = nil, info: SessionInfo? = nil) {
         self.content = content
+        self.info = info?.source
+        self.infoMarkdown = info?.markdown
+        self.infoHideAfter = info?.hideAfter
         self.parent = parent
         self.collapsed = collapsed
         self.id = id
@@ -490,17 +500,34 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     }
 }
 
+/// ControlTextOverlayNode is a text page's source: the file, the highlight.js language its name maps to
+/// (omitted when unmapped, and still reported for a file too large to highlight), and the line it was
+/// opened at, not the line in view.
+public struct ControlTextOverlayNode: Codable, Sendable, Equatable {
+    public let file: String
+    public let language: String?
+    public let line: Int?
+
+    public init(file: String, language: String?, line: Int?) {
+        self.file = file
+        self.language = language
+        self.line = line
+    }
+}
+
 /// ControlHtmlOverlayNode is one HTML page in an overlay slot. `file` or `url` is what was opened and what
 /// `session.overlay.reload` loads; `page` is where the user has navigated since, nil until the first load.
 public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     /// pane is the pane role, omitted for the session-wide slot.
     public let pane: String?
-    /// file, url and image name the source; exactly one is set.
+    /// file, url, image, markdown and text name the source; exactly one is set.
     public let file: String?
     /// cwd is a file page's read grant, omitted when it has none.
     public let cwd: String?
     public let url: String?
     public let image: String?
+    public let markdown: String?
+    public let text: ControlTextOverlayNode?
     /// state is `loading`, `loaded` or `failed`.
     public let state: String
     public let error: String?
@@ -532,14 +559,19 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     public let remote: Bool?
     /// replica is true for a page shown here for the Mac that opened it, omitted otherwise.
     public let replica: Bool?
+    /// clicked is true for a page a terminal click opened, omitted otherwise. It names the origin only:
+    /// `AppStore.releaseHiddenClickedPage` decides whether a click replaces the page, and `hidden` here also
+    /// covers states it leaves alone.
+    public let clicked: Bool?
 
     public init(pane: String?, file: String? = nil, cwd: String? = nil, url: String? = nil, image: String? = nil,
-                state: String,
+                markdown: String? = nil, text: ControlTextOverlayNode? = nil, state: String,
                 error: String?, page: String? = nil, title: String? = nil, canGoBack: Bool? = nil,
                 canGoForward: Bool? = nil, navigation: Bool? = nil, javascript: Bool = false, chromeless: Bool = false,
                 zoom: Double? = nil, id: String? = nil, persistent: Bool = false, browse: Bool = false,
-                hidden: Bool? = nil, remote: Bool? = nil, replica: Bool? = nil) {
+                hidden: Bool? = nil, remote: Bool? = nil, replica: Bool? = nil, clicked: Bool? = nil) {
         self.id = id
+        self.clicked = clicked
         self.hidden = hidden
         self.remote = remote
         self.replica = replica
@@ -548,6 +580,8 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         self.cwd = cwd
         self.url = url
         self.image = image
+        self.markdown = markdown
+        self.text = text
         self.state = state
         self.error = error
         self.page = page
@@ -563,8 +597,8 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case pane, file, cwd, url, image, state, error, page, title, canGoBack, canGoForward, navigation, javascript
-        case chromeless, persistent, browse, zoom, id, hidden, remote, replica
+        case pane, file, cwd, url, image, markdown, text, state, error, page, title, canGoBack, canGoForward, navigation, javascript
+        case chromeless, persistent, browse, zoom, id, hidden, remote, replica, clicked
     }
 
     public init(from decoder: Decoder) throws {
@@ -574,6 +608,8 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         cwd = try c.decodeIfPresent(String.self, forKey: .cwd)
         url = try c.decodeIfPresent(String.self, forKey: .url)
         image = try c.decodeIfPresent(String.self, forKey: .image)
+        markdown = try c.decodeIfPresent(String.self, forKey: .markdown)
+        text = try c.decodeIfPresent(ControlTextOverlayNode.self, forKey: .text)
         state = try c.decode(String.self, forKey: .state)
         error = try c.decodeIfPresent(String.self, forKey: .error)
         page = try c.decodeIfPresent(String.self, forKey: .page)
@@ -590,6 +626,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden)
         remote = try c.decodeIfPresent(Bool.self, forKey: .remote)
         replica = try c.decodeIfPresent(Bool.self, forKey: .replica)
+        clicked = try c.decodeIfPresent(Bool.self, forKey: .clicked)
     }
 }
 
