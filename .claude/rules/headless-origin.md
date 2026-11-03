@@ -256,8 +256,11 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
 - Over a non-interactive ssh, source `~/.local/share/swiftly/env.sh` and put a real node first on PATH
   (`~/.local/share/mise/installs/node/26/bin`): the mise shim answers `node is not a valid shim` there,
   and every `OpenCodeStatusHookTests` case fails on it (measured 2026-10-03).
-- An upstream file using `@Observable` with only `import Foundation` compiles on the Mac and fails here:
-  swift-corelibs does not re-export `Observation` (`RemoteReconnect.swift`, 2026-10-03).
+- An upstream file using `@Observable` or `withObservationTracking` with only `import Foundation` compiles
+  on the Mac and fails here: swift-corelibs does not re-export `Observation` (`RemoteReconnect.swift`,
+  2026-10-03; `AppStoreAutoFollowTests`, 2026-11-03). Neither does it have `Darwin.exit`; use `Foundation.exit`.
+- util-linux `script(1)` takes the command as one `-c` string, not BSD's trailing argv
+  (`ZmxReplayScriptTests.runZshInTerminal`).
 
 - Serial, not parallel: `SocketClientTests` captures the process-global `STDOUT_FILENO`, and a test in
   another suite writing to stdout meanwhile lands in its pipe (`runEchoesNewIdForCreateCommand` reads
@@ -268,7 +271,8 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
     `hud.sh` painter; the headless origin has no surface to paint, and why the suite hangs here is unproved);
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
-    three `HudTests` markdown bodies (the markdown fallback), `OverlayRedirectSshTests`' abandoned-directory
+    four `HudTests` markdown bodies plus the bullet check in `aFramelessPanelIsAsTallAsItsText`
+    (the markdown fallback), `OverlayRedirectSshTests`' abandoned-directory
     sweep (its fixture sets a creation date, which Linux cannot), `SocketClientTests`' two
     held-ownership-lock tests (the `F_GETLK` probe is Darwin-only and answers nil elsewhere), and the two
     `RebasedMirrorCleanupTests` that spell a path through `/private` (a Darwin symlink).

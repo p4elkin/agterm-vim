@@ -522,7 +522,12 @@ struct ZmxReplayScriptTests {
     private func runZshInTerminal(script: String, environment overrides: [String: String]) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+        #if canImport(Darwin)
         process.arguments = ["-q", "/dev/null", "/bin/zsh", "-lic", script]
+        #else
+        // util-linux script(1) takes the command as one -c string
+        process.arguments = ["-q", "-c", CommandRestore.shellQuotedLine(["/bin/zsh", "-lic", script]), "/dev/null"]
+        #endif
         process.environment = ProcessInfo.processInfo.environment.merging(overrides) { _, new in new }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = Pipe()

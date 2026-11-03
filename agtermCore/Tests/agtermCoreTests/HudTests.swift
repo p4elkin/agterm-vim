@@ -594,7 +594,9 @@ struct HudTests {
         #expect(HudLayout.box(for: HudSpec(message: "one line", frame: false)).rows == 1)
         #expect(size.heightPoints == 48.0)
         #expect(grid.rows == 2)
+        #if canImport(Darwin)
         #expect(HudLayout.markdownBody(for: spec, grid: grid).lines == ["• a", "• b"])
+        #endif
     }
 
     @Test(arguments: [(400.0, 66.0), (800.0, 66.0), (1600.0, 66.0)])
