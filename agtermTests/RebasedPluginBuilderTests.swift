@@ -94,6 +94,16 @@ final class RebasedPluginBuilderTests: XCTestCase {
             Files.delete(file);
             assert !Bridge.onDisk(file.toString(), little);
 
+            var openingField = Bridge.class.getDeclaredField("opening");
+            openingField.setAccessible(true);
+            var opening = (java.util.Map<String, List<Runnable>>) openingField.get(null);
+            var ran = new java.util.concurrent.atomic.AtomicInteger();
+            Bridge.afterOpen("/settled", ran::incrementAndGet);
+            assert ran.get() == 1 : "a view for a project not being opened runs at once";
+            opening.put("/opening", new java.util.ArrayList<>());
+            Bridge.afterOpen("/opening", ran::incrementAndGet);
+            assert ran.get() == 1 && opening.get("/opening").size() == 1 : "a view waits while its project opens";
+
             events.clear();
             System.getProperties().put(Bridge.PROPERTY, new Bridge());
             assert "ok".equals(new Bridge().apply("hello", ""));

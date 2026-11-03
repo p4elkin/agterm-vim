@@ -155,6 +155,11 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   `plugins/vcs-git/lib`.
 - `openFile <request>\t<line>\t<path>\t<dir>` opens an editor on the EDT; line is 1-based, or 0 for none.
   File paths reject tabs and newlines; the directory is always the final field in either view verb.
+- Either view waits while `open` is inside `openOrImport` for its folder and runs when it returns. The host
+  sends a view at `frameOpened`, which comes while IntelliJ still restores saved tabs; a tab opened then,
+  over a restore that found nothing it could reopen, fails the load with `Tab count expected to be zero`
+  and disposes the project. `close` also closes `LightVirtualFile` tabs (review diffs), which come back as
+  `mock://` entries that cannot be reopened. The IDE's own periodic save can still keep one.
 - `port` returns the built-in server port only after its server exists; `getPort()` alone can return
   a default before startup.
 - Events: `ready`, `frameOpened <dir>\t<n>`, `frameClosed <dir>`,
