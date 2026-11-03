@@ -79,6 +79,9 @@ is the `.claude/rules` file that owns the design.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch, with the name the
   row last showed; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
+  `agtermctl zmx attach <host> <id> --parent <row>` attaches a session as a companion of a remote row here,
+  which a headless origin's rows cannot get any other way; the parent is saved with the row
+  (`.claude/rules/control-api.md`, Remote sessions).
   `session type` clears a status by the `statusReset` in the server's own `settings.json`, read on every call.
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's
   `agtermctl` is the server's own CLI, and agterm-agents' `agtermctl` shim is gone.

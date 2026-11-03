@@ -21,10 +21,12 @@ final class RemoteRowBookTests {
             sessionName: "remote-session", transport: transport)
     }
 
-    private func row(in store: AppStore, origin: RemoteBinding.Origin?, version: Int? = 1) throws -> Session {
+    private func row(in store: AppStore, origin: RemoteBinding.Origin?, version: Int? = 1,
+                     remoteSessionID: String = "remote-id", parentID: UUID? = nil) throws -> Session {
         let ws = try #require(store.workspaces.first)
-        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/tmp", remoteHost: "buildbox"))
-        store.bindRemote(RemoteBinding(remoteSessionID: "remote-id",
+        let session = try #require(store.addSession(toWorkspace: ws.id, cwd: "/tmp", remoteHost: "buildbox",
+                                                    parentID: parentID))
+        store.bindRemote(RemoteBinding(remoteSessionID: remoteSessionID,
             daemonsByLocalPane: [session.paneIdentity: ZmxSupport.daemonName(for: originLeft)],
             presentationVersion: version, origin: origin), forSession: session.id)
         return session
@@ -82,6 +84,51 @@ final class RemoteRowBookTests {
 
         #expect(older.name == nil)
         #expect(older.restoredName == (value: "remote-session", pending: false))
+    }
+
+    @Test func aRecordRoundTripsItsParentThroughCodableAndTheBook() throws {
+        var saved = try record()
+        saved.parentRemoteSessionID = "walker-id"
+        let data = try JSONEncoder().encode(saved)
+        #expect(try JSONDecoder().decode(RemoteRowBook.Record.self, from: data) == saved)
+        let book = RemoteRowBook(directory: directory)
+        try book.save([saved])
+        #expect(book.load() == [saved])
+    }
+
+    @Test func aRecordAnOlderBuildWroteLoadsWithoutAParent() throws {
+        var saved = try record()
+        saved.parentRemoteSessionID = "walker-id"
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+        object["parentRemoteSessionID"] = nil
+        let older = try JSONDecoder().decode(RemoteRowBook.Record.self,
+                                             from: JSONSerialization.data(withJSONObject: object))
+        #expect(older.parentRemoteSessionID == nil)
+    }
+
+    @Test(arguments: ["", "bad\nid", "walker id"])
+    func loadKeepsARowWhoseParentIdIsNotPlainAndDropsOnlyTheLink(parent: String) throws {
+        let valid = try record()
+        var linked = valid
+        linked.parentRemoteSessionID = parent
+        let book = RemoteRowBook(directory: directory)
+        try book.save([linked])
+        let loaded = book.load()
+        #expect(loaded.count == 1)
+        #expect(loaded == [valid])
+    }
+
+    @Test func aCompanionRowsRecordNamesItsParentsRemoteId() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.windows.first)
+        let store = try #require(library.store(for: window.id))
+        let parent = try row(in: store, origin: origin(), remoteSessionID: "walker-id")
+        let companion = try row(in: store, origin: origin(), remoteSessionID: "lab-id", parentID: parent.id)
+        #expect(companion.parentID == parent.id)
+        let records = RemoteRowBook.records(from: library, previous: [])
+        #expect(records.map(\.remoteSessionID) == ["walker-id", "lab-id"])
+        #expect(records.map(\.parentRemoteSessionID) == [nil, "walker-id"])
+        #expect(records.map(\.position) == [1, 2])
     }
 
     @Test(arguments: [Int?.none, .some(1)])

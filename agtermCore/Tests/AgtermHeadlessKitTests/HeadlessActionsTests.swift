@@ -331,6 +331,17 @@ struct HeadlessActionsTests {
         #expect(fixture.runner.calls.last?.arguments == ["kill", daemon, "--force"])
     }
 
+    @Test func anAttachUnderAParentIsRefusedOnTheHeadlessOrigin() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+
+        let response = await fixture.actions.attachRemoteSession(host: "h", session: "s1", parent: "row")
+
+        #expect(!response.ok)
+        #expect(response.error?.contains("zmx.attach") == true)
+        #expect(fixture.runner.calls.isEmpty)
+    }
+
     @Test func aHostedZmxNewNeverCreatesOnTheHeadlessOrigin() async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }

@@ -17,6 +17,9 @@ extension ControlServer {
             return Self.forwardRefusal(request, "the row is no longer attached")
         }
         if request.cmd == .zmxAttach {
+            guard request.args?.parent == nil else {
+                return Self.forwardRefusal(request, "--beside takes no --parent")
+            }
             guard let target = request.target, Self.sameSession(target, remoteID) else {
                 return Self.forwardRefusal(request, "the target is not the session this row presents")
             }

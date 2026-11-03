@@ -170,6 +170,9 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the
     IDE-key-window early return.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
+- `plugins/agterm/skills/agterm/{reference,SKILL}.md` and the `zmx attach` help in `ZmxCommands.swift` — upstream
+  still says a remote row is never saved or restored; the fork says it is (`RemoteRowBook`). Keep the fork's
+  sentence when upstream edits around it.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].
 

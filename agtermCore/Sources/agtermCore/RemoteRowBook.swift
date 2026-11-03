@@ -17,6 +17,9 @@ public struct RemoteRowBook {
         /// The row's name as this Mac last showed it. Nil in a file an older build wrote, which kept only the
         /// name the origin reported at attach (`sessionName`).
         public var name: Name?
+        /// The remote id of the row this one is a companion of, on the same host. Nil for a top-level row and
+        /// in a file an older build wrote.
+        public var parentRemoteSessionID: String?
 
         public struct Name: Codable, Equatable, Sendable {
             /// The custom name, nil when the row shows its automatic one.
@@ -31,7 +34,8 @@ public struct RemoteRowBook {
         }
 
         @MainActor
-        public init?(session: Session, windowID: UUID, workspaceID: UUID, position: Int) {
+        public init?(session: Session, windowID: UUID, workspaceID: UUID, position: Int,
+                     parentRemoteSessionID: String? = nil) {
             guard session.remoteHost != nil, let binding = session.remotePresentation?.binding,
                   let origin = binding.origin, let primary = binding.daemon(forLocalPane: session.paneIdentity) else { return nil }
             self.windowID = windowID
@@ -49,6 +53,15 @@ public struct RemoteRowBook {
             }
             splitAxis = session.splitAxis
             name = Name(value: session.customName, pending: session.remotePresentation?.namePending ?? false)
+            self.parentRemoteSessionID = parentRemoteSessionID
+        }
+
+        /// A parent id that could not reach an argv or an error message drops the link, never the row.
+        fileprivate var sanitized: Record {
+            guard let parent = parentRemoteSessionID, !RemoteSession.isPlain(parent) else { return self }
+            var copy = self
+            copy.parentRemoteSessionID = nil
+            return copy
         }
 
         /// The name to create the row with, and whether a rename made here is still to reach the origin.
@@ -115,7 +128,7 @@ public struct RemoteRowBook {
     public func load() -> [Record] {
         guard let data = try? Data(contentsOf: fileURL),
               let records = try? JSONDecoder().decode([Record].self, from: data) else { return [] }
-        return records.filter(\.isValid)
+        return records.filter(\.isValid).map(\.sanitized)
     }
 
     public func save(_ records: [Record]) throws {
@@ -161,8 +174,11 @@ public struct RemoteRowBook {
             }
         }
         return workspaceIDs.flatMap { workspaceID in
-            (rows[workspaceID] ?? []).enumerated().compactMap { position, session in
-                Record(session: session, windowID: windowID, workspaceID: workspaceID, position: position)
+            let siblings = rows[workspaceID] ?? []
+            return siblings.enumerated().compactMap { position, session in
+                let parent = siblings.first { $0.id == session.parentID }?.remotePresentation?.binding.remoteSessionID
+                return Record(session: session, windowID: windowID, workspaceID: workspaceID, position: position,
+                              parentRemoteSessionID: parent)
             }
         }
     }

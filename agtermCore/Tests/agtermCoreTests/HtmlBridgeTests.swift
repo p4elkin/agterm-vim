@@ -82,6 +82,11 @@ struct HtmlBridgeTests {
         #expect(built.args?.window == nil)
     }
 
+    @Test func anAttachUnderAParentTakesNoWindowFromThePage() throws {
+        #expect(try request(#"{"cmd":"zmx.attach","target":"s1","args":{"host":"h","parent":"row"}}"#).args?.window == nil)
+        #expect(try request(#"{"cmd":"zmx.attach","target":"s1","args":{"host":"h"}}"#).args?.window == "W1")
+    }
+
     @Test func recentOpenReopensIntoThePagesWindow() throws {
         let newest = try request(#"{"cmd":"recent.open"}"#)
         #expect(newest.target == nil)

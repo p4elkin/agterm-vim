@@ -87,8 +87,12 @@ Consumers of `ControlArgs.parent` (10): CLI `validate`, CLI request building, di
   parent is in another workspace, so the workspace check is what prevents a dangling link. No match, or more than
   one, leaves the companion top-level, as
   `regroupedCompanions` does.
-- Order holds without new code: `records(in:)` writes sidebar order, where a companion follows its parent, and
-  `restorePlan` sorts by workspace, position, offset.
+- Restore keeps the saved order. A companion whose parent is not restored yet waits for a second pass, and the rows
+  after it in its workspace move up by one: `records(in:)` saves a soft-closed companion at its old index, which can
+  sort it ahead of its parent (Task 3 review, then revmux round 1). The deferred companion's position only matters
+  within its group, where `insertionIndex(for:near:in:)` clamps it.
+- Two rows of one remote session (the old top-level row and its new companion row) are a transient state:
+  restore keeps one row per (host, remoteSessionID), so the old row must be closed before a relaunch.
 
 ## Tasks
 
@@ -131,7 +135,7 @@ depends: 1, 2
 - [ ] The `attachRemoteSession` overload with a parent, the `--beside` refusal, and the restore placement.
 
 Check: `scripts/test-app.sh -only-testing:agtermTests/ControlServerZmxTests -only-testing:agtermTests/RemoteRowRestoreTests`
-(the worktree's six ignored artifacts are symlinked only while their stamps match, so `setup.sh` inside the script
+(the worktree's six ignored artifacts are symlinked only while their stamps match, so the script's setup step
 builds nothing).
 
 ### Task 4: docs

@@ -554,6 +554,155 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertNil(reply.result?.parent)
     }
 
+    func testAnAttachUnderAParentJoinsThatRowInItsWorkspace() async throws {
+        let server = makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.headlessProjection))
+        let store = try XCTUnwrap(library.activeStore)
+        let parent = try await attachedRow(server, "s1")
+        let home = try XCTUnwrap(store.workspace(forSession: parent)?.id)
+        _ = store.addWorkspace(name: "other")
+
+        let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: parent.uuidString)
+
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        XCTAssertEqual(reply.result?.parent, parent.uuidString)
+        let companion = try XCTUnwrap(reply.result?.id.flatMap(UUID.init(uuidString:)))
+        XCTAssertEqual(store.session(withID: companion)?.parentID, parent)
+        XCTAssertEqual(store.workspace(forSession: companion)?.id, home)
+    }
+
+    func testAnAttachUnderAParentLeavesTheSessionsTopLevelRowInPlace() async throws {
+        let server = makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.headlessProjection))
+        let store = try XCTUnwrap(library.activeStore)
+        let old = try await attachedRow(server, "c1")
+        let parent = try await attachedRow(server, "s1")
+
+        let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: parent.uuidString)
+
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        let rows = store.workspaces.flatMap(\.sessions).filter { $0.remotePresentation?.binding.remoteSessionID == "c1" }
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertNil(store.session(withID: old)?.parentID)
+        XCTAssertEqual(rows.first { $0.id != old }?.parentID, parent)
+    }
+
+    func testAnAttachUnderACompanionLandsUnderItsParent() async throws {
+        let server = makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.groupProjection))
+        let parent = try await attachedRow(server, "s1")
+        let companion = try await attachedRow(server, "c1")
+
+        let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: companion.uuidString)
+
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        XCTAssertEqual(reply.result?.parent, parent.uuidString)
+    }
+
+    func testAnAttachUnderAParentInABackgroundWindowLandsThere() async throws {
+        let front = try XCTUnwrap(library.activeWindowID)
+        let server = makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.headlessProjection))
+        let other = library.newWindow(name: "other").id
+        let otherStore = try XCTUnwrap(library.loadStore(for: other))
+        let workspace = try XCTUnwrap(otherStore.currentWorkspaceID)
+        let parent = try XCTUnwrap(otherStore.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: "buildbox"))
+        otherStore.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: nil,
+                                            origin: RemoteBinding.Origin(host: "buildbox", endpoint: Self.endpoint, sessionName: "build")),
+                              forSession: parent.id)
+        library.frontmostWindowID = front
+
+        let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: parent.id.uuidString)
+
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        let companion = try XCTUnwrap(reply.result?.id.flatMap(UUID.init(uuidString:)))
+        XCTAssertEqual(otherStore.session(withID: companion)?.parentID, parent.id)
+    }
+
+    func testAnAttachUnderAParentFollowsAParentMovedToAnotherWindowDuringDiscovery() async throws {
+        let front = try XCTUnwrap(library.activeWindowID)
+        let parent = try await attachedRow(makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.headlessProjection)), "s1")
+        let library = self.library!
+        let runner = FakeRemoteRunner(result: Self.headlessProjection, beforeReturn: {
+            _ = library.transferSessions([parent], from: front, to: .new, workspace: .none)
+        })
+        let server = makeServer(list: "", remoteRunner: runner)
+
+        let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: parent.uuidString)
+
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        let companion = try XCTUnwrap(reply.result?.id.flatMap(UUID.init(uuidString:)))
+        let moved = try XCTUnwrap(library.store(forSession: parent))
+        XCTAssertFalse(moved === library.loadStore(for: front))
+        XCTAssertEqual(moved.session(withID: companion)?.parentID, parent)
+        XCTAssertEqual(moved.workspace(forSession: companion)?.id, moved.workspace(forSession: parent)?.id)
+    }
+
+    func testAnAttachUnderAParentRefusesARowItCannotJoin() async throws {
+        let server = makeServer(list: "", remoteRunner: FakeRemoteRunner(result: Self.headlessProjection))
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let local = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory()))
+        let elsewhere = ControlZmxEndpoint(executable: "/Applications/agterm.app/zmx", socketDirectory: "/tmp/agterm-zmx-other")
+        var foreign: [String: UUID] = [:]
+        for (host, endpoint) in [("otherbox", Self.endpoint), ("buildbox", elsewhere)] {
+            let row = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: host))
+            store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: nil,
+                                           origin: RemoteBinding.Origin(host: host, endpoint: endpoint, sessionName: "build")),
+                             forSession: row.id)
+            foreign[host] = row.id
+        }
+        let parent = try await attachedRow(server, "s1")
+        let page = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: "buildbox",
+                                                  parentID: parent, content: .page))
+        let cases: [(UUID, String)] = [
+            (local.id, "is not a remote row of buildbox"),
+            (try XCTUnwrap(foreign["otherbox"]), "is not a remote row of buildbox"),
+            (try XCTUnwrap(foreign["buildbox"]), "shows another zmx endpoint on buildbox"),
+            (page.id, "is a page companion, not a terminal row"),
+        ]
+        for (row, refusal) in cases {
+            let reply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: row.uuidString)
+
+            XCTAssertFalse(reply.ok)
+            XCTAssertEqual(reply.error, "\(row.uuidString) \(refusal)")
+        }
+    }
+
+    func testAnAttachUnderAParentRefusesAPageOrAnotherParentsCompanion() async throws {
+        let page = Self.headlessProjection.stdout.replacingOccurrences(of: #""id":"c1","#, with: #""id":"c1","content":"page","#)
+        let runner = FakeRemoteRunner(results: [Self.groupProjection, RemoteCommandResult(status: 0, stdout: page, stderr: ""),
+                                                Self.groupProjection])
+        let server = makeServer(list: "", remoteRunner: runner)
+        let store = try XCTUnwrap(library.activeStore)
+        _ = try await attachedRow(server, "s1")
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let stranger = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: "buildbox"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "s9", daemonsByLocalPane: [:], presentationVersion: nil,
+                                       origin: RemoteBinding.Origin(host: "buildbox", endpoint: Self.endpoint, sessionName: "other")),
+                         forSession: stranger.id)
+
+        let pageReply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: stranger.id.uuidString)
+        let companionReply = await server.attachRemoteSession(host: "buildbox", session: "c1", parent: stranger.id.uuidString)
+
+        XCTAssertEqual(pageReply.error, "c1 is a page; --parent attaches a terminal session")
+        XCTAssertEqual(companionReply.error, "c1 is a companion of another session on buildbox")
+    }
+
+    func testAForwardedAttachBesideRefusesAParent() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let spawner = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: NSHomeDirectory(), remoteHost: "buildbox"))
+        store.bindRemote(RemoteBinding(remoteSessionID: "sp", daemonsByLocalPane: [:], presentationVersion: 1,
+                                       origin: RemoteBinding.Origin(host: "buildbox", endpoint: Self.endpoint, sessionName: "spawner")),
+                         forSession: spawner.id)
+        let runner = FakeRemoteRunner(result: RemoteCommandResult(status: 0, stdout: Self.projection, stderr: ""))
+        let server = makeServer(list: "", remoteRunner: runner)
+        let request = ControlRequest(cmd: .zmxAttach, target: "sp", args: ControlArgs(host: "elsewhere", attach: "s1", parent: "row"))
+
+        let response = await server.runForwarded(request, forSession: spawner.id)
+
+        XCTAssertFalse(response.ok)
+        XCTAssertTrue(response.error?.contains("--beside takes no --parent") == true, response.error ?? "")
+        XCTAssertTrue(runner.invocations.isEmpty)
+    }
+
     func testAttachBringsBothPanesOfARemoteSplit() async throws {
         let runner = FakeRemoteRunner(result: RemoteCommandResult(status: 0, stdout: Self.splitProjection,
                                                                   stderr: ""))
@@ -1390,6 +1539,18 @@ final class ControlServerZmxTests: XCTestCase {
     "workspaceName":"work","cwd":"/repo",\
     "panes":[{"pane":"left","daemon":"agterm-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"}]}]}}}
     """
+
+    private static let endpoint = ControlZmxEndpoint(executable: "/Applications/agterm.app/zmx", socketDirectory: "/tmp/agterm-zmx-abc")
+
+    /// The group projection as a headless origin reports it: no session names a parent.
+    private static let headlessProjection = RemoteCommandResult(
+        status: 0, stdout: groupProjection.stdout.replacingOccurrences(of: #""parent":"s1","#, with: ""), stderr: "")
+
+    private func attachedRow(_ server: ControlServer, _ session: String) async throws -> UUID {
+        let reply = await server.attachRemoteSession(host: "buildbox", session: session)
+        XCTAssertTrue(reply.ok, reply.error ?? "")
+        return try XCTUnwrap(reply.result?.id.flatMap(UUID.init(uuidString:)))
+    }
 
     private static let groupProjection = RemoteCommandResult(status: 0, stdout: """
     {"ok":true,"result":{"remote":{\

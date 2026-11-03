@@ -82,7 +82,8 @@ public enum HtmlBridge {
         let addressed = request.target != nil || args.targets != nil || args.window != nil
         if request.cmd == .sessionOverlayReload, args.current == nil { args.current = true }
         if placedLocally.contains(request.cmd) {
-            if args.window == nil { args.window = page.window }
+            // a `--parent` row lands in its parent's window, which the dispatcher refuses to combine with one
+            if args.window == nil, args.parent == nil { args.window = page.window }
         } else if !addressed, !windowless.contains(request.cmd) {
             if isSessionTargeted(request.cmd, args: args) {
                 request.target = page.session.uuidString

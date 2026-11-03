@@ -182,7 +182,7 @@ dead responsible process, and `unknown` an unavailable reading or an unrelated l
 omitted for non-Live and remote panes; the split field includes hidden splits and is omitted without a
 split; these describe attribution, not permission grants),
 `remoteHost` (the machine an attached session came from — the read side of `zmx attach`; omitted for a
-local session, and never present after a relaunch because a remote session is never written to disk),
+local session; a remote row comes back after a relaunch from `remote-rows.json`),
 `remoteState` (fork only, on a bound remote row: `attached`, `disconnected`, or `endedOnHost`; describes
 pane attachment state separately from the presentation stream; omitted for local and unbound rows),
 `remoteSession` (fork only, on a bound remote row: the origin's id for the session, which a command run on the
@@ -948,7 +948,7 @@ error keeps those names for compatibility.
   the row's placement and an untinted row starts on the icon. `clear` removes the tint and refuses `--on`; the
   socket form (`mode` `set|clear`, `tint`, `tintOn` array) refuses a clear carrying either. Returns the session
   id. Persisted across a relaunch; a duplicated session starts untinted. Local to this Mac: an attached row does
-  not mirror the origin's tint, and its own tint is not persisted, like the row.
+  not mirror the origin's tint, and its own tint is not persisted.
   Read back from the node's `tint`/`tintOn`. GUI twins: the row menu's Tint submenu
   (a color applies to every selected row, keeping each row's placement; Show On needs every selected row
   tinted) and the palette's "Tint Session: <Color>" / "Tint Session: None" for the active session.
@@ -2459,6 +2459,19 @@ error naming the parent and what is missing; `membershipKnown: false` means the 
 `companions`, so one it did not list cannot be named. An app too old for the command creates nothing.
 Companions created on the origin later are not followed.
 
+`agtermctl zmx attach HOST SESSION --parent ROW` (fork only) attaches the session as a companion of `ROW`, a
+remote row here of the same host and zmx endpoint (id, unique prefix or `active`, across every open window; a
+companion `ROW` means its parent). It is how a row from an origin that does not report companions, such as a
+headless one, joins a group. The row lands in `ROW`'s window and workspace over `ROW`'s transport, so
+`--window`, `--transport`, `--mosh-server`, `--mosh`, `--beside` and `--companions` are refused beside it. Also
+refused: a local `ROW`, a page `ROW`, a page session, and a session whose origin names a different parent.
+A session already attached here may be attached again under `ROW`; closing the old row afterwards only ends its
+connection, so the far-side program keeps running in the new one. Returns `result.id` and `result.parent`; an app
+too old for `--parent` attaches top-level and the CLI then fails with `the running app is too old for --parent;
+attached ID as a top-level row`. The parent is saved with the row, so a relaunch restores the group. Restore keeps one
+row per remote session, so relaunch only after the old row is closed and its 3-second close grace has passed, or the
+old top-level row may come back instead of the companion.
+
 File ▸ Attach Remote… is the same flow in the GUI and has no command of its own: it offers the machines in
 `<config dir>/remotes.conf` (one `destination [label]` per line, `#` comments), asks which in the picker
 when there are several, then lists that machine's sessions and attaches the picked one, with its
@@ -2541,8 +2554,9 @@ bridges it to stdio as newline-delimited JSON. agterm runs it over ssh on the or
 be typed.
 
 Closing a remote session here ends only this side's connection: the far-side processes keep running and
-nothing agterm does from this end can kill them. It is never written to disk, so it does not come back
-after a relaunch whatever the restore mode is.
+nothing agterm does from this end can kill them. The row itself is saved in `remote-rows.json` and comes
+back after a relaunch in every restore mode, reattached to the same far-side daemons, with its place under
+a parent when it was a companion.
 
 The pane reports the far side's working directory, and the local launches that would inherit it pick
 their start directory by one rule: the reported path when it exists here as a directory, else local

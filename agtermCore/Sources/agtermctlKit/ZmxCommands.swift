@@ -90,10 +90,13 @@ struct Zmx: ParsableCommand {
             list was taken fails rather than handing back a fresh shell wearing its name.
 
             Closing it here ends only this side's connection: the far-side processes keep running, and \
-            nothing this command does can kill them. The session is not restored after a relaunch.
+            nothing this command does can kill them. The row is restored after a relaunch.
 
             On a headless origin, `--beside ROW` asks the Mac presenting ROW to attach the session right \
             after that row, from the host and transport the row already uses.
+
+            `--parent ROW` attaches it as a companion of ROW, a remote row here of the same host, in ROW's \
+            window over ROW's transport.
             """)
         @Argument(help: "The host, as ssh would take it.")
         var host: String
@@ -111,6 +114,8 @@ struct Zmx: ParsableCommand {
         var beside: String?
         @Flag(help: "Also attach every companion of the session, under it; the session must not itself be a companion.")
         var companions = false
+        @Option(help: "A remote row here of the same host to attach the session under, as its companion.")
+        var parent: String?
         @OptionGroup var options: BasicOptions
 
         /// It creates a local session, so it echoes that session's id like every other create command.
@@ -124,6 +129,12 @@ struct Zmx: ParsableCommand {
             }
             if beside != nil, companions {
                 throw ValidationError("--beside attaches one session, not its companions")
+            }
+            if parent != nil, window != nil || transport != nil || moshServer != nil || mosh != nil || beside != nil {
+                throw ValidationError("--parent takes the parent row's window and transport")
+            }
+            if parent != nil, companions {
+                throw ValidationError("--parent attaches one session, not its companions")
             }
             let trimmed = transport?.trimmingCharacters(in: .whitespacesAndNewlines)
             let wireTransport = trimmed?.isEmpty == true ? nil : trimmed
@@ -139,12 +150,16 @@ struct Zmx: ParsableCommand {
             if let beside {
                 return ControlRequest(cmd: .zmxAttach, target: beside, args: ControlArgs(host: host, attach: session))
             }
+            if let parent {
+                return ControlRequest(cmd: .zmxAttach, target: session, args: ControlArgs(host: host, parent: parent))
+            }
             return ControlRequest(cmd: companions ? .zmxAttachGroup : .zmxAttach, target: session,
                                   args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
                                                     mosh: mosh, window: window))
         }
 
         func run() throws {
+            if parent != nil { return try runUnderParent() }
             guard companions else { return try defaultRun() }
             let send = companionSend(SocketClient(path: options.socketPath()).send, json: options.json,
                                      tooOld: "the running app is too old for group attach")
@@ -155,6 +170,25 @@ struct Zmx: ParsableCommand {
                 printGroup(reply.response)
             }
             if !reply.response.ok { throw ExitCode.failure }
+        }
+
+        private func runUnderParent() throws {
+            let reply = try SocketClient(path: options.socketPath()).send(try makeRequest())
+            guard let refusal = Self.staleParentRefusal(reply.response) else {
+                SocketClient.printResponse(reply, json: options.json, echoID: true)
+                if !reply.response.ok { throw ExitCode.failure }
+                return
+            }
+            if options.json { print(reply.line) }
+            FileHandle.standardError.write(Data("error: \(refusal)\n".utf8))
+            throw ExitCode.failure
+        }
+
+        /// An app predating `--parent` drops the key and attaches top-level with `ok`, so a reply without
+        /// `result.parent` names the row it made instead of passing for success.
+        static func staleParentRefusal(_ response: ControlResponse) -> String? {
+            guard response.ok, response.result?.parent == nil else { return nil }
+            return "the running app is too old for --parent; attached \(response.result?.id ?? "a session") as a top-level row"
         }
 
         // the note goes out on failure too: a partial attach from an origin that lists no membership can

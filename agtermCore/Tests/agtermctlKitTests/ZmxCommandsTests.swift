@@ -39,6 +39,30 @@ struct ZmxCommandsTests {
         #expect(throws: (any Error).self) { try Zmx.Attach.parse(["p4linux", "s1", "--beside", "row", "--window", "w"]) }
     }
 
+    @Test func attachWithAParentTargetsTheRemoteSessionAndCarriesTheRow() throws {
+        let request = try Zmx.Attach.parse(["p4linux", "s1", "--parent", "row"]).makeRequest()
+
+        #expect(request.cmd == .zmxAttach)
+        #expect(request.target == "s1")
+        #expect(request.args == ControlArgs(host: "p4linux", parent: "row"))
+    }
+
+    @Test(arguments: [["--window", "w"], ["--transport", "ssh"], ["--mosh-server", "/m"], ["--mosh", "/m"],
+                      ["--beside", "b"], ["--companions"]])
+    func attachRefusesAPlacementBesideAParent(_ extra: [String]) {
+        #expect(throws: (any Error).self) { try Zmx.Attach.parse(["p4linux", "s1", "--parent", "row"] + extra) }
+    }
+
+    @Test func aParentlessOkReplyIsATooOldAppThatAttachedTopLevel() {
+        let stale = ControlResponse(ok: true, result: ControlResult(id: "NEW"))
+        let current = ControlResponse(ok: true, result: ControlResult(id: "NEW", parent: "ROW"))
+        let refused = ControlResponse(ok: false, error: "no such session")
+
+        #expect(Zmx.Attach.staleParentRefusal(stale) == "the running app is too old for --parent; attached NEW as a top-level row")
+        #expect(Zmx.Attach.staleParentRefusal(current) == nil)
+        #expect(Zmx.Attach.staleParentRefusal(refused) == nil)
+    }
+
     @Test func attachWithoutTransportFlagsLeavesThemUnset() throws {
         let request = try Zmx.Attach.parse(["buildbox", "s1"]).makeRequest()
         #expect(request.args?.transport == nil)

@@ -308,6 +308,8 @@ public protocol ControlActions {
     /// attachRemoteGroup attaches a remote top-level session, then each companion its origin lists, from one
     /// discovery read. A partial attach answers not ok with `result.id` and `result.remoteGroup` still set.
     func attachRemoteGroup(host: String, session: String, window: String?) async -> ControlResponse
+    /// The attach as a companion of `parent`, a remote row here of the same host, in its window over its transport.
+    func attachRemoteSession(host: String, session: String, parent: String) async -> ControlResponse
     /// resolveMessagePane resolves a bus address to a live pane: a role picks the slot's pane now, a pane id
     /// must be a live pane of the named session. Never falls back to the active pane or another role.
     func resolveMessagePane(_ address: MessageAddress) -> Result<MessageRecipient, MessagePaneError>

@@ -91,6 +91,7 @@ class MockControlActionsBase {
         case zmxNewRemote(host: String, options: ControlZmxNewOptions, window: String?)
         case zmxTree(host: String?)
         case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
+        case zmxAttachUnder(host: String, session: String, parent: String)
         case zmxPresent(session: String)
         case rebasedMirrorList
         case rebasedMirrorPrune(olderThanDays: Int?, dryRun: Bool)
@@ -1073,6 +1074,11 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
     func attachRemoteSession(host: String, session: String, window: String?,
                              transport: RemoteTransport) async -> ControlResponse {
         calls.append(.zmxAttach(host: host, session: session, window: window, transport: transport))
+        return nextRemoteAttachResponse
+    }
+
+    func attachRemoteSession(host: String, session: String, parent: String) async -> ControlResponse {
+        calls.append(.zmxAttachUnder(host: host, session: session, parent: parent))
         return nextRemoteAttachResponse
     }
 

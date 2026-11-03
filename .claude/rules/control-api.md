@@ -1951,11 +1951,19 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `sessionCount` and `selectedSessionID` are recomputed after filtering. The in-memory pending-close record
   keeps remote sessions, so the three-second undo still restores the row.
 - A remote row is saved OUTSIDE the snapshot, in `<stateDir>/remote-rows.json` (`RemoteRowBook`): window,
-  workspace, position, origin, transport and daemons by pane role, never a command, so every restore mode
+  workspace, position, origin, transport, daemons by pane role and the parent's origin session id for a
+  companion, never a command, so every restore mode
   brings it back and none replays an ssh line. `RemoteRowBookWriter` rewrites it after each tree change,
   debounced, and once from `applicationWillTerminate` before `isTerminating` stops every later write. At
   launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected, at their places,
   without a lead claim; a reopened window restores its own through `WindowLibrary.onStoreLoaded`.
+  A companion record goes under the one top-level row restored in its workspace with the same host, endpoint
+  and origin id, else top-level; a bad saved parent id reads as none, so the row is never dropped for it.
+- `zmx attach --parent ROW` (fork only) is the one way to put a row from a headless origin, which reports no
+  companions, under a parent here. `ControlArgs.parent` is refused by the dispatcher beside any placement,
+  transport, `--beside` or group attach, by the `--beside` forward branch, by `ControlActionsDefaults` and by
+  `HeadlessActions`; `HtmlBridge` leaves `window` unset for it. The CLI treats an ok reply without
+  `result.parent` as an app too old for the key, which attached top-level.
 - `RemoteRowSupervisor` takes a remote pane whose attach ended: one tree call per host classifies it,
   `attached` reattaches through `PaneLead`'s path without a claim, `disconnected` retries every 30
   seconds, `endedOnHost` stops. It never reattaches a pane the origin closed: the last layout removed it,

@@ -67,6 +67,8 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- `zmx attach HOST SESSION --parent ROW` attaches a remote session as a companion of a remote row here, so rows
+  from a headless origin can be grouped under a parent. The group survives a relaunch.
 - `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or
   sessions to another window, or to a new one, keeping both panes of each row running through zmx.
 - `workspace move --to-window` also moves a window's last workspace: the emptied window is deleted and the

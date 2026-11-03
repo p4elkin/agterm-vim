@@ -237,6 +237,63 @@ struct ControlDispatcherZmxTests {
         #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil, transport: .ssh)])
     }
 
+    @Test func zmxAttachWithAParentCarriesItAndNoTransportOrWindow() async {
+        let actions = MockControlActions()
+        let request = ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox", parent: " row "))
+
+        _ = await ControlDispatcher(actions: actions).dispatch(request)
+
+        #expect(actions.calls == [.zmxAttachUnder(host: "buildbox", session: "s1", parent: "row")])
+    }
+
+    @Test(arguments: [
+        ControlArgs(host: "buildbox", attach: "s1", parent: "row"),
+        ControlArgs(host: "buildbox", window: "w", parent: "row"),
+        ControlArgs(host: "buildbox", transport: "ssh", parent: "row"),
+        ControlArgs(host: "buildbox", moshServer: "/m", parent: "row"),
+        ControlArgs(host: "buildbox", mosh: "/m", parent: "row"),
+    ])
+    func zmxAttachRefusesAPlacementOrTransportBesideAParent(_ args: ControlArgs) async throws {
+        let actions = MockControlActions()
+
+        let response = try #require(await ControlDispatcher(actions: actions)
+            .dispatch(ControlRequest(cmd: .zmxAttach, target: "s1", args: args)))
+
+        #expect(response.error == "zmx.attach --parent takes the parent row's window and transport")
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func aGroupAttachRefusesAParent() async throws {
+        let actions = MockControlActions()
+
+        let response = try #require(await ControlDispatcher(actions: actions)
+            .dispatch(ControlRequest(cmd: .zmxAttachGroup, target: "s1", args: ControlArgs(host: "buildbox", parent: "row"))))
+
+        #expect(response.error == "zmx.attach --parent attaches one session, not its companions")
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test(arguments: ["", "  ", "row\u{1B}[31m", "two words"])
+    func zmxAttachRefusesAParentThatIsNotPlain(_ parent: String) async throws {
+        let actions = MockControlActions()
+
+        let response = try #require(await ControlDispatcher(actions: actions)
+            .dispatch(ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox", parent: parent))))
+
+        #expect(response.error == "invalid parent")
+        #expect(actions.calls.isEmpty)
+    }
+
+    @Test func anUnconvertedHostRefusesAParentByName() async throws {
+        let actions = DefaultsOnlyActions()
+
+        let response = try #require(await dispatch(
+            ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox", parent: "row")), actions))
+
+        #expect(response.error == "zmx.attach --parent is not supported on this platform")
+        #expect(actions.calls.isEmpty)
+    }
+
     @Test func zmxAttachBesideIsRefusedBeforeTheHost() async throws {
         let actions = MockControlActions()
         let request = ControlRequest(cmd: .zmxAttach, target: "row", args: ControlArgs(host: "buildbox", attach: "s1"))

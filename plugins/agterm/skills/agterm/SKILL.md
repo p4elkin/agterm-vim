@@ -27,7 +27,7 @@ when_to_use: >
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
   move this workspace or session to another window,
-  attach a session from another Mac, attach a remote session with all its companions, copy this to the
+  attach a session from another Mac, attach a remote session with all its companions, attach a remote session under a row here as its companion, copy this to the
   clipboard, was agterm upgraded under the running app,
   upgrade agterm without losing sessions, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
@@ -306,7 +306,7 @@ entries in `surfaces` report their own Boolean, while scratch and overlays omit 
 `liveAttribution` and `splitLiveAttribution` (local Live pane attribution, including hidden splits;
 [values and omission rules](reference.md#tree)),
 `remoteHost` (the machine an attached session came from, the read side of `zmx attach`; omitted for a local
-session, and never present after a relaunch because a remote session is not persisted),
+session; a remote row comes back after a relaunch),
 `presentation` (attached session only: the mirroring stream's `state` - `connecting`, `connected`,
 `unsupported`, or `failed` with `error` - not the ssh connection's - plus `mode`, `presenter` while its stream holds that role, else `mirror`),
 `presenters` (origin session: `mirrors`, the streams mirroring it without presenting, and `presenter: true`
@@ -823,9 +823,9 @@ HOST SESSION [--window W]` - open one of them here, marked remote and carrying i
 chosen open local window's current workspace (default: frontmost after discovery). A background target
 keeps the frontmost window unchanged; an invalid or closed target fails. Takes the ID from that
 listing, not the name, and resolves the remote again first, so a session that has gone fails instead of
-handing back a fresh shell wearing its name. Closing it here ends only this side's connection and it is
-never restored after a relaunch. Add `--companions` to attach the group; see
-[details](reference.md#restore). The attached row mirrors the origin session's status, context, `notify`
+handing back a fresh shell wearing its name. Closing it here ends only this side's connection; the row is
+restored after a relaunch. Add `--companions` to attach the group, or `--parent ROW` to attach it as a
+companion of a remote row here (fork only); see [details](reference.md#restore). The attached row mirrors the origin session's status, context, `notify`
 notifications, HUD and the layout of attached panes over a stream that reconnects by itself
 ([details](reference.md#restore)); read
 `presentation.state` in `tree`, and expect mirrored status, context and HUD to clear while it is down. One

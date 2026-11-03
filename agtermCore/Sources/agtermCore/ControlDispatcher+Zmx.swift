@@ -25,6 +25,8 @@ extension ControlDispatcher {
             // runs on the far side
             return await actions.remoteTree(host: request.args?.host?.trimmedOrNil)
         case .zmxAttach, .zmxAttachGroup:
+            // above the `--beside` guard, whose refusal would otherwise hide that the two do not combine
+            if let refusal = Self.parentRefusal(request) { return refusal }
             // the target names a row here, not the remote session, so a plain attach would look it up on the host
             guard request.args?.attach == nil else {
                 return ControlResponse(ok: false, error: "zmx.attach --beside is for a headless origin")
@@ -56,6 +58,9 @@ extension ControlDispatcher {
                                        error: RemoteTransport.refusalMessage(transport: rawTransport,
                                                                              moshServer: rawMoshServer,
                                                                              mosh: rawMosh))
+            }
+            if let parent = request.args?.parent?.trimmedOrNil {
+                return await actions.attachRemoteSession(host: host, session: session, parent: parent)
             }
             let window = request.args?.window?.trimmedOrNil
             if request.cmd == .zmxAttachGroup {
@@ -126,5 +131,21 @@ extension ControlDispatcher {
         default:
             preconditionFailure("unexpected zmx command: \(request.cmd.rawValue)")
         }
+    }
+
+    /// The row follows its parent's window and transport, so a placement or transport beside `--parent` is refused
+    /// rather than ignored. An unresolved parent is echoed in the server's error, hence `isPlain`.
+    static func parentRefusal(_ request: ControlRequest) -> ControlResponse? {
+        guard let args = request.args, let parent = args.parent else { return nil }
+        guard request.cmd == .zmxAttach else {
+            return ControlResponse(ok: false, error: "zmx.attach --parent attaches one session, not its companions")
+        }
+        guard args.attach == nil, args.window == nil, args.transport == nil, args.moshServer == nil, args.mosh == nil else {
+            return ControlResponse(ok: false, error: "zmx.attach --parent takes the parent row's window and transport")
+        }
+        guard let trimmed = parent.trimmedOrNil, RemoteSession.isPlain(trimmed) else {
+            return ControlResponse(ok: false, error: "invalid parent")
+        }
+        return nil
     }
 }

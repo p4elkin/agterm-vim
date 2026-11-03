@@ -45,11 +45,12 @@ final class RemoteRowRestoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    private func record(window: UUID, workspace: UUID, position: Int, transport: RemoteTransport = .ssh) throws -> RemoteRowBook.Record {
+    private func record(window: UUID, workspace: UUID, position: Int, remoteID: String = "R1", parent: String? = nil,
+                        transport: RemoteTransport = .ssh) throws -> RemoteRowBook.Record {
         let json = """
         {"windowID":"\(window.uuidString)","workspaceID":"\(workspace.uuidString)","position":\(position),
          "host":"p4linux","endpoint":{"executable":"\(endpoint.executable)","socketDirectory":"\(endpoint.socketDirectory)"},
-         "sessionName":"build","remoteSessionID":"R1","presentationVersion":1,
+         "sessionName":"build","remoteSessionID":"\(remoteID)","presentationVersion":1,\(parent.map { #""parentRemoteSessionID":"\#($0)","# } ?? "")
          "transport":\(String(decoding: try JSONEncoder().encode(transport), as: UTF8.self)),
          "daemonsByPane":["left","\(daemon)"],"splitAxis":"vertical"}
         """
@@ -82,6 +83,97 @@ final class RemoteRowRestoreTests: XCTestCase {
         XCTAssertFalse(command.contains(ZmxLeadAttachment.claimVariable), "a restored row claims no lead")
         XCTAssertEqual(transport.launches.count, 1)
         ZmxLeadBook.shared.forget(pane: row.paneIdentity)
+    }
+
+    func testASavedCompanionComesBackUnderItsRestoredParent() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let records = [try record(window: window, workspace: workspace, position: 0),
+                       try record(window: window, workspace: workspace, position: 1, remoteID: "C1", parent: "R1")]
+
+        server.restoreRemoteRows(records, windowID: window, store: store)
+
+        let parent = try XCTUnwrap(remoteRows(store).first { $0.remotePresentation?.binding.remoteSessionID == "R1" })
+        let companion = try XCTUnwrap(remoteRows(store).first { $0.remotePresentation?.binding.remoteSessionID == "C1" })
+        XCTAssertNil(parent.parentID)
+        XCTAssertEqual(companion.parentID, parent.id)
+        remoteRows(store).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
+    }
+
+    func testASavedCompanionAheadOfItsParentStillComesBackUnderIt() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let records = [try record(window: window, workspace: workspace, position: 0, remoteID: "C1", parent: "R1"),
+                       try record(window: window, workspace: workspace, position: 1)]
+
+        server.restoreRemoteRows(records, windowID: window, store: store)
+
+        let parent = try XCTUnwrap(remoteRows(store).first { $0.remotePresentation?.binding.remoteSessionID == "R1" })
+        let companion = try XCTUnwrap(remoteRows(store).first { $0.remotePresentation?.binding.remoteSessionID == "C1" })
+        XCTAssertEqual(companion.parentID, parent.id)
+        remoteRows(store).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
+    }
+
+    func testDeferringACompanionKeepsTheOtherRowsInTheirSavedOrder() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let local = try XCTUnwrap(store.addSession(toWorkspace: workspace, cwd: "/tmp"))
+        let records = [try record(window: window, workspace: workspace, position: 0, remoteID: "C1", parent: "R1"),
+                       try record(window: window, workspace: workspace, position: 1),
+                       try record(window: window, workspace: workspace, position: 2, remoteID: "R2")]
+
+        server.restoreRemoteRows(records, windowID: window, store: store)
+
+        let order = try XCTUnwrap(store.workspaces.first { $0.id == workspace }?.sessions).map {
+            $0.remotePresentation?.binding.remoteSessionID ?? ($0.id == local.id ? "local" : "other")
+        }
+        XCTAssertEqual(order, ["R1", "C1", "R2", "other", "local"])
+        remoteRows(store).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
+    }
+
+    func testCompanionsDeferredForOneParentKeepTheirSavedOrder() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let records = [try record(window: window, workspace: workspace, position: 0, remoteID: "C1", parent: "R1"),
+                       try record(window: window, workspace: workspace, position: 1, remoteID: "C2", parent: "R1"),
+                       try record(window: window, workspace: workspace, position: 2)]
+
+        server.restoreRemoteRows(records, windowID: window, store: store)
+
+        XCTAssertEqual(remoteRows(store).map { $0.remotePresentation?.binding.remoteSessionID }, ["R1", "C1", "C2"])
+        remoteRows(store).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
+    }
+
+    func testASavedCompanionWithoutASingleParentInItsWorkspaceComesBackTopLevel() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let home = try XCTUnwrap(store.currentWorkspaceID)
+        let other = store.addWorkspace(name: "other").id
+        for _ in 0..<2 {
+            let twin = try XCTUnwrap(store.addSession(toWorkspace: home, cwd: "/tmp", remoteHost: "p4linux"))
+            store.bindRemote(RemoteBinding(remoteSessionID: "R5", daemonsByLocalPane: [:], presentationVersion: 1,
+                                           origin: RemoteBinding.Origin(host: "p4linux", endpoint: endpoint, sessionName: "twin")),
+                             forSession: twin.id)
+        }
+        let restores: [RemoteRowBook.Record] = [
+            try record(window: window, workspace: home, position: 0, remoteID: "C1", parent: "R9"),
+            try record(window: window, workspace: other, position: 0),
+            try record(window: window, workspace: home, position: 0, remoteID: "C2", parent: "R1"),
+            try record(window: window, workspace: home, position: 0, remoteID: "C3", parent: "R5"),
+        ]
+        for record in restores {
+            server.restoreRemoteRows([record], windowID: window, store: store)
+        }
+
+        for id in ["C1", "C2", "C3"] {
+            let row = try XCTUnwrap(remoteRows(store).first { $0.remotePresentation?.binding.remoteSessionID == id }, id)
+            XCTAssertNil(row.parentID, id)
+        }
+        remoteRows(store).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
     }
 
     func testARecordWithoutANameRestoresTheAttachTimeName() throws {

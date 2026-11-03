@@ -845,4 +845,8 @@ public final class HeadlessActions: ControlActions {
                                     transport: RemoteTransport) async -> ControlResponse {
         refuse(.zmxAttach)
     }
+
+    public func attachRemoteSession(host: String, session: String, parent: String) async -> ControlResponse {
+        refuse(.zmxAttach)
+    }
 }

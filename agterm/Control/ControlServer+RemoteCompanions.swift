@@ -225,6 +225,45 @@ extension ControlServer {
         HtmlPageOutcomes.shared.settle(local, like: reply?.result?.pageOutcome)
     }
 
+    /// attachRemoteSession under `parent` makes `session` a companion of that remote row; a headless origin reports no
+    /// parent, which is how its rows join a group. A row of the same session already here is left alone.
+    func attachRemoteSession(host: String, session: String, parent: String) async -> ControlResponse {
+        let parentID: UUID
+        let top: Session
+        switch resolver.resolveSessionTarget(parent, window: nil) {
+        case .failure(let response): return response
+        case .success(let (resolved, id)):
+            guard let row = resolved.session(withID: id), row.content == .terminal else {
+                return ControlResponse(ok: false, error: "\(parent) is a page companion, not a terminal row")
+            }
+            top = resolved.parent(of: row) ?? row
+            parentID = top.id
+        }
+        guard top.remoteHost == host,
+              let binding = top.remotePresentation?.binding else {
+            return ControlResponse(ok: false, error: "\(parent) is not a remote row of \(host)")
+        }
+        let discovery = await remoteTree(host: host)
+        guard discovery.ok, let tree = discovery.result?.remote else { return discovery }
+        guard let remote = tree.sessions.first(where: { $0.id == session }) else {
+            return ControlResponse(ok: false, error: "no attachable session \(session) on \(host)")
+        }
+        guard remote.content == nil else {
+            return ControlResponse(ok: false, error: "\(session) is a page; --parent attaches a terminal session")
+        }
+        guard binding.origin?.endpoint == tree.endpoint else {
+            return ControlResponse(ok: false, error: "\(parent) shows another zmx endpoint on \(host)")
+        }
+        guard remote.parent == nil || remote.parent == binding.remoteSessionID else {
+            return ControlResponse(ok: false, error: "\(session) is a companion of another session on \(host)")
+        }
+        // the discovery ssh lets the parent close or move meanwhile
+        guard let store = library.store(forSession: parentID), let workspace = store.workspace(forSession: parentID)?.id else {
+            return ControlResponse(ok: false, error: "parent row was closed")
+        }
+        return attach(remote, from: tree, host: host, placement: RemotePlacement(store: store, workspace: workspace, parent: parentID))
+    }
+
     /// attachedParentRows are the top-level rows in `store` showing the origin parent of companion `remote`.
     func attachedParentRows(of remote: ControlRemoteSession, tree: ControlRemoteTree, host: String,
                             in store: AppStore) -> [Session] {
