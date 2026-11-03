@@ -22,6 +22,8 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- Hiding the IDE overlay no longer leaves an IDE tooltip, hint or popup floating over the terminal. A
+  tooltip shown at that moment (a tab's file name, say) stayed on screen until the IDE came back.
 - A live review in the IDE no longer fails with `the overlay was closed before the IDE was ready` when the
   project last saved a review diff tab. The review's own tab opened while IntelliJ was still restoring that
   tab, IntelliJ dropped the project mid-load, and the overlay closed with it. The review tab now waits for

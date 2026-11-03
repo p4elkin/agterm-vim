@@ -1,5 +1,8 @@
 package agterm.rebased;
 
+import com.intellij.codeInsight.hint.HintManager;
+import com.intellij.ide.IdeEventQueue;
+import com.intellij.ide.IdeTooltipManager;
 import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
@@ -206,6 +209,26 @@ public final class Bridge implements BiFunction<String, String, String> {
     return out;
   }
 
+  // A popup or tooltip is its own window, which the host attaches to agterm's window rather than the frame, so
+  // one still showing when the frame hides would stay over the terminal. Closing it through IntelliJ keeps the
+  // IDE's own state right; the sweep catches the windows those managers do not own.
+  private static void hide(String dir) {
+    IdeTooltipManager.getInstance().hideCurrentNow(false);
+    HintManager.getInstance().hideAllHints();
+    IdeEventQueue.getInstance().getPopupManager().closeAllPopups();
+    projectFrames(dir).forEach(f -> f.setVisible(false));
+    for (Window w : Window.getWindows()) {
+      if (w.isVisible() && !(w instanceof Frame) && !(w instanceof Dialog) && !ownedByShownFrame(w)) w.setVisible(false);
+    }
+  }
+
+  private static boolean ownedByShownFrame(Window w) {
+    for (Window owner = w.getOwner(); owner != null; owner = owner.getOwner()) {
+      if (owner instanceof Frame && owner.isVisible()) return true;
+    }
+    return false;
+  }
+
   private static void later(Runnable r) { ApplicationManager.getApplication().invokeLater(r, ModalityState.any()); }
 
   // Model changes need a write-safe context, which `any()` is not. Hop to the EDT first, then queue the
@@ -253,7 +276,7 @@ public final class Bridge implements BiFunction<String, String, String> {
       }
       case "open" -> { writeSafe(() -> open(arg)); return "ok"; }
       case "close" -> { writeSafe(() -> close(arg)); return "ok"; }
-      case "hide" -> { later(() -> projectFrames(arg).forEach(f -> f.setVisible(false))); return "ok"; }
+      case "hide" -> { later(() -> hide(arg)); return "ok"; }
       case "show" -> { later(() -> projectFrames(arg).forEach(f -> { f.setVisible(true); f.toFront(); })); return "ok"; }
       case "diff" -> {
         String[] fields = diffFields(arg);
