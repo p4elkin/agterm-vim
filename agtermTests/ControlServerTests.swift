@@ -385,22 +385,25 @@ final class ControlServerTests: XCTestCase {
         let sshInFlight = expectation(description: "the group attach's discovery ssh has started")
         runner.onEntered = { sshInFlight.fulfill() }
         let remoteFinished = expectation(description: "the group attach returns once released")
-        Thread {
+        let body: @Sendable () -> Void = {
             _ = Self.roundTrip(#"{"cmd":"zmx.attach.group","target":"P","args":{"host":"buildbox"}}"#, at: path)
             remoteFinished.fulfill()
-        }.start()
+        }
+        Thread(block: body).start()
 
         wait(for: [sshInFlight], timeout: 5)
 
         let probeAnswered = expectation(description: "a second client is served during the ssh")
-        var probe: String?
-        Thread {
-            probe = Self.roundTrip(#"{"cmd":"window.list"}"#, at: path)
+        let probe = OSAllocatedUnfairLock<String?>(initialState: nil)
+        let body2: @Sendable () -> Void = {
+            let line = Self.roundTrip(#"{"cmd":"window.list"}"#, at: path)
+            probe.withLock { $0 = line }
             probeAnswered.fulfill()
-        }.start()
+        }
+        Thread(block: body2).start()
 
         wait(for: [probeAnswered], timeout: 5)
-        XCTAssertNotNil(probe, "a second connection must be answered while the group attach is still waiting")
+        XCTAssertNotNil(probe.withLock { $0 }, "a second connection must be answered while the group attach is still waiting")
 
         runner.release.signal()
         wait(for: [remoteFinished], timeout: 10)
