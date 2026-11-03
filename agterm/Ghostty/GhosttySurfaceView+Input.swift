@@ -647,7 +647,9 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
         guard intent != .reveal else { return followLink(raw, intent: intent) }
         switch LinkPolicy.helperLink(for: raw) {
         case let .xchat(id): openXchatMessage(id)
-        case let .openPath(path, line): openFilePath(path, line: line)
+        case let .openPath(path, line):
+            // the helper keeps the click (plannotator, revdiff); when it cannot start, upstream's page takes it
+            if !openFilePath(path, line: line) { followLink(raw, intent: intent) }
         case let .ref(payload): openRef(payload)
         case nil:
             // the overlay setting takes a web link from `agterm-open-link`; browser, and ⌘⇧ in overlay mode, keep
@@ -699,13 +701,14 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
 
     /// Open a clicked file path (ghostty's built-in path link, or a bare name's `agterm-path:` rule) through
     /// `agterm-open-path`, which resolves it against this pane's directory and its fallbacks and picks the
-    /// viewer. Same launch rules as xchat.
-    private func openFilePath(_ path: String, line: Int?) {
-        guard let session else { return }
+    /// viewer. Same launch rules as xchat. False when nothing started (no model session, no helper), so the
+    /// caller can hand the click to upstream's markdown or text page instead of dropping it.
+    private func openFilePath(_ path: String, line: Int?) -> Bool {
+        guard let session else { return false }
         let pane: CommandContext.Pane = isSplitPane ? .right : .left
         let arguments = OpenPathLaunch.arguments(path: path, line: line, session: session, pane: pane,
                                                  socket: env["AGTERM_SOCKET"])
-        runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
+        return runAgentHelper(OpenPathLaunch.helperName, arguments: arguments, sessionID: session.id)
     }
 
     /// A forge ref (`!12`, a commit hash) goes to `agterm-open-link` with this pane's directory to resolve it in.

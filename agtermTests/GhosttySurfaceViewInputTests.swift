@@ -311,6 +311,23 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         XCTAssertEqual(refused.opened, [url])
     }
 
+    /// The fork's helper keeps a bare file path; upstream's page takes it only when the helper did not start.
+    func testABarePathGoesToTheOpenPathHelperAndToUpstreamsPageOnlyWhenItCannotStart() {
+        let session = Session(initialCwd: NSTemporaryDirectory())
+        let pane = bareSurface()
+        pane.session = session
+
+        let started = recordLinks(mode: .overlay75, overlayOpens: true, helperStarts: true)
+        pane.openLink("/tmp/main.go", intent: .normal)
+        XCTAssertEqual(started.helpers.map(\.0), [OpenPathLaunch.helperName])
+        XCTAssertTrue(started.texts.isEmpty && started.revealed.isEmpty)
+
+        let missing = recordLinks(mode: .overlay75, overlayOpens: true, helperStarts: false)
+        pane.openLink("/tmp/main.go", intent: .normal)
+        XCTAssertEqual(missing.helpers.map(\.0), [OpenPathLaunch.helperName])
+        XCTAssertEqual(missing.texts.map(\.url.path), ["/tmp/main.go"])
+    }
+
     func testBrowserModeHandsAWebLinkToTheOpenLinkHelperFirst() throws {
         let session = Session(initialCwd: NSTemporaryDirectory())
         let pane = bareSurface()
