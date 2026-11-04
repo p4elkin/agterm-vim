@@ -235,18 +235,8 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
             updateDropRegistration()
             updatePointerTracking()
             postAccessibilityExposureChange() // one of the `axExposed` terms; tell AX if the element came or went
-            updateRealizeForVisibility()
         }
     }
-
-    /// Whether libghostty currently holds this surface's GPU resources. Tracked here rather than read back
-    /// because the renderer answers on its own thread; see `GhosttySurfaceView+Realize.swift` for the
-    /// pairing rule this enforces.
-    var realizeState = true
-
-    /// The scheduled unrealize for this pane, nil when none is pending. Cancelled when the pane comes back
-    /// on screen or the surface is torn down.
-    var realizeWorkItem: DispatchWorkItem?
 
     /// Whether this surface actually paints on screen. Wider than `deckVisible`: dashboard cells and
     /// passive HUDs are visible while deliberately non-interactive, and a pane stays on screen while the
@@ -711,10 +701,6 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         // the overlay grabs first responder itself (TerminalView's once-on-attach grab misses the deferred
         // overlay surface); a bounded run-loop retry beats the SwiftUI/AppKit responder race.
         requestAutoFocus(in: window)
-
-        // a surface born hidden — every restored session past the selected one — would otherwise hold its
-        // GPU resources forever: `deckVisible`'s observer only fires on a CHANGE, and it never changes.
-        updateRealizeForVisibility()
     }
 
     /// Puts this pane in the launch spawn queue: `createSurface` asks `pacer` for `key` once the view is
@@ -857,7 +843,6 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         hiddenJanitorTask?.cancel()
         hiddenJanitorTask = nil
         isDestroyed = true
-        cancelPendingRealizeWork()
         focusObservers.forEach { NotificationCenter.default.removeObserver($0) }
         focusObservers = []
         windowVisibilityObservation = nil

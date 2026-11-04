@@ -7,7 +7,7 @@ added: 2026-10-31
 
 Upstream (merged 2026-10-31, `4cfb58c8`) added `scripts/ghostty-patches/` with a build stamp of
 `GHOSTTY_REV` plus a digest of those patches. The fork already carried `patches/ghostty/`
-(`0001-surface-realize-api.patch`, `0002-link-config.patch`) with its own `build_key`. The merge kept both:
+(now only `0002-link-config.patch`) with its own `build_key`. The merge kept both:
 `setup.sh` applies upstream's directory, then the fork's, and `build_key` prints
 `"$GHOSTTY_STAMP patches:<fork sha>"`.
 

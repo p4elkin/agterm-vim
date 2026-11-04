@@ -89,11 +89,9 @@ is the `.claude/rules` file that owns the design.
 
 **libghostty**
 
-Both of these need a patch under `patches/ghostty/`, applied by `scripts/setup.sh` at `GHOSTTY_REV`.
+These need `0002-link-config.patch` under `patches/ghostty/`, applied by `scripts/setup.sh` at `GHOSTTY_REV`.
 Read `patches/ghostty/README.md` before touching either; when the pin moves, `git apply` fails loudly.
 
-- **Hidden surfaces release their GPU resources**, opt-in, with unrealize debounced and surfaces born
-  hidden covered. `0001-surface-realize-api.patch`. Measured before it: 129 surfaces holding 6.9 GB.
 - **Clickable cross-agent message ids** — Shift+Cmd+click a `msg-…` id in any pane and the parked message
   opens in an overlay over it. Needs `0002-link-config.patch`, which implements the `link` config key
   upstream declares but cannot parse. ⚠️ Shift is required and not optional, for plain URLs too — the
@@ -270,22 +268,6 @@ in `settings.json`.
   or moves the selection as a side effect stays dwell-gated.
 - Read it back as `recencyDwellMs` on the tree and on each `window list` node, omitted when the
   setting is Immediately. Like `autoFollowMs` it is settings-only: no command sets it, deliberately.
-
-## Hidden surfaces release their GPU resources
-
-A hidden pane used to keep its swap chain, per-frame render targets and font atlas textures for the
-life of the surface. This fork carries a libghostty patch (`patches/ghostty/`) adding
-`ghostty_surface_set_realized`, and unrealizes a surface that stays hidden, freeing all of it. The
-shell and terminal state are untouched: an unrealized surface still reads its pty, and the first frame
-after realizing shows everything that arrived meanwhile.
-
-- Debounced, and it covers surfaces born hidden.
-- On by default; opt OUT with `AGTERM_SURFACE_UNREALIZE=0`.
-- `agtermctl tree` tags an unrealized row `(not realized)`, beside `(split hidden)`.
-
-⚠️ The patch is the fork's own and lives in `patches/ghostty/`, applied by `scripts/setup.sh` on top of
-the pinned upstream ghostty. When `GHOSTTY_REV` moves it may need rebasing — it applying cleanly is not
-proof it still compiles, which is exactly what the 2026-08-18 merge hit.
 
 ## The mode pills moved to the sidebar footer
 

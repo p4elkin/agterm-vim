@@ -20,6 +20,12 @@ publishes an empty body with only a warning on stderr.
 
 ## Unreleased
 
+### Removed
+
+- The fork's own hidden-surface GPU release (`patches/ghostty/0001-surface-realize-api.patch`,
+  `AGTERM_SURFACE_UNREALIZE`) is gone. At ghostty v1.4.0 upstream frees a hidden pane's swap chain on
+  occlusion, and the patch no longer applied.
+
 ### Fixed
 
 - Hiding the IDE overlay no longer leaves an IDE tooltip, hint or popup floating over the terminal. A
