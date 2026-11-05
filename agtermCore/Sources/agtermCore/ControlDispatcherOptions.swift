@@ -43,14 +43,18 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let rebasedOnClose: String?
     /// clicked marks a page opened by a terminal click (`HtmlOverlay.clicked`); the dispatcher never sets it.
     public let clicked: Bool
+    /// imagePixels is the probed size of an image page, which travels with it when the presenting Mac shows it.
+    /// The app sets it from its probe and the dispatcher never does; an image page without it is never handed over.
+    public let imagePixels: ImagePixels?
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
                 navigation: Bool = false, javascript: Bool = false, chromeless: Bool = false,
                 persistent: Bool = false, browse: Bool = false, rebased: Bool = false, rebasedDiff: RebasedDiff? = nil,
                 rebasedView: RebasedView? = nil, rebasedProject: String? = nil, rebasedOnClose: String? = nil,
-                points: OverlayPointSize = OverlayPointSize(), clicked: Bool = false) {
+                points: OverlayPointSize = OverlayPointSize(), clicked: Bool = false, imagePixels: ImagePixels? = nil) {
         self.clicked = clicked
+        self.imagePixels = imagePixels
         self.command = command
         self.cwd = cwd
         self.wait = wait
@@ -71,6 +75,17 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
         self.rebasedView = rebasedView
         self.rebasedProject = rebasedProject
         self.rebasedOnClose = rebasedOnClose
+    }
+
+    /// with returns these options carrying an image page's probed size.
+    public func with(imagePixels: ImagePixels) -> ControlSessionOverlayOpenOptions {
+        ControlSessionOverlayOpenOptions(command: command, cwd: cwd, wait: wait, sizePercent: sizePercent,
+                                         backgroundColor: backgroundColor, follow: follow, pane: pane, resolved: resolved,
+                                         page: page, navigation: navigation, javascript: javascript, chromeless: chromeless,
+                                         persistent: persistent, browse: browse, rebased: rebased, rebasedDiff: rebasedDiff,
+                                         rebasedView: rebasedView, rebasedProject: rebasedProject,
+                                         rebasedOnClose: rebasedOnClose, points: points, clicked: clicked,
+                                         imagePixels: imagePixels)
     }
 }
 

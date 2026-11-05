@@ -48,8 +48,8 @@ public struct ControlDispatcher {
             return await dispatchWorkspaceCommand(request)
         case .quick, .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun,
                 .configReload, .notify, .themeSet, .themeList, .sidebar, .sidebarMode, .sidebarFlaggedLayout,
-                .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarWidth, .normalMode, .restoreClear,
-                .restoreCapture, .sessionPairing, .overlayRedirectToggle, .version:
+                .sidebarExpand, .sidebarCollapse, .sidebarParked, .sidebarDensity, .sidebarWidth, .normalMode,
+                .restoreClear, .restoreCapture, .sessionPairing, .overlayRedirectToggle, .version:
             return dispatchAppCommand(request)
         case .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree, .zmxAttach, .zmxAttachGroup,
              .zmxPresent, .zmxScreen:
@@ -511,6 +511,11 @@ public struct ControlDispatcher {
             return dispatchSidebarParked(request)
         case .sidebarFlaggedLayout:
             return dispatchSidebarFlaggedLayout(request)
+        case .sidebarDensity:
+            guard let mode = ControlSidebarDensityMode.parse(request.args?.mode) else {
+                return ControlResponse(ok: false, error: "invalid sidebar density: \(request.args?.mode ?? "toggle")")
+            }
+            return actions.setSidebarDensity(mode)
         case .sidebarExpand:
             return actions.expandSidebar(window: request.args?.window)
         case .sidebarCollapse:

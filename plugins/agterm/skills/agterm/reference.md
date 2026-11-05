@@ -349,7 +349,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-six top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-seven top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — `recencyDwell` in `settings.json`, omitted when
@@ -367,7 +367,8 @@ visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, t
 `sidebar mode`), `linkOpenMode` (`browser`, `overlay`, `overlay95`, `overlay75` or `overlay50`, app-wide, the read side of `browser links`),
 `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view is arranged, the read side
 of `sidebar flagged-layout`; app-wide, so every window reports the same value, under the ordinary tree
-too), `flaggedOrder` (the window's flagged session ids in the flat list's saved order, the read side of
+too), `sidebarDensity` (`default` or `compact` — the sidebar row spacing, the read side of `sidebar density`;
+app-wide), `flaggedOrder` (the window's flagged session ids in the flat list's saved order, the read side of
 `session flag move`; omitted when nothing is flagged), `sidebarWidth` (the sidebar divider position in points, the read side of
 `sidebar width`, reported here and nowhere else), `workspaceFilter` (whether the window's workspace focus filter is currently APPLIED —
 the flag half of the focus set, whose member half is each workspace node's `focused`; the read side of
@@ -953,8 +954,9 @@ error keeps those names for compatibility.
     characters or line breaks.
   - `--markdown` reads TEXT as inline markdown: `**bold**`, `*italic*`, `` `code` ``, a link (its label
     shows), `^[text](color: "NAME")` and `^[text](dim: true)`, which combine as
-    `^[text](color: "red", dim: true)`. NAME is `red`, `orange`, `yellow`, `green`, `blue`, `purple` or
-    `gray`, quoted; an unknown NAME is refused. An unknown attribute key is ignored and its text shows unstyled.
+    `^[text](color: "red", dim: true)`. NAME is one of the twelve `session tint` names
+    (`red|orange|yellow|green|blue|purple|gray|teal|pink|brown|indigo|mint`), quoted; an unknown NAME or a hex
+    is refused. An unknown attribute key is ignored and its text shows unstyled.
   - `--hide-after SECONDS` (0 to 86400, 0 for never) clears the line by itself. Every successful set with a
     positive `--hide-after` restarts that interval, even with identical text. A hook or loop reporting
     activity must pass a positive value and repeat it on each refresh, so a line from a process that died
@@ -973,8 +975,11 @@ error keeps those names for compatibility.
   agtermctl session info --clear --target "$AGTERM_SESSION_ID"
   ```
 - `session tint <COLOR|clear> [--on PARTS] [--target] [--window W]` - color the session's sidebar row so it
-  stands out at a glance (red for production, green for dev). COLOR is `red|orange|yellow|green|blue|purple|gray`,
-  macOS system colors that follow light and dark. `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps
+  stands out at a glance (red for production, green for dev). COLOR is
+  `red|orange|yellow|green|blue|purple|gray|teal|pink|brown|indigo|mint`, macOS system colors that follow light and
+  dark, or a `#rrggbb` hex (the `#` optional) for any other color, fixed in both modes and read back as lowercase
+  `#rrggbb`; the row menu shows a hex tint as a checked "Custom #rrggbb" entry. `session info` markup colors take
+  the names only. `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps
   the row's placement and an untinted row starts on the icon. `clear` removes the tint and refuses `--on`; the
   socket form (`mode` `set|clear`, `tint`, `tintOn` array) refuses a clear carrying either. Returns the session
   id. Persisted across a relaunch; a duplicated session starts untinted. Local to this Mac: an attached row does
@@ -1267,8 +1272,8 @@ error keeps those names for compatibility.
   directory. Refused: a path that is not a regular readable file (`unreadable image`), contents that are not
   png, jpg, gif or webp whatever the name (`not a png, jpg, gif or webp image`), and a file over 64 MB or a
   picture over 100 megapixels (`image too large`). The file is read synchronously, so one on slow or network
-  storage stalls the app until it is read. An image page is local-only: when placement would send the page to the Mac presenting
-  the session, the open is refused. Read back `image` in `htmlOverlays`.
+  storage stalls the app until it is read. On a session another Mac presents it opens there (Remote
+  sessions). Read back `image` in `htmlOverlays`.
 - `session overlay open --markdown FILE [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   - render a `.md` or `.markdown` file as a page in the terminal theme, the view a user's ⌘-click on its path opens
   (at the link-open size, 95% when links open in the browser). Code is highlighted, task lists show boxes, and
@@ -1279,7 +1284,7 @@ error keeps those names for compatibility.
   `--url`, `--image`, the page flags, `--cwd`, `--wait`, `--block` and `--companion`; a relative FILE resolves
   against the caller's directory. Refused: a path that is not a regular readable file (`unreadable markdown
   file`) and a file over 4 MB (`markdown file too large`). The wire field is `markdownFile`, apart from the
-  HUD's `markdown` flag. Local-only, like an image page. Read back `markdown` in `htmlOverlays`.
+  HUD's `markdown` flag. Opens on a presenting Mac like an image page. Read back `markdown` in `htmlOverlays`.
 - `session overlay open --text FILE [--line N] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   - show a source, config, text or log file read-only in the terminal theme, the view a user's ⌘-click on its
   path opens (at the link-open size, 95% when links open in the browser), with line numbers. Highlighted when the
@@ -1291,7 +1296,7 @@ error keeps those names for compatibility.
   `--companion`, and `--line` without `--text` or below 1. Refused: a file that is not a source, config, text or
   log file (markdown, HTML and SVG included), a path that is not a regular readable file (`unreadable text file`),
   a file over 4 MB (`text file too large`) and one that is not UTF-8 or holds a NUL byte (`not a UTF-8 text file`).
-  Wire fields `textFile` and `line`. Local-only, like an image page. Read back `text` in `htmlOverlays`:
+  Wire fields `textFile` and `line`. Opens on a presenting Mac like an image page. Read back `text` in `htmlOverlays`:
   `{file, language?, line?}`, the language its name maps to and the line it was opened at, not the line in view.
   The user's ⌘-click opens the same page on a path or a `path:line[:column]` location, a relative one looked up in
   the pane's directory, and ⌘⌥-click (⌘⌥⇧ under mouse capture) reveals any local path in Finder.
@@ -1905,6 +1910,12 @@ needed, and every window's flagged view follows at once. Setting it never enters
 moves the selection. Returns the resulting layout in `result.text`; read back as the tree's top-level
 `sidebarFlaggedLayout`, reported under the ordinary tree too. The tree layout shares each workspace's
 collapse state with the ordinary tree, ignores the focus filter, and keeps `workspace go` unavailable.
+
+`agtermctl sidebar density [default|compact|toggle]` — pick the sidebar row spacing. `compact` shortens rows
+and their indent; `default` restores the standard spacing. `toggle` is the default; an unknown density is an
+error. APP-WIDE, the same setting as Settings ▸ Appearance ▸ Sidebar density: no `--window`, no open window
+needed, and every window's sidebar follows at once. Returns the resulting density in `result.text`; read back
+as the tree's top-level `sidebarDensity`.
 
 `agtermctl sidebar expand [--window W]` — expand every workspace row in a window's sidebar tree.
 Defaults to the frontmost window; `--window` (id / prefix / `active`) targets any OPEN window, so a
@@ -2608,6 +2619,11 @@ Nothing has to be set up beyond the `agtermctl` PATH precondition above. What to
   page `file` names the origin path, a URL page keeps `url`, and refuses a socket `overlay submit` on it. A page the presenting Mac refuses still
   answered ok at open and ends `dismissed`. Losing the presenter ends the page `dismissed`, keeping an answer
   already submitted.
+- An image, markdown or text page (`--image`, `--markdown`, `--text`) follows the same rule. The presenting Mac
+  fetches the file over the same channel, the origin serving only that file, or a markdown file's pictures in its
+  own folder, under the same size limits, and shows the same page with no bridge; an image opened without a size
+  is sized for that Mac's screen. Its `htmlOverlays` lists `image`, `markdown` or `text` with `replica: true`.
+  A presenting Mac too old for these pages keeps the refusal (`a viewer presents this session`).
 - When the stream drops, a `--wait` overlay whose program already ended closes on the presenting Mac,
   and a running one keeps running and closes when its ssh ends. Nothing is handed back later.
 - While the stream is not up the row's indicator says so and names the host. It retries on its own, at

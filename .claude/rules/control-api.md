@@ -178,8 +178,8 @@ renumbering. Do not reintroduce a count anywhere.
   `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
 - `msg.send`, `msg.read`, `msg.ack`
-- `sidebar`, `sidebar.mode`, `sidebar.flagged-layout`, `sidebar.parked`, `sidebar.expand`, `sidebar.collapse`,
-  `sidebar.width`, `mode`, `notify`
+- `sidebar`, `sidebar.mode`, `sidebar.flagged-layout`, `sidebar.parked`, `sidebar.density`, `sidebar.expand`,
+  `sidebar.collapse`, `sidebar.width`, `mode`, `notify`
 - `font.inc`, `font.dec`, `font.reset`
 - `window.new`, `.list`, `.select`, `.go`, `.close`, `.rename`, `.delete`, `.resize`, `.move`, `.zoom`,
   `.fullscreen`, `.minimize`
@@ -616,7 +616,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   presenting Mac carries its points in the request and resize frames only to a presenter listing
   `overlay.points`, an older one getting the percent alone; the presenter caps them against its own detail
   bounds. `resizeRemoteOverlay(_:sizePercent:points:)` resolves a resize against `RemoteOverlaySlot` the way
-  `resizeOverlayInPoints` does locally and sends the whole result, because the presenter replaces its size.
+  `resizeOverlayInPoints` does locally and sends the whole result, because the presenter replaces its size. The
+  exception is a picture the presenter sized itself (`RemoteOverlaySlot.presenterSized`): a point-only resize sends
+  just its axes with `merge`, the presenter merges them into its fitted size, and any other resize ends that.
   The origin's tree reports `remoteOverlays[].sizePercent` only: the panel's points are known on the presenter.
 - `overlay.copy`/`overlay.text` read the COVERING surface, which `session.copy`/`session.text` cannot reach
   (#434) — those address the pane the overlay hides, so a selection made in the overlay reads as
@@ -772,8 +774,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   twin: `overlay open --text` and Finder reveal are already reachable. `wantsBrowser` stays public for the
   agterm-linux fork's caller.
 - An image page (`HtmlSource.image`, `--image`) embeds the file as a data URI in an HTML string, so it gets no
-  file grant, theme or bridge, and `presentationSource` has no remote form for it, which makes a presented
-  session refuse it through `pageBelongsRemote`. `BoundedFile.read` opens the path once and judges that
+  file grant, theme or bridge; a presented session shows it on the presenting Mac as a content page (Remote
+  sessions). `BoundedFile.read` opens the path once and judges that
   descriptor (`fstat`): a symlink is measured at its target, and a non-regular file, an offloaded iCloud
   placeholder or one over 64 MB is refused before a byte is read. Only a PNG, JPEG, GIF or WebP signature
   (`ImagePage.mimeType(sniffing:)`) reaches ImageIO, and a header over `ImagePage.maxPixels` is refused, since
@@ -785,7 +787,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `hudPaneFrames.detail` at its window's backing scale; a later window resize does not refit. SVG is excluded
   because it is a document that can carry script.
 - A markdown page (`HtmlSource.markdown`, `--markdown`, wire `markdownFile` since `markdown` is the HUD's flag) is
-  built from text like an image page: no file grant, no bridge, no remote form, but it is themed. `MarkdownProbe`
+  built from text like an image page: no file grant, no bridge, but it is themed. `MarkdownProbe`
   reads the file through `BoundedFile` (the descriptor check `ImageProbe` shares) and embeds pictures that
   `MarkdownPage.imageReferences` contains in the file's folder after resolving symlinks, each canonical file once
   (`MarkdownPage.Embedded`), within a total byte and pixel budget. The renderer, bundled markdown-it and
@@ -1308,12 +1310,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `AppStore.applyWorkspaceFlag`, the row menu's Flag All Sessions seam. `toggle` keys on
   `allSessionsFlagged`, the batch rule above, not a per-session invert. Read each session's `flagged`.
 - `session.seen` clears unseen without selection/focus/status or persistence. Read nonzero `unseen`.
-- `session.tint` and `workspace.tint` take mode `set` (a `TintColor`, optional `tintOn` parts) or `clear`, which
+- `session.tint` and `workspace.tint` take mode `set` (a `TintValue`: a `TintColor` name or a `#rrggbb` hex stored
+  lowercase, optional `tintOn` parts) or `clear`, which
   refuses a color or parts. `ControlDispatcher+SessionMetadata` parses both and the creation `tint`/`tintOn` on
   `session.new`/`workspace.new` before any action runs, so a bad value creates nothing. A set without parts keeps
   the row's own, else icon; `SidebarTint.recolor`/`place` own that rule for the CLI, the row menu and the palette.
   A workspace tint never colors its sessions. Persisted, never copied by duplicate, local to this Mac.
   `ControlActions` keeps the tintless `createSession` and `createWorkspace`; each tint overload's default refuses a tint.
+  Hex is control-only: the row menu shows it as a checked Custom entry and has no picker. The agterm-linux fork
+  calls the `TintColor` forms of `SidebarTint.init`, `recolor`, `AppStore.setTintColor` and `ControlTintUpdate.set`,
+  so each keeps that signature beside a non-optional `TintValue` overload, which leaves a `nil` argument unambiguous.
+  `session.info` markup keeps `TintColor`, names only.
   Read `tint`/`tintOn` on session and workspace nodes, omitted when untinted.
 - `session.context set TEXT|clear` sets what a session is FOR, shown in the title bar. Read `context`.
   `set` requires `text`, `clear` forbids it, and the mode is required, so a raw client sending both or
@@ -1444,6 +1451,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `ControlServer.buildTree` passes the `GhosttyApp` mirror the sidebars render from. The legacy
   `controlTree(foreground:)` overload reports nil, meaning the host supplied none. An outside
   `ControlActions` conformer gets the unsupported-host default.
+- `sidebar.density default|compact|toggle` follows the same app-wide contract through
+  `SettingsModel.setSidebarDensity`; `toggle` flips between the two, and the read-back is top-level `sidebarDensity`.
 - `sidebar.expand` and `.collapse` target optional open window, post object-scoped store notifications, and
   no-op under the flat flagged list. Collapse preserves/scrolls active workspace. GUI forms are frontmost only.
 - `sidebar.width <points>` targets an optional open window, unlike frontmost-only `sidebar`/`sidebar.mode`:
@@ -2206,6 +2215,18 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   one `end` or `failure` frame, a cancel included, and a bridge call in one `reply` or `failure`. The presenter's
   `RemotePageChannel` holds the same limits and frees a slot only on its request's terminal frame, and holds a
   chunk's inbound permit until WebKit takes it. Bridge replies reach the page as the raw JSON the origin sent.
+- An image, markdown or text page travels as a content page: a typed `PresentationPageSource` case, sent only to a
+  presenter listing `PresentationHub.pageContentKind`, since an older one fails its whole stream on a case it
+  cannot decode; without it the open keeps `OverlayHtmlError.presenter`. The origin still probes at open and sends
+  an image's oriented pixel size (`ImagePixels`); an auto-sized image carries no origin-computed points, the
+  presenter sizing it through `ControlServer.imagePoints`, while explicit sizing passes through as for any page. Over the same channel, `RemotePageResources.content` serves an image or text page
+  its own file and a markdown page its own file plus pictures its folder contains after resolving symlinks there,
+  each read whole through `BoundedFile` under its kind's cap, a picture sent only when its bytes carry a picture
+  signature; the bridge is refused. The presenter holds it as `HtmlSource.replica(path:content:)`, an origin path
+  no local read ever takes, judges the fetched bytes with the local probes, lists markdown pictures lexically
+  (`MarkdownPage.remoteImageReferences`) and builds the page off the main actor. Limit: an inward symlink alias
+  is a second file there, so aliases count separately toward the picture budgets and one can fall to alt text
+  sooner than locally. A markdown or text page companion of a remote parent stays refused.
 - On the origin, `overlay.close` sends `pageClose` and ends the reservation at once; `resize`,
   `reload [--current]`, `navigate back|forward` and hide/show/toggle reach the presenter as `pageCommand`s,
   each reply meaning requested, not applied. `navigate browser` reaches it

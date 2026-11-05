@@ -93,6 +93,7 @@ public enum Command: String, Codable, Sendable {
     case sidebar
     case sidebarMode = "sidebar.mode"
     case sidebarFlaggedLayout = "sidebar.flagged-layout"
+    case sidebarDensity = "sidebar.density"
     case sidebarExpand = "sidebar.expand"
     case sidebarCollapse = "sidebar.collapse"
     /// Show/hide/toggle the DRAWING of parked rows: bare drives the window's `hideParked` flag,
@@ -209,7 +210,7 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// the `tree` workspace node's `collapsed`.
     public var collapsed: Bool?
     /// The tint color for `session.tint`/`workspace.tint` mode `set`, and the creation tint on `session.new`
-    /// and `workspace.new`; one of `TintColor`.
+    /// and `workspace.new`; a `TintColor` name or a `#rrggbb` hex (`TintValue`).
     public var tint: String?
     /// The row parts the tint colors (`icon`, `name`); omitted on a set keeps the stored parts, else icon.
     public var tintOn: [String]?
@@ -255,7 +256,8 @@ public struct ControlArgs: Codable, Sendable, Equatable {
     /// `session.flag` (`on|off|toggle|clear`), `session.park` (`on|off|toggle`, no `clear` — unparking
     /// every row at once would leave a screen of rows that look live and hold nothing),
     /// `sidebar.mode` (`tree|flagged|toggle`), `sidebar.flagged-layout` (`flat|plain|tree|toggle`),
-    /// `sidebar.parked` (`show|hide|toggle`), `workspace.focus` (`on|off|toggle|add`),
+    /// `sidebar.parked` (`show|hide|toggle`), `sidebar.density` (`default|compact|toggle`),
+    /// `workspace.focus` (`on|off|toggle|add`),
     /// `workspace.filter`/`workspace.flag`/`window.minimize`/`mode` (`on|off|toggle`),
     /// `session.background` (`image|text|color|clear`), `session.restore` (`set|none|clear` — pin
     /// `command`, pin nothing, or drop the pin), `session.context` (`set|clear`), and `session.pairing`

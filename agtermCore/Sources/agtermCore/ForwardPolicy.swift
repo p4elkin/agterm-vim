@@ -39,7 +39,7 @@ public enum ForwardPolicy {
              .windowResize, .windowMove, .windowZoom, .windowFullscreen, .windowMinimize,
              .workspaceNew, .workspaceRename, .workspaceDelete, .workspaceSelect, .workspaceGo,
              .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
-             .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarExpand, .sidebarCollapse,
+             .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarDensity, .sidebarExpand, .sidebarCollapse,
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,

@@ -115,6 +115,11 @@ C-boundary concurrency before changing the bridge.
   connecting. Both runners recovered once Eugene allowed the pending authorization, with the same stale
   session host and the same `testmanagerd` still running, so neither needs a restart. SIP refuses
   `launchctl kickstart -k` on `testmanagerd`. [Unverified] which authorization that was.
+- A TCC-gated tool run from a shell in the live terminal (`screencapture`, XCUITest) can be denied after a
+  deploy replaces the app under a running `agterm-session-host`, even with an existing grant.
+  `codesign -v <pid>` reports the code on disk does not match, and tccd logs
+  `Failed to match existing code requirement`. Check both before calling a permission missing;
+  a Debug instance can capture its own view in-process instead.
 - For maintainer work, ask before splitting a touched long file and do not raise limits reflexively.
   Contributors need not refactor preexisting length; mention it without blocking or suggesting a limit bump.
 
@@ -187,9 +192,10 @@ C-boundary concurrency before changing the bridge.
 
 ## Protect the live terminal
 
-- Never run a mutating `agtermctl` command on the default socket. It controls the user's live deployed
-  terminal. Read-only `tree` and `window list` are tolerable; writes require explicit isolated socket.
-  Never execute bundled recipes against the default instance.
+- Never run experimental or test `agtermctl` mutations (bundled recipes, probes, test scenarios) on the
+  default socket; it controls the user's live daily-driver terminal, so experiments go to an isolated socket.
+  A session's normal operations on itself (context, rename, status, notify, HUD, chat, its own companions)
+  are ordinary use.
 - Every delegated agent that might touch the app or CLI must receive verbatim:
   “never execute `agterm`/`agtermctl` against the default socket, never launch or quit the app, static
   reading only.”

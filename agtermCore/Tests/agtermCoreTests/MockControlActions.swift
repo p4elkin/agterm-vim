@@ -101,6 +101,7 @@ class MockControlActionsBase {
         case sidebarViewMode(ControlSidebarViewMode)
         case sidebarParked(window: String?, ControlParkedVisibilityMode, ControlParkedScope)
         case flaggedViewLayout(ControlFlaggedLayoutMode)
+        case sidebarDensity(ControlSidebarDensityMode)
         case expand(window: String?)
         case collapse(window: String?)
         case normalMode(ControlToggleMode)
@@ -180,6 +181,7 @@ class MockControlActionsBase {
     var nextOverlayPairingResponse = ControlResponse(ok: true)
     var nextOverlayRedirectToggleResponse = ControlResponse(ok: true)
     var nextFlaggedViewLayoutResponse = ControlResponse(ok: true)
+    var nextSidebarDensityResponse = ControlResponse(ok: true)
     var nextExpandResponse = ControlResponse(ok: true)
     var nextCollapseResponse = ControlResponse(ok: true)
     var nextSidebarWidthResponse = ControlResponse(ok: true)
@@ -723,6 +725,11 @@ class MockControlActionsBase {
     func setFlaggedViewLayout(_ mode: ControlFlaggedLayoutMode) -> ControlResponse {
         calls.append(.flaggedViewLayout(mode))
         return nextFlaggedViewLayoutResponse
+    }
+
+    func setSidebarDensity(_ mode: ControlSidebarDensityMode) -> ControlResponse {
+        calls.append(.sidebarDensity(mode))
+        return nextSidebarDensityResponse
     }
 
     func expandSidebar(window: String?) -> ControlResponse {

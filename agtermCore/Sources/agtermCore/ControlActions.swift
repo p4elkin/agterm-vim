@@ -163,6 +163,7 @@ public protocol ControlActions {
     func setSidebarParked(window: String?, mode: ControlParkedVisibilityMode,
                           scope: ControlParkedScope) -> ControlResponse
     func setFlaggedViewLayout(_ mode: ControlFlaggedLayoutMode) -> ControlResponse
+    func setSidebarDensity(_ mode: ControlSidebarDensityMode) -> ControlResponse
     func expandSidebar(window: String?) -> ControlResponse
     func collapseSidebar(window: String?) -> ControlResponse
     /// Turn normal mode on/off for the frontmost window. The host owns the entry gate (the mode cannot arm

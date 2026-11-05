@@ -56,6 +56,7 @@ enum HeadlessRequests {
         request(.sidebar),
         request(.sidebarMode),
         request(.sidebarFlaggedLayout),
+        request(.sidebarDensity),
         request(.sidebarExpand),
         request(.sidebarCollapse),
         request(.sidebarParked),

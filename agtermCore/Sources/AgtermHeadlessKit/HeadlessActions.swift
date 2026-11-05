@@ -802,6 +802,7 @@ public final class HeadlessActions: ControlActions {
     }
 
     public func setFlaggedViewLayout(_ mode: ControlFlaggedLayoutMode) -> ControlResponse { refuse(.sidebarFlaggedLayout) }
+    public func setSidebarDensity(_ mode: ControlSidebarDensityMode) -> ControlResponse { refuse(.sidebarDensity) }
     public func expandSidebar(window: String?) -> ControlResponse { refuse(.sidebarExpand) }
     public func collapseSidebar(window: String?) -> ControlResponse { refuse(.sidebarCollapse) }
     public func setSidebarWidth(_ points: Double, window: String?) -> ControlResponse { refuse(.sidebarWidth) }

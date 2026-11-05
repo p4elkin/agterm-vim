@@ -654,8 +654,9 @@ final class ControlServer {
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
                 .browserClear, .browserLinks,
                 .configReload, .themeSet, .themeList,
-                .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarParked, .sidebarExpand, .sidebarCollapse,
-                .sidebarWidth, .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType, .sessionCopy,
+                .sidebar, .sidebarMode, .sidebarFlaggedLayout, .sidebarParked, .sidebarDensity, .sidebarExpand,
+                .sidebarCollapse, .sidebarWidth, .normalMode, .sessionPairing, .overlayRedirectToggle, .sessionType,
+                .sessionCopy,
                 .sessionPaste, .sessionSelectAll,
                 .sessionSearch, .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize,
                 .sessionOverlayReload, .sessionOverlayNavigate,
@@ -952,7 +953,8 @@ final class ControlServer {
             flaggedLayout: GhosttyApp.shared.flaggedViewLayout,
             htmlZoom: HtmlOverlayRegistry.shared.zoom,
             linkOpenMode: settingsModel.settings.effectiveLinkOpenMode,
-            rebased: RebasedStatusProvider.readback
+            rebased: RebasedStatusProvider.readback,
+            sidebarDensity: GhosttyApp.shared.sidebarDensity
         )
     }
 
