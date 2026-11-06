@@ -31,7 +31,7 @@ public enum ForwardPolicy {
              .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,
-             .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle:
+             .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch:
             return .forwarded
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed

@@ -122,6 +122,8 @@ class MockControlActionsBase {
         case rebasedShow(target: String?, window: String?, view: RebasedView)
         case rebasedToggle(target: String?, window: String?)
         case overlayVisibility(target: String?, window: String?, pane: OverlayPane?, mode: OverlayVisibilityMode)
+        case overlayFollow(target: String?, window: String?, pane: OverlayPane?, mode: ControlToggleMode)
+        case overlaySearch(target: String?, window: String?, pane: OverlayPane?, request: TextSearchRequest)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
@@ -846,6 +848,18 @@ class MockControlActionsBase {
                                      mode: OverlayVisibilityMode) -> ControlResponse {
         calls.append(.overlayVisibility(target: target, window: window, pane: pane, mode: mode))
         return ControlResponse(ok: true, result: ControlResult(id: target, text: "hidden"))
+    }
+
+    func setSessionOverlayFollow(_ target: String?, window: String?, pane: OverlayPane?,
+                                 mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.overlayFollow(target: target, window: window, pane: pane, mode: mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "following"))
+    }
+
+    func searchSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,
+                              request: TextSearchRequest) async -> ControlResponse {
+        calls.append(.overlaySearch(target: target, window: window, pane: pane, request: request))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "1 of 2"))
     }
 
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {

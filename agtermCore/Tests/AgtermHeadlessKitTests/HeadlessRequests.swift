@@ -174,6 +174,8 @@ enum HeadlessRequests {
         request(.sessionOverlayShow, target: target),
         request(.sessionOverlayToggle, target: target),
         request(.sessionOverlayText, target: target),
+        request(.sessionOverlayFollow, target: target) { $0.mode = "on" },
+        request(.sessionOverlaySearch, target: target) { $0.text = "x" },
         request(.sessionOverlayJobRun, target: target),
         request(.pickOpen, target: target) { $0.items = [ControlPickItem(id: "a", label: "A")] },
         request(.pickResult, target: target),

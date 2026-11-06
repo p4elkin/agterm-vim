@@ -265,7 +265,8 @@ as `status`, so it is never reported without a `status`), `statusBlink` (`true` 
 set to blink — the `--blink` value; omitted when idle or not blinking), `statusColor` (the `#rrggbb`
 glyph-tint override — the `--color` value; omitted when idle or using the configured color) and
 `statusShape` (the glyph silhouette override — the `--shape` value, one of
-`circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or using the configured shape.
+`circle`|`square`|`triangle`|`triangle-down`|`play`|`diamond`|`capsule`|`seal`|`star`|`bolt`|`bell`;
+omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape picked in Settings reads back as
 absent), `statusNote` (the one-line reason — the `--note` value; omitted when idle or set without one),
 `statusChangedAt` (when the status was last SET, in epoch seconds — the same clock an event's
@@ -538,7 +539,7 @@ buys nothing. A caller with no tree uses `version`.
   default — no `/opt/homebrew/bin`), so a bare Homebrew or other non-default binary fails with exit 127.
   Wrap in a login shell for both — `--command "zsh -lc 'htop'"` — or give an absolute path
   (`/opt/homebrew/bin/htop`). All of that describes Fresh shells and Re-run commands. In Live sessions
-  mode the command is instead a create-only zmx payload the user's login shell runs, so
+  mode the command is instead a create-only zmx payload the pane's Live shell runs, so
   the line uses that shell's syntax (zsh or fish), shell operators are interpreted, and the `PATH` is that shell's rather than the launchd default.
   `--wait` (only with `--command`, else an error) HOLDS the session open after the command exits —
   showing libghostty's press-any-key prompt with the final output intact instead of closing immediately —
@@ -835,7 +836,7 @@ error keeps those names for compatibility.
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|diamond|capsule|star] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
   set the sidebar agent-status glyph. Every ACCEPTED call stamps the session node's
   `statusChangedAt`, including idle and one that re-pushes the same status, so a poller can read the last
   set time without keeping state of its own; a call refused by the pane-precedence rule
@@ -859,9 +860,10 @@ error keeps those names for compatibility.
   `--color` (`#rrggbb`) overrides the glyph tint for THIS call only — it rides the status, so the next
   `session status` without `--color` reverts to the Settings-configured color (a malformed hex errors).
   Use it to distinguish states beyond the fixed palette (e.g. a caller-specific blocked color).
-  `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) overrides the glyph SILHOUETTE
+  `--shape` (`circle`, `square`, `triangle`, `triangle-down`, `play`, `diamond`, `capsule`, `seal`, `star`, `bolt`,
+  `bell`) overrides the glyph SILHOUETTE
   the same way — it rides the status, so the next `session status` without `--shape` reverts to the
-  Settings-configured shape, else the built-in plain circle (an unknown name errors, listing the six).
+  Settings-configured shape, else the built-in plain circle (an unknown name errors, listing the accepted names).
   Shape is a second channel alongside the tint, so a session stays distinguishable at a glance and for a
   color-blind user; use it to mark one session for the length of a run.
   The value is read back on `tree` as the session node's `statusShape` (the per-call override only, like
@@ -1285,7 +1287,7 @@ error keeps those names for compatibility.
   against the caller's directory. Refused: a path that is not a regular readable file (`unreadable markdown
   file`) and a file over 4 MB (`markdown file too large`). The wire field is `markdownFile`, apart from the
   HUD's `markdown` flag. Opens on a presenting Mac like an image page. Read back `markdown` in `htmlOverlays`.
-- `session overlay open --text FILE [--line N] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
+- `session overlay open --text FILE [--line N | --tail N [--follow-file] | --follow-file] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right] [--target] [--window W]`
   - show a source, config, text or log file read-only in the terminal theme, the view a user's ⌘-click on its
   path opens (at the link-open size, 95% when links open in the browser), with line numbers. Highlighted when the
   file's extension or exact name maps to a bundled language, up to 256 KB; a larger file shows plain. `--line N`
@@ -1300,6 +1302,30 @@ error keeps those names for compatibility.
   `{file, language?, line?}`, the language its name maps to and the line it was opened at, not the line in view.
   The user's ⌘-click opens the same page on a path or a `path:line[:column]` location, a relative one looked up in
   the pane's directory, and ⌘⌥-click (⌘⌥⇧ under mouse capture) reveals any local path in Finder.
+  `--tail N` (1 to 100,000) makes it a log page: the file's last N lines, read from its end within 2 MB, so no file is
+  refused for size. `--follow-file` follows the end as it grows, with 5,000 lines unless `--tail` says otherwise; it is
+  not `--follow`, which selects the session. The page has a bar with follow and search and no line numbers; a user scroll up pauses,
+  the bottom or Resume follows again. A rotated, truncated or recreated file is picked up by the next check, a missing
+  one shows waiting, and binary data keeps the last text marked unreadable. Both refuse `--line` and need `--text`.
+  A log page is refused on a session another Mac presents (`a log page is not shown on another Mac`). Wire fields
+  `tail` and `followFile`; `text` adds `tail`, `following`, `lines`, `clipped` (the first line is the end of one longer
+  than 2 MB), `waiting` and `unreadable`, omitted on a plain page. A ⌘-click on a `.log` or `.out` path opens it
+  following, and a `path:line` location the plain page.
+- `session overlay follow on|off|toggle [--pane left|right] [--target] [--window W]`
+  - follow a log page's end, pause it, or toggle, as its bar does; refuses every other overlay, a plain text page
+  with `no log page`. Returns
+  `result.text`, `following` or `paused`; read back `htmlOverlays[].text.following`.
+- `session overlay search TEXT | --next | --prev | --close [--pane left|right] [--target] [--window W]`
+  - search the text or log page in the addressed slot, never the terminal under it (that is `session search`):
+  case-insensitive plain text, every match highlighted. Exactly one of a query and a step. A step moves to the
+  next or previous match, wrapping, pauses a following log page, and returns `result.text` as `N of M`; it is
+  refused `no search query: set one first` without a query and `page not loaded` before the page exists, while a
+  query set then runs when it loads. An empty slot answers `no overlay`, a program `the overlay is not an html page`,
+  any other page, one shown for another Mac included, `no text page`, and a slot handed to the presenting Mac
+  `remote page: search it on the Mac that shows it`.
+  Wire `text` and `to` (`next`, `prev`, `close`). Read back `htmlOverlays[].text.search`: `{query, matches,
+  current}`, current from 1 and 0 with no match, omitted with no query. The page's own field (`/` or ⌘F, `n`/`N`,
+  Esc) sets the same query.
 - `session overlay open --html FILE|--url URL --companion [page flags] [--follow] [--target] [--window W]`
   - open the page as a page companion of the target instead of in its overlay slot: a companion session
   (see `session new --parent`) that shows the page and never starts a shell. Its row sits under the parent,
@@ -2623,7 +2649,8 @@ Nothing has to be set up beyond the `agtermctl` PATH precondition above. What to
   fetches the file over the same channel, the origin serving only that file, or a markdown file's pictures in its
   own folder, under the same size limits, and shows the same page with no bridge; an image opened without a size
   is sized for that Mac's screen. Its `htmlOverlays` lists `image`, `markdown` or `text` with `replica: true`.
-  A presenting Mac too old for these pages keeps the refusal (`a viewer presents this session`).
+  A presenting Mac too old for these pages keeps the refusal (`a viewer presents this session`). A log page
+  (`--tail`, `--follow-file`) is refused there, and a clicked `.log` opens as the plain text page.
 - When the stream drops, a `--wait` overlay whose program already ended closes on the presenting Mac,
   and a running one keeps running and closes when its ssh ends. Nothing is handed back later.
 - While the stream is not up the row's indicator says so and names the host. It retries on its own, at
@@ -2855,9 +2882,9 @@ restore; a `session restore --pane right` on a session with no split also return
 `window not open`
 (resize/move/`--window`), `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
 `invalid color (expected #rrggbb)` (session status --color),
-`invalid shape: <value> (circle|square|triangle|diamond|capsule|star)` (session status --shape over the
+`invalid shape: <value> (circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell)` (session status --shape over the
 raw socket; the `agtermctl` CLI rejects the same value locally with
-`shape must be one of: circle, square, triangle, diamond, capsule, star`),
+`shape must be one of: circle, square, triangle, triangle-down, play, diamond, capsule, seal, star, bolt, bell`),
 `--pane must be left, right, or scratch` (the `--pane` value check; the message intentionally lists the
 canonical read-back names while the role and position aliases documented above are accepted. The
 `agtermctl` CLI rejects a bad pane with this for session status/type/text/paste, and over the raw socket

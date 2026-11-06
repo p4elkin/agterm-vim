@@ -3352,11 +3352,28 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <strong style="color: #e6e1d7">reveals</strong> any other file in Finder instead of opening it. A location such as
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">./main.go:42:7</span>, as compilers
               and test runners print it, opens the file at that line; a relative one is looked up in the pane's own directory.
+              A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.log</span> or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.out</span> file opens as a log page
+              instead: its last 5,000 lines, read from its end so a log of any size opens, following the file as it grows. A
+              bar shows whether it follows; scroll up to pause, and scroll back to the bottom or
+              press Resume to follow again. A rotated or truncated log is picked up, and a missing one shows waiting until it
+              returns. A location such as <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">app.log:120</span>
+              still opens the plain page at that line. Every text page has a find box like the terminal's: ⌘F or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">/</span> focuses it, Return and
+              Shift-Return or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">n</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">N</span> step through the
+              matches, and Esc clears it. A step pauses a following log, so the match stays in view. On a log page
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">F</span> toggles follow,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">G</span> or End goes to the
+              bottom and follows, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">g</span>
+              or Home goes to the top. ⌘F always searches what is on top: over any page or overlay it never reaches the
+              terminal behind it.
               A period, question mark, exclamation mark or semicolon ending a sentence after a path is dropped when only the
               file without it exists.
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">⌘⌥</span>-click reveals any local
               path in Finder instead, ⌘⌥⇧ while a program captures the mouse, and ⌘⌥-drag still selects a block. A rendered markdown
-              file shows the pictures kept in its own folder and the alt text of any other, runs none of its own script, and
+              file shows a leading YAML frontmatter block as code, the pictures kept in its own folder and the alt text of any
+              other, runs none of its own script, and
               hands a web link to the browser only after asking. A text page runs nothing, loads nothing and links nowhere: a URL
               in a log stays text. A picture, markdown or text file clicked
               from the HUD or the quick terminal, or while the session's overlay is busy, is revealed too; a hidden page an
@@ -3499,8 +3516,9 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
             <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0 0 22px">
               Every state draws a filled circle by default, so the tint is what tells them apart. The shape is configurable per
               state under <strong style="color: #e6e1d7">Settings ▸ Agent Status ▸ Colors and Shapes</strong>, where each state
-              carries its own color well and shape picker on one row. The six shapes are circle (the default), square, triangle,
-              diamond, capsule, and star, each drawn in that state's current color. Choosing a distinct shape per state adds a
+              carries its own color well and shape picker on one row. The shapes are circle (the default), square, triangle,
+              down triangle, play, diamond, capsule, seal, star, bolt, and bell, each drawn in that state's current
+              color. Choosing a distinct shape per state adds a
               second signal alongside the tint, so the states stay apart at a peripheral glance and without depending on hue.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 0 0 14px">
@@ -3550,9 +3568,14 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               (<span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">circle</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">square</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">triangle</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">triangle-down</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">play</span>,
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">diamond</span>,
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">capsule</span>, or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">star</span>) overrides the silhouette
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">capsule</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">seal</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">star</span>,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bolt</span>, or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">bell</span>) overrides the silhouette
               the same way, reverting to the configured shape on the next status set without it. Both read back on
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">tree</span> as the session's
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">statusColor</span> and
@@ -3990,7 +4013,13 @@ command = "'/Users/you/.config/agterm/agent-status/agterm-codex-status.sh' stop"
               offers <strong style="color: #e6e1d7">Fresh shells</strong>, <strong style="color: #e6e1d7">Re-run commands</strong>,
               or <strong style="color: #e6e1d7">Live sessions</strong>. The choice is frozen for the process, so changing it takes
               effect after restarting agterm. Live mode requires zsh or fish as the macOS login shell; an unsupported shell or missing zmx
-              resource falls back to fresh shells, with the reason shown in Settings.
+              resource falls back to fresh shells, with the reason shown in Settings. When the last <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">command</span>
+              in the config chain agterm loads (ghostty.conf, the global config when inherited, and their
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">config-file</span> includes) is an absolute zsh or fish path with only login or interactive flags, such as
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">command = /opt/homebrew/bin/fish --login</span>,
+              Live panes start that shell instead, even when the login shell is not zsh or fish. Live ignores any
+              other <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">command</span>. It is read at launch,
+              and a pane whose daemon is already running keeps its shell until Agterm ▸ Reset Live Sessions… runs.
             </p>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: -8px 0 20px">
               Saving settings with this version removes the legacy

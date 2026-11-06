@@ -107,7 +107,8 @@ public enum MarkdownPage {
 
     /// html is the document the renderer fills: the markdown as the text of a hidden element, the embedded
     /// pictures as a JSON attribute, and `style`, the app's own stylesheet. Everything authored is HTML-escaped,
-    /// never placed inside a script element, and the policy loads nothing but `data:` pictures.
+    /// never placed inside a script element, and the policy loads nothing but `data:` pictures. The holder is a
+    /// `div`: the parser drops a newline right after `<pre>`, which would move a `---` up to the first line.
     public static func html(markdown: String, images: Embedded, style: String) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -116,7 +117,7 @@ public enum MarkdownPage {
         <!doctype html><html><head><meta charset="utf-8">\
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">\
         <style>\(style)</style></head><body>\
-        <pre id="agterm-markdown" hidden data-images="\(escaped(map))">\(escaped(markdown))</pre>\
+        <div id="agterm-markdown" hidden data-images="\(escaped(map))">\(escaped(markdown))</div>\
         <main id="agterm-page"></main></body></html>
         """
     }

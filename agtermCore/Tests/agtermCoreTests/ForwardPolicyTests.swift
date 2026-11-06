@@ -39,7 +39,7 @@ struct ForwardPolicyTests {
         "session.flag", "session.tint", "session.info", "session.select", "session.reveal", "session.focus", "session.background",
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
-        "session.overlay.hide", "session.overlay.show", "session.overlay.toggle",
+        "session.overlay.hide", "session.overlay.show", "session.overlay.toggle", "session.overlay.follow", "session.overlay.search",
     ]
     static let routed: Set<String> = [
         "session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result",
