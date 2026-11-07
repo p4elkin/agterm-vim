@@ -501,7 +501,7 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">right</span>, omitted when none is hidden; see
                 <a href="#overlay" style="color: #6d82f3">session overlay hide</a>),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span> (the pages in the overlay slots as
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, image?, markdown?, text?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?, clicked?}</span>, one of file, url, image, markdown and text set, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clicked</span> marking a page a terminal click opened (see <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser links</span> for when a click replaces it), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">text</span> being <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{file, language?, line?}</span>; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remote</span> marks a page shown on the presenting Mac, whose live fields are as that Mac reports them, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">replica</span> the presenting Mac's copy, whose <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file</span> is the path on the origin for a file page,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{pane?, file?, cwd?, url?, image?, markdown?, document?, text?, state, error?, page?, title?, canGoBack?, canGoForward?, navigation?, javascript, chromeless, persistent, browse, zoom?, id, hidden?, remote?, replica?, clicked?}</span>, one of file, url, image, markdown, document and text set, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">document</span> being a ⌘-clicked HTML file shown with its scripts off and no bridge, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">clicked</span> marking a page a terminal click opened (see <span style="font-family: &quot;JetBrains Mono&quot;, monospace">browser links</span> for when a click replaces it), <span style="font-family: &quot;JetBrains Mono&quot;, monospace">text</span> being <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{file, language?, line?}</span>; <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remote</span> marks a page shown on the presenting Mac, whose live fields are as that Mac reports them, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">replica</span> the presenting Mac's copy, whose <span style="font-family: &quot;JetBrains Mono&quot;, monospace">file</span> is the path on the origin for a file page,
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">state</span> being loading, loaded or failed; omitted when none is open),
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">hud</span> (the message panel holding the session-wide
                 slot — <span style="font-family: &quot;JetBrains Mono&quot;, monospace">{message, detail?, spinner, backgroundColor?, textColor?, sizePercent?, heightPercent?, position, pane?, hideAfter, markdown, fontSize?, sticky, frame}</span>, where
@@ -650,11 +650,13 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">app</span> (which agterm is serving this socket —
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">version</span>, plus
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">commit</span> when the build recorded one; the same value
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">agtermctl version</span> returns), and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">indexUnsaved</span> (true while the last write of the window index failed, omitted otherwise).
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace; white-space: nowrap">agtermctl version</span> returns),
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">indexUnsaved</span> (true while the last write of the window index failed, omitted otherwise), and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">snapshotUnsaved</span> (true while the last save of this window's sessions failed, omitted otherwise).
                 All are read-only, and all but
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">app</span> and
-                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">indexUnsaved</span> are projections of live GUI state.
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">app</span>,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">indexUnsaved</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">snapshotUnsaved</span> are projections of live GUI state.
               </p>
             </div>
           </section>
@@ -2306,6 +2308,26 @@
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays[].text.search</span>:
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">query</span>, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">matches</span>
                 and <span style="font-family: &quot;JetBrains Mono&quot;, monospace">current</span> (from 1, 0 with no match), omitted with no query.
+              </p>
+            </div>
+            <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 13.5px; color: #6d82f3; line-height: 1.6; word-break: break-word">
+                agtermctl session overlay changes --next | --prev [--pane left|right] [--target T] [--window W]
+              </div>
+              <div style="font-family: &quot;JetBrains Mono&quot;, monospace; font-size: 11.5px; color: #6b727a; margin-top: 6px">session.overlay.changes</div>
+              <p style="font-size: 15px; line-height: 1.65; color: #cbc6bc; margin: 10px 0 0">
+                Step the <span style="font-family: &quot;JetBrains Mono&quot;, monospace">.diff</span> or
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">.patch</span> page in the slot to its next or previous change,
+                a change being one run of removed and added lines inside a hunk. It wraps, and after the user scrolled away it
+                goes on from what is shown. It is refused <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no diff page</span> for
+                any other page, <span style="font-family: &quot;JetBrains Mono&quot;, monospace">no changes</span> for a patch without any,
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">page not loaded</span> before the page exists, and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">remote page</span> for a slot shown on a presenting Mac.
+                <strong style="color: #bfbab0">Returns</strong> <span style="font-family: &quot;JetBrains Mono&quot;, monospace">result.text</span> as
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">N of M</span>; read back
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays[].text.changes</span>:
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">count</span> and
+                <span style="font-family: &quot;JetBrains Mono&quot;, monospace">current</span> (from 1, 0 before any step), omitted on any other page.
               </p>
             </div>
             <div style="background: #22272b; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 11px; padding: 18px 20px; margin-bottom: 12px">
@@ -4005,7 +4027,7 @@
                 slot holding a page an earlier click opened (<span style="font-family: &quot;JetBrains Mono&quot;, monospace">clicked</span>
                 in <span style="font-family: &quot;JetBrains Mono&quot;, monospace">htmlOverlays</span>) that was hidden on this Mac with ⇧⌘J or
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace">session overlay hide</span>: the click replaces it and shows the new
-                page, and a clicked picture, markdown or text file does the same. A page that is only out of sight under a newer
+                page, and a clicked picture, markdown, HTML or text file does the same. A page that is only out of sight under a newer
                 pane overlay, or one the presenting Mac shows, is not replaced. A plain http link
                 uses the overlay only for an unqualified host name such as localhost, a .local name or an IP address;
                 http to any other host name opens in the browser. mailto, ftp and file links are unaffected. Same setting as Settings ▸ General ▸ Open links in.

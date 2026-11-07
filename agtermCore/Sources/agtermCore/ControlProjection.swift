@@ -513,6 +513,17 @@ public struct ControlTextSearchNode: Codable, Sendable, Equatable {
     }
 }
 
+/// ControlTextChangesNode is a diff page's count of changes and the one it last stepped to, 0 before any step.
+public struct ControlTextChangesNode: Codable, Sendable, Equatable {
+    public let count: Int
+    public let current: Int
+
+    public init(count: Int, current: Int) {
+        self.count = count
+        self.current = current
+    }
+}
+
 /// ControlTextOverlayNode is a text page's source: the file, the highlight.js language its name maps to
 /// (omitted when unmapped, and still reported for a file too large to highlight), and the line it was
 /// opened at, not the line in view.
@@ -529,10 +540,14 @@ public struct ControlTextOverlayNode: Codable, Sendable, Equatable {
     public let unreadable: Bool?
     /// search is the page's search, omitted with no query.
     public let search: ControlTextSearchNode?
+    /// changes is a diff page's change count and current change, omitted until the page reports and on other pages.
+    public let changes: ControlTextChangesNode?
 
     public init(file: String, language: String?, line: Int?, tail: Int? = nil, following: Bool? = nil, lines: Int? = nil,
-                clipped: Bool? = nil, waiting: Bool? = nil, unreadable: Bool? = nil, search: ControlTextSearchNode? = nil) {
+                clipped: Bool? = nil, waiting: Bool? = nil, unreadable: Bool? = nil, search: ControlTextSearchNode? = nil,
+                changes: ControlTextChangesNode? = nil) {
         self.search = search
+        self.changes = changes
         self.file = file
         self.language = language
         self.line = line
@@ -550,13 +565,15 @@ public struct ControlTextOverlayNode: Codable, Sendable, Equatable {
 public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     /// pane is the pane role, omitted for the session-wide slot.
     public let pane: String?
-    /// file, url, image, markdown and text name the source; exactly one is set.
+    /// file, url, image, markdown, document and text name the source; exactly one is set.
     public let file: String?
     /// cwd is a file page's read grant, omitted when it has none.
     public let cwd: String?
     public let url: String?
     public let image: String?
     public let markdown: String?
+    /// document is an HTML file a terminal click opened, shown with no file grant or bridge.
+    public let document: String?
     public let text: ControlTextOverlayNode?
     /// state is `loading`, `loaded` or `failed`.
     public let state: String
@@ -595,7 +612,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     public let clicked: Bool?
 
     public init(pane: String?, file: String? = nil, cwd: String? = nil, url: String? = nil, image: String? = nil,
-                markdown: String? = nil, text: ControlTextOverlayNode? = nil, state: String,
+                markdown: String? = nil, document: String? = nil, text: ControlTextOverlayNode? = nil, state: String,
                 error: String?, page: String? = nil, title: String? = nil, canGoBack: Bool? = nil,
                 canGoForward: Bool? = nil, navigation: Bool? = nil, javascript: Bool = false, chromeless: Bool = false,
                 zoom: Double? = nil, id: String? = nil, persistent: Bool = false, browse: Bool = false,
@@ -611,6 +628,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         self.url = url
         self.image = image
         self.markdown = markdown
+        self.document = document
         self.text = text
         self.state = state
         self.error = error
@@ -627,7 +645,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case pane, file, cwd, url, image, markdown, text, state, error, page, title, canGoBack, canGoForward, navigation, javascript
+        case pane, file, cwd, url, image, markdown, document, text, state, error, page, title, canGoBack, canGoForward, navigation, javascript
         case chromeless, persistent, browse, zoom, id, hidden, remote, replica, clicked
     }
 
@@ -639,6 +657,7 @@ public struct ControlHtmlOverlayNode: Codable, Sendable, Equatable {
         url = try c.decodeIfPresent(String.self, forKey: .url)
         image = try c.decodeIfPresent(String.self, forKey: .image)
         markdown = try c.decodeIfPresent(String.self, forKey: .markdown)
+        document = try c.decodeIfPresent(String.self, forKey: .document)
         text = try c.decodeIfPresent(ControlTextOverlayNode.self, forKey: .text)
         state = try c.decode(String.self, forKey: .state)
         error = try c.decodeIfPresent(String.self, forKey: .error)
@@ -876,6 +895,9 @@ public struct ControlTree: Codable, Sendable, Equatable {
     /// `app`.
     public let indexUnsaved: Bool?
     public let rebased: ControlRebasedNode?
+    /// snapshotUnsaved is true after this window's AppStore save fails until its next successful save,
+    /// omitted otherwise. Per window, unlike `indexUnsaved`.
+    public let snapshotUnsaved: Bool?
 
     public init(workspaces: [ControlWorkspaceNode], idleMs: Int? = nil, autoFollowMs: Int? = nil,
                 recencyDwellMs: Int? = nil, attentionIncludesActive: Bool? = nil, attentionNavigationAcrossWindows: Bool? = nil,
@@ -887,9 +909,10 @@ public struct ControlTree: Codable, Sendable, Equatable {
                 dashboardFontMode: String? = nil, sessionRecency: [String]? = nil,
                 pickPending: String? = nil, askPending: String? = nil,
                 app: AppIdentity? = nil, liveReset: ControlLiveResetReadback? = nil,
-                indexUnsaved: Bool? = nil, linkOpenMode: String? = nil, rebased: ControlRebasedNode? = nil,
-                sidebarDensity: String? = nil) {
+                indexUnsaved: Bool? = nil, snapshotUnsaved: Bool? = nil, linkOpenMode: String? = nil,
+                rebased: ControlRebasedNode? = nil, sidebarDensity: String? = nil) {
         self.workspaces = workspaces
+        self.snapshotUnsaved = snapshotUnsaved
         self.sidebarDensity = sidebarDensity
         self.linkOpenMode = linkOpenMode
         self.liveReset = liveReset

@@ -223,7 +223,7 @@ session not laid out yet),
 `paneOverlays` (the panes covered by their own pane-scoped overlay — `["left"]`, `["right"]` or
 `["left","right"]`, omitted when neither is; the read side of `session overlay open --pane`, reported
 independently of the session-wide `overlay` flag, which a pane overlay never sets),
-`htmlOverlays` (the pages in the overlay slots, see `session overlay open --html`, `--url`, `--image`, `--markdown` and `--text`; `overlay` and
+`htmlOverlays` (the pages in the overlay slots, see `session overlay open --html`, `--url`, `--image`, `--markdown` and `--text`, plus `document` for a ⌘-clicked `.html` file; `overlay` and
 `paneOverlays` count them as covers too),
 `rebasedOverlay` (fork only: `{project, state, error?, diff?, source?, pane?, hidden, view?, onClose?}`),
 where `state` is `fetching`, `starting`, `shown` or `failed`; `pane` is absent for a session-wide holder.
@@ -350,7 +350,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-seven top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries twenty-eight top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — `recencyDwell` in `settings.json`, omitted when
@@ -407,8 +407,10 @@ and `app` (which agterm is serving this socket: `version`, plus
 reading the tree gets its version floor without a second round-trip; it is not duplicated onto
 `window.list`, where a caller uses `version` instead), `liveReset` (the Live sessions reset state, app-global
 like `app`: `pending` until the quit that follows a confirmed `zmx reset`, `last` for the launch that consumed
-it; omitted when neither applies), and `indexUnsaved` (true while the last write of the window index failed,
-omitted otherwise; app-wide, and it clears on the next index write that lands).
+it; omitted when neither applies), `indexUnsaved` (true while the last write of the window index failed,
+omitted otherwise; app-wide, and it clears on the next index write that lands), and `snapshotUnsaved` (true
+while the last save of this window's sessions failed, omitted otherwise; per window, and it clears on the next
+save of that window that lands).
 `rebased` is fork-only app status: `{jvm, error?, projects, port?}`, with `jvm` `starting`, `running`, or `failed`
 and `projects` an array of project directories. `port` is the built-in server port once known.
 It is omitted until Rebased first starts.
@@ -1326,6 +1328,14 @@ error keeps those names for compatibility.
   Wire `text` and `to` (`next`, `prev`, `close`). Read back `htmlOverlays[].text.search`: `{query, matches,
   current}`, current from 1 and 0 with no match, omitted with no query. The page's own field (`/` or ⌘F, `n`/`N`,
   Esc) sets the same query.
+- `session overlay changes --next | --prev [--pane left|right] [--target] [--window W]`
+  - step the `.diff` or `.patch` page in the addressed slot to its next or previous change, a change being one run of
+  removed and added lines inside a hunk; it wraps, and after the user scrolled away it goes on from the view. Returns
+  `result.text` as `N of M`. Refused `no diff page` for any other page, `no changes` for a patch without any,
+  `page not loaded` before the page exists, and `remote page: step it on the Mac that shows it` for a slot handed to
+  the presenting Mac. Wire `to` (`next`, `prev`). Read back `htmlOverlays[].text.changes`: `{count, current}`,
+  current 0 before any step, omitted on any other page and until the page reports. The page's own buttons and the
+  `]`/`[` keys step the same way.
 - `session overlay open --html FILE|--url URL --companion [page flags] [--follow] [--target] [--window W]`
   - open the page as a page companion of the target instead of in its overlay slot: a companion session
   (see `session new --parent`) that shows the page and never starts a shell. Its row sits under the parent,
@@ -2319,7 +2329,7 @@ it was ⌘⇧-clicked in a program that does not capture the mouse, when it was 
 session's window has a zoomed terminal, when the session-wide overlay slot is taken, when the saved
 browser store cannot be used, or when the overlay cannot be opened. The exception is a slot holding a page an earlier
 click opened (`clicked` in `htmlOverlays`) that was hidden on this Mac with ⇧⌘J or `session overlay hide`: the click
-replaces it and shows the new page, and a clicked picture, markdown or text file does the same. A page that is only out
+replaces it and shows the new page, and a clicked picture, markdown, HTML or text file does the same. A page that is only out
 of sight under a newer pane overlay, or one the presenting Mac shows, is not replaced.
 A plain `http` link uses the overlay
 only for a host the page could load: an unqualified name such as `localhost`, a `.local` name, or an IP
@@ -2648,7 +2658,7 @@ Nothing has to be set up beyond the `agtermctl` PATH precondition above. What to
 - An image, markdown or text page (`--image`, `--markdown`, `--text`) follows the same rule. The presenting Mac
   fetches the file over the same channel, the origin serving only that file, or a markdown file's pictures in its
   own folder, under the same size limits, and shows the same page with no bridge; an image opened without a size
-  is sized for that Mac's screen. Its `htmlOverlays` lists `image`, `markdown` or `text` with `replica: true`.
+  is sized for that Mac's screen. Its `htmlOverlays` lists `image`, `markdown`, `document` or `text` with `replica: true`.
   A presenting Mac too old for these pages keeps the refusal (`a viewer presents this session`). A log page
   (`--tail`, `--follow-file`) is refused there, and a clicked `.log` opens as the plain text page.
 - When the stream drops, a `--wait` overlay whose program already ended closes on the presenting Mac,

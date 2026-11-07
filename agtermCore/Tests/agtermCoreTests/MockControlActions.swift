@@ -124,6 +124,7 @@ class MockControlActionsBase {
         case overlayVisibility(target: String?, window: String?, pane: OverlayPane?, mode: OverlayVisibilityMode)
         case overlayFollow(target: String?, window: String?, pane: OverlayPane?, mode: ControlToggleMode)
         case overlaySearch(target: String?, window: String?, pane: OverlayPane?, request: TextSearchRequest)
+        case overlayChanges(target: String?, window: String?, pane: OverlayPane?, forward: Bool)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
         case overlayNavigate(target: String?, window: String?, pane: OverlayPane?, HtmlNavigation)
         case overlayResize(target: String?, window: String?, sizePercent: Int?)
@@ -860,6 +861,12 @@ class MockControlActionsBase {
                               request: TextSearchRequest) async -> ControlResponse {
         calls.append(.overlaySearch(target: target, window: window, pane: pane, request: request))
         return ControlResponse(ok: true, result: ControlResult(id: target, text: "1 of 2"))
+    }
+
+    func stepSessionOverlayChanges(_ target: String?, window: String?, pane: OverlayPane?,
+                                   forward: Bool) async -> ControlResponse {
+        calls.append(.overlayChanges(target: target, window: window, pane: pane, forward: forward))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "3 of 7"))
     }
 
     func resizeSessionOverlay(_ target: String?, window: String?, sizePercent: Int?) -> ControlResponse {

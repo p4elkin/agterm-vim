@@ -1432,7 +1432,7 @@
             <p style="font-size: 16px; line-height: 1.7; color: #cbc6bc; margin: 0">
               A program in any session can raise a desktop notification (via OSC 9 / 777, or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl notify</span>). It surfaces
-              as a macOS banner and an unseen-count badge on the sidebar row (rolled up onto a collapsed workspace); clicking the
+              as a macOS banner and an unseen-count badge on the sidebar row, and the workspace row shows the total of its sessions, collapsed or expanded; clicking the
               banner brings agterm forward and focuses the exact pane that raised it, and focusing a session clears its badge — or
               clear it headlessly with <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">agtermctl session seen</span>
               so an orchestrator driving a session over the socket can acknowledge it without pulling focus
@@ -1510,7 +1510,8 @@
                 ><strong style="color: #e6e1d7">General</strong> — mouse scroll speed, right-click-to-paste,
                 <strong style="color: #e6e1d7">Open links in</strong> (Browser, or Session overlay at full size, 95%, 75% or 50% to show a ⌘-clicked web
                 link over its session; see <a href="#links" style="color: #6d82f3">links</a>), whether clicking a workspace
-                row expands or collapses it (on by default; the disclosure triangle always does), a
+                row expands or collapses it (on by default; the disclosure triangle and the row's right-click
+                Collapse/Expand Workspace always do), a
                 <strong style="color: #e6e1d7">Flagged view layout</strong> that picks a flat list, with or without each row's workspace name, or a workspace tree for the
                 flagged view in every window (the tree shares each workspace's collapse state with the ordinary tree, so
                 folding a group folds that workspace in both), where a new session opens (your home
@@ -1553,10 +1554,13 @@
                 controls off by default, the workspace name (shown before the session name, cut to 24 characters), the
                 custom-commands button, and the hide-overlays button, which stays in place and is dimmed while the session
                 has no overlay to hide; in the sidebar the new-workspace, new-session,
-                flagged-view, and workspace-filter footer buttons, the per-workspace add-session + revealed on hover, and the
-                leading icons of workspace rows and of session rows, hidden separately to give names more room. A hidden
+                flagged-view, and workspace-filter footer buttons, the per-workspace add-session + revealed on hover, the
+                leading icons of workspace rows and of session rows, hidden separately to give names more room, and the
+                workspace collapse chevrons. A hidden
                 icon takes what it shows with it: a session's split, flag fill, remote cloud, page glyph and icon-only tint,
-                and a workspace's focus mark. A remote session's connection notice then shows when hovering its name. A
+                and a workspace's focus mark. A remote session's connection notice then shows when hovering its name.
+                Hiding the workspace chevrons moves every row left into the space they took; a workspace row then gives
+                no sign of being folded. A
                 <strong style="color: #e6e1d7">Session info</strong> picker sets where a session's info line shows: Always, Flagged (the
                 flagged view only) or Off. A
                 <strong style="color: #e6e1d7">Multiple Windows</strong> option (off by default) shows the sidebar only in
@@ -1587,9 +1591,10 @@
                 ><strong style="color: #e6e1d7">Key Mapping</strong> — the directory holding
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span>, a list of any
                 parse errors, and a reload button. <strong style="color: #e6e1d7">Lock in terminals</strong> (off by default)
-                picks one of the keyboard layouts enabled in macOS and holds it while a terminal has the keyboard: a switch
-                made there is switched straight back, and the layout you had returns when you move to another app, a web
-                overlay, or a text field. A crash or force quit leaves the locked layout selected.
+                picks one of the keyboard layouts enabled in macOS and holds it while a terminal or an HTML overlay has the
+                keyboard, fields inside the page included: a switch made there is switched straight back, and the layout
+                you had returns when you move to another app or to an agterm text field outside the overlay.
+                A crash or force quit leaves the locked layout selected.
               </div>
             </div>
             <figure
@@ -3348,7 +3353,10 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.md</span> or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.markdown</span> file as a page in
               the terminal's theme at the link-open size (95% when links open in the browser), shows a source, config, text or
-              log file the same way, read-only and highlighted when its language is known, and
+              log file the same way, read-only and highlighted when its language is known, shows an
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.html</span> or <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.htm</span> file as a page with its scripts off and no
+              access to other files, loading nothing from the network and handing a web link to the browser only after
+              asking, and
               <strong style="color: #e6e1d7">reveals</strong> any other file in Finder instead of opening it. A location such as
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">./main.go:42:7</span>, as compilers
               and test runners print it, opens the file at that line; a relative one is looked up in the pane's own directory.
@@ -3367,7 +3375,12 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">G</span> or End goes to the
               bottom and follows, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">g</span>
               or Home goes to the top. ⌘F always searches what is on top: over any page or overlay it never reaches the
-              terminal behind it.
+              terminal behind it. A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.diff</span> or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.patch</span> page counts its changes,
+              each a run of removed and added lines, and steps between them with the bar's arrows or
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">]</span> and
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">[</span>, marking the one it reached;
+              after a scroll it goes on from what is shown.
               A period, question mark, exclamation mark or semicolon ending a sentence after a path is dropped when only the
               file without it exists.
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">⌘⌥</span>-click reveals any local
@@ -3375,7 +3388,7 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               file shows a leading YAML frontmatter block as code, the pictures kept in its own folder and the alt text of any
               other, runs none of its own script, and
               hands a web link to the browser only after asking. A text page runs nothing, loads nothing and links nowhere: a URL
-              in a log stays text. A picture, markdown or text file clicked
+              in a log stays text. A picture, markdown, HTML or text file clicked
               from the HUD or the quick terminal, or while the session's overlay is busy, is revealed too; a hidden page an
               earlier click opened is replaced instead, as with a web link. In a session
               attached from another Mac, a plain path names a file on that Mac, so it is ignored. A terminal renders untrusted
@@ -3761,7 +3774,8 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               twelve colors (red, orange, yellow, green, blue, purple, gray, teal, pink, brown, indigo, mint), which follow
               light and dark mode, then
               <strong style="color: #e6e1d7">Show On</strong> Icon, Name, or Icon and Name. On a multi-row selection Show On is available
-              only when every selected row is tinted. The command palette offers "Tint Session: Red" through "Tint
+              only when every selected row is tinted. A color picked from the menu for an untinted row starts on the
+              last Show On choice made while the app runs, and Show On shows it checked. The command palette offers "Tint Session: Red" through "Tint
               Session: None" for the active session. A workspace tint colors only the workspace row, never the
               sessions in it. Any other color is a
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">#rrggbb</span> hex through

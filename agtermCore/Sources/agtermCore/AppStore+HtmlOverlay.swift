@@ -79,6 +79,26 @@ public enum TextSearchFailure: Error, Equatable, Sendable {
     }
 }
 
+/// TextChangesFailure is why a `session.overlay.changes` step was refused.
+public enum TextChangesFailure: Error, Equatable, Sendable {
+    case page(HtmlOverlayCommandFailure)
+    case notDiff
+    case remote
+    case notLoaded
+    case noChanges
+
+    /// message is the control error for this refusal.
+    public var message: String {
+        switch self {
+        case .page(let failure): return failure.message
+        case .notDiff: return "no diff page"
+        case .remote: return "remote page: step it on the Mac that shows it"
+        case .notLoaded: return "page not loaded"
+        case .noChanges: return "no changes"
+        }
+    }
+}
+
 extension AppStore {
     /// openHtmlOverlay opens a page in the session-wide slot (`pane` nil) or one pane's slot, with the slot
     /// rules of `openOverlay`/`openPaneOverlay`. Refused when the placement rule hands the slot to the presenting
@@ -257,6 +277,30 @@ extension AppStore {
         }
     }
 
+    /// textChangesPage finds the local diff page in the slot `pane` addresses, for a change step, with the slot
+    /// refusals of `textSearchPage`.
+    public func textChangesPage(_ sessionID: UUID, pane: OverlayPane?) -> Result<HtmlOverlay, TextChangesFailure> {
+        switch textSearchPage(sessionID, pane: pane) {
+        case .failure(.page(let failure)): return .failure(.page(failure))
+        case .failure(.remote): return .failure(.remote)
+        case .failure: return .failure(.notDiff)
+        case .success(let page):
+            guard case .text(let path, _) = page.source, page.textLog == nil, TextPage.isDiff(file: path) else {
+                return .failure(.notDiff)
+            }
+            return .success(page)
+        }
+    }
+
+    /// setTextChangesReport records a diff page's count and current change, nil clearing it while a fresh read is
+    /// under way. Never emitted, like `setTextSearchReport`.
+    public func setTextChangesReport(_ id: UUID, changes: TextChanges?) {
+        updateHtmlOverlay(id) {
+            guard case .text = $0.source, $0.textChanges != changes else { return }
+            $0.textChanges = changes
+        }
+    }
+
     /// htmlOverlaySlot finds the slot holding page `id` in a visible session, nil once the page left it.
     public func htmlOverlaySlot(_ id: UUID) -> (session: Session, pane: OverlayPane?)? {
         for session in workspaces.flatMap(\.sessions) {
@@ -290,13 +334,15 @@ extension AppStore {
 
     private func htmlOverlayNode(_ page: HtmlOverlay, pane: OverlayPane?, zoom: Double?, hidden: Bool,
                                  remote: Bool = false) -> ControlHtmlOverlayNode {
-        var file: String?, cwd: String?, url: String?, image: String?, markdown: String?, text: ControlTextOverlayNode?
+        var file: String?, cwd: String?, url: String?, image: String?, markdown: String?, document: String?
+        var text: ControlTextOverlayNode?
         switch page.source {
         case .file(let path, let grantRoot): (file, cwd) = (path, grantRoot)
         case .url(let address): url = address.absoluteString
         case .replica(let path, .html): file = path
         case .image(let path), .replica(let path, .image): image = path
         case .markdown(let path), .replica(let path, .markdown): markdown = path
+        case .document(let path), .replica(let path, .document): document = path
         case .text(let path, let line), .replica(let path, .text(let line)):
             let log = page.logState
             text = ControlTextOverlayNode(file: path, language: TextPage.language(forFile: path), line: line,
@@ -305,9 +351,10 @@ extension AppStore {
                                           unreadable: log?.report.unreadable,
                                           search: page.textSearch.map {
                                               ControlTextSearchNode(query: $0.query, matches: $0.matches, current: $0.current)
-                                          })
+                                          },
+                                          changes: page.textChanges.map { ControlTextChangesNode(count: $0.count, current: $0.current) })
         }
-        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, image: image, markdown: markdown, text: text,
+        return ControlHtmlOverlayNode(pane: pane?.rawValue, file: file, cwd: cwd, url: url, image: image, markdown: markdown, document: document, text: text,
                                       state: page.loadState.rawValue,
                                       error: page.loadError, page: page.current?.page, title: page.current?.title,
                                       canGoBack: page.current?.canGoBack, canGoForward: page.current?.canGoForward,

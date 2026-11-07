@@ -455,6 +455,32 @@ struct HtmlOverlayTests {
         #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == expected)
     }
 
+    @Test(arguments: [
+        ("https://example.com/", HtmlNavigationTarget.mainFrame, true, HtmlNavigationDecision.openExternal),
+        ("https://example.com/", .mainFrame, false, .cancel),
+        ("https://example.com/", .subframe, false, .cancel),
+        ("about:blank", .mainFrame, false, .allow),
+        ("file:///tmp/agdoc/other.html", .mainFrame, true, .cancel),
+        ("file:///etc/passwd", .subframe, false, .cancel),
+        ("javascript:alert(1)", .mainFrame, true, .cancel),
+        ("data:text/html,x", .mainFrame, true, .cancel),
+    ])
+    func documentPagePolicyHandsWebLinksOutAndKeepsEverythingElse(_ url: String, _ target: HtmlNavigationTarget,
+                                                                  _ userActivated: Bool, _ expected: HtmlNavigationDecision) throws {
+        for source in [HtmlSource.document(path: "/tmp/agdoc/pr.html"), .replica(path: "/tmp/agdoc/pr.html", content: .document)] {
+            let action = HtmlNavigationAction(url: try #require(URL(string: url)), target: target, userActivated: userActivated)
+            #expect(HtmlNavigationPolicy.decide(action, overlay: HtmlOverlay(source: source)) == expected)
+        }
+    }
+
+    @Test func aDocumentPageIsNamedByItsFileNeverTheTitle() {
+        var overlay = HtmlOverlay(source: .document(path: "/tmp/agdoc/pr.html"))
+        overlay.current = HtmlPageInfo(page: "/tmp/agdoc/pr.html", title: "enter your password", canGoBack: false, canGoForward: false)
+        #expect(overlay.identity == "pr.html")
+        #expect(overlay.source.kind == .document)
+        #expect(HtmlSource.replica(path: "/tmp/agdoc/pr.html", content: .document).kind == .document)
+    }
+
     @Test func aMarkdownPageIsNamedByItsFileNeverTheTitle() {
         var overlay = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"))
         overlay.current = HtmlPageInfo(page: "/tmp/notes/readme.md", title: "enter your password", canGoBack: false, canGoForward: false)
@@ -1188,5 +1214,58 @@ struct HtmlOverlayTests {
         let text = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
 
         #expect(text.search == ControlTextSearchNode(query: "main()", matches: 4, current: 2))
+    }
+
+    @Test func aChangesReportIsKeptClearedAndEmitsNothing() throws {
+        let (store, session, events) = try logStore()
+        let page = HtmlOverlay(source: .text(path: "/tmp/a.diff", line: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        let opened = events.count
+
+        store.setTextChangesReport(page.id, changes: TextChanges(count: 7, current: 3))
+        #expect(session.htmlOverlay?.textChanges == TextChanges(count: 7, current: 3))
+        store.setTextChangesReport(page.id, changes: nil)
+        #expect(session.htmlOverlay?.textChanges == nil)
+        #expect(events.count == opened)
+    }
+
+    @Test func aChangesStepAddressesOnlyALocalDiffPage() throws {
+        let (store, session, _) = try logStore()
+        #expect(store.textChangesPage(session.id, pane: nil) == .failure(.page(.noOverlay)))
+
+        let plain = HtmlOverlay(source: .text(path: "/tmp/a.txt", line: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: plain, sizePercent: nil) == nil)
+        #expect(store.textChangesPage(session.id, pane: nil) == .failure(.notDiff))
+        #expect(store.closeOverlay(session.id))
+
+        let markdown = HtmlOverlay(source: .markdown(path: "/tmp/a.md"))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: markdown, sizePercent: nil) == nil)
+        #expect(store.textChangesPage(session.id, pane: nil) == .failure(.notDiff))
+        store.setTextChangesReport(markdown.id, changes: TextChanges(count: 1, current: 0))
+        #expect(session.htmlOverlay?.textChanges == nil)
+        #expect(store.closeOverlay(session.id))
+
+        let patch = HtmlOverlay(source: .text(path: "/tmp/a.patch", line: 3))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: patch, sizePercent: nil) == nil)
+        #expect(store.textChangesPage(session.id, pane: nil).map(\.id) == .success(patch.id))
+        #expect(store.closeOverlay(session.id))
+
+        #expect(store.openOverlay(session.id, command: "less"))
+        #expect(store.textChangesPage(session.id, pane: nil) == .failure(.page(.notHtml)))
+        #expect(TextChangesFailure.notDiff.message == "no diff page")
+    }
+
+    @Test func aTextPageNodeReportsItsChangesOnlyOnceReported() throws {
+        let (store, session, _) = try logStore()
+        let page = HtmlOverlay(source: .text(path: "/tmp/a.diff", line: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        let before = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
+        let json = String(data: try JSONEncoder().encode(before), encoding: .utf8) ?? ""
+        #expect(!json.contains("changes"))
+
+        store.setTextChangesReport(page.id, changes: TextChanges(count: 11, current: 2))
+        let text = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
+
+        #expect(text.changes == ControlTextChangesNode(count: 11, current: 2))
     }
 }

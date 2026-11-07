@@ -173,7 +173,7 @@ renumbering. Do not reintroduce a count anywhere.
   `.flag`, `.tint`, `.info`, `.park`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`,
   `.overlay.resize`, `.overlay.reload`, `.overlay.navigate`, `.overlay.result`, `.overlay.submit`,
   `.overlay.copy`, `.overlay.text`, `.overlay.job.run`, `.overlay.page.serve`, `.overlay.hide`, `.overlay.show`,
-  `.overlay.toggle`, `.overlay.follow`, `.overlay.search`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
+  `.overlay.toggle`, `.overlay.follow`, `.overlay.search`, `.overlay.changes`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
   `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
@@ -738,7 +738,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `openSessionOverlay` refuses. The HUD and zoom checks come first because the store would ACCEPT those
   opens: one closes the HUD for good, the other shows nothing. A HUD, a program overlay and the quick
   terminal never route to the overlay.
-- The four click paths mark their pages `HtmlOverlay.clicked` (read back as `htmlOverlays[].clicked`; the
+- The five click paths mark their pages `HtmlOverlay.clicked` (read back as `htmlOverlays[].clicked`; the
   dispatcher never sets it, presentation frames never carry it), and a click replaces the session-wide page
   only when it is marked and its `overlayHidden` bit is set: `AppStore.releaseHiddenClickedPage`, which also leaves a
   slot `pageBelongsRemote` hands to the presenter. The read-back's `hidden` is `overlayOutOfSight` and a remote page
@@ -750,7 +750,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   and spaces stay in the name. A local path, bare or `file://`, with an `imageExtensions` extension routes to
   `ControlServer.openImageLink` (the same HUD and zoom guards) and is revealed when that refuses; one with a
   `markdownExtensions` extension routes to `ControlServer.openMarkdownLink` the same way, at the mode's size, 95 in
-  browser mode (`Route.markdown` carries it), and one `TextPage.isEligible` accepts routes to `openTextLink` the same
+  browser mode (`Route.markdown` carries it), one with a `DocumentPage.extensions` extension routes to
+  `openDocumentLink` the same way, and one `TextPage.isEligible` accepts routes to `openTextLink` the same
   way; any other local path is revealed. A pane of a session with `remoteHost` is `.remotePane`: its bare paths name files
   on the far Mac and are ignored, while its scratch stays `.scratch` because that shell is local.
 - libghostty keeps a `:line[:column]` suffix in the path it hands over and resolves a relative path only when that
@@ -804,6 +805,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   basename map up to `maxHighlightBytes`, is the only `innerHTML` it assigns. Markdown, HTML and SVG are not text
   pages. `--text` is taken literally, never suffix-parsed; read back `htmlOverlays[].text` with the file, the mapped
   language and the requested line.
+- A document page (`HtmlSource.document`) is a clicked `.html` or `.htm` file, never a CLI page: terminal output
+  named it, so it gets no file grant and no bridge, and page JavaScript stays off; it takes a file page's theme
+  defaults, so a file looks the same clicked or opened with `--html`. `--html` without `--cwd`
+  would bridge it, since the tagged-control adapter runs in its own world whatever the page's JavaScript setting.
+  `DocumentProbe` reads it through `BoundedFile` off the main actor and the page loads that text with no base URL,
+  so relative assets do not load. Subresources bypass `HtmlNavigationPolicy`, so `DocumentPage.page` puts a CSP that
+  loads only `data:` and inline styles right after the doctype (a meta ahead of it forces quirks mode), and the page
+  loads only once `DocumentRules` has installed a rule list blocking every network scheme: WebKit checks preconnect and
+  DNS-prefetch hints against rule lists, never the CSP. A refused compile fails the page. Clicking a link may still
+  connect to its host before the browser prompt, which Cancel cannot undo; no request or ping is sent. Browser hand-off is refused: the browser would run its scripts. A presenter is handed one only when it lists
+  `page.document`, and page-serve refuses its bridge requests. Read back `htmlOverlays[].document`.
 - A log page is a text page with `HtmlOverlay.textLog` (`--tail`, `--follow-file`, wire `tail`/`followFile`, or a plain
   click on a `TextPage.isLog` file). The request and the live `logState` ride the model, not `HtmlSource`, so
   `presentationSource`, replicas and the fork's `.text` matches are untouched, and the CLI can change following before a
@@ -823,6 +835,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   same model, and the bridge marks the revisions that field produced, so their pushes never overwrite its typing.
   An empty slot and a program keep the slot lookup's own refusals; any other page, a replica included, is refused
   `no text page`, and a slot `pageBelongsRemote` hands to the presenter `remote page`. Read back `htmlOverlays[].text.search`, omitted with no query.
+- A plain `.diff`/`.patch` page (`TextPage.isDiff`) steps between its changes (`session.overlay.changes --to next|prev`).
+  `TextPage.html` marks it `data-diff` outside the highlight cap, since a full-context patch is the large case. The page
+  parses changes from hunk counts, so headers between hunks never count, and posts `{count, current}` on ready and each
+  step into `HtmlOverlay.textChanges` (`setTextChangesReport`, never emitted); a fresh read clears it first, and a theme
+  rebuild passes the current change back as `data-change`. A step is a one-shot push like a search step.
+  Read back `htmlOverlays[].text.changes`, omitted until the page reports.
 - `browser.clear` removes all website data from the saved store and keeps its id. App-global: a target or
   `--window` is refused. It answers ok without creating anything when no profile exists, and replies only
   after WebKit reports the removal done. It is refused with `N persistent page(s) still open` while any
@@ -1813,7 +1831,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 
 - `zmx.tree` lists another Mac's attachable sessions and `zmx.attach` opens one of them here. `zmx.attach`
   imports one session, its split included, and `zmx.attach.group` a top-level session with its companions;
-  whole-workspace teleport is out of scope (`docs/backlog/remote-workspace-attach.md`), and several remote
+  whole-workspace teleport is out of scope, and several remote
   rows may sit side by side.
 - A row carries what a PICKER needs, not only what attach needs. Without that a caller has to run a second
   ssh and join `agtermctl tree --json` by session id, paying another authentication for data the walk

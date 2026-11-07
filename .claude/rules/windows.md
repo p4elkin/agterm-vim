@@ -69,6 +69,9 @@ session drag are out of scope.
   loaded file is never re-seeded.
 - The headless origin builds its own `WindowLibrary`, so it creates and seeds its own `session-recency.json`
   in its state directory, but its tree never reports `appSessionRecency`.
+- A failed `windows/<id>.json` write sets that store's `AppStore.snapshotUnsaved`, reported by its
+  window's tree and cleared by the next snapshot write that lands. The failure logs through `NSLog`:
+  `agtermCore` imports no `os`, since the agterm-linux fork builds it on Linux.
 - Bootstrap never throws. Load a valid index; otherwise recover every UUID-named per-window file before
   considering legacy migration or an empty seed. Recovered files are appended before `loadStore`, named
   `window N`, all opened, and the first made frontmost. Missing/corrupt window snapshots open with a

@@ -16,7 +16,8 @@ when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
   split the pane, close the overlay, hide the overlay for a moment, show a message over the session, show a question dialog, agtermctl ask,
   ask the user to type a value or a message, let the user pick one or several items from a list,
-  show an image inline, show this markdown file rendered, show this source file or log at a line, tail or follow this log file,
+  show an image inline, show this markdown file rendered, show this source file or log at a line,
+  show me the diff of a file or the changes as links, tail or follow this log file,
   search the log or text page in the overlay,
   show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
@@ -161,7 +162,8 @@ any `--window`; omitted when empty), `pickPending`,
 `askPending` (GUI asks only), `app` (the
 serving app's `version`, plus `commit` when the build recorded one — the same value `agtermctl version`
 returns), `liveReset` (the Live sessions reset state, omitted when nothing is pending and no launch
-consumed a reset), and `indexUnsaved` (true while the last window-index write failed). reference.md lists every one with its exact shape. List windows with
+consumed a reset), `indexUnsaved` (true while the last window-index write failed), and `snapshotUnsaved`
+(true while the last save of this window's sessions failed). reference.md lists every one with its exact shape. List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `recencyDwellMs`,
 `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
@@ -901,6 +903,9 @@ link opens in the browser after the user confirms. The user gets the same view b
 local pane, so printing the absolute path of a plan or report you wrote is often enough there; for a user watching
 from another Mac, open it with `--markdown`. Read back `markdown` in `htmlOverlays`.
 
+A ⌘-clicked `.html` or `.htm` path shows as a page with scripts off, no tagged controls, no access to other
+files and no network loads, read back as `document`. A page that needs its scripts, its controls or files beside it opens with `--html`.
+
 ## Showing a source file or log at a line
 
 Show a source, config, text or log file read-only with `--text`, scrolled to and marking `--line`:
@@ -909,7 +914,8 @@ Show a source, config, text or log file read-only with `--text`, scrolled to and
 agtermctl session overlay open --text /path/to/main.go --line 42 --size-percent 95 --target "$AGTERM_SESSION_ID"
 ```
 
-It is highlighted when its name maps to a known language, up to 256 KB, and plain above; FILE is taken literally,
+It is highlighted when its name maps to a known language, up to 256 KB, and plain above; a file over 4 MB is
+refused. FILE is taken literally,
 never as `path:line`. The page runs nothing, loads nothing and has no links. Markdown, HTML and SVG are not text
 pages. The user gets the same view by ⌘-clicking a path or a `path:line` location in a local pane, and reveals any
 file in Finder with ⌘⌥-click; for a user watching from another Mac, open it with `--text`. Read back `text`
@@ -939,6 +945,18 @@ Matching is case-insensitive plain text. A step pauses a following log page, so 
 query does not. Read back `text.search` (`{query, matches, current}`). The user has the same search in the page's
 bar: `/` or ⌘F focuses it, `n`/`N` step, Esc clears; on a log page `F` toggles follow, `G`/End goes to the bottom and
 follows, `g`/Home to the top. A step before the page loads is refused `page not loaded`.
+
+To show the user changes, write each changed file's diff to its own `.diff` file and list them as links; a ⌘-click
+opens it as a read-only text page:
+
+```bash
+git diff --no-color HEAD~3 HEAD -- src/app.go > /tmp/src_app.go.diff
+```
+
+Then print `[src/app.go diff](/tmp/src_app.go.diff)`, one link per file, since a multi-file patch shows as one stream
+with no file list. Use absolute, space-free output paths so the printed paths are clickable without OSC 8.
+The page steps between changes with `]`/`[` or `agtermctl session overlay changes --next|--prev`, which prints
+`N of M`; read back `text.changes` (`{count, current}`).
 
 ## Displaying an image inline
 
