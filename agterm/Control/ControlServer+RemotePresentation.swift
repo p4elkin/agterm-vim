@@ -140,6 +140,7 @@ extension ControlServer {
                 remoteClients[id]?.rename(store.session(withID: id)?.customName)
             },
             respawns: { [weak self] respawns, seed in self?.applyRemoteRespawns(respawns, seed: seed, forSession: id) },
+            linkRefused: { [weak self] reason in self?.refuseRemoteLinkClick(reason, session: id) },
             warn: { reason in
                 remoteLogger.warning("presentation stream for \(id, privacy: .public): \(reason, privacy: .public)")
             })
@@ -221,8 +222,9 @@ extension ControlServer {
         let placement = ControlHudPlacement(pane: pane)
         let target = id.uuidString
         let bridged = session.hudActive && session.remotePresentation?.hudBridged == true
-        // `hud.open` replaces a live HUD, so a panel this Mac's own program put up has to be left alone here
-        guard bridged || !session.hudActive else { return }
+        // `hud.open` replaces a live HUD, so a panel this Mac's own program put up has to be left alone here; a
+        // refusal panel gives way, since nothing would show this HUD again once it hides
+        guard bridged || !session.hudActive || showsRemoteLinkRefusal(id) else { return }
         let response = bridged
             ? updateHud(target, window: nil, spec: spec, placement: placement)
             : openRemoteHud(target, spec: spec, placement: placement)

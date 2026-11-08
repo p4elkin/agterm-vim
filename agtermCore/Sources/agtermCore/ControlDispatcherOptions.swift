@@ -48,6 +48,9 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
     public let imagePixels: ImagePixels?
     /// textLog makes a text page a log page (`--tail`, `--follow-file`).
     public let textLog: TextLog?
+    /// forwarded marks a page a click on the presenting Mac asked for: it opens there or not at all, and replaces a
+    /// hidden clicked page there. The app sets it and the dispatcher never does.
+    public let forwarded: Bool
 
     public init(command: String, cwd: String?, wait: Bool, sizePercent: Int?, backgroundColor: String?,
                 follow: Bool = false, pane: OverlayPane? = nil, resolved: Bool = false, page: HtmlSource? = nil,
@@ -55,8 +58,9 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
                 persistent: Bool = false, browse: Bool = false, rebased: Bool = false, rebasedDiff: RebasedDiff? = nil,
                 rebasedView: RebasedView? = nil, rebasedProject: String? = nil, rebasedOnClose: String? = nil,
                 points: OverlayPointSize = OverlayPointSize(), clicked: Bool = false, imagePixels: ImagePixels? = nil,
-                textLog: TextLog? = nil) {
+                textLog: TextLog? = nil, forwarded: Bool = false) {
         self.textLog = textLog
+        self.forwarded = forwarded
         self.clicked = clicked
         self.imagePixels = imagePixels
         self.command = command
@@ -89,7 +93,7 @@ public struct ControlSessionOverlayOpenOptions: Equatable, Sendable {
                                          persistent: persistent, browse: browse, rebased: rebased, rebasedDiff: rebasedDiff,
                                          rebasedView: rebasedView, rebasedProject: rebasedProject,
                                          rebasedOnClose: rebasedOnClose, points: points, clicked: clicked,
-                                         imagePixels: imagePixels, textLog: textLog)
+                                         imagePixels: imagePixels, textLog: textLog, forwarded: forwarded)
     }
 }
 

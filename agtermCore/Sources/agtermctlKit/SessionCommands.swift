@@ -26,7 +26,7 @@ struct Session: ParsableCommand {
                       SelectAll.self,
                       Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Context.self,
                       Info.self, Tint.self, Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
-                      Overlay.self, Hud.self, RebasedCommand.self, Wait.self, Collapse.self, Expand.self]
+                      Overlay.self, Hud.self, RebasedCommand.self, Wait.self, Collapse.self, Expand.self, Convert.self]
     )
 
     struct New: RequestCommand {

@@ -26,3 +26,12 @@ If upstream's pages are good enough for some of these extensions, the fork can d
 `openPathExtensions` and delete the matching helper branches, which is less merge surface on a flagged
 file. If they are not, the fork could still fall back to upstream's page when the helper is missing. The
 merge stopped on which route wins; this item is the longer adopt-or-not question.
+
+## Added by the 2026-11-08 merge: Mac-attached panes
+
+Upstream #923 (`9a6f8e85`) forwards a bare, relative or `file://` path ⌘-clicked in a pane attached from
+another Mac to that Mac, which resolves and opens it (`LinkPolicy.forwardsRemotely`, `.forwardRemote`).
+In the fork `openLink` asks `LinkPolicy.helperLink` first, so on such a pane a path with an
+`openPathExtensions` extension still goes to the local `agterm-open-path`, and upstream's forward runs only
+when the helper cannot start. Derived from reading, not reproduced. The question is the same one: let
+Mac-attached panes skip the helper and take upstream's forward, or keep the helper there too.

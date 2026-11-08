@@ -2,6 +2,8 @@
 
 Split one conversation into rooms held as files, read them in the pane next to the agent, and keep the chat carrying one line per room instead of every answer. The same pane lists the conversations other agent sessions send you, so one switcher covers both instead of two.
 
+Author: [@p4elkin](https://github.com/p4elkin)
+
 ## What it does
 
 Ask an agent six questions in one message and you get six answers in one reply, competing for the same space. Measured over the 60 largest session transcripts in one setup, 6884 user turns: 44% of annotation batches carry more than one note, and the answer per note falls from about 2300 characters when a note arrives alone to about 740 in a batch of six. Nothing is lost — the agent comes back to a dropped note in 0.07% of turns — but each answer gets thinner as the batch grows, while the tool calls behind it go from 2 to 11.

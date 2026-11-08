@@ -93,6 +93,7 @@ enum HeadlessRequests {
         request(.sessionCompanionNew, target: target),
         request(.sessionCompanionPage, target: target) { $0.url = "https://example.com" },
         request(.sessionCompanionDuplicate, target: target),
+        request(.sessionCompanionConvert, target: target),
         request(.sessionFocus, target: target),
         request(.sessionResize, target: target) { $0.ratio = 0.5 },
         request(.sessionBackground, target: target),

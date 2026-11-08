@@ -2,6 +2,8 @@
 
 Let your Claude Code sessions message each other without a long message landing as a wall of text in the middle of the receiver's work, keep every exchange as a conversation, and read it back in an overlay with one chord.
 
+Author: [@p4elkin](https://github.com/p4elkin)
+
 ## What it does
 
 Claude Code sessions can message each other with `SendMessage`, addressing a peer by the name `ListAgents` shows. It works, and it has one problem: the message arrives spliced into the receiving session's turn. A three-line question is fine. A 2000-character handover is not — the receiving agent has to read the whole thing before it can go back to what it was doing, and you have to scroll past it afterwards.

@@ -925,7 +925,10 @@
                 <strong style="color: #e6e1d7">Duplicate as Companion</strong> beside it copies the session's split layout into a new
                 companion and starts another copy of each pane's program in its directory (<code style="color: #e6e1d7">duplicate_companion</code>);
                 when a pane's program cannot be copied, nothing is created and a panel over the session names the pane.
-                On a session attached from another Mac, both ask that Mac to create the companion under its own session and attach
+                <strong style="color: #e6e1d7">Convert to Companion</strong> turns a session you started on its own into one: a fresh shell takes
+                its place in its directory, and the session moves under it still running, its own companions with it, and stays
+                selected (<code style="color: #e6e1d7">convert_companion</code>). It is available only for local top-level sessions.
+                On a session attached from another Mac, New Companion and Duplicate as Companion ask that Mac to create the companion under its own session and attach
                 it here; closing it here only detaches it. A page companion opened on such a session is that Mac's page, shown
                 here through its own channel, and it stays there when you close it here. For attaching a session together with its
                 companions, see <a href="#remote-sessions" style="color: #6d82f3">Remote sessions</a>.
@@ -1590,10 +1593,10 @@
                   >›</span
                 ><strong style="color: #e6e1d7">Key Mapping</strong> — the directory holding
                 <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">keymap.conf</span>, a list of any
-                parse errors, and a reload button. <strong style="color: #e6e1d7">Lock in terminals</strong> (off by default)
-                picks one of the keyboard layouts enabled in macOS and holds it while a terminal or an HTML overlay has the
-                keyboard, fields inside the page included: a switch made there is switched straight back, and the layout
-                you had returns when you move to another app or to an agterm text field outside the overlay.
+                parse errors, and a reload button. <strong style="color: #e6e1d7">Lock in agterm</strong> (off by default)
+                picks one of the keyboard layouts enabled in macOS and holds it while any agterm window has the keyboard,
+                terminals, overlays, pickers, dialogs and rename fields included: a switch made there is switched straight
+                back, and the layout you had returns when you move to another app.
                 A crash or force quit leaves the locked layout selected.
               </div>
             </div>
@@ -1815,7 +1818,7 @@
                 color: #cbc6bc;
               "
             >
-              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />new_companion&nbsp;&nbsp;&nbsp;duplicate_companion<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote<br />edit_flagged_sessions&nbsp;&nbsp;&nbsp;edit_focused_workspaces
+              new_window&nbsp;&nbsp;&nbsp;rename_window&nbsp;&nbsp;&nbsp;delete_window<br />new_workspace&nbsp;&nbsp;&nbsp;rename_workspace&nbsp;&nbsp;&nbsp;delete_workspace<br />new_session&nbsp;&nbsp;&nbsp;open_directory&nbsp;&nbsp;&nbsp;rename_session&nbsp;&nbsp;&nbsp;duplicate_session<br />new_companion&nbsp;&nbsp;&nbsp;duplicate_companion&nbsp;&nbsp;&nbsp;convert_companion<br />close_session&nbsp;&nbsp;&nbsp;reopen_recent&nbsp;&nbsp;&nbsp;undo_close&nbsp;&nbsp;&nbsp;clear_status<br />increase_font_size&nbsp;&nbsp;&nbsp;decrease_font_size&nbsp;&nbsp;&nbsp;reset_font_size<br />toggle_split&nbsp;&nbsp;&nbsp;toggle_horizontal_split&nbsp;&nbsp;&nbsp;toggle_scratch&nbsp;&nbsp;&nbsp;toggle_search<br />toggle_sidebar&nbsp;&nbsp;&nbsp;toggle_flag&nbsp;&nbsp;&nbsp;toggle_flagged_view&nbsp;&nbsp;&nbsp;toggle_overlay<br />focus_left_pane&nbsp;&nbsp;&nbsp;focus_right_pane&nbsp;&nbsp;&nbsp;focus_workspace&nbsp;&nbsp;&nbsp;toggle_workspace_filter<br />toggle_workspace_collapse<br />previous_session&nbsp;&nbsp;&nbsp;next_session&nbsp;&nbsp;&nbsp;first_session&nbsp;&nbsp;&nbsp;last_session<br />previous_workspace&nbsp;&nbsp;&nbsp;next_workspace<br />previous_window&nbsp;&nbsp;&nbsp;next_window<br />previous_attention_session&nbsp;&nbsp;&nbsp;next_attention_session<br />quick_terminal&nbsp;&nbsp;&nbsp;session_palette&nbsp;&nbsp;&nbsp;command_palette<br />custom_command_palette&nbsp;&nbsp;&nbsp;show_attention<br />select_theme&nbsp;&nbsp;&nbsp;toggle_fullscreen&nbsp;&nbsp;&nbsp;toggle_terminal_zoom<br />dashboard&nbsp;&nbsp;&nbsp;attach_remote<br />edit_flagged_sessions&nbsp;&nbsp;&nbsp;edit_focused_workspaces
             </div>
             <p style="font-size: 15px; line-height: 1.65; color: #949ba4; margin: 16px 0 0">
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">toggle_fullscreen</span> is the one
@@ -3376,7 +3379,8 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               bottom and follows, and <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">g</span>
               or Home goes to the top. ⌘F always searches what is on top: over any page or overlay it never reaches the
               terminal behind it. A <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.diff</span> or
-              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.patch</span> page counts its changes,
+              <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.patch</span> page colors each file's code
+              in its language over green and red bands for added and removed lines, counts its changes,
               each a run of removed and added lines, and steps between them with the bar's arrows or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">]</span> and
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">[</span>, marking the one it reached;
@@ -3391,7 +3395,10 @@ for (const ws of tree.workspaces) for (const s of ws.sessions) {
               in a log stays text. A picture, markdown, HTML or text file clicked
               from the HUD or the quick terminal, or while the session's overlay is busy, is revealed too; a hidden page an
               earlier click opened is replaced instead, as with a web link. In a session
-              attached from another Mac, a plain path names a file on that Mac, so it is ignored. A terminal renders untrusted
+              attached from another Mac, a path names a file on that Mac, so the click goes there: that Mac opens the picture,
+              markdown, text or HTML page and it shows here, a relative path looked up in that pane's directory there. A click
+              it cannot open, a ⌘⌥-click, and a click while that Mac runs an older agterm show a short panel saying why, or
+              beep when the panel cannot be shown. A terminal renders untrusted
               program output, so a link could point at a
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.app</span> or
               <span style="font-family: &quot;JetBrains Mono&quot;, monospace; color: #cbc6bc">.command</span>; revealing selects the file

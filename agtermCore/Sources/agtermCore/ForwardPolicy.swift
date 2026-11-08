@@ -46,7 +46,7 @@ public enum ForwardPolicy {
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
              .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
-             .recentList, .recentOpen, .recentClear:
+             .sessionCompanionConvert, .recentList, .recentOpen, .recentClear:
             return .refused("no windows or UI")
         // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck:

@@ -24,6 +24,7 @@ when_to_use: >
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
   flag every session in a workspace, tint a session or workspace row a color, show status or activity under a session in the sidebar, make a companion session,
   keep a related program next to a session, duplicate this session with its programs as a companion,
+  make this session a companion,
   open a sub-session under this one, fold a session's companions, show a page as a companion of this
   session, run my custom command, send a message to the other pane or another agent, read my messages,
   wait for a message, tell me when the selected session changes,
@@ -410,7 +411,7 @@ omitted when expanded).
   off its primary pane, where `tree.cwd` reports the primary, or a remote session, where it can read as
   home).
 - `session new --parent SID [--cwd DIR] [--command CMD [--wait]] [--name NAME] [--no-select]` - create a
-  companion session: an ordinary session pinned for life to SID, listed right after it in its workspace and
+  companion session: an ordinary session pinned to SID, listed right after it in its workspace and
   indented under it in the sidebar tree (a companion SID means its parent). Use it to keep a related program
   next to a session: `agtermctl session new --parent active --command 'tail -f build.log' --name logs`
   (`--wait` keeps its output after it exits). `--cwd` defaults to the parent's focused directory; it refuses
@@ -419,6 +420,8 @@ omitted when expanded).
   companions. Read back as the tree node's `parent` and `collapsed`; details in reference.md.
   `session duplicate --companion` copies a session's split layout into a new companion and starts another copy of
   each pane's program (Duplicate as Companion); nothing is created when a pane's program cannot be copied.
+  `session convert --companion` turns a running top-level session into a companion of a fresh shell opened in its
+  place, keeping its program, id and companions (Convert to Companion).
   `session overlay open --html FILE --companion` (or `--url URL --companion`) adds a page companion: a row
   under the target session that shows the page and runs no shell. It closes when the page does and is never
   saved, so an `on app.launched` hook recreates it after a relaunch. Read back as the node's `content: "page"`.
@@ -917,8 +920,9 @@ agtermctl session overlay open --text /path/to/main.go --line 42 --size-percent 
 It is highlighted when its name maps to a known language, up to 256 KB, and plain above; a file over 4 MB is
 refused. FILE is taken literally,
 never as `path:line`. The page runs nothing, loads nothing and has no links. Markdown, HTML and SVG are not text
-pages. The user gets the same view by ⌘-clicking a path or a `path:line` location in a local pane, and reveals any
-file in Finder with ⌘⌥-click; for a user watching from another Mac, open it with `--text`. Read back `text`
+pages. The user gets the same view by ⌘-clicking a path or a `path:line` location, and reveals a file on their own Mac
+in Finder with ⌘⌥-click. A click in a session attached from another Mac opens the page from the Mac the session runs
+on when both run an agterm that forwards clicks; `--text` shows it there with older ones. Read back `text`
 (`{file, language?, line?}`) in `htmlOverlays`.
 
 To watch a log, open its end and follow it as it grows:
@@ -967,10 +971,10 @@ Show a png, jpg, gif or webp picture with `--image`; the panel takes the picture
 agtermctl session overlay open --image /tmp/shot.png --target "$AGTERM_SESSION_ID"
 ```
 
-The user can open the same view by ⌘-clicking a picture's path in a local pane, so printing the absolute
-path of an image you produced is often enough there. When the user watches your session from another Mac,
-a click on a printed path does nothing; open it with `--image`, which shows it on that Mac, as `--markdown`
-and `--text` pages do. When `--image` is rejected, by an older CLI as an unknown option, by an older app, or
+The user can open the same view by ⌘-clicking a picture's path, so printing the absolute path of an image you
+produced is often enough. When the user watches your session from another Mac, that click works only when both
+Macs run an agterm that forwards clicks; `--image` shows it on that Mac either way, as `--markdown` and `--text`
+pages do. When `--image` is rejected, by an older CLI as an unknown option, by an older app, or
 by a presenting Mac too old for these pages (`a viewer presents this session`), fall back to the script below.
 
 This skill also bundles `scripts/show-image.sh`. It opens an overlay (a real terminal) and renders the
@@ -1126,7 +1130,8 @@ subsystem `com.umputun.agterm`. If it turns out to be a bug, offer to help file 
 
 **Filing is opt-in and draft-first.** Never run a `gh` command without the user's explicit approval.
 Decide first whether it is a bug (a supported feature misbehaving → a GitHub **issue**) or something
-not supported / a question / an idea (→ a GitHub **Discussion**, category `Ideas` or `Q&A`). Draft the
+not supported / a question / an idea (→ a GitHub **Discussion**, category `Ideas` or `Q&A`); a
+cookbook recipe by another author takes a pull request instead (`troubleshooting.md`). Draft the
 title and body, show it to the user, scrub anything private (tokens, hostnames, usernames in paths,
 selection/clipboard text), and only post after an explicit go-ahead. If `gh` is missing or not
 authenticated, hand the user the prefilled text plus the new-issue / new-discussion URL instead.

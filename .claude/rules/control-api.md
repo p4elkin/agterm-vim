@@ -167,7 +167,7 @@ renumbering. Do not reintroduce a count anywhere.
 - `tree`, `events.read`
 - `workspace.new`, `.rename`, `.delete`, `.select`, `.go`, `.move`, `.focus`, `.filter`, `.flag`, `.collapse`,
   `.expand`, `.tint`
-- `session.new`, `.duplicate`, `.companion.new`, `.companion.page`, `.companion.duplicate`, `.companion.page.attach`, `.collapse`, `.expand`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
+- `session.new`, `.duplicate`, `.companion.new`, `.companion.page`, `.companion.duplicate`, `.companion.convert`, `.companion.page.attach`, `.collapse`, `.expand`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
   `.split.close`, `.swap`, `.lead`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
   `.flag`, `.tint`, `.info`, `.park`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`,
@@ -405,7 +405,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `agtermctl` through `RemoteSession.controlCommand`, whose outer quoting every login shell reads alike, polls the
   origin's `zmx tree` until the new id is attachable, then attaches it under the row through `attach(_:placement:)`.
   Creation is never retried or done locally; a created but unattached companion is named in the error. The three
-  companion commands are in `waitsOnNetwork`, local ones included.
+  creation commands are in `waitsOnNetwork`, local ones included; `session.companion.convert` is local only and is not.
 - A remote parent's page companion is the origin's page. `session.companion.page.attach` hands out one view: a
   per-claim token in `companionPageTokens`, claimed through `claimPageServe` into a `PageServeStream` in companion mode,
   keyed by claim in `companionPageStreams`. A claim, an expired token, an unanswered reply or EOF ends only that view,
@@ -451,6 +451,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the image is the fallback. A bare name whose image is gone, as after an upgrade removed it, starts its own PATH's
   first executable entry, and with no PATH read it is refused. Otherwise nothing executable refuses the pane; the restart checks see the path and image. An argument with a backslash is refused: libghostty's split and fish's Live
   `eval` read it differently. Only a `foregroundShell` becomes a plain shell; a daemon-leader shell program is refused.
+- `session.companion.convert` is its own wire command for the same older-app reason, with a CLI too-old text of its
+  own. `AppStore.convertToCompanion` is the one seam the GUI and control share: a fresh `addSession` at the target's
+  slot, then the target and its companions re-pointed at it, keeping every `Session` object. `ConvertRefusal.message`
+  is the refusal text both surfaces show, and a remote row is refused, never forwarded to its origin.
 - `ControlServer.pageCompanionRefusal` is the one pre-dispatch guard, covering the socket and a page's bridge.
   It judges `surface.zoom`/`surface.cursor` only for an explicit target, since their `active` means the
   window's zoom target, and never refuses a zoom hide, which stays idempotent.
@@ -741,7 +745,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - The five click paths mark their pages `HtmlOverlay.clicked` (read back as `htmlOverlays[].clicked`; the
   dispatcher never sets it, presentation frames never carry it), and a click replaces the session-wide page
   only when it is marked and its `overlayHidden` bit is set: `AppStore.releaseHiddenClickedPage`, which also leaves a
-  slot `pageBelongsRemote` hands to the presenter. The read-back's `hidden` is `overlayOutOfSight` and a remote page
+  slot `pageBelongsRemote` hands to the presenter; only a forwarded click replaces that one (below). The read-back's
+  `hidden` is `overlayOutOfSight` and a remote page
   keeps its marker, so `clicked` plus `hidden` does not by itself mean the next click replaces it. Each path releases after every check that could still refuse its
   open (the probe, the HUD and zoom recheck, the saved store for a web link), so a refused click keeps the old
   page. A shown page, a hidden program and any CLI page keep the browser fallback.
@@ -752,8 +757,24 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `markdownExtensions` extension routes to `ControlServer.openMarkdownLink` the same way, at the mode's size, 95 in
   browser mode (`Route.markdown` carries it), one with a `DocumentPage.extensions` extension routes to
   `openDocumentLink` the same way, and one `TextPage.isEligible` accepts routes to `openTextLink` the same
-  way; any other local path is revealed. A pane of a session with `remoteHost` is `.remotePane`: its bare paths name files
-  on the far Mac and are ignored, while its scratch stays `.scratch` because that shell is local.
+  way; any other local path is revealed. A pane of a session with `remoteHost` is `.remotePane`: its bare, relative and
+  `file://` paths (any host) name files on the far Mac and route to `.forwardRemote`, which reveals nothing here; every
+  other local route from it is `.ignore`. Its scratch stays `.scratch` because that shell is local.
+- A forwarded click (`ControlServer+RemoteLinkClick`, `+ForwardedClick`) travels as `link.click` only while this Mac
+  presents the session and the origin agreed the `link.click` kind (`RemotePresentationClient.originSupports`), with the
+  ORIGIN's pane identity (`AppStore.linkClickRequest`). The origin resolves it with that pane's cwd and opens only page
+  routes, through the four click helpers in forwarded mode: the zoom check is skipped, the presenter generation captured
+  at receipt is rechecked after every probe, `openHtmlOverlay` refuses `.local` instead of opening on the origin, and
+  `openRemotePage` replaces a hidden clicked remote page only after every other check passed. Refusals return
+  `link.refused` only to that presenter generation; the reason travels as a `RemoteLinkRefusal` raw value and is worded
+  on the presenting Mac. A
+  refusal there opens a HUD hiding after `remoteAttachErrorSeconds`, or plays the system alert when a HUD other than
+  that refusal panel is already up (`openHud` would replace it), a cover or zoom would hide it, or a hidden page of this
+  Mac's own holds the slot (only a hidden replica page is the origin's to replace); the click itself refuses on the
+  same terms before anything is sent. A mirrored HUD replaces that panel while it is still the
+  one the refusal opened (`remoteLinkRefusalHuds`), since nothing would show it again. ⌘⌥ refuses before anything is
+  sent. The click is a
+  gesture with no control command: its page reads back as the replica page on the session node.
 - libghostty keeps a `:line[:column]` suffix in the path it hands over and resolves a relative path only when that
   exact path exists, so `./main.go:42` arrives raw. `LinkPolicy.locations` lists the candidates for such a link, the
   literal path first so a file named with a colon wins, then the path without the suffix. libghostty keeps a sentence's
@@ -802,7 +823,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   and NUL bytes in the check as well as the load, so a binary click is revealed. `TextPage.html` holds the escaped text
   in a hidden `div` (a parser drops a newline after `<pre>`, shifting every line) under a CSP that loads nothing;
   `text.js` writes it through `textContent`, and highlight.js's escaped value, chosen by the app's extension and
-  basename map up to `maxHighlightBytes`, is the only `innerHTML` it assigns. Markdown, HTML and SVG are not text
+  basename map up to `maxHighlightBytes`, is one of two `innerHTML` sinks; the other is a diff page's rows, built from
+  the page's own `escape` and highlight.js spans reopened per row. Markdown, HTML and SVG are not text
   pages. `--text` is taken literally, never suffix-parsed; read back `htmlOverlays[].text` with the file, the mapped
   language and the requested line.
 - A document page (`HtmlSource.document`) is a clicked `.html` or `.htm` file, never a CLI page: terminal output
@@ -841,6 +863,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   step into `HtmlOverlay.textChanges` (`setTextChangesReport`, never emitted); a fresh read clears it first, and a theme
   rebuild passes the current change back as `data-change`. A step is a one-shot push like a search step.
   Read back `htmlOverlays[].text.changes`, omitted until the page reports.
+  Under the cap `data-files` carries `TextPage.diffLanguages`, and the page highlights each hunk's two sides whole in
+  its file's language, with the marker column kept in the text at zero width; added and removed runs get bands at
+  any size. A patch with no unified hunk keeps the `diff` grammar. `text.language` stays `diff`.
 - `browser.clear` removes all website data from the saved store and keeps its id. App-global: a target or
   `--window` is refused. It answers ok without creating anything when no profile exists, and replies only
   after WebKit reports the removal done. It is refused with `N persistent page(s) still open` while any
@@ -2097,6 +2122,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   a subscriber BEFORE it takes the snapshot and holds deltas until the snapshot is sent, so nothing falls
   between the two. A viewer drops a frame from another generation or an old revision, and skips an unknown
   kind without ending the stream, which is what lets a later kind reach an older viewer.
+  The origin closes the stream on a frame it cannot decode, so `link.click`'s mode and `link.refused`'s reason
+  decode leniently; the forwarded-click bullet under the click paths owns their contract.
 - `zmx.tree` advertises `presentation`, the protocol version. A viewer never launches the bridge against an
   origin that omits it and reports `unsupported`; nothing is retried and no warning is raised.
 - Read-back is `presentation {state, mode, error, namePending}` on the viewer's session node (`namePending`

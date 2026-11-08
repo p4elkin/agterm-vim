@@ -292,6 +292,10 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionCompanionDuplicate)
     }
 
+    public func convertToCompanion(_ target: String?, window: String?) -> ControlResponse {
+        refuse(.sessionCompanionConvert)
+    }
+
     public func attachCompanionPage(_ target: String?, window: String?) -> ControlResponse {
         refuse(.sessionCompanionPageAttach)
     }

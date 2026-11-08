@@ -3,6 +3,8 @@
 A `keymap.conf` preset that turns j/k/h/l, a `g>g`/`G` pair, and a `space` leader into vim-flavored
 navigation, using normal mode so the bare keys never reach a shell.
 
+Author: [@p4elkin](https://github.com/p4elkin)
+
 ## What it does
 
 One entry point, `map ctrl+space normal_mode`, arms a mode where keys stop reaching the terminal and

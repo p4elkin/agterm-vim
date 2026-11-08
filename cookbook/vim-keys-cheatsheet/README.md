@@ -4,6 +4,8 @@ One chord shows your own keyboard cheat sheet in an overlay, with the bare keys 
 `nmap` in a section of their own, and a chord you bound but never wrote down gets a drafted row
 before the sheet opens.
 
+Author: [@p4elkin](https://github.com/p4elkin)
+
 Built on the `keymap-cheatsheet` recipe, which does the same for chords alone. This variant reads
 `nmap` lines as well, so a vim-style normal mode is documented beside the chords rather than
 nowhere.
