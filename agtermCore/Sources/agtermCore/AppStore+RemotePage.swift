@@ -65,6 +65,9 @@ extension AppStore {
         if source.isContent, !hub.presenterSupports(PresentationHub.pageContentKind, session: sessionID) { return .unsupported }
         if case .document = source, !hub.presenterSupports(PresentationHub.pageDocumentKind, session: sessionID) { return .unsupported }
         if case .url(let url) = overlay.source, HtmlSource.isLoopback(url.absoluteString) { return .loopback }
+        // the request and the record the claim serves from agree, so an older presenter is served as before links
+        let follows = hub.presenterSupports(PresentationHub.pageLinksKind, session: sessionID)
+        let overlay = overlay.markdownLinks == nil || follows ? overlay : overlay.withoutLinks()
         let token = UUID().uuidString
         let size = pane == nil ? options.sizePercent.map { min(100, max(1, $0)) } : nil
         let points = size == nil ? OverlayPointSize() : options.points
@@ -73,7 +76,7 @@ extension AppStore {
             chromeless: overlay.chromeless, javascript: overlay.javascript, navigation: overlay.navigation,
             browse: overlay.browse, persistent: overlay.persistent, backgroundColor: options.backgroundColor,
             pane: identity.flatMap { $0 }.map { .identity($0) }, sizePercent: size,
-            points: presentablePoints(points, session: sessionID), follow: options.follow)
+            points: presentablePoints(points, session: sessionID), follow: options.follow, markdownLinks: overlay.markdownLinks)
         // a frame over the cap fails the offer, and the hub then drops the presenter with every page it shows
         guard (try? PresentationCodec.encode(PresentationFrame(gen: .max, rev: .max, body: .pageRequest(request)))) != nil
         else { return .tooLarge }
@@ -213,8 +216,8 @@ extension AppStore {
         session.remoteOverlays.slots.compactMap { slot in slot.page.map { (slot.pane, $0) } }
     }
 
-    /// presentationSource is how `source` travels to another Mac; nil for a page that is itself a replica, and
-    /// for an image whose probed size is not given.
+    /// presentationSource is how `source` travels to another Mac; nil for a page that is itself a replica or
+    /// is unreadable, and for an image whose probed size is not given.
     public static func presentationSource(_ source: HtmlSource, imagePixels: ImagePixels? = nil) -> PresentationPageSource? {
         switch source {
         case .file(let path, let grantRoot): return .file(path: path, grantRoot: grantRoot)
@@ -223,7 +226,7 @@ extension AppStore {
         case .markdown(let path): return .markdown(path: path)
         case .text(let path, let line): return .text(path: path, line: line)
         case .document(let path): return .document(path: path)
-        case .replica: return nil
+        case .replica, .unreadable: return nil
         }
     }
 

@@ -641,7 +641,7 @@ extension Session.Overlay.Open {
             }
         }
         if let file, RebasedFileTarget(spec: file) == nil { throw ValidationError("invalid --file target") }
-        if command != nil || html != nil || url != nil || image != nil || companion || wait || block || javascript || navigation
+        if command != nil || html != nil || url != nil || image != nil || companion || page || wait || block || javascript || navigation
             || chromeless || persistent || browse || backgroundColor != nil {
             throw ValidationError("--rebased cannot be combined with COMMAND, page, wait, block, or background options")
         }
@@ -662,7 +662,7 @@ extension Session {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Hide.self, Show.self, Toggle.self, Follow.self, Search.self, Changes.self, Resize.self,
+            subcommands: [Open.self, Close.self, Hide.self, Show.self, Toggle.self, Follow.self, Search.self, Changes.self, Wrap.self, Resize.self,
                           Reload.self, Navigate.self,
                           Result.self, Submit.self, Copy.self, Text.self, RunJob.self, PageServe.self, PageAttach.self]
         )
@@ -733,7 +733,10 @@ extension Session {
                 says otherwise. Not --follow, which selects the session.
                 """)
             var followFile = false
-            @Flag(name: .long, help: "With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons.")
+            @Flag(name: .long, help: """
+                With --html or --url, add back, forward, reload, open in browser, and Show in Finder or Copy Link buttons. \
+                With --markdown, follow links to markdown files in its folder, with back and forward.
+                """)
             var navigation = false
             @Flag(name: .customLong("js"), help: "With --html or --url, let the page run its own JavaScript (off by default).") var javascript = false
             @Flag(name: .long, help: """
@@ -755,7 +758,16 @@ extension Session {
                 full size, that closes with its page. Refuses --pane, --size-percent, --width and --height.
                 """)
             var companion = false
-            @Flag(name: .long, help: "Select (switch to) the target session after opening the overlay (default: open without switching).") var follow = false
+            @Flag(name: .long, help: """
+                Open the --html/--url page as a top-level page session placed after the target session's group: a sidebar \
+                row of its own that can hold companions. Refuses --pane, --size-percent, --width and --height.
+                """)
+            var page = false
+            @Flag(name: .long, help: """
+                Select (switch to) the target session after opening the overlay; with --companion or --page, the new row \
+                (default: open without switching).
+                """)
+            var follow = false
             @Option(name: .long, help: "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.") var sizePercent: Int?
             @Option(name: .long, help: Overlay.widthHelp) var width: Int?
             @Option(name: .long, help: Overlay.heightHelp) var height: Int?
@@ -783,13 +795,16 @@ extension Session {
                 }
             }
 
+            private var rowFlag: String? { companion ? "--companion" : page ? "--page" : nil }
+
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
                 if rebased || diff != nil || workingTree || file != nil || project != nil || onClose != nil { return try validateRebased() }
-                if companion, html == nil && url == nil { throw ValidationError("--companion requires --html or --url") }
-                if companion, pane != nil || sizePercent != nil || width != nil || height != nil {
-                    throw ValidationError("--companion is full size: it takes no --pane, --size-percent, --width or --height")
+                if companion, page { throw ValidationError("--page cannot be combined with --companion") }
+                if let rowFlag, html == nil && url == nil { throw ValidationError("\(rowFlag) requires --html or --url") }
+                if let rowFlag, pane != nil || sizePercent != nil || width != nil || height != nil {
+                    throw ValidationError("\(rowFlag) is full size: it takes no --pane, --size-percent, --width or --height")
                 }
                 if block && wait { throw ValidationError("--block cannot be combined with --wait") }
                 if [command, html, url, image, markdown, text].compactMap({ $0 }).count != 1 {
@@ -798,17 +813,15 @@ extension Session {
                 if line != nil, text == nil { throw ValidationError("--line requires --text") }
                 if let line, line < 1 { throw ValidationError("--line must be 1 or more") }
                 try validateLog()
-                if image != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
-                    throw ValidationError("--image takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
+                let pageOnly = [rowFlag != nil, block, wait, navigation, javascript, chromeless, persistent, browse, cwd != nil].contains(true)
+                let pageOnlyFlags = "--companion, --page, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd"
+                if image != nil, pageOnly { throw ValidationError("--image takes no \(pageOnlyFlags)") }
+                if markdown != nil, [rowFlag != nil, block, wait, javascript, chromeless, persistent, browse, cwd != nil].contains(true) {
+                    throw ValidationError("--markdown takes no --companion, --page, --block, --wait, --js, --chromeless, --persistent, --browse or --cwd")
                 }
-                if markdown != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
-                    throw ValidationError("--markdown takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
-                }
-                if text != nil, companion || block || wait || navigation || javascript || chromeless || persistent || browse || cwd != nil {
-                    throw ValidationError("--text takes no --companion, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd")
-                }
+                if text != nil, pageOnly { throw ValidationError("--text takes no \(pageOnlyFlags)") }
                 if command == nil, wait || (url != nil && block) { throw ValidationError("a page takes no --wait, and a --url page no --block") }
-                if navigation, command != nil { throw ValidationError("--navigation requires --html or --url") }
+                if navigation, command != nil { throw ValidationError("--navigation requires --html, --url or --markdown") }
                 if javascript, command != nil { throw ValidationError("--js requires --html or --url") }
                 if chromeless, command != nil { throw ValidationError("--chromeless requires --html or a loopback --url") }
                 if chromeless, navigation { throw ValidationError("--chromeless cannot be combined with --navigation") }
@@ -837,7 +850,7 @@ extension Session {
             }
 
             func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: companion ? .sessionCompanionPage : .sessionOverlayOpen, target: target.target,
+                ControlRequest(cmd: companion ? .sessionCompanionPage : page ? .sessionPage : .sessionOverlayOpen, target: target.target,
                                args: options.withWindow(ControlArgs(cwd: html == nil && !rebased ? cwd : cwd.map(Overlay.absolutePath),
                                                                      command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
@@ -862,11 +875,12 @@ extension Session {
             /// redirect. In block mode `validate()` guarantees `!wait`, so its `wait` is nil there and the
             /// floating `--size-percent` rides that single source instead of a duplicated ControlArgs.
             func run() throws {
-                if companion, !block { return try runCompanionRequest(makeRequest(), options: options, echoID: true) }
+                let tooOld = page ? "the running app is too old for page sessions" : "the running app is too old for companions"
+                if rowFlag != nil, !block { return try runCompanionRequest(makeRequest(), options: options, echoID: true, tooOld: tooOld) }
                 // a page has no command to wrap, so it never takes the redirect path
                 if block, html != nil {
                     let send = SocketClient(path: options.socketPath()).send
-                    return try HtmlPageRunner(json: options.json, send: companion ? companionSend(send, json: options.json) : send)
+                    return try HtmlPageRunner(json: options.json, send: rowFlag != nil ? companionSend(send, json: options.json, tooOld: tooOld) : send)
                         .block(makeRequest())
                 }
                 let client = SocketClient(path: options.socketPath())

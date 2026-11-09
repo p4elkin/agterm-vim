@@ -154,6 +154,8 @@ extension ControlDispatcher {
             return dispatchSessionOverlayText(request)
         case .sessionOverlayFollow:
             return dispatchSessionOverlayFollow(request)
+        case .sessionOverlayWrap:
+            return dispatchSessionOverlayWrap(request)
         case .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle:
             let mode: OverlayVisibilityMode = request.cmd == .sessionOverlayHide ? .hide
                 : (request.cmd == .sessionOverlayShow ? .show : .toggle)
@@ -326,7 +328,7 @@ extension ControlDispatcher {
 
     private static func markdownContent(_ path: String, args: ControlArgs?) -> OverlayContent {
         let reject = { (error: String) in OverlayContent.rejected(ControlResponse(ok: false, error: error)) }
-        let flags = [args?.wait, args?.navigation, args?.javascript, args?.chromeless, args?.persistent, args?.browse]
+        let flags = [args?.wait, args?.javascript, args?.chromeless, args?.persistent, args?.browse]
         if args?.cwd != nil || flags.contains(true) { return reject(OverlayHtmlError.markdownOptions) }
         guard path.hasPrefix("/") else { return reject(OverlayHtmlError.markdownNotAbsolute) }
         let url = URL(fileURLWithPath: path).standardizedFileURL
@@ -366,6 +368,17 @@ extension ControlDispatcher {
         case .rejected(let response): return response
         case .pane(let pane):
             return actions.setSessionOverlayFollow(request.target, window: request.args?.window, pane: pane, mode: mode)
+        }
+    }
+
+    private func dispatchSessionOverlayWrap(_ request: ControlRequest) -> ControlResponse {
+        guard let mode = ControlToggleMode.parse(request.args?.mode) else {
+            return ControlResponse(ok: false, error: "invalid overlay wrap mode: \(request.args?.mode ?? "toggle")")
+        }
+        switch parseOverlayPane(request.args?.pane) {
+        case .rejected(let response): return response
+        case .pane(let pane):
+            return actions.setSessionOverlayWrap(request.target, window: request.args?.window, pane: pane, mode: mode)
         }
     }
 

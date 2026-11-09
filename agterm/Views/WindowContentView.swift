@@ -234,6 +234,7 @@ struct WindowContentView: View {
                     restoreFocusAfterPick()
                 }
             }
+            if old, !new { HtmlOverlayRegistry.shared.retryPageCloses(in: store) }
         }
     }
 

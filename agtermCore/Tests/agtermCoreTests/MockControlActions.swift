@@ -37,6 +37,7 @@ class MockControlActionsBase {
         case sessionExpansion(target: String?, window: String?, expanded: Bool)
         case companionNew(target: String?, options: CompanionOptions, window: String?)
         case companionPage(target: String?, window: String?, options: ControlSessionOverlayOpenOptions)
+        case pageSession(target: String?, window: String?, options: ControlSessionOverlayOpenOptions)
         case companionDuplicate(target: String?, window: String?, select: Bool)
         case companionConvert(target: String?, window: String?)
         case companionPageAttach(target: String?, window: String?)
@@ -124,6 +125,7 @@ class MockControlActionsBase {
         case rebasedToggle(target: String?, window: String?)
         case overlayVisibility(target: String?, window: String?, pane: OverlayPane?, mode: OverlayVisibilityMode)
         case overlayFollow(target: String?, window: String?, pane: OverlayPane?, mode: ControlToggleMode)
+        case overlayWrap(target: String?, window: String?, pane: OverlayPane?, mode: ControlToggleMode)
         case overlaySearch(target: String?, window: String?, pane: OverlayPane?, request: TextSearchRequest)
         case overlayChanges(target: String?, window: String?, pane: OverlayPane?, forward: Bool)
         case overlayReload(target: String?, window: String?, pane: OverlayPane?, current: Bool)
@@ -389,6 +391,11 @@ class MockControlActionsBase {
 
     func createPageCompanion(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) -> ControlResponse {
         calls.append(.companionPage(target: target, window: window, options: options))
+        return ControlResponse(ok: true)
+    }
+
+    func createPageSession(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        calls.append(.pageSession(target: target, window: window, options: options))
         return ControlResponse(ok: true)
     }
 
@@ -861,6 +868,12 @@ class MockControlActionsBase {
                                  mode: ControlToggleMode) -> ControlResponse {
         calls.append(.overlayFollow(target: target, window: window, pane: pane, mode: mode))
         return ControlResponse(ok: true, result: ControlResult(id: target, text: "following"))
+    }
+
+    func setSessionOverlayWrap(_ target: String?, window: String?, pane: OverlayPane?,
+                               mode: ControlToggleMode) -> ControlResponse {
+        calls.append(.overlayWrap(target: target, window: window, pane: pane, mode: mode))
+        return ControlResponse(ok: true, result: ControlResult(id: target, text: "wrapped"))
     }
 
     func searchSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?,

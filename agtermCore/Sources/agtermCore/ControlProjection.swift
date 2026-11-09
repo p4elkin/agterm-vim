@@ -322,7 +322,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public let parent: String?
     /// True for a parent whose companions are folded; omitted otherwise.
     public let collapsed: Bool?
-    /// `page` for a page companion, which has no terminal; omitted for a terminal session.
+    /// `page` for a page session, which has no terminal; omitted for a terminal session.
     public let content: String?
     /// info is the sidebar info line's source as set (`Session.effectiveInfo`, so an attached row without a local
     /// line shows its origin's). The three info fields are all present while a line is set, all omitted otherwise.
@@ -542,11 +542,14 @@ public struct ControlTextOverlayNode: Codable, Sendable, Equatable {
     public let search: ControlTextSearchNode?
     /// changes is a diff page's change count and current change, omitted until the page reports and on other pages.
     public let changes: ControlTextChangesNode?
+    /// wrap is true while the page wraps long lines, omitted while it does not.
+    public let wrap: Bool?
 
     public init(file: String, language: String?, line: Int?, tail: Int? = nil, following: Bool? = nil, lines: Int? = nil,
                 clipped: Bool? = nil, waiting: Bool? = nil, unreadable: Bool? = nil, search: ControlTextSearchNode? = nil,
-                changes: ControlTextChangesNode? = nil) {
+                changes: ControlTextChangesNode? = nil, wrap: Bool? = nil) {
         self.search = search
+        self.wrap = wrap
         self.changes = changes
         self.file = file
         self.language = language

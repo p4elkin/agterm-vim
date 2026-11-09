@@ -32,7 +32,7 @@ public enum ForwardPolicy {
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,
              .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch,
-             .sessionOverlayChanges:
+             .sessionOverlayChanges, .sessionOverlayWrap:
             return .forwarded
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed
@@ -45,7 +45,7 @@ public enum ForwardPolicy {
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
              .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
-             .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
+             .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
              .sessionCompanionConvert, .recentList, .recentOpen, .recentClear:
             return .refused("no windows or UI")
         // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces

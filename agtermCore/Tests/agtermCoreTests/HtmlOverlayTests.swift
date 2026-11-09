@@ -489,6 +489,63 @@ struct HtmlOverlayTests {
         #expect(overlay.source.imagePath == nil)
     }
 
+    @Test(arguments: [HtmlSource.markdown(path: "/tmp/notes/readme.md"), .replica(path: "/tmp/notes/readme.md", content: .markdown)])
+    func aLinkPageIsNamedByTheFileItShows(_ source: HtmlSource) {
+        var overlay = HtmlOverlay(source: source, navigation: true,
+                                  markdownLinks: MarkdownLinkGrant(path: "/tmp/notes/readme.md", root: "/tmp/notes"))
+        overlay.current = HtmlPageInfo(page: "/tmp/notes/sub/guide.md", title: "enter your password", canGoBack: true, canGoForward: false)
+        #expect(overlay.identity == "guide.md")
+    }
+
+    @Test func aLinkPageKeepsItsOriginalForReadBack() {
+        var overlay = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: true,
+                                  markdownLinks: MarkdownLinkGrant(path: "/tmp/notes/readme.md", root: "/tmp/notes"))
+        overlay.current = HtmlPageInfo(page: "/tmp/notes/sub/guide.md", title: nil, canGoBack: true, canGoForward: false)
+        #expect(overlay.source.markdownPath == "/tmp/notes/readme.md")
+    }
+
+    @Test func aMarkdownPageHasNavigationOnlyWithALinkGrant() {
+        let grant = MarkdownLinkGrant(path: "/tmp/notes/readme.md", root: "/tmp/notes")
+        #expect(HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: true, markdownLinks: grant).navigation)
+        #expect(!HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: true).navigation)
+        #expect(HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: false, markdownLinks: grant).markdownLinks == nil)
+        #expect(HtmlOverlay(source: .file(path: "/tmp/a/x.html", grantRoot: nil), navigation: true).navigation)
+    }
+
+    @Test(arguments: [
+        ("/tmp/notes/readme.md", HtmlNavigationTarget.mainFrame, false, HtmlNavigationDecision.allow),
+        ("/tmp/notes/sub/guide.markdown", .mainFrame, true, .allow),
+        ("/tmp/notes/a/../readme.md", .mainFrame, true, .allow),
+        ("/tmp/notes/../other/x.md", .mainFrame, true, .cancel),
+        ("/tmp/notes/%2e%2e/other/x.md", .mainFrame, true, .cancel),
+        ("/tmp/other/x.md", .mainFrame, true, .cancel),
+        ("/tmp/notes/notes.txt", .mainFrame, true, .cancel),
+        ("/tmp/notes/sub/guide.md", .subframe, true, .cancel),
+        ("/tmp/notes/sub/guide.md", .newWindow, true, .cancel),
+    ])
+    func aLinkPageLoadsOnlyItsOwnMarkdownInsideTheGrant(_ path: String, _ target: HtmlNavigationTarget,
+                                                        _ userActivated: Bool, _ expected: HtmlNavigationDecision) throws {
+        let grant = MarkdownLinkGrant(path: "/tmp/notes/readme.md", root: "/tmp/notes")
+        let overlay = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: true, markdownLinks: grant)
+        let url = try #require(URL(string: "agterm-page://\(overlay.id.uuidString.lowercased())\(path)"))
+        let action = HtmlNavigationAction(url: url, target: target, userActivated: userActivated)
+        #expect(HtmlNavigationPolicy.decide(action, overlay: overlay) == expected)
+    }
+
+    @Test func aLinkPageRefusesAnotherPagesAddressAndAPageWithoutAGrant() throws {
+        let grant = MarkdownLinkGrant(path: "/tmp/notes/readme.md", root: "/tmp/notes")
+        let linked = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"), navigation: true, markdownLinks: grant)
+        let plain = HtmlOverlay(source: .markdown(path: "/tmp/notes/readme.md"))
+        let other = try #require(URL(string: "agterm-page://\(UUID().uuidString.lowercased())/tmp/notes/readme.md"))
+        let own = try #require(URL(string: "agterm-page://\(plain.id.uuidString.lowercased())/tmp/notes/readme.md"))
+        let web = try #require(URL(string: "https://example.com/x.md"))
+
+        #expect(HtmlNavigationPolicy.decide(HtmlNavigationAction(url: other, target: .mainFrame, userActivated: true), overlay: linked) == .cancel)
+        #expect(HtmlNavigationPolicy.decide(HtmlNavigationAction(url: own, target: .mainFrame, userActivated: true), overlay: plain) == .cancel)
+        #expect(HtmlNavigationPolicy.decide(HtmlNavigationAction(url: web, target: .mainFrame, userActivated: true), overlay: linked) == .openExternal)
+        #expect(HtmlNavigationPolicy.decide(HtmlNavigationAction(url: web, target: .mainFrame, userActivated: false), overlay: linked) == .cancel)
+    }
+
     @Test(arguments: [
         ("about:blank", HtmlNavigationTarget.mainFrame, false, HtmlNavigationDecision.allow),
         ("about:blank", .mainFrame, true, .allow),
@@ -1267,5 +1324,72 @@ struct HtmlOverlayTests {
         let text = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
 
         #expect(text.changes == ControlTextChangesNode(count: 11, current: 2))
+    }
+
+    @Test(arguments: [(ControlToggleMode.on, false, true), (.off, true, false), (.toggle, true, false), (.toggle, false, true)])
+    func wrapModeSetsTheTextPage(mode: ControlToggleMode, from: Bool, to: Bool) throws {
+        let (store, session, events) = try logStore()
+        let page = HtmlOverlay(source: .text(path: "/tmp/a.txt", line: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        store.setTextWrap(page.id, wrapped: from)
+        let opened = events.count
+
+        #expect(store.setTextWrap(session.id, pane: nil, mode: mode) == .success(to))
+
+        #expect(session.htmlOverlay?.textWrap == to)
+        #expect(events.count == opened + 1)
+    }
+
+    @Test func aWrapThatChangesNothingEmitsNothing() throws {
+        let (store, session, events) = try logStore()
+        let page = logPage()
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        store.setTextWrap(page.id, wrapped: true)
+        let wrapped = events.count
+
+        store.setTextWrap(page.id, wrapped: true)
+        #expect(store.setTextWrap(session.id, pane: nil, mode: .on) == .success(true))
+
+        #expect(session.htmlOverlay?.textWrap == true)
+        #expect(events.count == wrapped)
+    }
+
+    @Test func wrapRefusesEverythingButATextPage() throws {
+        let (store, session, _) = try logStore()
+        #expect(store.setTextWrap(session.id, pane: nil, mode: .on) == .failure(.page(.noOverlay)))
+        #expect(store.setTextWrap(UUID(), pane: nil, mode: .on) == .failure(.page(.unknownSession)))
+
+        let markdown = HtmlOverlay(source: .markdown(path: "/tmp/a.md"))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: markdown, sizePercent: nil) == nil)
+        #expect(store.setTextWrap(session.id, pane: nil, mode: .on) == .failure(.notText))
+        store.setTextWrap(markdown.id, wrapped: true)
+        #expect(session.htmlOverlay?.textWrap == false)
+        #expect(store.closeOverlay(session.id))
+
+        let replica = HtmlOverlay(source: .replica(path: "/tmp/a.txt", content: .text(line: nil)), replicaOf: UUID())
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: replica, sizePercent: nil) == nil)
+        #expect(store.setTextWrap(session.id, pane: nil, mode: .on) == .failure(.notText))
+        store.setTextWrap(replica.id, wrapped: true)
+        #expect(session.htmlOverlay?.textWrap == false)
+        #expect(store.closeOverlay(session.id))
+
+        #expect(store.openOverlay(session.id, command: "less"))
+        #expect(store.setTextWrap(session.id, pane: nil, mode: .on) == .failure(.page(.notHtml)))
+        #expect(TextWrapFailure.notText.message == "no text page")
+        #expect(TextWrapFailure.remote.message == "remote page: wrap it on the Mac that shows it")
+    }
+
+    @Test func aTextPageNodeReportsWrapOnlyWhileWrapped() throws {
+        let (store, session, _) = try logStore()
+        let page = HtmlOverlay(source: .text(path: "/tmp/a.txt", line: nil))
+        #expect(store.openHtmlOverlay(session.id, pane: nil, overlay: page, sizePercent: nil) == nil)
+        let before = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
+        let json = String(data: try JSONEncoder().encode(before), encoding: .utf8) ?? ""
+        #expect(!json.contains("wrap"))
+
+        store.setTextWrap(page.id, wrapped: true)
+        let text = try #require(store.htmlOverlayNodes(session, zoom: nil)?.first?.text)
+
+        #expect(text.wrap == true)
     }
 }

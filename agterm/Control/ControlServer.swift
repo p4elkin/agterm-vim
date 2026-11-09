@@ -84,8 +84,8 @@ final class ControlServer {
     /// pageServeStreams are the channels presenters opened for pages this Mac handed over, by page id.
     var pageServeStreams: [UUID: PageServeStream] = [:]
     /// pendingPageClaims are pages whose claim was answered ok and whose connection is not adopted yet, with the
-    /// source each serves.
-    var pendingPageClaims: [UUID: HtmlSource] = [:]
+    /// page each serves as it was handed over.
+    var pendingPageClaims: [UUID: HtmlOverlay] = [:]
     var presentationHeartbeat: Task<Void, Never>?
     /// How long an adopted stream may stay silent before its first hello.
     var presentationHelloDeadline: TimeInterval = 10
@@ -288,6 +288,7 @@ final class ControlServer {
             await self?.dispatch(request) ?? ControlResponse(ok: false, error: "control is unavailable")
         }
         HtmlOverlayRegistry.shared.windowID = { [weak library] store in library?.windowID(for: store)?.uuidString }
+        HtmlOverlayRegistry.shared.closePageSession = { [weak actions] store, id in actions?.closePageSession(id, in: store) ?? false }
     }
 
     /// The socket path the app and the CLI rendezvous on. `AGTERM_CONTROL_SOCKET` wins (tests need it —
@@ -646,7 +647,7 @@ final class ControlServer {
                 .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
                 .workspaceFocus,
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
-                .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionCompanionDuplicate,
+                .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
                 .sessionCompanionConvert, .sessionCompanionPageAttach,
                 .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionRestart, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom,
@@ -665,7 +666,7 @@ final class ControlServer {
                 .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch,
-                .sessionOverlayChanges,
+                .sessionOverlayChanges, .sessionOverlayWrap,
                 .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect, .windowGo,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,

@@ -15,6 +15,8 @@ public protocol ControlActions {
     func createCompanion(_ target: String?, options: CompanionOptions, window: String?) async -> ControlResponse
     /// Creates a page companion of the target session showing `options.page` full size.
     func createPageCompanion(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) async -> ControlResponse
+    /// createPageSession opens `options.page` as a top-level page session after the target's group.
+    func createPageSession(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) async -> ControlResponse
     /// Creates a companion copying the target's layout and running another copy of each pane's program.
     func duplicateAsCompanion(_ target: String?, window: String?, select: Bool) async -> ControlResponse
     /// convertToCompanion nests the target and its companions under a fresh session in its slot.
@@ -221,6 +223,10 @@ public protocol ControlActions {
     /// the state left.
     func setSessionOverlayFollow(_ target: String?, window: String?, pane: OverlayPane?,
                                  mode: ControlToggleMode) -> ControlResponse
+    /// setSessionOverlayWrap sets whether the text page in the addressed slot wraps long lines; `result.text` names
+    /// the state left.
+    func setSessionOverlayWrap(_ target: String?, window: String?, pane: OverlayPane?,
+                               mode: ControlToggleMode) -> ControlResponse
     /// Answers the page in the addressed slot with `value` and closes it; `session.overlay.result --page` reads it.
     func submitSessionOverlay(_ target: String?, window: String?, pane: OverlayPane?, value: String) -> ControlResponse
     /// The selector outcome of page `pageID`, readable after the page and its session are gone.

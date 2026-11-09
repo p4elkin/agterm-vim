@@ -167,13 +167,13 @@ renumbering. Do not reintroduce a count anywhere.
 - `tree`, `events.read`
 - `workspace.new`, `.rename`, `.delete`, `.select`, `.go`, `.move`, `.focus`, `.filter`, `.flag`, `.collapse`,
   `.expand`, `.tint`
-- `session.new`, `.duplicate`, `.companion.new`, `.companion.page`, `.companion.duplicate`, `.companion.convert`, `.companion.page.attach`, `.collapse`, `.expand`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
+- `session.new`, `.duplicate`, `.companion.new`, `.companion.page`, `.companion.duplicate`, `.companion.convert`, `.companion.page.attach`, `.page`, `.collapse`, `.expand`, `.close`, `.select`, `.rename`, `.reveal`, `.move`, `.type`, `.split`,
   `.split.close`, `.swap`, `.lead`,
   `.scratch`, `.focus`, `.resize`, `.go`, `.copy`, `.paste`, `.selectall`, `.text`, `.search`, `.status`,
   `.flag`, `.tint`, `.info`, `.park`, `.seen`, `.restore`, `.restart`, `.background`, `.overlay.open`, `.overlay.close`,
   `.overlay.resize`, `.overlay.reload`, `.overlay.navigate`, `.overlay.result`, `.overlay.submit`,
   `.overlay.copy`, `.overlay.text`, `.overlay.job.run`, `.overlay.page.serve`, `.overlay.hide`, `.overlay.show`,
-  `.overlay.toggle`, `.overlay.follow`, `.overlay.search`, `.overlay.changes`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
+  `.overlay.toggle`, `.overlay.follow`, `.overlay.search`, `.overlay.changes`, `.overlay.wrap`, `.hud.open`, `.hud.update`, `.hud.close`, `.pairing`
 - `surface.zoom`, `surface.cursor`, `dashboard`, `pick.open`, `pick.result`, `pick.cancel`,
   `ask.open`, `ask.result`, `ask.cancel`
 - `quick`, `quick.type`, `quick.text`
@@ -413,12 +413,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   soft-closed page keeps serving through undo. URL pages get the same channel for lifetime only (no bridge), and a
   loopback URL is refused at both ends. `zmx tree` lists a page companion with no panes when its parent is listed; the
   Attach Remote picker hides those rows, and `zmx attach` places one only under the single row bound to its parent.
+  A top-level page is a group root: listed with no panes and its `companions`, offered by the picker, and attached by
+  `zmx attach` or `zmx.attach.group` as a top-level replica row (`addReplicaPageRoot`) in the destination's current
+  workspace, rechecked after the ssh wait. Its binding carries the origin's host, endpoint and name with an empty
+  daemon map; `attachedParentRows` matches a later companion on its session id and endpoint.
   A terminal companion attached alone joins that row the same way (`attachedParentRows`), in the row's own workspace,
   and stands alone when no row or several match.
-  The viewer row binds the origin page session so New Companion on it makes a sibling there. `HtmlReplicaLink`
+  The viewer row binds the origin page session, so New Companion on a page companion's row makes a sibling there
+  and on a page root's row a companion under that root. `HtmlReplicaLink`
   keeps the page's own reload and navigation on the viewer's copy; every other bridge request goes to the origin.
-  A channel ending while the viewer row is soft-closed finalizes that row alone (`finalizePendingClose(ofSession:)`),
-  so Undo never restores a view of a page that ended.
+  A channel ending while the viewer row is soft-closed finalizes that row, and a page root's parked companions with it
+  (`finalizePendingClose(ofSession:)`), so Undo never restores a view of a page that ended.
 - A Live parent respawned on its origin carries its viewers across. `handlePaneExit` reads the daemon's cached leader
   before `closePrimaryPane` respawns, `ControlServer.ownerRespawned` waits for a different live leader under the same
   name, then counts the respawn in `respawnGenerations` and publishes `pane.respawn`; the snapshot carries every count
@@ -437,6 +442,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `WindowLibrary.recentClosedItemLacksParent` says so; other restore failures keep their own error.
 - A page companion is created by its own wire command, `session.companion.page`, for the same older-app
   reason as `session.companion.new`; it never touches the parent's own overlay slot.
+- `session.page` creates a top-level page session, its own wire command for the same reason, with the CLI
+  too-old text `the running app is too old for page sessions`. `AppStore.addPageSession` places it after the
+  anchor's whole group with the anchor's local focused cwd (`--cwd` stays the file grant) and shares `addPage`,
+  open and refusal included, with `addPageCompanion`. A remote anchor only places it; creation is never
+  forwarded. The reply is `id` and `pageID`; the read-back is `content: "page"` with no `parent`.
 - `session.companion.duplicate` is its own wire command for the same older-app reason.
   `ControlServer.duplicateCompanion` plans every pane through `ForegroundProcess.replayObservation` and host-free
   `DuplicateReplay` from one fresh leader listing before creating anything; `AppStore.duplicateAsCompanion` then
@@ -460,8 +470,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   window's zoom target, and never refuses a zoom hide, which stays idempotent.
 - `AppStore.closeOverlay` on a page session closes the session before slot teardown; the strip X and ⌘W go
   through `AppActions.closeSession`, so they keep the close confirmation and the grace-period undo.
-- `Session.content` is a `let` set at init, so the first save already excludes the row
-  (`isPersistable`, `locallyManagedPaneIdentities`).
+- A local page row is saved with a `PageSnapshot` (file or URL, its options) once its page is placed, so the
+  save inside `addSession` leaves it out and `addPageCompanion` saves after the open; a replica row never is.
+  It writes no pane identity, and `persistedClaims` and `PaneIdentityInventory.upgrade` skip it as
+  `locallyManagedPaneIdentities` does. `openRestoredPages` reopens it after its group is placed, in every
+  restart mode and on a Recent Closed reopen, with no source check: a failed load is the row's failed state.
+- A saved `page` key that does not decode, in any shape, restores as `HtmlSource.unreadable`: a page row in the
+  failed state with no pane identity, saved back as `{"unreadable": reason}`, never shared with another Mac.
+  An absent or null page value restores a terminal.
 
 ## Surface input, output, and search
 
@@ -814,9 +830,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `MarkdownPage.imageReferences` contains in the file's folder after resolving symlinks, each canonical file once
   (`MarkdownPage.Embedded`), within a total byte and pixel budget. The renderer, bundled markdown-it and
   highlight.js plus `render.js` (`MarkdownAssets`), runs as a user script in its own content world with page
-  JavaScript off; its image rule emits only app-embedded data URIs, so no authored source reaches WebKit, and it
-  strips every link but http(s) and fragments, since `about:` passes the navigation policy. The click and the
-  control path check only the descriptor; the page load reads pictures, under the shared `textLoad` counter.
+  JavaScript off; its image rule emits only app-embedded data URIs, so no authored source reaches WebKit, and on a
+  page without a link grant it strips every link but http(s) and fragments, since `about:` passes the navigation
+  policy. The click and the control path check only the descriptor; a page without a grant reads pictures at load,
+  under the shared `textLoad` counter, and a link page reads each document through its scheme source instead.
+- A markdown page with `--navigation` carries `HtmlOverlay.markdownLinks`, a `MarkdownLinkGrant` (canonical file and
+  folder) computed by the app at open, nil when that folder is `/` or home, which also drops navigation. A clicked
+  `.md` always asks for it. Render.js then keeps relative `.md`/`.markdown` hrefs, and the page loads through
+  `HtmlPageSchemeHandler` at `agterm-page://<page-id>/<path>`, so WebKit owns history and scroll. The policy allows
+  only that page's own host with a markdown path lexically inside the root; `MarkdownPageSource.linkSource` judges
+  every read again with `MarkdownPage.linkedDocument` and reads at the normalized request, so pictures and links share
+  one base. A link that fails after the first commit keeps the shown page `loaded` with no error.
 - A text page (`HtmlSource.text`, `--text` with `--line`, wire `textFile` and `line`) is built from text too and
   themed, but has no links at all: its arm of `HtmlNavigationPolicy` runs before the shared new-window and `about`
   exits and allows only a main-frame `about:blank`. `TextProbe` reads through `BoundedFile` and refuses invalid UTF-8
@@ -866,6 +890,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   Under the cap `data-files` carries `TextPage.diffLanguages`, and the page highlights each hunk's two sides whole in
   its file's language, with the marker column kept in the text at zero width; added and removed runs get bands at
   any size. A patch with no unified hunk keeps the `diff` grammar. `text.language` stays `diff`.
+- A text page wraps long lines (`session.overlay.wrap on|off|toggle`, the bar's Wrap button, `w`).
+  `HtmlOverlay.textWrap` lives per page, starts off and is never persisted; a rebuild carries it as `data-wrap`.
+  The bridge records the page's toggle in the model, and `TextPageBridge.apply` pushes every model change back, so a control
+  call crossing a click leaves both on the model's value. Refusals are `textSearchPage`'s; a replica's
+  toggle stays in the page, unrecorded, unreported and dropped by a rebuild, as its search is. Every row is one line box of the same height, so `text.js` places line starts from each line's ending
+  newline and the end from the code element's last fragment: a diff marker's zero-size rect is empty. The gutter,
+  target, diff and change bands all read those rows. A toggle reports a log page's offset, which a rebuild reopens at.
+  Read back `htmlOverlays[].text.wrap`, omitted while unwrapped.
 - `browser.clear` removes all website data from the saved store and keeps its id. App-global: a target or
   `--window` is refused. It answers ok without creating anything when no profile exists, and replies only
   after WebKit reports the removal done. It is refused with `N persistent page(s) still open` while any
@@ -898,8 +930,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   nothing enables it later. User scripts and native `evaluateJavaScript` still run, so the theme survives,
   and a test cannot use evaluation to show page script ran; tests that need page script open with it on.
 - A page's `window.close()` closes its overlay: `HtmlOverlayPage.webViewDidClose` calls `closeHtmlOverlay`,
-  so the outcome is `dismissed`. A URL page can thereby dismiss its overlay without a prompt, and `--js`
-  is the only gate. The callback names no frame, so a same-origin subframe's `top.close()` closes the
+  so the outcome is `dismissed`. On a page row it calls `HtmlOverlayRegistry.closePageSession` instead, which
+  `ControlServer` sets to `AppActions.closePageSession`, since the row can hold terminal companions. Only a
+  picker pending in the page's own window refuses it; the page keeps the request and `retryPageCloses` runs it
+  when that picker resolves. An accepted request is spent, so an Undo remount or a cancelled confirmation does
+  not close again.
+  A URL page can thereby dismiss an overlay without a prompt, and `--js` is the only gate. The callback names no frame, so a same-origin subframe's `top.close()` closes the
   overlay too, unlike a bridge request. WebKit may refuse the call, as it does after `history.pushState`.
   The close is deferred one task because releasing the page clears the delegate WebKit is calling through.
   A session in an undoable close has no slot to find, so the page keeps the request and `apply` finishes
@@ -1905,13 +1941,14 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   are flat and carry `windowID`/`windowName` and `workspaceID`/`workspaceName`: show the names, group by
   the ids, because neither rename path nor `addWorkspace` enforces uniqueness, so two windows called
   `main` and a `dev` workspace in each are ordinary and name-grouping silently merges them.
-- A session is offered only when the store reports `backedByZmx` AND every pane resolves to a `claimed`
+- A terminal session is offered only when the store reports `backedByZmx` AND every pane resolves to a `claimed`
   daemon observed `running` under an agterm daemon name. A claimed daemon alone proves nothing: a
   requested-live launch that fell back preserves its daemons while showing fresh shells. An incomplete
   split is dropped whole, never offered half. These are ELIGIBILITY rules, not only a defence against a
   race, so losing the two network reads does not retire them: the zmx observation is still a subprocess
   snapshot taken beside the model walk. They now run on whichever side owns the sessions, which is the
-  far side for a remote call.
+  far side for a remote call. A page owns no daemon; the Companions section says which pages are listed, and a
+  row attached from another Mac (`remoteHost`) is never listed.
 - An empty candidate list is a SUCCESSFUL answer and deliberately does not distinguish "not running live"
   from "live with nothing eligible". `zmx list` is the restore-mode diagnostic; no surface may claim the
   empty list diagnoses the mode.
@@ -2116,7 +2153,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   close would drop the local client while the daemon kept ssh connected with no UI showing it.
 - Presentation carries status, context, the session's name, the info line, notifications, the HUD and the layout of attached panes. Such a program runs
   on the origin and reaches the origin's socket, so without a stream the viewer sees terminal bytes only.
-  Every attach opens one: the viewer runs `ssh -T <host> agtermctl zmx present <session>`, whose far end
+  Every terminal attach opens one; a page row has only its page channel. The viewer runs `ssh -T <host> agtermctl zmx present <session>`, whose far end
   bridges stdio to a `zmx.present` connection. The far-side `agtermctl` PATH precondition above applies.
 - The stream is newline-delimited JSON, `PresentationFrame` with `gen`, `rev` and a body. The hub registers
   a subscriber BEFORE it takes the snapshot and holds deltas until the snapshot is sent, so nothing falls
@@ -2284,13 +2321,19 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   cannot decode; without it the open keeps `OverlayHtmlError.presenter`. The origin still probes at open and sends
   an image's oriented pixel size (`ImagePixels`); an auto-sized image carries no origin-computed points, the
   presenter sizing it through `ControlServer.imagePoints`, while explicit sizing passes through as for any page. Over the same channel, `RemotePageResources.content` serves an image or text page
-  its own file and a markdown page its own file plus pictures its folder contains after resolving symlinks there,
-  each read whole through `BoundedFile` under its kind's cap, a picture sent only when its bytes carry a picture
+  its own file and a markdown page its own file plus pictures its folder contains after resolving symlinks there
+  (with a link grant: markdown-spelled requests only through `linkedDocument`, the original included, and pictures
+  anywhere in the grant's root), each read whole through `BoundedFile` under its kind's cap, a picture sent only when its bytes carry a picture
   signature; the bridge is refused. The presenter holds it as `HtmlSource.replica(path:content:)`, an origin path
   no local read ever takes, judges the fetched bytes with the local probes, lists markdown pictures lexically
   (`MarkdownPage.remoteImageReferences`) and builds the page off the main actor. Limit: an inward symlink alias
   is a second file there, so aliases count separately toward the picture budgets and one can fall to alt text
-  sooner than locally. A markdown or text page companion of a remote parent stays refused.
+  sooner than locally. A link page's origin serves pictures anywhere in the grant's root, where a local page embeds
+  only those inside each document's own folder, so a picture symlinked out of its subfolder shows remotely and
+  falls to alt text locally. The grant rides `PresentationPage.markdownLinks` only to a presenter listing
+  `PresentationHub.pageLinksKind`; any other gets `HtmlOverlay.withoutLinks()` in the request and in the record the
+  claim serves from, since an older presenter would fetch the original spelling and `.md` pictures. A markdown or
+  text page companion of a remote parent stays refused.
 - On the origin, `overlay.close` sends `pageClose` and ends the reservation at once; `resize`,
   `reload [--current]`, `navigate back|forward` and hide/show/toggle reach the presenter as `pageCommand`s,
   each reply meaning requested, not applied. `navigate browser` reaches it

@@ -51,6 +51,10 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.page"))
     }
 
+    func createPageSession(_: String?, window _: String?, options _: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.page"))
+    }
+
     func createCompanion(_: String?, options _: CompanionOptions, window _: String?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.new"))
     }
@@ -80,6 +84,11 @@ public extension ControlActions {
     func setSessionOverlayFollow(_: String?, window _: String?, pane _: OverlayPane?,
                                  mode _: ControlToggleMode) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.follow"))
+    }
+
+    func setSessionOverlayWrap(_: String?, window _: String?, pane _: OverlayPane?,
+                               mode _: ControlToggleMode) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.overlay.wrap"))
     }
 
     func searchSessionOverlay(_: String?, window _: String?, pane _: OverlayPane?,

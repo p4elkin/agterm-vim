@@ -1,16 +1,17 @@
 ---
 name: agterm
 description: >
-  Drive agterm, a native macOS terminal, via agtermctl. Use in an agterm session:
+  Drive agterm, a macOS terminal, via agtermctl. Use in an agterm session:
   manage sessions, companions and workspaces; split panes; toggle the scratch; run, hide or show overlays;
-  read exit status; show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins;
+  read exit status; show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins or as a
+  page session row;
   post a HUD/caption/notification/sidebar activity line; message panes; show a picker, question or input dialog; show images/markdown/code; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows, font size and
   theme; reload or edit the keymap, event hooks and agterm-scoped ghostty config; run a custom command; read
   a closed window's session screen; subscribe to status, notify, lifecycle, selection,
   pane, tree and launch events; wait on agent status.
   Covers window/workspace/session addressing, AGTERM_* variables,
-  attaching sessions and companions from another Mac, cookbook recipes, running/installed version, upgrades, diagnosing
+  attaching sessions from another Mac, cookbook recipes, installed version, upgrades, diagnosing
   problems, filing a bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
@@ -18,7 +19,7 @@ when_to_use: >
   ask the user to type a value or a message, let the user pick one or several items from a list,
   show an image inline, show this markdown file rendered, show this source file or log at a line,
   show me the diff of a file or the changes as links, tail or follow this log file,
-  search the log or text page in the overlay,
+  search the log or text page in the overlay, wrap long lines in the text or log page,
   show this HTML page or artifact, make an HTML page or explainer for this and show
   it, make a page that switches sessions or returns a choice, preview the report you generated, show this
   URL or the running dev server, keep me logged in to a page shown in an overlay, search the scrollback,
@@ -26,7 +27,7 @@ when_to_use: >
   keep a related program next to a session, duplicate this session with its programs as a companion,
   make this session a companion,
   open a sub-session under this one, fold a session's companions, show a page as a companion of this
-  session, run my custom command, send a message to the other pane or another agent, read my messages,
+  session, open a page as its own session row in the sidebar, run my custom command, send a message to the other pane or another agent, read my messages,
   wait for a message, tell me when the selected session changes,
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
@@ -423,8 +424,9 @@ omitted when expanded).
   `session convert --companion` turns a running top-level session into a companion of a fresh shell opened in its
   place, keeping its program, id and companions (Convert to Companion).
   `session overlay open --html FILE --companion` (or `--url URL --companion`) adds a page companion: a row
-  under the target session that shows the page and runs no shell. It closes when the page does and is never
-  saved, so an `on app.launched` hook recreates it after a relaunch. Read back as the node's `content: "page"`.
+  under the target session that shows the page and runs no shell. `--page` instead of `--companion` opens a
+  top-level page session after the target's group, which holds companions of its own. Every local page row is
+  saved and comes back after a relaunch. Read back as the node's `content: "page"`; details in reference.md.
 - `session close [--target T ...] [--undoable]` — close one session, or repeat `--target` to close a batch with one
   grace-period undo. `--undoable` gives a single target that grace too, as ⌘W does, so undo (⌘Z) or, for a local
   session, `recent open` inside it brings the running shell back; `result.undoable` says whether it applied (false when Settings turns undo off).
@@ -554,7 +556,7 @@ omitted when expanded).
   renders the pane opaque, overriding window translucency, so it shows; a `color` takes no opacity and
   honors the Settings window translucency instead.)
 - `session rebased show (--diff RANGE [--working-tree] | --file PATH[:LINE])` · `session rebased toggle` (fork only).
-- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --image FILE | --markdown FILE | --text FILE [--line N] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
+- `session overlay open (<command> [--cwd DIR] [--wait] [--block] | --html FILE [--cwd DIR] [--navigation | --chromeless] [--js] [--block] | --url URL [--navigation | --chromeless] [--js] | --image FILE | --markdown FILE [--navigation] | --text FILE [--line N] | --rebased [--cwd DIR] [--project DIR] [--diff RANGE [--working-tree] | --file PATH[:LINE]] [--on-close COMMAND]) [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--pane left|right]` ·
   `session overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full)` ·
   `session overlay close [--pane left|right]` ·
   `session overlay hide|show|toggle [--pane left|right]` ·
@@ -837,7 +839,7 @@ without one (the bare form is exactly what the remote call runs on the far side)
 `zmx attach` takes plus `windowID`/`windowName`, `workspaceID`/`workspaceName` (show the names, group by
 the ids: neither is unique), `context` when set, `status`/`statusColor`/`statusShape` when not idle, and
 per-pane `foreground`; only a session whose every pane
-still has a live daemon is listed, and an empty list does NOT mean the far side is not in live mode -
+still has a live daemon is listed (a top-level page session, which has none, is listed too), and an empty list does NOT mean the far side is not in live mode -
 `zmx list` reports that · `zmx attach
 HOST SESSION [--window W]` - open one of them here, marked remote and carrying its split, in the
 chosen open local window's current workspace (default: frontmost after discovery). A background target
@@ -845,7 +847,8 @@ keeps the frontmost window unchanged; an invalid or closed target fails. Takes t
 listing, not the name, and resolves the remote again first, so a session that has gone fails instead of
 handing back a fresh shell wearing its name. Closing it here ends only this side's connection; the row is
 restored after a relaunch. Add `--companions` to attach the group, or `--parent ROW` to attach it as a
-companion of a remote row here (fork only); see [details](reference.md#restore). The attached row mirrors the origin session's status, context, `notify`
+companion of a remote row here (fork only); see [details](reference.md#restore). An attached page row shows the origin's page over its page channel and mirrors
+nothing; an attached terminal row mirrors the origin session's status, context, `notify`
 notifications, HUD and the layout of attached panes over a stream that reconnects by itself
 ([details](reference.md#restore)); read
 `presentation.state` in `tree`, and expect mirrored status, context and HUD to clear while it is down. One
@@ -902,7 +905,9 @@ agtermctl session overlay open --markdown /path/to/plan.md --size-percent 95 --t
 ```
 
 Pictures kept in the file's own folder show; other pictures show their alt text, raw HTML stays text, and a web
-link opens in the browser after the user confirms. The user gets the same view by ⌘-clicking the file's path in a
+link opens in the browser after the user confirms. Add `--navigation` to let a relative link to another `.md`
+file in its folder or below open in the same page with back and forward; a ⌘-clicked file asks for it. A file
+directly in `/` or the home folder opens without it, and so does a page shown on an older agterm on another Mac. The user gets the same view by ⌘-clicking the file's path in a
 local pane, so printing the absolute path of a plan or report you wrote is often enough there; for a user watching
 from another Mac, open it with `--markdown`. Read back `markdown` in `htmlOverlays`.
 
@@ -949,6 +954,16 @@ Matching is case-insensitive plain text. A step pauses a following log page, so 
 query does not. Read back `text.search` (`{query, matches, current}`). The user has the same search in the page's
 bar: `/` or ⌘F focuses it, `n`/`N` step, Esc clears; on a log page `F` toggles follow, `G`/End goes to the bottom and
 follows, `g`/Home to the top. A step before the page loads is refused `page not loaded`.
+
+Long lines of a text, log or diff page run off its right edge until wrapped:
+
+```bash
+agtermctl session overlay wrap on --target "$AGTERM_SESSION_ID"   # off unwraps, toggle flips; prints the state
+```
+
+The user wraps with the bar's Wrap button or `w`. A page opens unwrapped and keeps its choice until it closes. Read
+back `text.wrap`, true while wrapped and omitted otherwise. On a page shown for another Mac the toggle stays in the
+page: a redraw drops it, `text.wrap` omits it, and the command answers `no text page`.
 
 To show the user changes, write each changed file's diff to its own `.diff` file and list them as links; a ⌘-click
 opens it as a read-only text page:

@@ -288,6 +288,11 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionCompanionPage)
     }
 
+    public func createPageSession(_ target: String?, window: String?,
+                                  options: ControlSessionOverlayOpenOptions) -> ControlResponse {
+        refuse(.sessionPage)
+    }
+
     public func duplicateAsCompanion(_ target: String?, window: String?, select: Bool) -> ControlResponse {
         refuse(.sessionCompanionDuplicate)
     }
