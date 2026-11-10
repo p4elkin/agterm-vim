@@ -164,6 +164,8 @@ directory, then the primary cwd; omitted without a split or on older servers), `
 title, for example a remote host over SSH, omitted
 when none reported; distinct from `name`, the derived sidebar label), `active` (selected),
 `split` (split SHOWN side by side, the read side of `session split on|off`),
+`named` (fork only: whether the row has a custom name from `session rename` or `--name`, so `name` was
+given rather than derived from a title or directory; omitted only by an older app or server),
 `realized` (whether the session's MAIN pane has a live terminal — `false` means no shell was spawned and a
 `--command` has not run. `session text` then answers `session not realized` without realizing anything;
 `session type` brings up a restored main pane still waiting its turn in a launch that replays commands,

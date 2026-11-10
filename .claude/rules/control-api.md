@@ -1642,6 +1642,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `endedOnHost`, omitted for a local or unbound row. The sidebar notice names the last two.
 - `remoteSession` (fork only) is a bound remote row's session id on its origin, omitted for a local or
   unbound row. A tool that runs a command on the origin for that row names it as `--target`.
+- `named` (fork only) is the read-back of `session rename` and `session new --name`: true when the row has a
+  non-blank custom name, always reported, so an absent key means an older producer.
+  `agterm-claude-map` decides from it whether to copy the row name into a Claude session.
+  A Mac remote row reads its own custom name, seeded from the origin's label until the first snapshot.
 - `backedByZmx` on a session is true only when every existing primary/split pane is currently backed.
   Primary/split entries in `surfaces` report their own Boolean; scratch and overlays omit it. Older servers
   omit both levels. There is no sidebar indicator.

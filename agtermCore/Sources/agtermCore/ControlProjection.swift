@@ -373,6 +373,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     /// commands address by default; per-pane liveness is `fontSize`/`splitFontSize`/`scratchFontSize`,
     /// each omitted when its pane is unrealized.
     public let realized: Bool?
+    /// Fork only. Whether the row has a non-blank `customName`, so `name` is a name it was given rather than
+    /// one derived from a title or a directory. nil/omitted only against a producer predating the field;
+    /// this one always reports it.
+    public let named: Bool?
 
     /// The host a teleported session is attached to; nil/omitted for a local one. Live-only — a remote
     /// session is never persisted, so this never survives a relaunch.
@@ -423,7 +427,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
                 background: BackgroundWatermark? = nil, paneBackgrounds: PaneBackgrounds? = nil, unseen: Int? = nil,
                 turn: Int? = nil, bookmarks: Int? = nil,
                 fontSize: Double? = nil, splitFontSize: Double? = nil, scratchFontSize: Double? = nil,
-                surfaces: [ControlSurfaceNode]? = nil, realized: Bool? = nil,
+                surfaces: [ControlSurfaceNode]? = nil, realized: Bool? = nil, named: Bool? = nil,
                 context: String? = nil, remoteHost: String? = nil, splitCwd: String? = nil,
                 liveAttribution: String? = nil, splitLiveAttribution: String? = nil,
                 presentation: ControlPresentationNode? = nil, presenters: ControlPresentersNode? = nil,
@@ -490,6 +494,7 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
         self.scratchFontSize = scratchFontSize
         self.surfaces = surfaces
         self.realized = realized
+        self.named = named
         self.splitCwd = splitCwd
         self.remoteHost = remoteHost
         self.liveAttribution = liveAttribution

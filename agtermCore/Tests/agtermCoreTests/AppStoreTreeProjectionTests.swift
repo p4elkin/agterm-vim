@@ -34,6 +34,17 @@ struct AppStoreTreeProjectionTests {
         #expect(hidden.hiddenOverlays == [slot])
     }
 
+    @Test func namedReportsWhetherTheRowHasACustomName() throws {
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/repo"))
+        #expect(store.controlTree().workspaces.first?.sessions.first?.named == false)
+        #expect(store.renameSession(session.id, to: "repo"))
+        #expect(store.controlTree().workspaces.first?.sessions.first?.named == true)
+        session.customName = "  "
+        #expect(store.controlTree().workspaces.first?.sessions.first?.named == false)
+    }
+
     @Test func unsetRebasedReadbackFieldsAreOmitted() throws {
         let overlay = RebasedOverlay(project: "/repo")
         let node = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(overlay.controlNode)) as? [String: Any])
@@ -363,7 +374,7 @@ struct AppStoreTreeProjectionTests {
                                                    backedByZmx: false),
                                ],
                                // store-only session: a surface slot with nothing in it has no terminal
-                               realized: false, lastSelectedAt: 1_600_000_000)
+                               realized: false, named: true, lastSelectedAt: 1_600_000_000)
         ])
         #expect(tree.workspaces[1].sessions == [
             ControlSessionNode(id: b.id.uuidString, name: "remote:~/b", cwd: "/live/b",
@@ -385,7 +396,7 @@ struct AppStoreTreeProjectionTests {
                                 ControlSurfaceNode(id: TerminalSurfaceID(sessionID: b.id, surface: .overlay).rawValue,
                                                    kind: "overlay", active: true, visible: true),
                                ],
-                               realized: false, splitCwd: "/live/b", lastSelectedAt: 1_700_000_100)
+                               realized: false, named: false, splitCwd: "/live/b", lastSelectedAt: 1_700_000_100)
         ])
     }
 

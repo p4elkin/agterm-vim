@@ -353,6 +353,7 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.
 - `window.list` reports `normalMode` on the window holding it, true-only.
+- `tree` reports `named` on every session: whether the row has a custom name. `control-api.md` has the rule.
 - `agtermctl keymap list` gained a `normal mode` section listing `nmap` binds. Each row carries `bind`
   plus exactly one of `action` and `command`, and prints a command target as `command "<name>"`.
 - A row also carries `mode` when the line's word CHANGES the outcome, and omits it otherwise. So

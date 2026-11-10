@@ -1035,6 +1035,18 @@ struct ControlProtocolTests {
         #expect(!json.contains("realized"), "a nil realized must be omitted from the JSON; got \(json)")
     }
 
+    @Test func treeSessionNodeEncodesNamedFalseAndOmitsItOnlyWhenNil() throws {
+        let unnamed = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false,
+                                         backedByZmx: nil, named: false)
+        let json = String(data: try JSONEncoder().encode(unnamed), encoding: .utf8) ?? ""
+        #expect(json.contains("\"named\":false"), "named:false must survive encoding; got \(json)")
+        let older = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false)
+        #expect(!(String(data: try JSONEncoder().encode(older), encoding: .utf8) ?? "").contains("named"))
+        let decoded = try JSONDecoder().decode(ControlSessionNode.self, from: Data(
+            #"{"id":"s1","name":"shell","cwd":"/tmp","active":true,"split":false,"overlay":false,"scratch":false,"flagged":false}"#.utf8))
+        #expect(decoded.named == nil)
+    }
+
     @Test func treeSessionNodeRoundTripsWithStatus() throws {
         let session = ControlSessionNode(id: "s1", name: "shell", cwd: "/tmp", active: true, split: false, status: "blocked")
         let response = ControlResponse(ok: true, result: ControlResult(tree: ControlTree(

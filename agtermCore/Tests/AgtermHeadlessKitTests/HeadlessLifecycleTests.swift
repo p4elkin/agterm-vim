@@ -133,9 +133,11 @@ extension HeadlessActionsTests {
         defer { fixture.cleanUp() }
         fixture.runner.enqueue(.ok(fixture.listing))
 
+        #expect(try await fixture.node().named == false)
         #expect(try await fixture.dispatch(.sessionRename) { $0.name = "renamed" }.ok)
 
         #expect(try await fixture.node().name == "renamed")
+        #expect(try await fixture.node().named == true)
         #expect(try await fixture.dispatch(.zmxTree).result?.remote?.sessions.first?.name == "renamed")
     }
 }

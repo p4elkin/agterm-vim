@@ -79,6 +79,8 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- `tree` reports `named` on every session, true when the row has a custom name. Tools that label
+  Claude sessions after their rows can now tell a name given on purpose from one derived from a folder.
 - `zmx attach HOST SESSION --parent ROW` attaches a remote session as a companion of a remote row here, so rows
   from a headless origin can be grouped under a parent. The group survives a relaunch.
 - `workspace move --to-window <new|name|id>` and `session move --to-window <new|name|id>` move a workspace or

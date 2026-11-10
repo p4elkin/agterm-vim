@@ -440,6 +440,7 @@ public final class AppStore {
                                               // no app-side closure like the font sizes above. An empty slot is
                                               // false, not omitted — "no terminal" either way to a caller.
                                               realized: session.surface?.isRealized ?? false,
+                                              named: session.customName?.trimmedOrNil != nil,
                                               context: session.effectiveContext, remoteHost: session.remoteHost,
                                               splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
                                               liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
