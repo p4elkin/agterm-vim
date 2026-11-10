@@ -41,6 +41,7 @@ struct StateDirectoryLockTests {
         #expect(ownedLock(StateDirectoryLock.acquire(directory: dir)) != nil)
     }
 
+    #if canImport(Darwin) // F_GETPATH and an optional posix_spawn_file_actions_t are Darwin's
     private func descriptor(openOn path: String) -> Int32? {
         let entries = (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd")) ?? []
         for fd in entries.compactMap({ Int32($0) }) {
@@ -76,6 +77,7 @@ struct StateDirectoryLockTests {
         first = nil
         #expect(ownedLock(StateDirectoryLock.acquire(directory: dir)) != nil)
     }
+    #endif
 
     @Test func aDirectoryPathHeldByAFileIsUnavailableNotHeld() throws {
         let file = makeTempDir()

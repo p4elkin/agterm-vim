@@ -276,8 +276,8 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
     four `HudTests` markdown bodies plus the bullet check in `aFramelessPanelIsAsTallAsItsText`
-    (the markdown fallback), the four `MarkdownPageTests` image-reference tests (`imageReferences` lists
-    none on Linux) `RemotePresentationStateTests`' two mirrored-info tests (markdown info) and the two markdown cases of
+    (the markdown fallback), the `MarkdownPageTests` image-reference tests (`imageReferences` lists
+    none on Linux), `StateDirectoryLockTests`' child-descriptor test (`F_GETPATH`), `RemotePresentationStateTests`' two mirrored-info tests (markdown info) and the two markdown cases of
     `ControlDispatcherSessionMetadataTests.sessionInfoRejectionNeverReachesTheHost`,
     `OverlayRedirectSshTests`' abandoned-directory
     sweep (its fixture sets a creation date, which Linux cannot), `SocketClientTests`' two

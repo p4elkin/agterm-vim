@@ -200,11 +200,13 @@ struct MarkdownPageTests {
         #expect(MarkdownPage.html(markdown: "x", images: .init(), style: "", links: true).contains(flag))
     }
 
+    #if canImport(Darwin) // the markdown parser is Foundation's on Darwin only
     @Test func remoteReferencesSkipAMarkdownSpelledPicture() {
         let found = MarkdownPage.remoteImageReferences(in: "![d](guide.md) ![m](x.MARKDOWN) ![p](a.png)", folder: "/f")
 
         #expect(found == [image("a.png", "/f/a.png")])
     }
+    #endif
 
     @Test func limitsAreSet() {
         #expect(MarkdownPage.maxBytes == 4 << 20)
