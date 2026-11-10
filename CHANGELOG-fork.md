@@ -28,6 +28,10 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- A remote row whose session ended on its origin now says "Ended on <host>. Close the row to remove it"
+  even when none of its panes exits afterwards, and `tree` reads `remoteState: endedOnHost` for it. Such a
+  row used to keep reading `attached`, with only "Lost the connection to <host> (exit 1), retrying" under it.
+  A failed presentation stream now asks the origin whether the session still exists.
 - Hiding the IDE overlay no longer leaves an IDE tooltip, hint or popup floating over the terminal. A
   tooltip shown at that moment (a tab's file name, say) stayed on screen until the IDE came back.
 - A live review in the IDE no longer fails with `the overlay was closed before the IDE was ready` when the

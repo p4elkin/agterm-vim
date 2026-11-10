@@ -128,6 +128,8 @@ extension AppStore {
         guard let session = session(withID: id), let state = session.remotePresentation else { return }
         session.remotePresentation?.connection = connection
         if state.connection != connection { session.remoteConnectionRevision += 1 }
+        // the origin serves a stream only for a session it has, so an ended verdict was wrong
+        if connection == .connected, state.rowState == .endedOnHost { setRemoteRowState(.attached, forSession: id) }
         guard state.connection == .connected, connection != .connected else { return }
         applyRemoteContext(nil, forSession: id)
         applyRemoteInfo(nil, forSession: id)

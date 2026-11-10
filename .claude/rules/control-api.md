@@ -2145,6 +2145,11 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `attached` reattaches through `PaneLead`'s path without a claim, `disconnected` retries every 30
   seconds, `endedOnHost` stops. It never reattaches a pane the origin closed: the last layout removed it,
   or the tree no longer lists its daemon, and an attach would create a fresh daemon under that name.
+  A failed presentation stream (`streamFailed`) adds its row to the same per-host call, once, with no retry:
+  only `endedOnHost` is kept, since a `disconnected` set there would have no waiting pane to clear it,
+  and not even that once the stream is connected again: the tree omits a live session that is not fully backed.
+  Without it a row whose panes never exit again keeps `attached` after its origin session ends. The stream
+  reaching `connected` turns `endedOnHost` back to `attached`: the origin serves only a session it has.
 - `Session.locallyManagedPaneIdentities` is the single local-ownership predicate, empty for a remote
   session, read by `finalizePaneIdentities`, the direct `closeSplit` finalizer path, `liveClaims` and live
   `finalizeWindowPanes`. Without it `liveClaims` invents an `agterm-<uuid>` claim for a pane whose daemon

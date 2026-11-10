@@ -78,7 +78,9 @@ is the `.claude/rules` file that owns the design.
   (`name`, `rename`), and a rename made while disconnected is sent when the stream returns.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch, with the name the
   row last showed; a supervisor
-  reattaches a dropped one and the row says Disconnected or Ended (`remoteState`).
+  reattaches a dropped one and the row says Disconnected or Ended (`remoteState`); a failed presentation
+  stream also asks the origin, so a row whose session ended reads Ended even when no pane exits
+  ([[control-api]], `RemoteRowSupervisor`).
   `agtermctl zmx attach <host> <id> --parent <row>` attaches a session as a companion of a remote row here,
   which a headless origin's rows cannot get any other way; the parent is saved with the row
   (`.claude/rules/control-api.md`, Remote sessions).

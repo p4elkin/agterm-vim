@@ -149,4 +149,76 @@ final class RemoteRowSupervisorTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertTrue(reattached.isEmpty, "attaching would create a fresh daemon under the closed pane's name")
     }
+
+    func testAFailedStreamOnARowWhoseSessionEndedReadsEndedOnHost() async throws {
+        let session = try row()
+        answers = [try tree(listing: nil)]
+        let watcher = supervisor()
+
+        watcher.streamFailed(inSession: session.id)
+
+        try await settle("ended") { session.remotePresentation?.rowState == .endedOnHost }
+        XCTAssertEqual(session.remotePresentation?.rowNotice(host: "p4linux"), "Ended on p4linux. Close the row to remove it")
+        XCTAssertTrue(sleeps.isEmpty)
+        XCTAssertTrue(reattached.isEmpty)
+    }
+
+    func testAFailedStreamKeepsAttachedWhileTheSessionIsListedOrTheHostIsUnreachable() async throws {
+        let session = try row()
+        answers = [try tree(listing: [originLeft]), ControlResponse(ok: false, error: "unreachable")]
+        let watcher = supervisor()
+
+        watcher.streamFailed(inSession: session.id)
+        try await settle("listed") { trees.count == 1 }
+        watcher.streamFailed(inSession: session.id)
+        try await settle("unreachable") { trees.count == 2 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(session.remotePresentation?.rowState, .attached, "nothing would clear a disconnected set without a waiting pane")
+        XCTAssertTrue(sleeps.isEmpty)
+        XCTAssertEqual(trees.count, 2)
+    }
+
+    func testAStreamThatReconnectedBeforeTheAnswerKeepsTheRowAttached() async throws {
+        let session = try row()
+        answers = [try tree(listing: nil)]
+        let watcher = supervisor()
+
+        watcher.streamFailed(inSession: session.id)
+        store.setRemoteConnection(.connected, forSession: session.id)
+
+        try await settle("classified") { trees.count == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(session.remotePresentation?.rowState, .attached)
+    }
+
+    func testARowSettledWithAnUnlistedPaneReadsEndedOnHostOnceItsSessionEnds() async throws {
+        let session = try row(split: true)
+        answers = [try tree(listing: [originLeft]), try tree(listing: nil)]
+        let watcher = supervisor()
+        watcher.paneExited(try XCTUnwrap(session.splitPaneIdentity), inSession: session.id)
+        try await settle("classified") { trees.count == 1 }
+        XCTAssertEqual(session.remotePresentation?.rowState, .attached)
+
+        watcher.streamFailed(inSession: session.id)
+
+        try await settle("ended") { session.remotePresentation?.rowState == .endedOnHost }
+    }
+
+    func testFailedStreamsOfOneHostShareOneTreeCallAndAnEndedRowIsNotAskedAgain() async throws {
+        let first = try row()
+        let second = try row()
+        answers = [try tree(listing: nil)]
+        let watcher = supervisor()
+
+        watcher.streamFailed(inSession: first.id)
+        watcher.streamFailed(inSession: second.id)
+        try await settle("both ended") {
+            first.remotePresentation?.rowState == .endedOnHost && second.remotePresentation?.rowState == .endedOnHost
+        }
+        watcher.streamFailed(inSession: first.id)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(trees.count, 1)
+    }
 }

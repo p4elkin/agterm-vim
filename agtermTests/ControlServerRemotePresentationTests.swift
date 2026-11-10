@@ -233,11 +233,13 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         var launches: [[String]] = []
         var links: [Link] = []
         var deliver: [(Data) -> Void] = []
+        var closers: [(String) -> Void] = []
 
         func open(_ argv: [String], onLine: @escaping @MainActor (Data) -> Void,
                   onClose: @escaping @MainActor (String) -> Void) -> RemotePresentationLink {
             launches.append(argv)
             deliver.append(onLine)
+            closers.append(onClose)
             let link = Link()
             links.append(link)
             return link
@@ -448,6 +450,34 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertEqual(transport.launches[0].prefix(2), ["ssh", "-T"])
         XCTAssertTrue(try XCTUnwrap(transport.launches[0].last).contains("present"))
         XCTAssertNotNil(fix.server.remoteClients[fix.session.id])
+    }
+
+    func testAFailedStreamOnARowWhoseOriginSessionEndedReadsEndedOnHost() async throws {
+        let fix = try fixture()
+        let endpoint = ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/zmx-buildbox")
+        fix.store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: 1,
+                                           origin: .init(host: "buildbox", endpoint: endpoint, sessionName: "build")),
+                             forSession: fix.session.id)
+        let json = #"{"ok":true,"result":{"remote":{"endpoint":{"executable":"/opt/zmx","socketDirectory":"/tmp/zmx-buildbox"},"#
+            + #""sessions":[]}}}"#
+        let ended = try JSONDecoder().decode(ControlResponse.self, from: Data(json.utf8))
+        var asked: [String] = []
+        fix.server.remoteRowSupervisor = RemoteRowSupervisor(library: fix.server.library, tree: { host in
+            asked.append(host)
+            return ended
+        }, sleep: { _ in }, reattach: { _ in })
+        let transport = Transport()
+        fix.server.remoteTransport = transport
+        fix.server.startRemotePresentation(for: fix.session)
+
+        transport.closers.last?("exit 1")
+
+        for _ in 0..<150 where fix.session.remotePresentation?.rowState != .endedOnHost {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(asked, ["buildbox"])
+        XCTAssertEqual(fix.session.remotePresentation?.rowState, .endedOnHost)
+        XCTAssertEqual(fix.session.remotePresentation?.rowNotice(host: "buildbox"), "Ended on buildbox. Close the row to remove it")
     }
 
     func testTheSnapshotReachesTheRowAndMarksItConnected() throws {

@@ -991,4 +991,16 @@ struct RemotePresentationStateTests {
         store.setRemoteRowState(.disconnected, forSession: UUID())
     }
 
+    @Test func aStreamTheOriginServesAgainEndsAnEndedOnHostStateOnly() throws {
+        let (store, session) = try attached()
+        store.setRemoteRowState(.endedOnHost, forSession: session.id)
+        store.setRemoteConnection(.connected, forSession: session.id)
+        #expect(session.remotePresentation?.rowState == .attached)
+
+        store.setRemoteRowState(.disconnected, forSession: session.id)
+        store.setRemoteConnection(.failed("exit 255"), forSession: session.id)
+        store.setRemoteConnection(.connected, forSession: session.id)
+        #expect(session.remotePresentation?.rowState == .disconnected)
+    }
+
 }

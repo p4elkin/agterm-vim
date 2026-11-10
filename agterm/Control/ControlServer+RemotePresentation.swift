@@ -103,6 +103,7 @@ extension ControlServer {
             },
             connection: { [weak self] connection in
                 self?.library.store(forSession: id)?.setRemoteConnection(connection, forSession: id)
+                if case .failed = connection { self?.remoteRowSupervisor?.streamFailed(inSession: id) }
             },
             context: { [weak self] context in
                 self?.library.store(forSession: id)?.applyRemoteContext(context, forSession: id)

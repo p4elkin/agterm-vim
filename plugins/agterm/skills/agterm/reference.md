@@ -184,7 +184,8 @@ split; these describe attribution, not permission grants),
 `remoteHost` (the machine an attached session came from — the read side of `zmx attach`; omitted for a
 local session; a remote row comes back after a relaunch from `remote-rows.json`),
 `remoteState` (fork only, on a bound remote row: `attached`, `disconnected`, or `endedOnHost`; describes
-pane attachment state separately from the presentation stream; omitted for local and unbound rows),
+whether the origin still has the session, separately from the presentation stream's own `presentation.state`;
+omitted for local and unbound rows),
 `remoteSession` (fork only, on a bound remote row: the origin's id for the session, which a command run on the
 origin must name as `--target`),
 `remoteSessionID` (the origin's id for the session an attached row shows, companions and page rows included,
