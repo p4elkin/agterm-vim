@@ -331,7 +331,8 @@ extension AppActions {
     /// sidebar filter hides.
     func newSession(inWorkspace workspaceID: UUID) {
         guard uiActionsEnabled else { return }
-        guard let store, let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd())
+        guard let store, let session = store.addSession(toWorkspace: workspaceID,
+                                                   cwd: resolvedNewSessionCwd(in: workspaceID, store: store))
         else { return }
         store.noteUserActivity()
         store.selectSession(session.id)

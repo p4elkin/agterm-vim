@@ -456,13 +456,16 @@ extension ControlServer {
         guard let created = store.addSession(toWorkspace: placement.workspace, cwd: NSHomeDirectory(),
                                              command: primary, name: row.name, wait: true,
                                              at: placement.position, select: placement.select,
-                                             remoteHost: row.host, parentID: placement.parent) else {
+                                             remoteHost: row.host, remoteSessionID: row.remoteSessionID,
+                                             parentID: placement.parent) else {
             return .refused(ControlResponse(ok: false, error: "could not create the session"))
         }
         if let split {
             created.splitInitialCommand = split
             created.splitCommandWait = true
             store.setSplitVisibility(created.id, shown: true, axis: row.splitAxis ?? .leftRight)
+            // a new split focuses its right pane; an attached session opens on its left one
+            created.splitFocused = false
         }
         var daemons = [created.paneIdentity: row.left]
         ZmxLeadBook.shared.begin(leads.left, pane: created.paneIdentity)

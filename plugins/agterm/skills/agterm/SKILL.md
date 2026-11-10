@@ -316,6 +316,7 @@ entries in `surfaces` report their own Boolean, while scratch and overlays omit 
 [values and omission rules](reference.md#tree)),
 `remoteHost` (the machine an attached session came from, the read side of `zmx attach`; omitted for a local
 session; a remote row comes back after a relaunch),
+`remoteSessionID` (the origin's id for the session an attached row shows, the id `zmx attach` takes; omitted for a local session),
 `presentation` (attached session only: the mirroring stream's `state` - `connecting`, `connected`,
 `unsupported`, or `failed` with `error` - not the ssh connection's - plus `mode`, `presenter` while its stream holds that role, else `mirror`),
 `presenters` (origin session: `mirrors`, the streams mirroring it without presenting, and `presenter: true`

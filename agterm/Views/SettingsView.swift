@@ -238,7 +238,7 @@ private struct GeneralSettingsView: View {
                 set: { model.setFlaggedViewLayout($0) })
     }
 
-    /// Default ON; turning it off stores false and leaves only the disclosure triangle as the hit target.
+    /// workspaceRowClickExpands defaults on; off stores false and leaves the triangle and row icon as hit targets.
     private var workspaceRowClickExpands: Binding<Bool> {
         Binding(get: { model.settings.workspaceRowClickExpands ?? true },
                 set: { model.setWorkspaceRowClickExpands($0 ? nil : false) })
@@ -614,7 +614,7 @@ private struct AgentStatusSettingsView: View {
     /// with the status's current color. NON-template — a menu recolors a template symbol to its own text color
     /// and would wash out the previewed tint.
     private static func shapeImage(_ shape: StatusShape, tint: NSColor) -> NSImage {
-        let config = NSImage.SymbolConfiguration(pointSize: StatusIconView.glyphPointSize, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: StatusIconView.glyphPointSize, weight: GhosttyApp.symbolWeight(shape))
             .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
         guard let image = NSImage(systemSymbolName: shape.symbolName, accessibilityDescription: shape.displayName)?
             .withSymbolConfiguration(config) else {

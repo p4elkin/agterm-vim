@@ -95,9 +95,8 @@ final class GhosttyApp {
     /// Which keystroke clears a blocked or completed glyph; read at keystroke time by the surface factories'
     /// status-clear closure. Settings-mirrored like `toolbarMode`.
     private(set) var statusReset: StatusReset = .firstKey
-    /// Whether a click anywhere on a sidebar workspace row toggles its expansion; on by default. The sidebar
-    /// Coordinator reads it in `handleSingleClick`, and the disclosure triangle ignores it because AppKit
-    /// toggles that natively. Settings-mirrored like `toolbarMode`.
+    /// workspaceRowClickExpands mirrors the setting for `handleSingleClick`; on by default. The disclosure
+    /// triangle, which AppKit toggles natively, and the row icon ignore it.
     private(set) var workspaceRowClickExpands: Bool = true
     /// The persisted choice and effective mode frozen before the first surface. An ineligible live request
     /// falls back to fresh shells without releasing its daemon claims. Settings changes never mutate either
@@ -354,14 +353,26 @@ final class GhosttyApp {
     /// plain circle — lives in host-free `AgentStatus.symbolName(override:configured:)`; this supplies only the
     /// mirrored Settings value. Shared by the sidebar `StatusIconView` and SwiftUI `StatusGlyph` against drift.
     func statusSymbolName(for status: AgentStatus, override shape: StatusShape?) -> String {
-        let configured: StatusShape?
+        status.symbolName(override: shape, configured: configuredStatusShape(for: status))
+    }
+
+    /// The symbol weight for a status glyph, resolved with the same precedence as `statusSymbolName`.
+    func statusSymbolWeight(for status: AgentStatus, override shape: StatusShape?) -> NSFont.Weight {
+        Self.symbolWeight(status.shape(override: shape, configured: configuredStatusShape(for: status)))
+    }
+
+    /// The weight one shape draws at: heavy for a stroke glyph, so its ink matches the filled silhouettes.
+    static func symbolWeight(_ shape: StatusShape) -> NSFont.Weight {
+        shape.isStroke ? .heavy : .regular
+    }
+
+    private func configuredStatusShape(for status: AgentStatus) -> StatusShape? {
         switch status {
-        case .active: configured = activeStatusShape
-        case .blocked: configured = blockedStatusShape
-        case .completed: configured = completedStatusShape
-        case .idle: configured = nil
+        case .active: activeStatusShape
+        case .blocked: blockedStatusShape
+        case .completed: completedStatusShape
+        case .idle: nil
         }
-        return status.symbolName(override: shape, configured: configured)
     }
 
     /// The configured tint for a status glyph. `idle` never renders a glyph (filtered out before any glyph is

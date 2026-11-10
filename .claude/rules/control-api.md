@@ -1637,6 +1637,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   login mark from `-/bin/zsh` but keeps it on the bare `-zsh`.
 - `remoteHost` names the machine a teleported session is attached to and is omitted for a local one. It is
   absent from every snapshot; the row itself comes back from the remote row book (see Remote sessions).
+  `remoteSessionID`, on the node and on `remote.opened` / `remote.closed`, is the origin's id the row shows.
 - `remoteState` (fork only) is a bound remote row's last classification: `attached`, `disconnected` or
   `endedOnHost`, omitted for a local or unbound row. The sidebar notice names the last two.
 - `remoteSession` (fork only) is a bound remote row's session id on its origin, omitted for a local or
@@ -2120,7 +2121,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   gets it, and no kind claims the ssh connection's state: the held exit says the command ended, never why.
   The host Mac gets no event for an attach; a host-side pair would be `client.attached` / `client.detached`,
   never these kinds.
-- `Session.remoteHost` is immutable and set at construction, because `addSession` saves: a marker written
+- `Session.remoteHost` and `remoteSessionID` are immutable and set at construction, because `addSession` saves
+  and emits `remote.opened` before `bindRemote` runs: a marker written
   afterwards would let one snapshot reach disk carrying the ssh command. `isPersistable` gates every
   producer — the launch snapshot, the Recent Closed session record, and a closed workspace's record, whose
   `sessionCount` and `selectedSessionID` are recomputed after filtering. The in-memory pending-close record

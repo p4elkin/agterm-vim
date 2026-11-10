@@ -455,8 +455,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// forwards right-/middle-click to libghostty. agterm has no terminal context menu, so paste-or-off is
     /// the whole meaningful choice.
     public var rightClickPaste: Bool?
-    /// Whether clicking anywhere on a workspace row expands or collapses it; nil = on. The disclosure
-    /// triangle toggles regardless of this setting.
+    /// workspaceRowClickExpands says whether clicking a workspace row folds it; nil = on. The disclosure
+    /// triangle and the row icon fold regardless.
     public var workspaceRowClickExpands: Bool?
     /// Which directory a new (⌘T) session opens in, a `NewSessionDirectory` raw value; nil = `home`. Read
     /// by `AppActions.newSession()` through `resolveNewSessionCwd`.
@@ -729,9 +729,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return raw.flatMap(StatusShape.init(rawValue:))
     }
 
-    /// The working directory a new session opens in, resolving `newSessionDirectory` against the active
-    /// session's focused-pane cwd and home. An unknown/nil mode, a blank `currentSessionCwd`, or a blank
-    /// custom path all fall back to home. Host-free so `AppActions` and the tests share one resolution.
+    /// The working directory a new session opens in, resolving `newSessionDirectory` against the supplied
+    /// `currentSessionCwd` (the focused-pane cwd of `AppStore.newSessionDirectorySource`) and home.
+    /// An unknown/nil mode, a blank `currentSessionCwd`, or a blank custom path all fall back to home.
+    /// Host-free so `AppActions` and the tests share one resolution.
     public func resolveNewSessionCwd(currentSessionCwd: String?, home: String) -> String {
         switch NewSessionDirectory(rawValue: newSessionDirectory ?? "") ?? .home {
         case .home:

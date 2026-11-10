@@ -84,11 +84,11 @@ The event kinds and payloads are:
   selected split and the primary exiting while selected each emit one; a swap, a hidden split shown again
   and a window coming forward emit nothing, and neither does a reload. The scratch keeps `pane.scratch`
   and a session switch keeps `session.selected`. A session created in or moved into a window starts silent.
-- `remote.opened` / `remote.closed`: session `name` and the ssh destination of a local row created by
-  `zmx attach` as `host`, emitted beside `session.created` / `session.closed` for that session only. They describe the row's
+- `remote.opened` / `remote.closed`: session `name`, the ssh destination of a local row created by
+  `zmx attach` as `host`, and the origin's session id it shows as `remoteSessionID`, emitted beside `session.created` / `session.closed` for that session only. They describe the row's
   presence in the local tree, never the ssh connection: undo re-emits `remote.opened`, and an ssh that
   died leaves the row holding its exit line until it is closed. Closing a remote split pane alone emits
-  neither.
+  neither. The human line reads `HH:MM:SS remote.opened NAME host=HOST remote-session-id=ID`.
 - `app.launched`: an empty payload and no window, workspace or session. Emitted once per app run, after
   `hooks.conf` is loaded and the control socket accepts connections, so a hook on it can call
   `agtermctl` at once. The restored windows and sessions are in the tree by then; their terminals may
@@ -187,6 +187,8 @@ local session; a remote row comes back after a relaunch from `remote-rows.json`)
 pane attachment state separately from the presentation stream; omitted for local and unbound rows),
 `remoteSession` (fork only, on a bound remote row: the origin's id for the session, which a command run on the
 origin must name as `--target`),
+`remoteSessionID` (the origin's id for the session an attached row shows, companions and page rows included,
+the id `zmx attach` takes; omitted for a local session),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
 origin too old to stream, or `failed` with the reason in `error`, and `mode` is `presenter` when this
 row's stream holds the presenter role (see Remote sessions) or `mirror` when it does not, and `namePending: true`
@@ -265,7 +267,7 @@ as `status`, so it is never reported without a `status`), `statusBlink` (`true` 
 set to blink — the `--blink` value; omitted when idle or not blinking), `statusColor` (the `#rrggbb`
 glyph-tint override — the `--color` value; omitted when idle or using the configured color) and
 `statusShape` (the glyph silhouette override — the `--shape` value, one of
-`circle`|`square`|`triangle`|`triangle-down`|`play`|`diamond`|`capsule`|`seal`|`star`|`bolt`|`bell`;
+`circle`|`square`|`triangle`|`triangle-down`|`play`|`diamond`|`capsule`|`seal`|`star`|`bolt`|`bell`|`checkmark`;
 omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape picked in Settings reads back as
 absent), `statusNote` (the one-line reason — the `--note` value; omitted when idle or set without one),
@@ -848,7 +850,7 @@ error keeps those names for compatibility.
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell|checkmark] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` —
   set the sidebar agent-status glyph. Every ACCEPTED call stamps the session node's
   `statusChangedAt`, including idle and one that re-pushes the same status, so a poller can read the last
   set time without keeping state of its own; a call refused by the pane-precedence rule
@@ -873,7 +875,7 @@ error keeps those names for compatibility.
   `session status` without `--color` reverts to the Settings-configured color (a malformed hex errors).
   Use it to distinguish states beyond the fixed palette (e.g. a caller-specific blocked color).
   `--shape` (`circle`, `square`, `triangle`, `triangle-down`, `play`, `diamond`, `capsule`, `seal`, `star`, `bolt`,
-  `bell`) overrides the glyph SILHOUETTE
+  `bell`, `checkmark`) overrides the glyph SILHOUETTE
   the same way — it rides the status, so the next `session status` without `--shape` reverts to the
   Settings-configured shape, else the built-in plain circle (an unknown name errors, listing the accepted names).
   Shape is a second channel alongside the tint, so a session stays distinguishable at a glance and for a
@@ -2588,7 +2590,7 @@ PATH. `--mosh PATH` names the LOCAL `mosh` on this machine. agterm resolves it i
 flag only when mosh is somewhere else.
 `SESSION` is the
 `id` from `zmx tree`, never the name: remote names are editable and repeat across workspaces. Returns the
-new local session's `id`; read `remoteHost` on its tree node. The remote is resolved AGAIN before anything
+new local session's `id`; read `remoteHost` and `remoteSessionID` on its tree node. The remote is resolved AGAIN before anything
 is created, so a session that has gone since the listing fails and creates nothing. A connection that
 starts and later drops is an ordinary pane exit: ssh's own 255 shows a reconnecting bar naming the host and reconnects by itself, with ssh's last
 failed-probe message along the pane's bottom edge and on the pane's `reconnect` in `tree`; any other exit prints
@@ -2936,9 +2938,9 @@ restore; a `session restore --pane right` on a session with no split also return
 `window not open`
 (resize/move/`--window`), `unknown theme: <name>` (theme set), `unknown sound: <name>` (session status --sound),
 `invalid color (expected #rrggbb)` (session status --color),
-`invalid shape: <value> (circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell)` (session status --shape over the
+`invalid shape: <value> (circle|square|triangle|triangle-down|play|diamond|capsule|seal|star|bolt|bell|checkmark)` (session status --shape over the
 raw socket; the `agtermctl` CLI rejects the same value locally with
-`shape must be one of: circle, square, triangle, triangle-down, play, diamond, capsule, seal, star, bolt, bell`),
+`shape must be one of: circle, square, triangle, triangle-down, play, diamond, capsule, seal, star, bolt, bell, checkmark`),
 `--pane must be left, right, or scratch` (the `--pane` value check; the message intentionally lists the
 canonical read-back names while the role and position aliases documented above are accepted. The
 `agtermctl` CLI rejects a bad pane with this for session status/type/text/paste, and over the raw socket

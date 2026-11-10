@@ -42,7 +42,7 @@ extension AppActions {
 
     func newLocalSession(workspaceID: UUID, in store: AppStore) {
         guard uiActionsEnabled(for: library.windowID(for: store)),
-              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(in: store),
+              let session = store.addSession(toWorkspace: workspaceID, cwd: resolvedNewSessionCwd(in: workspaceID, store: store),
                                              at: resolvedNewSessionIndex(in: workspaceID, store: store))
         else { return }
         // a user-initiated selection on THIS window's store: note activity so it buys the full idle grace
