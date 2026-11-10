@@ -173,6 +173,10 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
 - `plugins/agterm/skills/agterm/{reference,SKILL}.md` and the `zmx attach` help in `ZmxCommands.swift` — upstream
   still says a remote row is never saved or restored; the fork says it is (`RemoteRowBook`). Keep the fork's
   sentence when upstream edits around it.
+- `agtermTests/AppDelegateCaptureTests.swift` — the fork runs the slow fake zmx once before the timed read:
+  a freshly written script's first exec took 0.25–0.31 s here against the 0.3 s budget (2026-11-10).
+  Upstream's backlog note `exit-capture-test-misses-a-120-ms-listing-in-full-runs.md` tracks the flake;
+  take upstream's version whole once it fixes the fixture.
 - `CHANGELOG.md` — upstream release notes only. Take upstream's version whole. Fork release notes go in
   `CHANGELOG-fork.md`, which upstream does not have and which therefore never conflicts; see [[release]].
 
