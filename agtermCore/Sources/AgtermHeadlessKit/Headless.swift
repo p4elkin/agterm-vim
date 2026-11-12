@@ -71,11 +71,11 @@ public final class Headless {
 
     private func attachAskPresentation() {
         let library = library
+        // chained, as agterm-server's own is: the registry is process-wide and another owner may resolve first
+        let earlier = AskRegistry.shared.resolveOwner
         AskRegistry.shared.resolveOwner = { [weak library] owner in
-            switch owner {
-            case .window: return nil
-            case .session(let id, let window): return library?.store(for: window)?.session(withID: id)?.askPending
-            }
+            guard case .session(let id, let window) = owner, let store = library?.store(for: window) else { return earlier(owner) }
+            return store.session(withID: id)?.askPending
         }
         hub.onPresenterChanged = { [weak self] id in
             guard let store = self?.library.store(forSession: id) else { return }

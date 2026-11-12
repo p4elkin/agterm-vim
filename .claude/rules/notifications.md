@@ -45,6 +45,11 @@ paths:
 - Selection and pane focus clear unseen state and delivered banners. App activation does not transition
   the retained first responder, which caused #155; the `didBecomeKey` observer therefore calls
   `clearUnseenOnRefocus` only when `liveFocus` says this pane is the key window's first responder.
+- A keystroke or dictated insert in a main or split pane clears a nonzero unseen count through that pane's
+  `onUserInput`, so a `notify` aimed at the session being typed in does not stick (#945). The key's kind and
+  `StatusReset.clearsBadge(on:)` under the Badge reset setting decide it: any key, a submit only, or never.
+  It leaves delivered banners alone, or the next key would pull a banner that just arrived. `session.type`
+  never fires `onUserInput`, so injected input clears nothing.
 - A pane swap clears delivered banners for that session. Notification identifiers encode the pane role and
   cannot be retagged in place, so leaving them delivered would make a later click reveal the wrong terminal.
   The unseen count is unchanged.
@@ -142,6 +147,10 @@ paths:
   shell integration's `_ags_precmd`. Panes compare AFTER `AgentIndicator.normalizedPane`,
   or a promoted survivor's baked `.right` fails to match the `.left` its own block is stored as. Every
   internal clear and retag keeps using `setAgentIndicator` and bypasses the rule.
+- A Claude subagent shares its main agent's pane, so pane precedence cannot separate them. The Claude adapter
+  instead posts a subagent's `active` with `--if-idle`, which applies only to an idle row; its `blocked`
+  still applies. Accepted gaps: the main agent's activity can replace a subagent's block, and a block the
+  answering key leaves in place (a digit under `enter`, any key under `never`) stays until main's next event.
 - Two blocks in one session still collapse: the second pane's `blocked` replaces the first, and clearing it
   from that pane leaves nothing. Only per-pane status storage fixes that; discussion #517 tracks it.
 - Interrupt means Esc (`keyCode == 53`) or bare Ctrl-C: control with no command/option/shift and either
@@ -154,7 +163,8 @@ paths:
   active on quick interrupt: Esc/manual decline emits neither `Stop` nor `PostToolUse`, and a prompt
   `PermissionRequest` does not cover turns blocked only through `Notification[permission_prompt]`,
   about six seconds after the last keystroke.
-  `PostToolUse` reasserts `active --blink` after an answered prompt. cmux can observe its
+  The main thread's `PostToolUse` reasserts `active --blink` after an answered prompt; a subagent's is
+  `--if-idle` and cannot. cmux can observe its
   own permission UI and herdr scrapes PTY state; agterm does neither.
 - `AgentIndicator.statusPane` also directs GUI selections needing attention. Attention and ordinary
   navigation, palettes, sidebar and Dock rows, and idle auto-follow use

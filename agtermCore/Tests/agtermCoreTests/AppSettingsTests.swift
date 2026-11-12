@@ -708,6 +708,15 @@ struct AppSettingsTests {
         #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
     }
 
+    @Test(arguments: [(nil, "/srv/app", nil), ("home", "/srv/app", nil), ("custom", "/srv/app", "/Users/me/work"),
+                      ("currentSession", "/srv/app", "/srv/app"), ("currentSession", "", nil), ("currentSession", nil, nil)]
+          as [(String?, String?, String?)])
+    func aRemoteNewSessionSendsTheCurrentRowsOrTheCustomDirectory(_ mode: String?, _ current: String?, _ expected: String?) {
+        let settings = AppSettings(newSessionDirectory: mode, newSessionCustomDirectory: "/Users/me/work")
+
+        #expect(settings.remoteNewSessionCwd(currentSessionCwd: current) == expected)
+    }
+
     @Test func resolveNewSessionCwdHomeIsDefault() {
         #expect(AppSettings().resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
         #expect(AppSettings(newSessionDirectory: "home").resolveNewSessionCwd(currentSessionCwd: "/proj", home: "/home") == "/home")
@@ -981,6 +990,18 @@ struct AppSettingsTests {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
         #expect(decoded == original)
         #expect(original.ghosttyConfigLines() == ["mouse-scroll-multiplier = 3", "right-click-action = paste"])
+    }
+
+    @Test func badgeResetDefaultsToFirstKeyAndResolvesKnownRawValues() throws {
+        #expect(AppSettings().badgeReset == nil)
+        #expect(AppSettings().effectiveBadgeReset == .firstKey)
+        #expect(AppSettings(badgeReset: "enter").effectiveBadgeReset == .enter)
+        #expect(AppSettings(badgeReset: "never").effectiveBadgeReset == .never)
+        #expect(AppSettings(badgeReset: "teleporter").effectiveBadgeReset == .firstKey)
+        #expect(AppSettings(statusReset: "never").effectiveBadgeReset == .firstKey)
+        let original = AppSettings(badgeReset: "enter")
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(original))
+        #expect(decoded == original)
     }
 
     @Test func unknownInterfaceElementDecodesTolerantly() throws {

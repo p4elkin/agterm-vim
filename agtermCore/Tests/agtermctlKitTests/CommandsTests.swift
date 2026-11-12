@@ -440,6 +440,22 @@ struct CommandsTests {
         #expect(try request(["session", "scratch", "off"]) == expected)
     }
 
+    @Test func sessionScratchCarriesTheExpectedScratchWithAnOperation() throws {
+        let identity = UUID().uuidString
+        let args = try request(["session", "scratch", "on", "--command", "htop", "--op-id", "op-1", "--epoch", "e1",
+                                "--expect-scratch", identity]).args
+
+        #expect(args?.scratch == identity)
+        #expect(args?.opID == "op-1")
+        #expect(args?.epoch == "e1")
+        #expect(try request(["session", "scratch", "on", "--op-id", "op-1", "--epoch", "e1", "--expect-scratch", "none"]).args?.scratch == "none")
+    }
+
+    @Test(arguments: [["--expect-scratch", "none"], ["--expect-scratch", "nope", "--op-id", "op-1", "--epoch", "e1"]])
+    func sessionScratchRefusesAnExpectedScratchItCannotSend(_ flags: [String]) {
+        #expect(throws: (any Error).self) { try request(["session", "scratch", "on"] + flags) }
+    }
+
     @Test func sessionFocusDefaultsOther() throws {
         let expected = ControlRequest(cmd: .sessionFocus, target: "active", args: ControlArgs(pane: "other"))
         #expect(try request(["session", "focus"]) == expected)
@@ -506,6 +522,11 @@ struct CommandsTests {
     @Test func sessionGoWithWindow() throws {
         let expected = ControlRequest(cmd: .sessionGo, args: ControlArgs(window: "w1", to: "last"))
         #expect(try request(["session", "go", "--to", "last", "--window", "w1"]) == expected)
+    }
+
+    @Test func sessionGoPosition() throws {
+        let expected = ControlRequest(cmd: .sessionGo, args: ControlArgs(to: "3"))
+        #expect(try request(["session", "go", "--to", "3"]) == expected)
     }
 
     @Test func sessionGoRequiresToFails() {
@@ -636,6 +657,12 @@ struct CommandsTests {
         #expect(req.args?.autoReset == true)
         #expect(req == ControlRequest(cmd: .sessionStatus, target: "active",
                                       args: ControlArgs(status: "completed", autoReset: true)))
+    }
+
+    @Test func sessionStatusWithIfIdle() throws {
+        let req = try request(["session", "status", "active", "--blink", "--if-idle"])
+        #expect(req == ControlRequest(cmd: .sessionStatus, target: "active",
+                                      args: ControlArgs(status: "active", blink: true, ifIdle: true)))
     }
 
     @Test func sessionStatusWithSound() throws {
@@ -1495,28 +1522,25 @@ struct CommandsTests {
         #expect(command.noBlock)
     }
 
-    @Test(arguments: [
-        (["--target", "explicit"], ["AGTERM_SESSION_ID": "pane"], "explicit"),
-        ([], ["AGTERM_SESSION_ID": "pane"], "pane"),
-        ([], ["AGTERM_SESSION_ID": ""], nil),
-        ([], [:], nil),
-    ] as [([String], [String: String], String?)])
-    func pickOpenTargetsTheFlagElseItsOwnSession(_ arguments: [String], _ environment: [String: String], _ target: String?) throws {
+    @Test(arguments: [["--target", "explicit"], ["--session", "explicit"]])
+    func pickOpenTargetIsAnAliasOfSession(_ arguments: [String]) throws {
         let command = try Pick.Open.parse(arguments)
 
-        #expect(try command.makeRequest(input: Data("One\n".utf8), environment: environment).target == target)
+        #expect(try command.makeRequest(input: Data("One\n".utf8)).target == "explicit")
     }
 
-    @Test func pickOpenExecuteSendsTheSessionFromTheEnvironment() throws {
+    @Test func pickOpenExecuteSendsTheSessionFromTheEnvironmentToAHeadlessOrigin() throws {
         var sent: [ControlRequest] = []
         let command = try Pick.Open.parse(["--no-block"])
 
-        try command.execute(input: Data("One\n".utf8), environment: ["AGTERM_SESSION_ID": "pane"], send: { request in
+        try command.execute(input: Data("One\n".utf8), send: { request in
             sent.append(request)
-            return SocketReply(ControlResponse(ok: true, result: ControlResult(id: "pick-1")))
-        }, sleep: { _ in }, output: { _ in }, errorOutput: { _ in })
+            var result = ControlResult(id: "pick-1")
+            result.headless = request.cmd == .version ? true : nil
+            return SocketReply(ControlResponse(ok: true, result: result))
+        }, sleep: { _ in }, output: { _ in }, errorOutput: { _ in }, environment: ["AGTERM_SESSION_ID": "pane"])
 
-        #expect(sent.map(\.target) == ["pane"])
+        #expect(sent.map(\.target) == [nil, "pane"])
     }
 
     @Test func pickOpenDefaultsToBlockingWithoutOptionalArgs() throws {
@@ -1547,10 +1571,9 @@ struct CommandsTests {
             ControlRequest(cmd: .pickCancel, target: "pick-1", args: ControlArgs(window: "w1")))
     }
 
-    @Test func pickOpenHasNoTimeoutOption() {
-        #expect(throws: (any Error).self) {
-            try Agtermctl.parseAsRoot(["pick", "--timeout", "60"])
-        }
+    @Test func pickOpenTakesATimeoutFromTheRoot() throws {
+        let command = try #require(try Agtermctl.parseAsRoot(["pick", "--timeout", "60"]) as? Pick.Open)
+        #expect(try command.makeRequest(input: Data("a\n".utf8)).args?.timeout == 60)
     }
 
     // MARK: - dashboard
@@ -1933,6 +1956,12 @@ struct CommandsTests {
     @Test func socketPathFallsBackToHome() throws {
         let command = try Tree.parse([])
         let env = ["HOME": "/Users/x"]
+        #expect(command.options.socketPath(env: env) == "/Users/x/Library/Application Support/agterm/agterm.sock")
+    }
+
+    @Test func socketPathIgnoresXdgStateHomeOnMac() throws {
+        let command = try Tree.parse([])
+        let env = ["HOME": "/Users/x", "XDG_STATE_HOME": "/var/state"]
         #expect(command.options.socketPath(env: env) == "/Users/x/Library/Application Support/agterm/agterm.sock")
     }
     #endif

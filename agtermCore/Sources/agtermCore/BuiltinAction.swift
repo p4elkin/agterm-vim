@@ -36,7 +36,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
     /// the `CustomCommandRunner.rebuild()` merge line like `normalMode` and `overlayRedirectToggle`.
     case newSessionInWorkspace = "new_session_in_workspace"
     case rebasedToggle = "rebased_toggle"
-    case attachRemote = "attach_remote"
+    case attachRemote = "attach_remote", openRemoteWindow = "open_remote_window", detachedSessions = "detached_sessions"
     case editFlaggedSessions = "edit_flagged_sessions", editFocusedWorkspaces = "edit_focused_workspaces"
 
     /// The shipped default chord, or `nil` for a keyless action, which gains a key only when the user
@@ -82,7 +82,7 @@ public enum BuiltinAction: String, CaseIterable, Sendable {
              .clearStatus, .firstSession, .lastSession, .selectTheme, .toggleFlaggedView, .focusWorkspace,
              .toggleWorkspaceFilter, .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
              .normalMode, .overlayRedirectToggle, .newSessionInWorkspace, .rebasedToggle,
-             .previousWindow, .nextWindow, .editFlaggedSessions, .editFocusedWorkspaces:
+             .previousWindow, .nextWindow, .editFlaggedSessions, .editFocusedWorkspaces, .openRemoteWindow, .detachedSessions:
             return nil
         }
     }

@@ -75,6 +75,7 @@ extension WorkspaceSidebar.Coordinator {
         cell.setAddButtonVisible(false)
         cell.parked = false
         cell.newSessionPending = false
+        cell.addButton?.isEnabled = !store.serverActionsBlocked
         cell.notice = nil
         cell.setIconVisible(!GhosttyApp.shared.hiddenInterfaceElements.contains(node.kind.iconElement))
         switch node.kind {
@@ -156,11 +157,8 @@ extension WorkspaceSidebar.Coordinator {
         }
     }
 
-    /// The notice a remote row shows while its presentation stream is not up, nil otherwise.
-    func presentationNotice(for session: Session) -> String? {
-        guard let host = session.remoteHost else { return nil }
-        return session.remotePresentation?.rowNotice(host: host)
-    }
+    /// presentationNotice is the line a remote row shows while it has ended or its stream is not up.
+    func presentationNotice(for session: Session) -> String? { session.remoteRowNotice }
 
     /// Shows the unseen-notification `count` capsule on the row (hidden, zero-width when 0, so the
     /// name reclaims the space). The `notify-badge` accessibility hook lives on `BadgeView`.
@@ -169,20 +167,19 @@ extension WorkspaceSidebar.Coordinator {
         cell.badge.count = count
     }
 
-    /// The leading session-row icon: split-rectangle when split, else plain terminal, each swapped to its
-    /// filled variant when `flagged` — tree mode only, the flat flagged view passes `flagged: false`.
-    ///
-    /// A remote row takes its own glyph and keeps the split bit, not the flagged fill: a HIDDEN split is
-    /// state nothing else reveals, while the fill is tree-mode decoration the flat flagged view already
-    /// passes `flagged: false` for. It marks that split by WEIGHT, as the focused-workspace icon does,
-    /// because `.fill` is what every other row icon spends on FLAGGED, so a filled cloud would read as a
-    /// flag. The axis is not distinguished — no cloud symbol carries both arrangements.
-    ///
-    /// A remote row whose presentation stream is down swaps the cloud for its slashed form.
+    /// iconForSession uses filled variants when flagged; the flat flagged view passes false. Remote rows use
+    /// clouds, slashed for a notice; bold marks a split but is barely distinguishable when filled. Remote split
+    /// axes share a glyph.
     private func iconForSession(split: Bool, axis: SplitAxis, flagged: Bool, remote: Bool,
                                 disconnected: Bool) -> NSImage? {
-        if remote, disconnected { return split ? remoteDisconnectedSplitSessionIcon : remoteDisconnectedSessionIcon }
-        if remote { return split ? remoteSplitSessionIcon : remoteSessionIcon }
+        if remote, disconnected {
+            if flagged { return split ? flaggedRemoteDisconnectedSplitSessionIcon : flaggedRemoteDisconnectedSessionIcon }
+            return split ? remoteDisconnectedSplitSessionIcon : remoteDisconnectedSessionIcon
+        }
+        if remote {
+            if flagged { return split ? flaggedRemoteSplitSessionIcon : flaggedRemoteSessionIcon }
+            return split ? remoteSplitSessionIcon : remoteSessionIcon
+        }
         switch (split, axis, flagged) {
         case (true, .topBottom, true): return flaggedHorizontalSplitSessionIcon
         case (true, .topBottom, false): return horizontalSplitSessionIcon
@@ -352,6 +349,14 @@ extension WorkspaceSidebar.Coordinator {
         suffix.setContentCompressionResistancePriority(.required, for: .horizontal)
         suffix.setAccessibilityIdentifier("workspace-parked-count")
         return suffix
+    }
+
+    /// applyAddButtonEnabled sets every shown workspace row's "+" to whether a new session can be made now.
+    func applyAddButtonEnabled(_ enabled: Bool) {
+        guard let outline = outlineView else { return }
+        for row in 0..<outline.numberOfRows {
+            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.addButton?.isEnabled = enabled
+        }
     }
 
     private func makeAddSessionButton() -> NSButton {

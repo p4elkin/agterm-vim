@@ -136,6 +136,20 @@ struct TerminfoInstallTests {
 
     // MARK: - the pipeline, with fake executables
 
+    #if !canImport(Darwin)
+    @Test func installIsRefusedOffDarwinWithoutStartingSsh() throws {
+        let env = try fixture.database(name: "env", layout: "78")
+        let infocmp = try fixture.fakeInfocmp(printing: "xterm-ghostty|test,\n\tcols#80,\n")
+        let ssh = try fixture.fakeSSH(exitCode: 0)
+
+        #expect(throws: TerminfoInstall.Failure.spawnFailed(operation: "terminfo install", errno: ENOTSUP)) {
+            try TerminfoInstall.run(TerminfoInstall.Connection(destination: "buildbox"), clientPath: nil,
+                                    environment: ["TERMINFO": env], ssh: ssh, infocmp: infocmp)
+        }
+        #expect((try? fixture.sshArguments()) == nil)
+    }
+    #endif
+
     #if canImport(Darwin)
     @Test func theDumpReachesSshStdinByteForByteAndEndsInEOF() throws {
         let env = try fixture.database(name: "env", layout: "78")
@@ -299,15 +313,23 @@ private struct Fixture {
         return dir.path
     }
 
-    /// The bundle shape the installed CLI resolves into: `Contents/MacOS/agtermctl` beside
-    /// `Contents/Resources/terminfo`.
+    /// The shape the installed CLI resolves into: `Contents/MacOS/agtermctl` beside `Contents/Resources/terminfo`,
+    /// and on Linux agterm-server's install, `agtermctl` beside `resources/terminfo`.
     func bundle(layout: String) throws -> (client: String, terminfo: String) {
+        #if os(Linux)
+        let install = root.appendingPathComponent("agterm-server")
+        try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+        let server = install.appendingPathComponent("agtermctl")
+        try Data().write(to: server)
+        return (server.path, try database(name: "agterm-server/resources/terminfo", layout: layout))
+        #else
         let contents = root.appendingPathComponent("agterm.app/Contents")
         try FileManager.default.createDirectory(at: contents.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
         let client = contents.appendingPathComponent("MacOS/agtermctl")
         try Data().write(to: client)
         let terminfo = try database(name: "agterm.app/Contents/Resources/terminfo", layout: layout)
         return (client.path, terminfo)
+        #endif
     }
 
     /// A database the real `tic` compiled from `source`, so the real `infocmp` has something to dump.
@@ -366,20 +388,22 @@ private struct Fixture {
         return try #require(pid_t(text), "pgid recorded as '\(text)'")
     }
 
-    /// A stand-in for the remote account: an empty `HOME` and a `PATH` of `/bin` (mkdir, but no tic:
-    /// the real one is in `/usr/bin`) plus a fake `tic` that records its arguments and stdin, or none.
     func remoteHome(withTic: Bool) throws -> (path: String, environment: [String: String]) {
         let home = root.appendingPathComponent("remote-home")
         let bin = root.appendingPathComponent("remote-bin")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        for tool in ["mkdir", "cat"] {
+            try FileManager.default.createSymbolicLink(atPath: bin.appendingPathComponent(tool).path,
+                                                       withDestinationPath: "/bin/\(tool)")
+        }
         if withTic {
             try script(at: bin.appendingPathComponent("tic"), body: """
             printf '%s\\n' "$@" > '\(root.appendingPathComponent("tic.args").path)'
             cat > '\(root.appendingPathComponent("tic.stdin").path)'
             """)
         }
-        return (home.path, ["HOME": home.path, "PATH": bin.path + ":/bin"])
+        return (home.path, ["HOME": home.path, "PATH": bin.path])
     }
 
     func ticArguments() throws -> [String] {
@@ -402,9 +426,10 @@ private struct Fixture {
         process.standardError = err
         let input = Pipe()
         process.standardInput = input
-        try process.run()
+        // written before launch: a child that exits unread would SIGPIPE a later write on Linux
         if let stdin { try input.fileHandleForWriting.write(contentsOf: Data(stdin.utf8)) }
         try input.fileHandleForWriting.close()
+        try process.run()
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         let stderr = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
@@ -425,8 +450,7 @@ private struct Fixture {
 
     @discardableResult
     private func script(at file: URL, body: String) throws -> String {
-        try "#!/bin/sh\n\(body)\n".write(to: file, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+        try "#!/bin/sh\n\(body)\n".writeExecutable(to: file)
         return file.path
     }
 }

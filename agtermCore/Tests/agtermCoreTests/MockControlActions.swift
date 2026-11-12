@@ -154,6 +154,7 @@ class MockControlActionsBase {
         case windowZoom(target: String?)
         case windowFullscreen(target: String?)
         case windowMinimize(target: String?, mode: ControlToggleMode)
+        case windowRemoteOpen(host: String)
         case pickOpen(PendingPick, window: String?, follow: Bool)
         case pickResult(target: String, window: String?)
         case pickCancel(target: String, window: String?)
@@ -245,6 +246,7 @@ class MockControlActionsBase {
     var nextWindowZoomResponse = ControlResponse(ok: true)
     var nextWindowFullscreenResponse = ControlResponse(ok: true)
     var nextWindowMinimizeResponse = ControlResponse(ok: true)
+    var nextWindowRemoteOpenResponse = ControlResponse(ok: true)
     var nextPickOpenResponse = ControlResponse(ok: true)
     var nextPickResultResponse = ControlResponse(ok: true)
     var nextPickCancelResponse = ControlResponse(ok: true)
@@ -1019,6 +1021,11 @@ class MockControlActionsBase {
     func windowMinimize(_ target: String?, mode: ControlToggleMode) async -> ControlResponse {
         calls.append(.windowMinimize(target: target, mode: mode))
         return nextWindowMinimizeResponse
+    }
+
+    func windowRemoteOpen(host: String) async -> ControlResponse {
+        calls.append(.windowRemoteOpen(host: host))
+        return nextWindowRemoteOpenResponse
     }
 
     func openPick(_ pick: PendingPick, window: String?, follow: Bool) -> ControlResponse {

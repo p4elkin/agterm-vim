@@ -273,10 +273,12 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
     public let paneID: String?
     /// The trimmed note, already validated by the dispatcher; nil clears the previous one.
     public let note: String?
+    /// `ifIdle` applies the write only while the session's status is idle; otherwise it is an ok no-op.
+    public let ifIdle: Bool
 
     public init(status: AgentStatus, blink: Bool?, autoReset: Bool?, sound: String?,
                 color: String? = nil, shape: StatusShape? = nil,
-                pane: StatusPane? = nil, paneID: String? = nil, note: String? = nil) {
+                pane: StatusPane? = nil, paneID: String? = nil, note: String? = nil, ifIdle: Bool = false) {
         self.status = status
         self.blink = blink
         self.autoReset = autoReset
@@ -286,6 +288,7 @@ public struct ControlSessionStatusUpdate: Equatable, Sendable {
         self.pane = pane
         self.paneID = paneID
         self.note = note
+        self.ifIdle = ifIdle
     }
 }
 

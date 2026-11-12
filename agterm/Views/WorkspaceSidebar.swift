@@ -102,7 +102,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         _ = store.workspaces.map { workspace in
             (workspace.id, workspace.name, workspace.unseenCount, workspace.tint, workspace.sessions.map {
                 ($0.id, $0.displayName, $0.hasSplit, $0.splitAxis, $0.unseenCount, $0.agentIndicator,
-                 $0.flagged, $0.parked, $0.remoteConnection, $0.tint, $0.effectiveInfo)
+                 $0.flagged, $0.parked, $0.remoteConnection, $0.tint, $0.effectiveInfo, $0.ended)
             })
         }
         _ = store.selectedSessionID
@@ -119,6 +119,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
         _ = store.hideParked
         _ = store.parkedRevealedWorkspaceIDs
         _ = RemoteCreatePending.shared.windows
+        context.coordinator.applyAddButtonEnabled(!store.serverActionsBlocked)
         context.coordinator.reconcile()
         context.coordinator.syncSelection()
     }
@@ -226,7 +227,9 @@ struct WorkspaceSidebar: NSViewRepresentable {
         init(store: AppStore, actions: AppActions) {
             self.store = store
             self.actions = actions
-            self.renameController = SidebarRenameController(store: store)
+            self.renameController = SidebarRenameController(store: store) { [weak actions] operation in
+                actions?.performRemote(operation, in: store) ?? false
+            }
             super.init()
             // seed from the live mirror (SettingsModel applies the persisted size before any sidebar is
             // built) so the first appearanceChanged doesn't rebuild for no change.
@@ -665,6 +668,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             lastVisibleShape = visibleShape()
             snapshotRowContent()
             (outline as? SidebarOutlineView)?.reservesDisclosureColumn = rendersWorkspaceRows && !chevronsHidden
+            (outline as? SidebarOutlineView)?.listsSessionsFlat = !rendersWorkspaceRows
             applySidebarContentInset(outline.enclosingScrollView)
 
             // flat flagged list: non-expandable session rows; no workspace nodes, so they leave the cache.
@@ -989,8 +993,12 @@ struct WorkspaceSidebar: NSViewRepresentable {
         lazy var flaggedPageSessionIcon = Self.rowIcon("list.bullet.rectangle.fill")
         lazy var remoteSessionIcon = Self.rowIcon("cloud")
         lazy var remoteSplitSessionIcon = Self.rowIcon("cloud", weight: .bold)
+        lazy var flaggedRemoteSessionIcon = Self.rowIcon("cloud.fill")
+        lazy var flaggedRemoteSplitSessionIcon = Self.rowIcon("cloud.fill", weight: .bold)
         lazy var remoteDisconnectedSessionIcon = Self.rowIcon("icloud.slash")
         lazy var remoteDisconnectedSplitSessionIcon = Self.rowIcon("icloud.slash", weight: .bold)
+        lazy var flaggedRemoteDisconnectedSessionIcon = Self.rowIcon("icloud.slash.fill")
+        lazy var flaggedRemoteDisconnectedSplitSessionIcon = Self.rowIcon("icloud.slash.fill", weight: .bold)
 
         private static func rowIcon(_ symbolName: String, weight: NSFont.Weight = .regular) -> NSImage? {
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: weight)

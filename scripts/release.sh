@@ -146,6 +146,17 @@ EOF
 
 # ── build ────────────────────────────────────────────────────────────────────
 "$ROOT/scripts/setup.sh"
+
+# the Linux server ships with each release, one tarball per architecture; the app carries their checksums, which
+# `agtermctl server install` checks a download against
+docker info >/dev/null 2>&1 || { echo "release needs Docker running to build agterm-server" >&2; exit 1; }
+"$ROOT/scripts/setup-zmx-linux.sh"
+SERVER_TARBALLS=()
+for arch in aarch64 x86_64; do
+  "$ROOT/scripts/server-package.sh" "$arch" "$VERSION"
+  SERVER_TARBALLS+=("$BUILD_DIR/server/agterm-server-$VERSION-linux-$arch.tar.gz")
+done
+
 xcodegen generate >/dev/null
 # plain Release build (NOT archive). The build is left ad-hoc here on purpose:
 # Xcode's own final code-sign runs after the bundle phase and adds no secure
@@ -157,6 +168,8 @@ xcodebuild -project agterm.xcodeproj -scheme agterm -configuration Release \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" \
   ARCHS=arm64 build
 [ -d "$APP" ] || { echo "expected app not found: $APP" >&2; exit 1; }
+# written before the seal below, which then covers it
+(cd "$BUILD_DIR/server" && shasum -a 256 "${SERVER_TARBALLS[@]##*/}") >"$APP/Contents/Resources/agterm-server.sha256"
 
 # authoritative Developer ID signing — AFTER xcodebuild so nothing clobbers it,
 # with a secure --timestamp on every Mach-O (notarization requires it). Sign the
@@ -177,6 +190,10 @@ if [ "$SIGNED" = "1" ]; then
       exit 1
     fi
   done
+else
+  # the checksum file joined the bundle after the build sealed it; the helpers are untouched, so only the app re-seals
+  codesign --force --entitlements "$ROOT/agterm/agterm.entitlements" --sign - "$APP"
+  codesign --verify --deep --strict "$APP"
 fi
 
 # ── notarize + staple the app ─────────────────────────────────────────────────
@@ -228,7 +245,7 @@ else
   gh release create "$TAG" --title "Version $VERSION" --notes-file "$NOTES_FILE"
 fi
 rm -f "$NOTES_FILE"
-gh release upload "$TAG" "$DMG" --clobber
+gh release upload "$TAG" "$DMG" "${SERVER_TARBALLS[@]}" --clobber
 
 if [ -n "$TAP_REPO" ]; then
   SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"

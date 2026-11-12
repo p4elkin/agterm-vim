@@ -303,35 +303,7 @@ extension ControlServer: ControlActions {
 
     func sessionOverlayResult(_ target: String?, window: String?, pane: OverlayPane?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
-            guard let session = store.session(withID: id) else {
-                return ControlResponse(ok: false, error: "no such session")
-            }
-            if session.remoteOverlays.slot(pane)?.page != nil {
-                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
-            }
-            if let slot = session.remoteOverlays.slot(pane), !slot.ended {
-                return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
-            }
-            if session.htmlCovers(pane) {
-                return ControlResponse(ok: false, error: OverlayHtmlError.noResult)
-            }
-            let (running, exitCode) = pane.map { (session.paneOverlayIsProgram($0), session.paneOverlayExitCode($0)) }
-                ?? (session.programOverlayActive, session.overlayExitCode)
-            if running {
-                return ControlResponse(ok: false, error: OverlayResultError.stillRunning)
-            }
-            if exitCode == nil, let failure = session.remoteOverlays.failure(pane) {
-                return ControlResponse(ok: false, error: OverlayResultError.ended(failure))
-            }
-            // a HUD opened after a program clears its result, so one recorded here is a remote job's that
-            // ended under a HUD; the painter itself never reports a status
-            if exitCode == nil, pane == nil, session.hudActive {
-                return ControlResponse(ok: false, error: OverlayHudError.noResult)
-            }
-            guard let code = exitCode else {
-                return ControlResponse(ok: false, error: OverlayResultError.noResult)
-            }
-            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString, exitCode: code))
+            store.session(withID: id)?.overlayResult(pane: pane) ?? ControlResponse(ok: false, error: "no such session")
         }
     }
 
@@ -420,6 +392,7 @@ extension ControlServer: ControlActions {
     func goSession(window: String?, direction: SessionNavigation) -> ControlResponse {
         // relative nav acts on the store's current selection: no session target, just the frontmost/`--window` store.
         resolver.resolvePlacementStore(window) { store in
+            if let error = store.navigationError(direction) { return ControlResponse(ok: false, error: error) }
             store.navigateSession(direction)
             guard let id = store.selectedSessionID else {
                 return ControlResponse(ok: false, error: "no session to navigate")
@@ -649,9 +622,14 @@ extension ControlServer: ControlActions {
                                        color: update.color, shape: update.shape, statusPane: resolvedPane,
                                        note: update.note)
         // rejected writes must return before playback: no status change means no sound.
-        if case .refused(let owner) = store.applyControlStatus(indicator, forSession: id) {
+        switch store.applyControlStatus(indicator, forSession: id, ifIdle: update.ifIdle) {
+        case .refused(let owner):
             return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue) " +
                 "(write from that pane to change it)")
+        case .skipped:
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        case .applied:
+            break
         }
         // the blocked marker goes even when this Mac has no blocked sound: the presenter plays its own setting
         let explicit = prepared == nil ? nil : update.sound

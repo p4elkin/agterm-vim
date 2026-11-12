@@ -479,18 +479,24 @@ struct Pick: ParsableCommand {
         @Option(name: .long, help: "Item id to open highlighted; a --query that hides it falls back to the first row.")
         var select: String?
         @Flag(name: .long, help: "Raise the target window when the picker opens.") var follow = false
+        @Option(name: .long, help: "Cancel the picker unanswered after this many seconds (at most 86400).") var timeout: Double?
         @Flag(name: .long, help: "Print the picker id and return without waiting for a result.") var noBlock = false
-        @Option(name: .long, help: "The session the picker is for; defaults to $AGTERM_SESSION_ID.") var target: String?
+        @Option(name: [.customLong("session"), .customLong("target")],
+                help: "Bind the picker to a session: it shows wherever that session is presented.")
+        var session: String?
         @OptionGroup var options: ClientOptions
 
-        func makeRequest() throws -> ControlRequest {
-            try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile(), environment: ProcessInfo.processInfo.environment)
+        func validate() throws {
+            if let timeout, !ControlInteraction.isValidTimeout(timeout) { throw ValidationError(ControlInteraction.timeoutError) }
         }
 
-        /// Build the open request from injected stdin bytes and environment, so tests never block on the process's
-        /// real stdin or inherit its pane. The target lets a headless origin forward the picker to its presenting Mac.
-        func makeRequest(input: Data, environment: [String: String] = [:]) throws -> ControlRequest {
-            let args = ControlArgs(
+        func makeRequest() throws -> ControlRequest {
+            try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile())
+        }
+
+        /// Build the open request from injected stdin bytes, so tests never block on the process's real stdin.
+        func makeRequest(input: Data, session bound: String? = nil) throws -> ControlRequest {
+            var args = ControlArgs(
                 follow: follow ? true : nil,
                 items: try Self.parseItems(input),
                 prompt: prompt,
@@ -498,8 +504,16 @@ struct Pick: ParsableCommand {
                 allowCustom: allowCustom ? true : nil,
                 selection: select
             )
-            let session = target ?? environment["AGTERM_SESSION_ID"].flatMap { $0.isEmpty ? nil : $0 }
-            return ControlRequest(cmd: .pickOpen, target: session, args: options.withWindow(args))
+            args.timeout = timeout
+            return ControlRequest(cmd: .pickOpen, target: bound ?? session, args: options.withWindow(args))
+        }
+
+        /// boundSession is the session the pick is bound to: `--session`, else the pane's own session when the
+        /// server is agterm-server, which has no window of its own to show a pick in. A Mac keeps the window pick.
+        func boundSession(environment: [String: String], send: (ControlRequest) throws -> SocketReply) throws -> String? {
+            if let session { return session }
+            guard let own = environment["AGTERM_SESSION_ID"], !own.isEmpty else { return nil }
+            return try send(ControlRequest(cmd: .version)).response.result?.headless == true ? own : nil
         }
 
         /// Sniff stdin's first non-whitespace byte. JSON arrays preserve caller-supplied ids/subtitles;
@@ -522,11 +536,11 @@ struct Pick: ParsableCommand {
             let client = SocketClient(path: options.socketPath())
             try execute(
                 input: FileHandle.standardInput.readDataToEndOfFile(),
-                environment: ProcessInfo.processInfo.environment,
                 send: client.send,
                 sleep: Thread.sleep(forTimeInterval:),
                 output: { print($0) },
-                errorOutput: ModalCommandRunner.writeStandardError
+                errorOutput: ModalCommandRunner.writeStandardError,
+                environment: ProcessInfo.processInfo.environment
             )
         }
 
@@ -534,15 +548,16 @@ struct Pick: ParsableCommand {
         /// real delays or process fds.
         func execute(
             input: Data,
-            environment: [String: String] = [:],
             send: @escaping (ControlRequest) throws -> SocketReply,
             sleep: @escaping (TimeInterval) -> Void,
             output: @escaping (String) -> Void,
-            errorOutput: @escaping (String) -> Void = ModalCommandRunner.writeStandardError
+            errorOutput: @escaping (String) -> Void = ModalCommandRunner.writeStandardError,
+            environment: [String: String] = [:]
         ) throws {
             let runner = ModalCommandRunner(family: .pick, json: options.json, send: send, sleep: sleep,
                                             output: output, errorOutput: errorOutput)
-            try runner.open(makeRequest(input: input, environment: environment), noBlock: noBlock)
+            let bound = try boundSession(environment: environment, send: send)
+            try runner.open(makeRequest(input: input, session: bound), noBlock: noBlock)
         }
     }
 
@@ -941,9 +956,15 @@ struct Version: RequestCommand {
         }
     }
 
-    /// Resolve the running executable, not the caller-controlled `argv[0]` or an installed symlink.
+    /// The running executable's real path. `_NSGetExecutablePath` (`/proc/self/exe` on Linux) rather than
+    /// `argv[0]`, which is whatever the caller chose to exec with, and `realpath` because the installed CLI
+    /// is a symlink into the bundle.
     static func clientPath() -> String? {
-        #if canImport(Darwin)
+        #if !canImport(Darwin)
+        guard let resolved = realpath("/proc/self/exe", nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+        #else
         var size = UInt32(0)
         _ = _NSGetExecutablePath(nil, &size)
         var buffer = [CChar](repeating: 0, count: Int(size))
@@ -951,12 +972,6 @@ struct Version: RequestCommand {
         guard let resolved = realpath(buffer, nil) else { return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self) }
         defer { free(resolved) }
         return String(cString: resolved)
-        #else
-        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
-        let count = readlink("/proc/self/exe", &buffer, buffer.count)
-        guard count > 0, count < buffer.count else { return nil }
-        buffer[count] = 0
-        return String(cString: buffer)
         #endif
     }
 }

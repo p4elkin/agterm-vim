@@ -91,8 +91,10 @@ enum SessionInfoMarkup {
     /// On Linux, where swift-corelibs Foundation has no markdown parser, the source is literal text, the same
     /// fallback `HudMarkdown` takes there.
     private static func parseMarkdown(_ source: String) throws(ParseError) -> [SessionInfoSpan] {
-        #if !canImport(Darwin)
-        return [SessionInfoSpan(text: source)]
+        #if !canImport(Darwin) && canImport(Markdown)
+        return try portableSpans(source)
+        #elseif !canImport(Darwin)
+        throw .invalidMarkdown
         #else
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         let parsed: AttributedString
@@ -134,6 +136,7 @@ enum SessionInfoMarkup {
     }
 }
 
+#if canImport(Darwin)
 enum SessionInfoColorKey: CodableAttributedStringKey, MarkdownDecodableAttributedStringKey {
     typealias Value = String
     static let name = "color"
@@ -153,3 +156,4 @@ extension AttributeScopes {
 
     var agtermSessionInfo: SessionInfoAttributes.Type { SessionInfoAttributes.self }
 }
+#endif

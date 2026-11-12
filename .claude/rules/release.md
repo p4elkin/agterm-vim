@@ -14,6 +14,12 @@ paths:
   Without `--publish`, the dry run stops before upload. Upstream signs as
   `Developer ID Application: Brave Elk LLC` with the `agterm-notary` profile and taps
   `umputun/homebrew-apps`; this fork has none of the three — see below.
+- Each release also ships agterm-server: `release.sh` needs Docker running, runs `scripts/setup-zmx-linux.sh`, and
+  packages `agterm-server-VERSION-linux-{aarch64,x86_64}.tar.gz` with `scripts/server-package.sh` before the Xcode
+  build. Their sha256 lines go into the app as `Contents/Resources/agterm-server.sha256` before the re-seal (an
+  ad-hoc re-seal on the unsigned path), and `--publish` uploads the DMG and both tarballs in one
+  `gh release upload --clobber`. `agtermctl server install` trusts only that bundled file, so a tarball rebuilt after
+  the app was sealed no longer installs.
 - `release.sh` copies `packaging/agterm.rb` into the tap only when the tap has no cask, then rewrites
   just `version` and `sha256`. Any other cask edit is made by hand in `umputun/homebrew-apps` too, and the
   two files must stay identical apart from those two lines.

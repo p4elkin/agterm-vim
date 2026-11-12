@@ -29,18 +29,19 @@ struct BasicOptions: ParsableArguments, ConnectionOptions {
     var json = false
 
     /// Resolve the socket path, in precedence order: `--socket` → `<AGTERM_STATE_DIR>/agterm.sock` →
-    /// `<$HOME>/Library/Application Support/agterm/agterm.sock`, on Linux the headless server's
-    /// `<$HOME>/.local/state/agterm-headless/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
-    /// injectable so the precedence is unit-testable; production passes the process environment.
+    /// `<ControlResolve.defaultStateDirectory>/agterm.sock`, on Linux the fork's headless server's
+    /// `<$HOME>/.local/state/agterm-headless/agterm.sock` rather than agterm-server's. `env` is injectable so the
+    /// precedence is unit-testable; production passes the process environment.
     func socketPath(env: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let socket { return socket }
         #if os(Linux)
-        let home = ".local/state/agterm-headless"
-        #else
-        let home = "Library/Application Support/agterm"
-        #endif
-        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent(home) }) ?? "/tmp/agterm"
+        let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent(".local/state/agterm-headless") })
+            ?? "/tmp/agterm"
         return ControlResolve.socketPath(stateDir: env["AGTERM_STATE_DIR"], appSupport: appSupport)
+        #else
+        return ControlResolve.socketPath(stateDir: env["AGTERM_STATE_DIR"],
+                                         appSupport: ControlResolve.defaultStateDirectory(environment: env))
+        #endif
     }
 }
 
@@ -88,17 +89,23 @@ struct SurfaceTargetOptions: ParsableArguments {
     var target: String = "active"
 }
 
-/// Agtermctl is the root `agtermctl` command. Subcommands mirror the control catalog 1:1, except `terminfo` and
-/// `clipboard`, which run locally and never open the socket.
+/// Agtermctl is the root `agtermctl` command. Subcommands mirror the control catalog 1:1, except `terminfo`,
+/// `clipboard` and the macOS-only `server`, which run locally and never open the socket.
 public struct Agtermctl: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "agtermctl",
         abstract: "Drive agterm over its control socket, and install its terminfo entry on other hosts.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, NormalMode.self, Notify.self, Msg.self, Font.self, Keymap.self, Hooks.self, Browser.self,
-                      Config.self, Theme.self, Pick.self, Ask.self, Restore.self, Recent.self, Zmx.self, Terminfo.self,
-                      OverlayRedirect.self, Rebased.self, Clipboard.self, Version.self]
+                      Config.self, Theme.self, Pick.self, Ask.self, Restore.self, Recent.self, Zmx.self, Catalog.self, Terminfo.self,
+                      OverlayRedirect.self, Rebased.self] + hostSubcommands + [Clipboard.self, Version.self]
     )
+
+    #if os(macOS)
+    private static let hostSubcommands: [ParsableCommand.Type] = [Server.self]
+    #else
+    private static let hostSubcommands: [ParsableCommand.Type] = []
+    #endif
 
     public init() {}
 }

@@ -13,15 +13,18 @@ extension ControlServer {
         let id = session.id
         guard remoteClients[id] == nil, let host = session.remoteHost,
               let binding = session.remotePresentation?.binding else { return }
+        let pool = catalogPool(forSession: id)
+        let path = pool?.lease("present:\(id)")
         let argv: [String]
         do {
-            argv = try RemoteSession.presentCommand(host: host, session: binding.remoteSessionID)
+            argv = try RemoteSession.presentCommand(host: host, session: binding.remoteSessionID, controlPath: path)
         } catch {
             remoteLogger.error("no presentation stream for \(id, privacy: .public): the origin's session id cannot be sent")
             return
         }
+        let transport = pool.flatMap { pool in path.map { PooledTransport(pool: pool, path: $0, inner: remoteTransport) } }
         let client = RemotePresentationClient(argv: argv, presentationVersion: binding.presentationVersion,
-                                              transport: remoteTransport, effects: remoteEffects(for: id),
+                                              transport: transport ?? remoteTransport, effects: remoteEffects(for: id),
                                               leads: { [weak self] in self?.leadsHere(id) ?? false },
                                               now: hudClock)
         remoteClients[id] = client
@@ -67,6 +70,7 @@ extension ControlServer {
 
     func stopRemotePresentation(_ id: UUID) {
         remoteClients.removeValue(forKey: id)?.stop()
+        catalogPool(forSession: id)?.release("present:\(id)")
     }
 
     func stopRemotePresentations() {
@@ -112,6 +116,8 @@ extension ControlServer {
             mode: { [weak self] mode in self?.library.store(forSession: id)?.setRemoteMode(mode, forSession: id) },
             askRequest: { [weak self] ask in self?.showReplicaAsk(ask, forSession: id) ?? false },
             askDismiss: { [weak self] ref in self?.library.store(forSession: id)?.dismissReplicaAsk(ref, forSession: id) },
+            pickRequest: { [weak self] pick in self?.showReplicaPick(pick, forSession: id) ?? false },
+            pickDismiss: { ref in SessionPickBook.shared.dismissReplica(ref, session: id) },
             overlayRequest: { [weak self] overlay in self?.showReplicaOverlay(overlay, forSession: id) ?? false },
             overlayClose: { [weak self] change in
                 self?.library.store(forSession: id)?.closeReplicaOverlay(change.job, forSession: id)
@@ -132,7 +138,7 @@ extension ControlServer {
                 guard let self else { return "no such session" }
                 return showReplicaPage(page, forSession: id)
             },
-            pageClose: { [weak self] change in self?.library.store(forSession: id)?.closeReplicaPage(change.page, forSession: id) },
+            pageClose: { [weak self] change in self?.closeOriginPage(change, forSession: id) },
             pageCommand: { [weak self] command in self?.applyReplicaPageCommand(command, forSession: id) },
             name: { [weak self] name in self?.library.store(forSession: id)?.applyRemoteName(name, forSession: id) },
             snapshotName: { [weak self] name in
@@ -147,11 +153,12 @@ extension ControlServer {
             })
     }
 
-    /// Shows an ask `id`'s origin handed over. A GUI one keeps the local rule of refusing a target that is not
-    /// on screen; a terminal one, like a local terminal ask, waits hidden until its session is shown.
+    /// showReplicaAsk shows an ask `id`'s origin handed over in the row's own ask slot. A terminal one waits hidden
+    /// until its row is shown. A GUI one is refused for a target not on screen, unless the origin is headless and
+    /// has no screen to take it back to.
     private func showReplicaAsk(_ ask: PresentationAsk, forSession id: UUID) -> Bool {
         guard let store = library.store(forSession: id) else { return false }
-        if ask.style == .gui {
+        if ask.style == .gui, store.session(withID: id)?.remotePresentation?.binding.originHeadless != true {
             guard let windowID = library.windowID(for: store), guiTargetShown(id, in: store, windowID: windowID) else {
                 return false
             }
@@ -161,12 +168,21 @@ extension ControlServer {
 
     /// Shows an overlay `id`'s origin handed over, running the job's helper on the origin over ssh.
     private func showReplicaOverlay(_ overlay: PresentationOverlay, forSession id: UUID) -> Bool {
+        let pool = catalogPool(forSession: id)
+        let path = pool?.lease("job:\(overlay.job)")
         guard let store = library.store(forSession: id), let host = store.session(withID: id)?.remoteHost,
-              let argv = try? RemoteSession.runJobCommand(host: host, job: overlay.job) else { return false }
-        let command = CommandRestore.shellQuotedLine(argv)
-        return store.presentReplicaOverlay(overlay, command: command, forSession: id) { [weak self] job in
+              let argv = try? RemoteSession.runJobCommand(host: host, job: overlay.job, token: overlay.token, controlPath: path) else {
+            pool?.release("job:\(overlay.job)")
+            return false
+        }
+        let line = CommandRestore.shellQuotedLine(argv)
+        let command = path.map { RemoteSession.waitingForConnection(line, host: host, controlPath: $0) } ?? line
+        let shown = store.presentReplicaOverlay(overlay, command: command, forSession: id) { [weak self] job in
+            pool?.release("job:\(job)")
             self?.remoteClients[id]?.answer(.overlayClosed(PresentationOverlayChange(job: job)))
         }
+        if !shown { pool?.release("job:\(overlay.job)") }
+        return shown
     }
 
     private func playRemoteSound(_ sound: PresentationSound, forSession id: UUID) {

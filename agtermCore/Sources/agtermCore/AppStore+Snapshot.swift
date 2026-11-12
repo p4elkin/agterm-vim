@@ -19,15 +19,17 @@ extension AppStore {
         let persistable = Set(workspaceSnapshots.flatMap(\.sessions).map(\.id))
         let recency = sessionRecency.items.filter(persistable.contains)
         let flaggedIDs = orderedFlaggedSessions.map(\.id).filter(persistable.contains)
-        return Snapshot(selectedSessionID: persistedSelection(among: persistable, recency: recency),
-                        workspaces: workspaceSnapshots,
-                        sidebarWidth: sidebarWidth, sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
-                        focusedWorkspaceIDs: focusIDs.isEmpty ? nil : focusIDs,
-                        focusEnabled: focusEnabled ? true : nil,
-                        hideParked: hideParked ? true : nil,
-                        parkedRevealedWorkspaceIDs: revealedIDs.isEmpty ? nil : revealedIDs,
-                        sessionRecency: recency,
-                        flaggedOrder: flaggedIDs.isEmpty ? nil : flaggedIDs)
+        var snapshot = Snapshot(selectedSessionID: persistedSelection(among: persistable, recency: recency),
+                                workspaces: workspaceSnapshots,
+                                sidebarWidth: sidebarWidth, sidebarVisible: sidebarVisible, sidebarMode: sidebarMode,
+                                focusedWorkspaceIDs: focusIDs.isEmpty ? nil : focusIDs,
+                                focusEnabled: focusEnabled ? true : nil,
+                                hideParked: hideParked ? true : nil,
+                                parkedRevealedWorkspaceIDs: revealedIDs.isEmpty ? nil : revealedIDs,
+                                sessionRecency: recency,
+                                flaggedOrder: flaggedIDs.isEmpty ? nil : flaggedIDs)
+        snapshot.catalogOperations = catalogOperations
+        return snapshot
     }
 
     /// The selection to write. A remote session is not in the snapshot, so naming it would restore an empty
@@ -69,7 +71,7 @@ extension AppStore {
                         context: session.context,
                         lastSelectedAt: session.lastSelectedAt?.timeIntervalSince1970,
                         tint: session.tint, parentID: session.parentID,
-                        collapsed: session.isExpanded ? nil : true)
+                        collapsed: session.isExpanded ? nil : true, ended: session.ended ? true : nil)
     }
 
     /// The single workspace-to-disk producer, used by the launch snapshot and by a closed workspace's
@@ -113,6 +115,7 @@ extension AppStore {
         session.tint = snapshot.tint
         session.parentID = snapshot.parentID
         session.isExpanded = !(snapshot.collapsed ?? false)
+        session.ended = snapshot.ended ?? false
         session.lastSelectedAt = snapshot.lastSelectedAt.map(Date.init(timeIntervalSince1970:))
         session.initialCommand = snapshot.initialCommand
         session.commandWait = snapshot.commandWait ?? false
@@ -185,6 +188,7 @@ extension AppStore {
         restoringSelection = true
         defer { restoringSelection = false }
         freshWorkspaceID = nil // live create-time state, never restored from disk
+        catalogOperations = snapshot.catalogOperations
         // fold duplicate workspace ids into the first occurrence and keep only the first snapshot of a
         // repeated session id, else the rest stay unreachable past the first match and get re-saved.
         var seenSessionIDs: Set<UUID> = []

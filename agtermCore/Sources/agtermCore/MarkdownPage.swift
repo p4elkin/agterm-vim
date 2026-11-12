@@ -51,8 +51,6 @@ public enum MarkdownPage {
     /// imageReferences lists each picture `markdown` references that names a file inside `folder`, the
     /// markdown file's own folder, after symlinks on both sides are resolved; in document order, each
     /// reference once. A remote, a `data:` or an escaping reference is left out and renders as its alt text.
-    /// On Linux, where swift-corelibs Foundation has no markdown parser, it lists none: the page itself is a
-    /// Mac overlay, and the headless origin only has to compile this.
     public static func imageReferences(in markdown: String, folder: String) -> [Image] {
         references(in: markdown) { localPath($0, folder: folder) }
     }
@@ -89,19 +87,26 @@ public enum MarkdownPage {
     }
 
     private static func references(in markdown: String, path: (String) -> String?) -> [Image] {
-        #if !canImport(Darwin)
-        return []
-        #else
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-        guard let parsed = try? AttributedString(markdown: markdown, options: options) else { return [] }
         var found: [Image] = [], seen: Set<String> = []
-        for run in parsed.runs {
-            guard let url = run.imageURL else { continue }
-            let reference = url.relativeString.removingPercentEncoding ?? url.relativeString
+        for source in imageSources(in: markdown) {
+            let reference = source.removingPercentEncoding ?? source
             guard seen.insert(reference).inserted, let path = path(reference) else { continue }
             found.append(Image(reference: reference, path: path))
         }
         return found
+    }
+
+    /// imageSources lists every picture reference in document order, as the parser hands it over. Off Darwin it
+    /// needs swift-markdown, and without it a page embeds no pictures.
+    private static func imageSources(in markdown: String) -> [String] {
+        #if canImport(Darwin)
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        guard let parsed = try? AttributedString(markdown: markdown, options: options) else { return [] }
+        return parsed.runs.compactMap { $0.imageURL?.relativeString }
+        #elseif canImport(Markdown)
+        return MarkdownImageCollector.sources(in: markdown)
+        #else
+        return []
         #endif
     }
 

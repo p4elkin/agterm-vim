@@ -46,8 +46,12 @@ public enum ForwardPolicy {
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
              .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
-             .sessionCompanionConvert, .recentList, .recentOpen, .recentClear:
+             .sessionCompanionConvert, .recentList, .recentOpen, .recentClear,
+             .windowRemoteOpen, .windowRemoteDismiss, .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach:
             return .refused("no windows or UI")
+        // agterm-server's catalog stream; this origin has no catalog
+        case .catalogSubscribe, .catalogOp:
+            return .refused("an agterm-server feature")
         // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces
         case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck:
             return .refused("no terminal surface")

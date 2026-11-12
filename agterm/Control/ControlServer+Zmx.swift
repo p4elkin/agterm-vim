@@ -395,7 +395,7 @@ extension ControlServer {
         return .success(RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
                                   presentationVersion: tree.presentation, transport: transport, left: left,
                                   right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)),
-                                  name: remote.name, namePending: false))
+                                  name: remote.name, namePending: false, originHeadless: tree.headless == true))
     }
 
     /// RemotePlacement is where an attached row goes: a workspace, or under `parent`, a remote row of the same host.
@@ -476,7 +476,8 @@ extension ControlServer {
         let origin = RemoteBinding.Origin(host: row.host, endpoint: row.endpoint, sessionName: row.sessionName,
                                           transport: row.transport)
         store.bindRemote(RemoteBinding(remoteSessionID: row.remoteSessionID, daemonsByLocalPane: daemons,
-                                       presentationVersion: row.presentationVersion, origin: origin),
+                                       presentationVersion: row.presentationVersion, origin: origin,
+                                       originHeadless: row.originHeadless),
                          forSession: created.id, namePending: row.namePending)
         // the row's created event fired inside `addSession`, before the binding existed
         startRemotePresentation(for: created)
@@ -703,6 +704,8 @@ struct RemoteRow {
     let name: String?
     /// A rename made on this Mac, saved before the origin confirmed it; it goes out with the first snapshot.
     let namePending: Bool
+    /// The origin reported `headless` in its tree; a restored row does not know and says false.
+    var originHeadless = false
 }
 
 /// A row's window and workspace, pinned before a remote round trip. `newSessionRule` marks the "+" path.

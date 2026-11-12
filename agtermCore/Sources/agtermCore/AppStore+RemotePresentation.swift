@@ -131,12 +131,20 @@ extension AppStore {
         // the origin serves a stream only for a session it has, so an ended verdict was wrong
         if connection == .connected, state.rowState == .endedOnHost { setRemoteRowState(.attached, forSession: id) }
         guard state.connection == .connected, connection != .connected else { return }
+        withdrawRemoteReplicas(of: session)
+    }
+
+    /// withdrawRemoteReplicas takes down everything the presentation stream put on `session`, its terminals
+    /// excepted: the stream left, or the session ended and no stream will come back.
+    func withdrawRemoteReplicas(of session: Session) {
+        let id = session.id
         applyRemoteContext(nil, forSession: id)
         applyRemoteInfo(nil, forSession: id)
-        if state.statusBridged { setAgentIndicator(AgentIndicator(), forSession: id) }
+        if session.remotePresentation?.statusBridged == true { setAgentIndicator(AgentIndicator(), forSession: id) }
         closeBridgedHud(forSession: id)
         // the origin takes a handed-over ask back when the stream goes, so the replica must not answer it
         if session.askReplica { session.releaseAsk() }
+        SessionPickBook.shared.dropReplicas(forSession: id)
         orphanReplicaOverlays(of: session)
         closeReplicaPages(of: session)
     }
@@ -297,6 +305,8 @@ extension AppStore {
     /// split only, and this Mac's scratch is a different shell.
     private func localStatusPane(_ pane: PresentationPane?, in session: Session) -> (pane: StatusPane?, resolved: Bool) {
         guard let pane else { return (nil, true) }
+        // a remote window's scratch is the origin's own, attached here, so its statuses land on it
+        if let scratch = session.scratchDaemon, pane == .scratch || pane == .identity(scratch.identity) { return (.scratch, true) }
         guard let role = localPane(pane, in: session) else { return (nil, false) }
         return (role == .right ? .right : .left, true)
     }
@@ -308,5 +318,13 @@ extension Session {
     public var remoteConnection: RemotePresentationConnection? {
         _ = remoteConnectionRevision
         return remotePresentation?.connection
+    }
+
+    /// remoteRowNotice is the line under a remote row: an ended session names its host, others say what their
+    /// presentation stream is doing, nil when there is nothing to say.
+    public var remoteRowNotice: String? {
+        guard let host = remoteHost else { return nil }
+        if ended { return "Ended on \(host)" }
+        return remotePresentation?.rowNotice(host: host)
     }
 }

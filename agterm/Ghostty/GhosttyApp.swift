@@ -95,6 +95,8 @@ final class GhosttyApp {
     /// Which keystroke clears a blocked or completed glyph; read at keystroke time by the surface factories'
     /// status-clear closure. Settings-mirrored like `toolbarMode`.
     private(set) var statusReset: StatusReset = .firstKey
+    /// badgeReset mirrors the setting for `wirePane`'s input closure, read at keystroke time.
+    private(set) var badgeReset: StatusReset = .firstKey
     /// workspaceRowClickExpands mirrors the setting for `handleSingleClick`; on by default. The disclosure
     /// triangle, which AppKit toggles natively, and the row icon ignore it.
     private(set) var workspaceRowClickExpands: Bool = true
@@ -248,6 +250,13 @@ final class GhosttyApp {
         if let derived = callbacks.takeDerivedAppConfig() { ghostty_config_free(derived) }
     }
 
+    /// setColorScheme records the system appearance in libghostty, which answers `CSI ?996n` and
+    /// mode 2031 from it.
+    func setColorScheme(isDark: Bool) {
+        guard let app else { return }
+        ghostty_app_set_color_scheme(app, isDark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+    }
+
     /// Set the window translucency the chrome applies. `SettingsModel` calls this and every setter below at
     /// launch and on each change; the window re-syncs on `.agtermAppearanceChanged`.
     func setWindowTranslucency(opacity: Double, blurRadius: Int, ignoreReduceTransparency: Bool) {
@@ -280,6 +289,10 @@ final class GhosttyApp {
 
     func setStatusReset(_ mode: StatusReset) {
         statusReset = mode
+    }
+
+    func setBadgeReset(_ mode: StatusReset) {
+        badgeReset = mode
     }
 
     func setHiddenInterfaceElements(_ elements: Set<InterfaceElement>) {
@@ -822,6 +835,10 @@ extension Notification.Name {
     /// skipping `.agtermWindowFrontmostChanged`, and a new window has no saved frame, so no `didMove`/
     /// `didResize` fires either.
     static let agtermWindowAttachmentChanged = Notification.Name("agterm.windowAttachmentChanged")
+
+    /// Posted after a GUI action finishes changing a `window.list` field that no other observed
+    /// notification reflects.
+    static let agtermWindowCatalogChanged = Notification.Name("agterm.windowCatalogChanged")
 
     /// Posted after `keymap.conf` is (re)loaded and reparsed, so the custom-command runner rebuilds its matcher
     /// and the action palette re-reads the custom commands. The data-driven menu shortcuts re-render on their

@@ -4,6 +4,7 @@ import Testing
 @testable import agtermCore
 
 struct QuitReasonTests {
+    #if canImport(Darwin)
     /// The quit event AppKit hands `applicationShouldTerminate`, carrying `reason` under
     /// `kAEQuitReason`, or no reason attribute at all when `reason` is nil.
     private func quitEvent(reason: String?) -> NSAppleEventDescriptor {
@@ -38,6 +39,7 @@ struct QuitReasonTests {
     @Test func noEventKeepsConfirmation() {
         #expect(!QuitReason.isSystemQuit(nil))
     }
+    #endif
 
     @Test(arguments: ["shut", "rest", "rlgo"])
     func systemQuitSkipsConfirmation(reason: String) {

@@ -97,26 +97,32 @@ struct StreamBridge: Sendable {
         }
     }
 
-    static func writeAll(_ fd: Int32, _ data: Data) -> Bool {
-        writeAll(fd, data) { write($0, $1, $2) }
-    }
-
-    /// `writeAll` for the app's socket. Glibc has no SO_NOSIGPIPE, so an app closing early would raise the
-    /// default-fatal SIGPIPE there instead of failing the write.
-    static func sendAll(_ fd: Int32, _ data: Data) -> Bool {
+    /// sendAll writes to the app's socket. Glibc has no SO_NOSIGPIPE, so there MSG_NOSIGNAL turns an app that
+    /// hung up into a failed write instead of a fatal SIGPIPE; `writeAll` stays for the pipes, where send fails.
+    static func sendAll(_ socket: Int32, _ data: Data) -> Bool {
         #if canImport(Darwin)
-        writeAll(fd, data)
+        return writeAll(socket, data)
         #else
-        writeAll(fd, data) { Glibc.send($0, $1, $2, Int32(MSG_NOSIGNAL)) }
+        return data.withUnsafeBytes { raw in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return true }
+            var offset = 0
+            while offset < data.count {
+                let count = send(socket, base + offset, data.count - offset, Int32(MSG_NOSIGNAL))
+                if count < 0, errno == EINTR { continue }
+                guard count > 0 else { return false }
+                offset += count
+            }
+            return true
+        }
         #endif
     }
 
-    private static func writeAll(_ fd: Int32, _ data: Data, _ put: (Int32, UnsafeRawPointer, Int) -> Int) -> Bool {
+    static func writeAll(_ fd: Int32, _ data: Data) -> Bool {
         data.withUnsafeBytes { raw in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return true }
             var offset = 0
             while offset < data.count {
-                let count = put(fd, base + offset, data.count - offset)
+                let count = write(fd, base + offset, data.count - offset)
                 if count < 0, errno == EINTR { continue }
                 guard count > 0 else { return false }
                 offset += count

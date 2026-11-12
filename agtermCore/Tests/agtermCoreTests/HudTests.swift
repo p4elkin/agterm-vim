@@ -315,6 +315,7 @@ struct HudTests {
         #expect(body.blockWidth == 2)
         #expect(body.lines == ["\u{1B}]8;;http://x\u{1B}\\\u{1B}[4mab\u{1B}[24m\u{1B}]8;;\u{1B}\\"])
     }
+    #endif
 
     // regression: the height was measured at the caller's raw percent while the panel took the clamped one
     @Test(arguments: [100, 5]) func aMarkdownMessageIsMeasuredAtTheClampedWidthItIsPaintedAt(percent: Int) {
@@ -331,6 +332,7 @@ struct HudTests {
         #expect(grid.rows - body.lines.count - HudLayout.verticalPadding * 2 <= 1)
     }
 
+    #if canImport(Darwin)
     @Test func aSpinningMarkdownBodyIndentsEveryRowAfterTheFirstByTheGutter() {
         let body = HudLayout.markdownBody(for: HudSpec(message: "- a\n- bb", spinner: .bar, markdown: true),
                                           grid: (columns: 20, rows: 6))
@@ -358,7 +360,9 @@ struct HudTests {
 
         #expect(body.lines.first == "┌────…")
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func aMarkdownMessageIsMeasuredAndWrappedAtTheWidthThePaneAllows() {
         let pane = PaneMetrics(cellWidth: 8, cellHeight: 18, paneWidth: 400, paneHeight: 800)
         let spec = HudSpec(message: "aaaa bbbb cccc dddd eeee ffff gggg [the link](http://x) hhhh iiii jjjj", markdown: true)
@@ -372,7 +376,6 @@ struct HudTests {
                                "\u{1B}]8;;http://x\u{1B}\\\u{1B}[4mthe link\u{1B}]8;;\u{1B}\\\u{1B}[24m hhhh iiii jjjj"])
         #expect(grid.rows == body.lines.count + HudLayout.verticalPadding * 2)
     }
-
     #endif
 
     @Test func aOneRowSpinningMarkdownBodyShowsOnlyTheMarker() {

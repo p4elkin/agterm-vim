@@ -3,7 +3,7 @@ name: agterm
 description: >
   Drive agterm, a macOS terminal, via agtermctl. Use in an agterm session:
   manage sessions, companions and workspaces; split panes; toggle the scratch; run, hide or show overlays;
-  read exit status; show HTML pages, interactive too, URLs or dev servers in an overlay with saved logins or as a
+  read exit status; show HTML pages, URLs or dev servers in an overlay with saved logins or as a
   page session row;
   post a HUD/caption/notification/sidebar activity line; message panes; show a picker, question or input dialog; show images/markdown/code; type
   into or restart a pane by id, copy its selection, set the clipboard, search its scrollback; manage windows, font size and
@@ -11,7 +11,7 @@ description: >
   a closed window's session screen; subscribe to status, notify, lifecycle, selection,
   pane, tree and launch events; wait on agent status.
   Covers window/workspace/session addressing, AGTERM_* variables,
-  attaching sessions from another Mac, cookbook recipes, installed version, upgrades, diagnosing
+  attaching another Mac's sessions, agterm-server windows, cookbook recipes, installed version, upgrades, diagnosing
   problems, filing a bug or feature request.
 when_to_use: >
   Trigger on: agterm, agtermctl, AGTERM_SESSION_ID, and, from inside a session, plain requests such as
@@ -32,7 +32,9 @@ when_to_use: >
   wait until that worker session finishes, bring back the session I just closed, park a session,
   hide parked rows, turn on normal mode,
   move this workspace or session to another window,
-  attach a session from another Mac, attach a remote session with all its companions, attach a remote session under a row here as its companion, copy this to the
+  attach a session from another Mac, attach a remote session with all its companions, attach a remote session under a row here as its companion, open a remote window for my Linux server,
+  run sessions on a Linux host with agterm-server, install agterm-server on a Linux host, detach or reattach a remote session,
+  copy this to the
   clipboard, was agterm upgraded under the running app,
   upgrade agterm without losing sessions, what recipes are there, the keymap editor will not open.
 allowed-tools: Bash(agtermctl *)
@@ -315,8 +317,8 @@ entries in `surfaces` report their own Boolean, while scratch and overlays omit 
 `liveAttribution` and `splitLiveAttribution` (local Live pane attribution, including hidden splits;
 [values and omission rules](reference.md#tree)),
 `remoteHost` (the machine an attached session came from, the read side of `zmx attach`; omitted for a local
-session; a remote row comes back after a relaunch),
-`remoteSessionID` (the origin's id for the session an attached row shows, the id `zmx attach` takes; omitted for a local session),
+  session; a remote row comes back after a relaunch, and a remote window rebuilds its rows),
+`remoteSessionID` (the origin's id for the session an attached row shows, the id `zmx attach` takes; on a remote window's row it equals the row's `id`; omitted for a local session),
 `presentation` (attached session only: the mirroring stream's `state` - `connecting`, `connected`,
 `unsupported`, or `failed` with `error` - not the ssh connection's - plus `mode`, `presenter` while its stream holds that role, else `mirror`),
 `presenters` (origin session: `mirrors`, the streams mirroring it without presenting, and `presenter: true`
@@ -432,7 +434,7 @@ omitted when expanded).
   grace-period undo. `--undoable` gives a single target that grace too, as ⌘W does, so undo (⌘Z) or, for a local
   session, `recent open` inside it brings the running shell back; `result.undoable` says whether it applied (false when Settings turns undo off).
 - `session select` · `session rename <name>` · `session reveal` (select the focused pane's cwd in Finder).
-- `session go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions.
+- `session go --to next|prev|first|last|next-attention|prev-attention|N` — move the selection between sessions; `N` is the 1-based place in sidebar order.
 - `session move <workspace>` (relocate) or `session move --to up|down|top|bottom` (reorder within the
   workspace) or `session move --after SID | --before SID` (place after/before an anchor session; the anchor carries its own
   workspace, so this relocates + positions in one shot, even cross-workspace). For workspace and
@@ -498,7 +500,7 @@ omitted when expanded).
   the absolute primary-pane fraction of the area below the titlebar (left or top; 0..1, clamped to
   0.05..0.95). The grow options are
   aliases for growing the primary or split pane. Prints the applied fraction.
-- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--note` attaches a one-line reason, max 256 UTF-8 bytes and no line breaks, read back as the tree `statusNote` field and the `status` event's `note`, cleared by the next status set without it; `--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (one of the names `reference.md` lists) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it, and while the session is `blocked`, or `completed` without `--auto-reset`, a status from another pane that is not itself `blocked` is refused with `status owned by pane <pane>` so one pane's agent cannot erase the other's request for input, `idle` included since the bundled hooks emit it unprompted; any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a Dock-menu session, a sidebar row click) reveals that pane when the status needs attention (`blocked`/`completed`); `active` preserves the existing pane selection; the pane reads back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
+- `session status <idle|active|completed|blocked> [--blink] [--auto-reset] [--if-idle] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--note TEXT] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--if-idle` applies it only to an idle row and is otherwise an ok no-op; `--note` attaches a one-line reason, max 256 UTF-8 bytes and no line breaks, read back as the tree `statusNote` field and the `status` event's `note`, cleared by the next status set without it; `--sound default` or a system sound name plays a one-shot sound; `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (one of the names `reference.md` lists) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so foreground typing in another pane won't clear it, and while the session is `blocked`, or `completed` without `--auto-reset`, a status from another pane that is not itself `blocked` is refused with `status owned by pane <pane>` so one pane's agent cannot erase the other's request for input, `idle` included since the bundled hooks emit it unprompted; any user-initiated GUI selection (auto-follow, attention-nav ⌃⌥↑/↓, plain session nav, the command palettes, a Dock-menu session, a sidebar row click) reveals that pane when the status needs attention (`blocked`/`completed`); `active` preserves the existing pane selection; the pane reads back as the tree `statusPane` field; the socket `session go next-attention` only steps the selection, it does not itself reveal the pane; `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `session wait --until STATUS [--until STATUS ...] [--timeout SECONDS]` — block until the session's agent
   status is one of the values, returning at once when it already is. Exit 0 and print the status on a match,
   2 when the session closes, 124 on timeout, 1 on failure. Use it to wait for a worker started with
@@ -1136,6 +1138,15 @@ choice=$(agtermctl session overlay open --html /tmp/branches.html --block --targ
 
 - Escape any outside text you put in such a page (an issue body, a log line): the page can run commands.
 - `--url` pages get none of this. reference.md has the rules under `session overlay submit`.
+
+## Remote windows and agterm-server
+
+agterm-server runs sessions on a Linux host; `agtermctl window remote open HOST` opens a Mac window
+mirroring them over ssh, and every shell keeps running on the host across disconnects. Inside such a
+session, `agtermctl` on the host talks to agterm-server, which serves the session, workspace, overlay,
+HUD, ask and pick commands and refuses the ones that change a Mac window (`window list` still answers). reference.md "remote server" lists the commands,
+the read-back and what the server refuses. `agtermctl server install HOST`, run on the Mac, installs or upgrades
+the server release matching that app's own bundle (reference.md "server").
 
 ## Troubleshooting and reporting
 

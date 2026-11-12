@@ -13,6 +13,11 @@ extension AppActions {
     func newSessionFromButton(workspaceID: UUID, in store: AppStore) -> Task<Void, Never>? {
         let windowID = library.windowID(for: store)
         guard uiActionsEnabled(for: windowID) else { return nil }
+        // a remote window's sessions are made on its server, never on the new-session host
+        if store.remoteActions != nil {
+            newRemoteSession(inWorkspace: workspaceID, of: store)
+            return nil
+        }
         guard let host = settingsModel?.settings.effectiveNewSessionHost else {
             newLocalSession(workspaceID: workspaceID, in: store)
             return nil

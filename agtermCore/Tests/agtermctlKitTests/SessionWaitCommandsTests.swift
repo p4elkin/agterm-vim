@@ -1,6 +1,8 @@
 import ArgumentParser
 #if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
 #endif
 import Foundation
 import Testing
@@ -277,10 +279,8 @@ struct SessionWaitCommandsTests {
 
     private static func processState(_ pid: pid_t) -> String {
         #if !canImport(Darwin)
-        // Linux has no kinfo_proc; the state letter is the third field of /proc/<pid>/stat.
-        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8),
-              let close = stat.lastIndex(of: ")") else { return "absent" }
-        return String(stat[stat.index(after: close)...].split(separator: " ").first ?? "?")
+        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8) else { return "absent" }
+        return stat.split(separator: ")").last.map { "state \($0.split(separator: " ").first ?? "?")" } ?? stat
         #else
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride

@@ -101,7 +101,12 @@ public final class HeadlessActions: ControlActions {
     }
 
     public func readEvents(_ options: ControlEventReadOptions) -> ControlResponse { headless.library.readEvents(options) }
-    public func appIdentity() -> ControlResponse { ControlResponse(ok: true, result: ControlResult(app: identity)) }
+    public func appIdentity() -> ControlResponse {
+        var result = ControlResult(app: identity)
+        // `agtermctl pick` binds an untargeted pick to the pane's own session only on a headless origin
+        result.headless = true
+        return ControlResponse(ok: true, result: result)
+    }
 
     public func windowList() -> ControlResponse {
         ControlResponse(ok: true, result: ControlResult(windows: headless.library.controlWindowNodes()))
