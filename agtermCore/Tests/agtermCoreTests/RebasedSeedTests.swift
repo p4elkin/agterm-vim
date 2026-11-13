@@ -5,14 +5,14 @@ import Testing
 struct RebasedSeedTests {
     private let manager = FileManager.default
     private let dataName = "IntelliJIdea2026.2"
-    private let leanOptions = """
-    -Xms128m
-    -Xmx1g
-    -XX:ReservedCodeCacheSize=240m
+    private let sizing = "-Xms128m\n-Xmx2048m\n-XX:ReservedCodeCacheSize=240m\n"
+    private var leanOptions: String { sizing + plugins }
+    private let plugins = """
     -Didea.load.plugins.id=com.intellij.java,org.jetbrains.idea.maven,Git4Idea,IdeaVIM,org.jetbrains.toolbox-enterprise-client,\
     agterm.rebased.bridge,dev.sasha.clauderemarks,org.intellij.plugins.markdown,intellij.recentFiles.plugin,\
     intellij.navbar.plugin,intellij.execution.serviceView.plugin,intellij.bookmarks.plugin,com.intellij.modules.jcef,\
-    com.intellij.modules.json,org.jetbrains.plugins.yaml,com.intellij.mermaid
+    com.intellij.modules.json,org.jetbrains.plugins.yaml,com.intellij.mermaid,com.markskelton.one-dark-theme,\
+    com.tylerthrailkill.intellij.solarized,com.intellij.properties,org.toml.lang,com.jetbrains.sh,com.intellij.dfa.analysis
 
     """
 
@@ -48,16 +48,17 @@ struct RebasedSeedTests {
         let directories = ["options", "keymaps", "codestyles", "templates", "inspection", "ssl", "tbe"]
         for name in directories { try write(name, to: source(home).appendingPathComponent("\(name)/fixture")) }
         for name in ["idea.key", "early-access-registry.txt", "other.txt"] { try write(name, to: source(home).appendingPathComponent(name)) }
-        for name in ["IdeaVIM", "tbe-intellij-plugin", "claude-remarks", "other-plugin"] {
+        for name in ["IdeaVIM", "tbe-intellij-plugin", "claude-remarks", "one-dark-theme", "other-plugin"] {
             try write(name, to: source(home).appendingPathComponent("plugins/\(name)/fixture"))
         }
+        for name in ["solarized_theme.jar", "other.jar"] { try write(name, to: source(home).appendingPathComponent("plugins/\(name)")) }
         let plan = try #require(try RebasedSeed.plan(product: product(), stateDirectory: state, homeDirectory: home))
         try RebasedSeed.execute(plan)
         let ideRoot = try product().ideRoot(stateDirectory: state)
         #expect(try manager.contentsOfDirectory(atPath: ideRoot.appendingPathComponent("config").path).sorted()
                 == (directories + ["idea.key", "early-access-registry.txt", "idea.vmoptions"]).sorted())
         #expect(try manager.contentsOfDirectory(atPath: ideRoot.appendingPathComponent("plugins").path).sorted()
-                == ["IdeaVIM", "claude-remarks", "tbe-intellij-plugin"])
+                == ["IdeaVIM", "claude-remarks", "one-dark-theme", "solarized_theme.jar", "tbe-intellij-plugin"])
         #expect(try String(contentsOf: ideRoot.appendingPathComponent("config/options/fixture"), encoding: .utf8) == "options")
     }
 
@@ -100,8 +101,14 @@ struct RebasedSeedTests {
         #expect(try String(contentsOf: ideRoot.appendingPathComponent("config/idea.vmoptions"), encoding: .utf8) == leanOptions)
     }
 
-    @Test(arguments: ["-Xmx4g\n-Djetbrains.tbe.enabled=true\n", "-Xmx4g"])
-    func standaloneOptionsPrecedeLeanBlock(standalone: String) throws {
+    @Test(arguments: [
+        ("-Djetbrains.tbe.enabled=true\n", "-Xms128m\n-Xmx2048m\n-XX:ReservedCodeCacheSize=240m\n"),
+        ("# -Xmx8g\n", "-Xms128m\n-Xmx2048m\n-XX:ReservedCodeCacheSize=240m\n"),
+        ("-Xmx4g\n-Djetbrains.tbe.enabled=true\n", "-Xms128m\n-XX:ReservedCodeCacheSize=240m\n"),
+        ("-Xmx4g", "-Xms128m\n-XX:ReservedCodeCacheSize=240m\n"),
+        ("-Xms256m\n  -Xmx4g\n-XX:ReservedCodeCacheSize=512m\n", ""),
+    ])
+    func standaloneSizingWinsOverTheLeanDefaults(standalone: String, sizing: String) throws {
         let root = try temporaryDirectory()
         defer { try? manager.removeItem(at: root) }
         let home = root.appendingPathComponent("home"), state = root.appendingPathComponent("state")
@@ -109,7 +116,7 @@ struct RebasedSeedTests {
         let plan = try #require(try RebasedSeed.plan(product: product(), stateDirectory: state, homeDirectory: home))
         try RebasedSeed.execute(plan)
         let file = try product().ideRoot(stateDirectory: state).appendingPathComponent("config/idea.vmoptions")
-        #expect(try String(contentsOf: file, encoding: .utf8) == standalone + (standalone.hasSuffix("\n") ? "" : "\n") + leanOptions)
+        #expect(try String(contentsOf: file, encoding: .utf8) == standalone + (standalone.hasSuffix("\n") ? "" : "\n") + sizing + plugins)
     }
 
     @Test(arguments: ["Rebased", "Other IDE"])

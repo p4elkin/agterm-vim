@@ -28,6 +28,12 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- A first IntelliJ IDEA start no longer caps the embedded IDE at 1 GB of heap over a larger `-Xmx` in your
+  own IntelliJ settings. The defaults it adds (`-Xms128m`, `-Xmx2048m`, a 240 MB code cache) now apply only
+  where your settings set no value. An existing IDE root keeps its `config/idea.vmoptions`: check it for a
+  trailing `-Xmx1g`.
+- A first IntelliJ IDEA start also copies the One Dark and Solarized themes and loads the Properties, TOML,
+  Shell Script and DFA Analysis plugins, so the embedded IDE's highlighting matches the standalone one.
 - A remote row whose session ended on its origin now says "Ended on <host>. Close the row to remove it"
   even when none of its panes exits afterwards, and `tree` reads `remoteState: endedOnHost` for it. Such a
   row used to keep reading `attached`, with only "Lost the connection to <host> (exit 1), retrying" under it.

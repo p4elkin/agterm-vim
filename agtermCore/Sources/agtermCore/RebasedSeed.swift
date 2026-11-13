@@ -14,20 +14,23 @@ public enum RebasedSeed {
 
     private static let configEntries = ["options", "keymaps", "codestyles", "templates", "inspection", "ssl",
                                         "idea.key", "early-access-registry.txt", "tbe"]
-    private static let pluginEntries = ["IdeaVIM", "tbe-intellij-plugin", "claude-remarks"]
+    private static let pluginEntries = ["IdeaVIM", "tbe-intellij-plugin", "claude-remarks", "one-dark-theme", "solarized_theme.jar"]
     private static let loadedPlugins = [
         "com.intellij.java", "org.jetbrains.idea.maven", "Git4Idea", "IdeaVIM", "org.jetbrains.toolbox-enterprise-client",
         "agterm.rebased.bridge", "dev.sasha.clauderemarks", "org.intellij.plugins.markdown", "intellij.recentFiles.plugin",
         "intellij.navbar.plugin", "intellij.execution.serviceView.plugin", "intellij.bookmarks.plugin", "com.intellij.modules.jcef",
-        "com.intellij.modules.json", "org.jetbrains.plugins.yaml", "com.intellij.mermaid",
+        "com.intellij.modules.json", "org.jetbrains.plugins.yaml", "com.intellij.mermaid", "com.markskelton.one-dark-theme",
+        "com.tylerthrailkill.intellij.solarized", "com.intellij.properties", "org.toml.lang", "com.jetbrains.sh", "com.intellij.dfa.analysis",
     ]
-    private static let leanOptions = """
-    -Xms128m
-    -Xmx1g
-    -XX:ReservedCodeCacheSize=240m
-    -Didea.load.plugins.id=\(loadedPlugins.joined(separator: ","))
+    // The JVM takes the last of a repeated option, so a default the standalone file already sets would override it.
+    private static let sizing = ["-Xms": "-Xms128m", "-Xmx": "-Xmx2048m", "-XX:ReservedCodeCacheSize=": "-XX:ReservedCodeCacheSize=240m"]
+    private static let sizingOrder = ["-Xms", "-Xmx", "-XX:ReservedCodeCacheSize="]
 
-    """
+    private static func leanOptions(after standalone: String) -> String {
+        let set = standalone.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        let defaults = sizingOrder.filter { key in !set.contains { $0.hasPrefix(key) } }.compactMap { sizing[$0] }
+        return (defaults + ["-Didea.load.plugins.id=\(loadedPlugins.joined(separator: ","))"]).joined(separator: "\n") + "\n"
+    }
 
     public static func plan(product: RebasedProduct, stateDirectory: URL,
                             homeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)) throws -> Plan? {
@@ -42,7 +45,7 @@ public enum RebasedSeed {
         let optionsFile = source.appendingPathComponent("idea.vmoptions")
         let standalone = manager.fileExists(atPath: optionsFile.path) ? try String(contentsOf: optionsFile, encoding: .utf8) : ""
         let separator = standalone.isEmpty || standalone.hasSuffix("\n") ? "" : "\n"
-        return Plan(root: root, copies: copies, vmOptions: standalone + separator + leanOptions)
+        return Plan(root: root, copies: copies, vmOptions: standalone + separator + leanOptions(after: standalone))
     }
 
     /// The caller holds `RebasedStateLock` through planning and execution.
