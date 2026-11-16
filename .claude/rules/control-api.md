@@ -1982,8 +1982,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the third missed check, unless the user's config sets a nonzero one. The check runs with the attach's own arguments, so a `Match command`
   or `Match sessiontype` block answers it the way it answers the attach, and a `Match exec` command runs
   twice per attach. An explicit `ServerAliveInterval 0` reads the same as unset and gets the default; a
-  large value is the opt-out. When the pane's ssh joins an existing `ControlMaster` connection the options
-  do nothing; that master's own settings decide.
+  large value is the opt-out.
+  The pane attach, the presentation stream, the reconnect probe and an overlay job all pass
+  `ControlMaster=no`/`ControlPath=none` (`RemoteSession.ownConnection`), so each opens its own connection
+  even when the user's config multiplexes the host. A channel on a shared master never sees ssh exit 255:
+  the keepalive options above do nothing there, that master's own settings decide, and a master with no
+  keepalive stays open on a dead link while every pane on it freezes with no reconnect (measured
+  2026-11-16: 76 panes, 42 minutes). sshd also caps the channels of one connection (`MaxSessions`, 10 by
+  default), and the streams of 59 rows alone filled a master raised to 64. The price is one TCP
+  connection per pane and per row, opened together after an outage: an origin with many rows needs
+  `MaxStartups` above sshd's `10:30:100`, or it drops part of that burst and those panes wait out a
+  backoff. Short calls (`tree`, `new`, relayed control commands) keep the shared connection.
 - `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
   command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
   VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments

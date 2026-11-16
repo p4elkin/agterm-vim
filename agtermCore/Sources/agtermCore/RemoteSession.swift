@@ -102,7 +102,7 @@ public enum RemoteSession {
         guard isPlain(session) else { throw InvocationError.invalidSession }
         let chain = cliPathPrefix + " && exec agtermctl zmx present " + CommandRestore.shellQuotedLine([session])
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
-        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false) + [remote]
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false, options: ownConnection) + [remote]
     }
 
     /// One ssh invocation running the helper for `job`, an overlay the origin handed to this Mac, for as long
@@ -113,9 +113,7 @@ public enum RemoteSession {
         guard isPlain(job) else { throw InvocationError.invalidSession }
         let chain = cliPathPrefix + " && exec agtermctl session overlay run-job " + CommandRestore.shellQuotedLine([job])
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
-        // one channel per job: a shared multiplexed connection was measured refusing channels (`Session open refused by peer`)
-        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true,
-                            options: ["-o", "ControlMaster=no", "-o", "ControlPath=none"]) + [remote]
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, options: ownConnection) + [remote]
     }
 
     /// pageServeCommand uses plain ssh stdio to claim and carry a remote page's channel.
@@ -285,7 +283,7 @@ public enum RemoteSession {
                                            fileExists: (String) -> Bool) throws -> [String] {
         switch transport {
         case .ssh:
-            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true)
+            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, options: ownConnection)
         case .mosh(let server, let client):
             // mosh splits its `--ssh=` value with shellwords, so the two options reach ssh as separate
             // options. Required on a Mac far side: mosh's bootstrap is a non-login shell, where a
@@ -300,10 +298,20 @@ public enum RemoteSession {
     }
 
     /// One ssh invocation that only proves the host answers again, before a waiting pane is attached anew.
+    /// On its own connection: through a shared master it would prove that the master answers, not the host.
     public static func probeCommand(host: String) throws -> [String] {
         try validate(host: host)
-        return sshArguments(host: host, connectTimeout: 5, interactive: false) + ["true"]
+        return sshArguments(host: host, connectTimeout: 5, interactive: false, options: ownConnection) + ["true"]
     }
+
+    /// Opts one invocation out of the user's `ControlMaster` multiplexing. Every link that stays up takes it:
+    /// a pane, a presentation stream and an overlay job each hold a channel for hours, and sshd caps the
+    /// channels of one connection (`MaxSessions`, 10 by default), so a shared master was measured refusing
+    /// them (`Session open refused by peer`). A channel on a master also never sees ssh exit 255: when the
+    /// link dies the master stays open unless its own settings carry a keepalive, and every pane on it
+    /// freezes with no reconnect. The probe takes it for the same reason. Short calls keep the shared
+    /// connection, which is what the user configured it for.
+    static let ownConnection = ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
 
     private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool, options: [String] = []) -> [String] {
         ["ssh", interactive ? "-tt" : "-T",
