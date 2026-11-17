@@ -134,6 +134,12 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   fails the Mac `swift test` build there and in `ForwardPolicy.kind(of:)`, and a new `ControlActions` requirement without a default fails
   `HeadlessActions`. Classify the command in the catalog and its test, and add the method. A requirement that
   arrives with a default compiles silently: check that its answer is the catalog's refusal. [[headless-origin]].
+- The remote and presentation code (`RemoteSession`, `PresentationHub`, `RemotePresentationClient`,
+  `AppStore+RemoteAsk`, `AppStore+RemoteOverlay`, `ControlProjection`) — upstream's agterm-server (#949) and the
+  fork's headless origin grew the same features there; the 2026-11-12 merge kept both. After any merge, check that
+  a new `ControlActions` requirement with a default is implemented by `HeadlessActions` when its command is
+  served: `claimOverlayJob(_:token:)` fell to its refusing default and broke tokened job claims until fixed.
+  See `docs/backlog/upstream-agterm-server-duplicates-the-headless-origin.md`.
 - The Rebased overlay's hooks into upstream files ([[rebased-overlay]]) need these paths preserved:
   - `PaneOverlay.swift`: `PaneOverlay.rebased`, `init(rebased:)` and `OverlayPane.generationSlot`.
   - `Session.swift`: pane release, unrealized-program cleanup, and the IDE in

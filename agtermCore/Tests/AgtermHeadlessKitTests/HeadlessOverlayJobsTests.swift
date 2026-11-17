@@ -48,6 +48,20 @@ struct HeadlessOverlayJobsTests {
         #expect(fixture.session.remoteOverlays.slot(nil)?.job == job.id)
     }
 
+    @Test func aTokenedOfferIsClaimedOnlyWithItsToken() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let presenter = try Presenter(fixture.headless.hub, session: fixture.session.id,
+                                      kinds: ["forward", PresentationHub.jobTokenKind])
+
+        _ = try await open(fixture)
+
+        let offer = try #require(requests(presenter).last)
+        let token = try #require(offer.token)
+        #expect(fixture.actions.claimOverlayJob(offer.job, token: nil).error == "job not claimable")
+        #expect(fixture.actions.claimOverlayJob(offer.job, token: token).ok)
+    }
+
     @Test func theLaunchContextCarriesTheSessionEnvironmentWithNoPane() async throws {
         let fixture = try HeadlessActionFixture(shellLookup: { "/usr/bin/zsh" })
         defer { fixture.cleanUp() }

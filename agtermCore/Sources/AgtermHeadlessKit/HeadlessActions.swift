@@ -641,6 +641,7 @@ public final class HeadlessActions: ControlActions {
     }
 
     public func claimOverlayJob(_ job: String) -> ControlResponse { headless.claimOverlayJob(job) }
+    public func claimOverlayJob(_ job: String, token: String?) -> ControlResponse { headless.claimOverlayJob(job, token: token) }
     public func claimPageServe(_: String) -> ControlResponse { refuse(.sessionOverlayPageServe) }
     public func openHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse {
         openHud(target, window: window, spec: spec, placement: ControlHudPlacement())

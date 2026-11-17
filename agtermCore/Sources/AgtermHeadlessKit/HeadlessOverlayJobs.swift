@@ -36,8 +36,8 @@ final class OverlayJobLink {
 extension Headless {
     /// Answers `session.overlay.job.run`: the request is the claim, so an ok here is the one winner of the race
     /// against the job's launch deadline.
-    func claimOverlayJob(_ job: String) -> ControlResponse {
-        guard overlayJobs.claim(job, cancel: { [weak self] in self?.cancelJobHelper(job) }) != nil else {
+    func claimOverlayJob(_ job: String, token: String? = nil) -> ControlResponse {
+        guard overlayJobs.claim(job, token: token, cancel: { [weak self] in self?.cancelJobHelper(job) }) != nil else {
             return ControlResponse(ok: false, error: "job not claimable")
         }
         scheduleOverlayJobExpiry(after: OverlayJobs.startWindow)
