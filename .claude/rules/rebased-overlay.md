@@ -101,11 +101,13 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   Source: `~/Library/Application Support/JetBrains/<dataDirectoryName>/`.
 - Config allowlist: `options`, `keymaps`, `codestyles`, `templates`, `inspection`, `ssl`, `idea.key`,
   `early-access-registry.txt`, `tbe`.
-  Plugin allowlist: `IdeaVIM`, `tbe-intellij-plugin`, `claude-remarks`.
+  Plugin allowlist: `IdeaVIM`, `tbe-intellij-plugin`, `claude-remarks`, `one-dark-theme`, `solarized_theme.jar`.
   Symbolic links, at the top or inside a copied directory, are dropped from the copy.
   `c.kdbx` and `c.pwd` are excluded; licence and IDE Services files are copied without reading or logging their contents.
 - The seed writes `config/idea.vmoptions`: standalone `idea.vmoptions` when present, followed by
-  `-Xms128m`, `-Xmx1g`, `-XX:ReservedCodeCacheSize=240m`, and `idea.load.plugins.id` allowing
+  `-Xms128m`, `-Xmx2048m` and `-XX:ReservedCodeCacheSize=240m`, each only when the standalone file sets none:
+  the JVM takes the last value, so a 1 GB default once overrode a 2 GB standalone heap and starved a Maven project.
+  Then `idea.load.plugins.id` allowing
   `com.intellij.java`, `org.jetbrains.idea.maven`, `Git4Idea`, `IdeaVIM`, `org.jetbrains.toolbox-enterprise-client`,
   `agterm.rebased.bridge`, `dev.sasha.clauderemarks`, `org.intellij.plugins.markdown`, and the platform's own
   `intellij.recentFiles.plugin`, `intellij.navbar.plugin`, `intellij.execution.serviceView.plugin` and
@@ -114,6 +116,10 @@ The spec, plan and live record are `docs/plans/20261007-rebased-overlay-{spec,pl
   claude-remarks' preview notes both need; without it the preview falls back to a plain renderer.
   `com.intellij.mermaid` follows with its hard dependencies `com.intellij.modules.json` and
   `org.jetbrains.plugins.yaml`.
+  The two themes (`com.markskelton.one-dark-theme`, `com.tylerthrailkill.intellij.solarized`) carry the editor
+  schemes `laf.xml` names; without them the IDE falls back to Islands Dark.
+  `com.intellij.properties`, `org.toml.lang`, `com.jetbrains.sh` and `com.intellij.dfa.analysis` give those
+  files their highlighting and Java its data-flow warnings.
   A missing action in the embedded IDE shows in `idea.log` as `Plugin '<name>' (<id>) is not required`.
   A missing source writes only this vmoptions file.
   Existing roots and edited options are left alone; deleting the root repeats the seed.
