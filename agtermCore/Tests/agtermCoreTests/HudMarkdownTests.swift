@@ -1,4 +1,3 @@
-#if canImport(Darwin)
 import Foundation
 import Testing
 @testable import agtermCore
@@ -374,4 +373,3 @@ struct HudMarkdownTests {
         #expect(HudMarkdown.fitted(rows, columns: 1, rows: 5).map { $0.map(\.text).joined() } == ["…", "…"])
     }
 }
-#endif

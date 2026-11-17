@@ -1,4 +1,3 @@
-#if canImport(Darwin)
 import Foundation
 import Testing
 @testable import agtermCore
@@ -52,4 +51,3 @@ struct QuitReasonTests {
         #expect(!QuitReason.skipsConfirmation(typeCode: quitAll))
     }
 }
-#endif

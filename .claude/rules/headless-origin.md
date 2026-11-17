@@ -40,6 +40,8 @@ clients are the real `agtermctl`. `scripts/headless/smoke.sh` drives a throwaway
 For an ok `zmx.present`, `serve` hands the connection to `adoptPresentation`, which revalidates the session;
 nil means the stream adapter owns the connection and wrote the ok reply itself.
 `version` and `tree` report `headless` plus the commit in a `BUILD` file next to the installed binary.
+`version` also sets the result's `headless: true`: upstream's `agtermctl pick` binds an untargeted pick to
+`$AGTERM_SESSION_ID` only when the server says so, and that target is what forwards it to the presenting Mac.
 
 ## Forwarding to the presenting Mac
 
@@ -256,9 +258,9 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
 - Over a non-interactive ssh, source `~/.local/share/swiftly/env.sh` and put a real node first on PATH
   (`~/.local/share/mise/installs/node/26/bin`): the mise shim answers `node is not a valid shim` there,
   and every `OpenCodeStatusHookTests` case fails on it (measured 2026-10-03).
-- An upstream file using `AttributedString(markdown:)` compiles on the Mac and fails here: swift-corelibs
-  has no markdown parser (`MarkdownPage.imageReferences`, `SessionInfoMarkup.parseMarkdown`, 2026-11-04).
-  Guard the parse with `#if canImport(Darwin)` and fall back to plain text, as `HudMarkdown` does.
+- Upstream builds `agtermCore` on Linux itself since #949 (2026-11-09): markdown parses with swift-markdown,
+  declared in `Package.swift` under `#if os(Linux)`, and its tests carry their own platform guards. Where a
+  fork guard and an upstream one met in the 2026-11-12 merge, upstream's was taken whole.
 - An upstream file using `@Observable` or `withObservationTracking` with only `import Foundation` compiles
   on the Mac and fails here: swift-corelibs does not re-export `Observation` (`RemoteReconnect.swift`,
   2026-10-03; `AppStoreAutoFollowTests`, 2026-11-03). Neither does it have `Darwin.exit`; use `Foundation.exit`.
