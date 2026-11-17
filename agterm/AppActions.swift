@@ -301,7 +301,6 @@ final class AppActions {
             store.closePaneOverlay(session.id, pane: pane)
             return true
         }
-        if let pane = session.focusedOverlayPane { store.closePaneOverlay(session.id, pane: pane); return true }
         if closeRemote([session.id], in: store) {
             focusActiveSession()
             return true
