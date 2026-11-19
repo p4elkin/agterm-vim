@@ -159,7 +159,7 @@ final class RemoteLayoutCloseTests: XCTestCase {
         let added = UUID()
         let layout = PresentationLayout(panes: [origin, added], primary: origin, axis: SplitAxis.topBottom.rawValue, shown: true)
 
-        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library)
+        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library, attach: lines)
 
         let split = try XCTUnwrap(session.splitPaneIdentity)
         defer { ZmxLeadBook.shared.forget(pane: split) }
@@ -168,7 +168,7 @@ final class RemoteLayoutCloseTests: XCTestCase {
         XCTAssertTrue(session.splitCommandWait)
         XCTAssertTrue(try XCTUnwrap(session.splitInitialCommand).contains(ZmxSupport.daemonName(for: added)))
         XCTAssertEqual(session.remotePresentation?.binding.daemon(forLocalPane: split), ZmxSupport.daemonName(for: added))
-        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library)
+        agtermApp.applyRemoteLayout(layout, store: store, sessionID: session.id, library: library, attach: lines)
         XCTAssertEqual(session.splitPaneIdentity, split, "a repeated frame grows nothing")
     }
 
@@ -177,7 +177,7 @@ final class RemoteLayoutCloseTests: XCTestCase {
         let added = UUID()
         agtermApp.applyRemoteLayout(PresentationLayout(panes: [origin, added], primary: origin,
                                                        axis: SplitAxis.leftRight.rawValue, shown: false),
-                                   store: store, sessionID: session.id, library: library)
+                                   store: store, sessionID: session.id, library: library, attach: lines)
         XCTAssertFalse(session.hasSplit)
     }
 
