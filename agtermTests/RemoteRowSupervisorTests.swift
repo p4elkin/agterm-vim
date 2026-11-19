@@ -4,6 +4,11 @@ import agtermCore
 
 @MainActor
 final class RemoteRowSupervisorTests: XCTestCase {
+    private final class NoAttachLines: RemoteAttachLines {
+        func paneAttach(_ origin: RemoteBinding.Origin, daemon: String, local: UUID) -> String { "attach \(daemon)" }
+        func scratchAttach(_ origin: RemoteBinding.Origin, daemon: String, local: UUID) -> String { "" }
+    }
+
     private var directory: URL!
     private var library: WindowLibrary!
     private var store: AppStore!
@@ -172,7 +177,8 @@ final class RemoteRowSupervisorTests: XCTestCase {
     func testASplitClosedOnTheOriginIsNeitherAskedAboutNorReattached() async throws {
         let session = try row(split: true)
         let split = try XCTUnwrap(session.splitPaneIdentity)
-        store.applyRemoteLayout(PresentationLayout(panes: [originLeft], primary: originLeft, shown: false), forSession: session.id)
+        store.applyRemoteLayout(PresentationLayout(panes: [originLeft], primary: originLeft, shown: false),
+                                forSession: session.id, attach: NoAttachLines())
         answers = [try tree(listing: [originLeft])]
         let watcher = supervisor()
 
