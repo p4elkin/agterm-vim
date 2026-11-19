@@ -41,6 +41,11 @@ enum PaneLead {
               let role = ZmxLeadBook.shared.apply(notice, pane: pane) else { return }
         RemoteRespawnBook.shared.acknowledged(pane: pane)
         roleChanged?(view)
+        // a pane this Mac created or opened, whose attach started before it knew to claim
+        if ZmxLeadBook.shared.takeClaim(pane: pane), role != .leader {
+            reattach?(view, true)
+            return
+        }
         // without the claim, so this attach leads only if nobody claimed the session in the meantime
         if role == .unowned { reattach?(view, false) }
     }
@@ -112,6 +117,18 @@ struct PaneReattach {
         guard let command = session.remotePresentation?.binding.attachPaneCommand(
             forLocalPane: identity, pane: old.isSplitPane ? .right : .left, lead: lead,
             controlPath: PaneLead.catalogChannel?(session.id, "pane:\(identity)"))
+        else { return nil }
+        return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
+    }
+
+    /// originScratch is a fresh attach of the scratch an attached row shows from its origin.
+    @MainActor
+    static func originScratch(replacing old: GhosttySurfaceView, session: Session, identity: UUID,
+                              lead: ZmxLeadAttachment) -> PaneReattach? {
+        guard let binding = session.remotePresentation?.binding, let origin = binding.origin,
+              let command = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint,
+                                                                 daemon: binding.scratchDaemon(for: identity), session: "scratch",
+                                                                 pane: .left, lead: lead)
         else { return nil }
         return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
     }

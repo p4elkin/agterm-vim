@@ -97,15 +97,15 @@ public final class Headless {
             store.session(withID: id)?.takeAskBack()
             store.remoteOverlayPresenterLost(forSession: id)
         }
-        hub.onPresenterFrame = { [weak self] id, body in
+        hub.onPresenterFrame = { [weak self] id, sender, body in
             if case .controlForwarded(let reply) = body { return self?.forwarder.receive(reply) ?? () }
             guard let store = self?.library.store(forSession: id) else { return }
             switch body {
             case .askResolve(let answer): store.resolveRemoteAsk(answer, forSession: id)
             case .askRejected(let ref) where store.isPresentingRemotely(ref, forSession: id):
                 store.failHandback(forSession: id)
-            case .overlayRejected(let change): store.rejectRemoteOverlay(change.job, forSession: id)
-            case .overlayClosed(let change): store.remoteOverlaySurfaceClosed(change.job, forSession: id)
+            case .overlayRejected(let change): store.rejectRemoteOverlay(change.job, forSession: id, from: sender)
+            case .overlayClosed(let change): store.remoteOverlaySurfaceClosed(change.job, forSession: id, from: sender)
             default: break
             }
         }
@@ -317,7 +317,12 @@ public final class Headless {
 
     /// Kills one pane's daemon and closes that pane as its exit would; a failed kill changes nothing.
     func killPane(_ pane: ZmxPaneRole, of session: Session, in store: AppStore) -> ControlResponse {
-        let identity = pane == .left ? session.paneIdentity : session.hasSplit ? session.splitPaneIdentity : nil
+        // a headless origin has no scratch daemon
+        let identity: UUID? = switch pane {
+        case .left: session.paneIdentity
+        case .right: session.hasSplit ? session.splitPaneIdentity : nil
+        case .scratch: nil
+        }
         guard let identity else {
             return ControlResponse(ok: false, error: "no \(pane.rawValue) pane daemon for session \(session.id.uuidString)")
         }
@@ -343,6 +348,8 @@ public final class Headless {
             streams.closeStreams(session: session.id)
             forwarder.forget(session: session.id)
             pages.forget(session: session.id)
+        case .scratch:
+            return
         }
         persist(store)
     }

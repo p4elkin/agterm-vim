@@ -18,7 +18,7 @@ public protocol TerminalSurface: AnyObject {
 
     /// Whether the terminal itself EXISTS — the underlying libghostty surface created and its program
     /// spawned — as opposed to this object merely occupying a session's surface slot. The two differ:
-    /// `TerminalView.makeNSView` parks the view in the slot BEFORE `createSurface()` runs, and creation
+    /// `TerminalSurfaceHost.makeNSView` parks the view in the slot BEFORE `createSurface()` runs, and creation
     /// defers until the view gets a nonzero backing size, so an occupied slot proves nothing about a running
     /// program. `dropUnrealizedPaneOverlays` keys on this to tell a stranded pane overlay from a live one. A
     /// hard requirement (no default) like `teardown()`, because either default silently misbehaves: `true`
@@ -42,12 +42,16 @@ public protocol TerminalSurface: AnyObject {
     /// (which first claims the process exit, keeping the pane-exit handler from closing the row) is dispatched
     /// through `any TerminalSurface`.
     func prepareForTransfer()
+
+    /// Whether this surface's program exited and the surface stays to show it; a replacement surface starts false.
+    var childExitHeld: Bool { get }
 }
 
 public extension TerminalSurface {
     var backedByZmx: Bool { false }
 
     func prepareForTransfer() { teardown() }
+    var childExitHeld: Bool { false }
 }
 
 /// A live terminal surface's current role in a two-pane session.

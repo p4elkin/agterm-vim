@@ -1,9 +1,10 @@
 import Foundation
 
-/// PresenterGrant tracks the sole presenter. Acquire keeps the holder; transfer replaces it.
+/// PresenterGrant decides which viewer connection is a session's fallback presenter, the one that takes new work for a
+/// pane no viewer reports leading. Acquire keeps the holder; transfer replaces it.
 ///
-/// Every change of holder bumps the session's generation, which is what later work owned by a presenter is
-/// bound to, so an answer from a connection that lost the role can be told apart from a current one.
+/// Every change of holder bumps the session's generation, which the headless forwarder binds a forwarded request to,
+/// so an answer from a connection that lost the role can be told apart from a current one.
 struct PresenterGrant {
     private var holders: [UUID: PresentationHub.SubscriberID] = [:]
     private var generations: [UUID: Int] = [:]

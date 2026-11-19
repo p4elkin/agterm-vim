@@ -21,7 +21,7 @@ func validatePaneArgument(_ pane: String?) throws {
 struct Session: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Session commands.",
-        subcommands: [New.self, Duplicate.self, Close.self, Detach.self, Reattach.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
+        subcommands: [New.self, Duplicate.self, Close.self, Undo.self, Detach.self, Reattach.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
                       Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Context.self,
@@ -101,10 +101,12 @@ struct Session: ParsableCommand {
         var noSelect = false
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
+        @OptionGroup var operation: OperationOptions
         var echoesResultID: Bool { true }
 
         func validate() throws {
             if noSelect, !companion { throw ValidationError("--no-select needs --companion") }
+            if operation.opID != nil, !companion { throw ValidationError("--op-id needs --companion") }
         }
 
         func run() throws {
@@ -113,8 +115,8 @@ struct Session: ParsableCommand {
         }
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: companion ? .sessionCompanionDuplicate : .sessionDuplicate, target: target.target,
-                           args: options.withWindow(noSelect ? ControlArgs(noSelect: true) : nil))
+            operation.stamp(ControlRequest(cmd: companion ? .sessionCompanionDuplicate : .sessionDuplicate, target: target.target,
+                                           args: options.withWindow(noSelect ? ControlArgs(noSelect: true) : nil)))
         }
     }
 
@@ -123,13 +125,25 @@ struct Session: ParsableCommand {
         @OptionGroup var target: BatchTargetOptions
         @Flag(name: .long, help: "Give a single close ⌘W's undo grace, so undo inside it brings the running shell back; closes at once when Settings turns undo off.")
         var undoable = false
+        @Flag(name: .long, help: "End a session attached from another host on that host, not only here; any other session closes as without it.")
+        var terminate = false
         @OptionGroup var options: ClientOptions
         @OptionGroup var operation: OperationOptions
 
         func makeRequest() throws -> ControlRequest {
             let args = ControlArgs(targets: target.batchTargets, undoable: undoable ? true : nil)
-            return operation.stamp(ControlRequest(cmd: .sessionClose, target: target.targets.first ?? "active",
+            return operation.stamp(ControlRequest(cmd: terminate ? .sessionTerminate : .sessionClose,
+                                                  target: target.targets.first ?? "active",
                                                   args: options.withWindow(args == ControlArgs() ? nil : args)))
+        }
+
+        func run() throws {
+            guard terminate else { return try defaultRun() }
+            let send = companionSend(SocketClient(path: options.socketPath()).send, json: options.json,
+                                     tooOld: "the running app is too old for terminate")
+            let reply = try send(try makeRequest())
+            SocketClient.printResponse(reply, json: options.json)
+            if !reply.response.ok { throw ExitCode.failure }
         }
     }
 
@@ -182,7 +196,8 @@ struct Session: ParsableCommand {
 
     struct Move: RequestCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Move a session: to another workspace or window, reorder with --to, or place relative to an anchor with --after/--before.")
+            abstract: "Move a session: to another workspace or window, reorder with --to, place relative to an anchor with --after/--before, "
+                + "or put a companion under another session with --parent.")
         @Argument(help: "Destination workspace id/prefix (relocate; with --to-window, one in that window). Omit with --to, --after/--before, --to-window.") var workspace: String?
         @Option(name: .customLong("to-window"),
                 help: "Move to another window: new, a window name, an id or a prefix. Lands in the workspace argument, --workspace-name, or one named like the session's own.")
@@ -192,6 +207,9 @@ struct Session: ParsableCommand {
         @Option(name: .long, help: "Reorder within the workspace: up, down, top, or bottom.") var to: String?
         @Option(name: .long, help: "Place right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace (relocates + positions in one shot).") var after: String?
         @Option(name: .long, help: "Place right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
+        @Option(name: .long, help: "Move the target companion under this top-level session (id/prefix) instead.") var parent: String?
+        @Option(name: .long, help: "With --parent: the companion's slot among the new parent's companions, 0 first; omitted appends.")
+        var index: Int?
         @OptionGroup var target: BatchTargetOptions
         @OptionGroup var options: ClientOptions
         @OptionGroup var operation: OperationOptions
@@ -201,6 +219,13 @@ struct Session: ParsableCommand {
         // --after/--before (anchor-relative)}; reject empty/conflicting cases at parse time as a clean usage error,
         // unit-testable without a socket. the anchor carries its own workspace, so placement excludes --to and a workspace.
         func validate() throws {
+            if parent != nil || index != nil {
+                try validateCompanionMove()
+                if toWindow != nil || workspaceName != nil || windowName != nil {
+                    throw ValidationError("--parent takes no --to-window, --workspace-name or --window-name")
+                }
+                return
+            }
             try validateWindowName(windowName, toWindow: toWindow)
             if toWindow != nil {
                 if to != nil || after != nil || before != nil {
@@ -230,13 +255,14 @@ struct Session: ParsableCommand {
                 throw ValidationError("session.move --target can be repeated only with a workspace or --after/--before")
             }
             switch (workspace, to) {
-            case (nil, nil): throw ValidationError("provide a destination workspace, --to, or --after/--before")
+            case (nil, nil): throw ValidationError("provide a destination workspace, --to, --after/--before, or --parent")
             case (.some, .some): throw ValidationError("provide a destination workspace or --to, not both")
             default: break
             }
         }
 
         func makeRequest() throws -> ControlRequest {
+            if parent != nil { return companionMoveRequest() }
             let args: ControlArgs
             if let toWindow {
                 args = ControlArgs(workspace: workspace, workspaceName: workspaceName, toWindow: toWindow, windowName: windowName)
@@ -684,7 +710,8 @@ extension Session {
     struct Overlay: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
-            subcommands: [Open.self, Close.self, Hide.self, Show.self, Toggle.self, Follow.self, Search.self, Changes.self, Wrap.self, Resize.self,
+            subcommands: [Open.self, Close.self, Hide.self, Show.self, Toggle.self, Follow.self, Search.self, Changes.self, Files.self, Wrap.self, Expand.self,
+                          Resize.self,
                           Reload.self, Navigate.self,
                           Result.self, Submit.self, Copy.self, Text.self, RunJob.self, PageServe.self, PageAttach.self]
         )
@@ -805,6 +832,7 @@ extension Session {
             /// viewer's `agtermctl`, whose own row usually carries a pairing that would otherwise bounce the
             /// overlay straight back. Hidden: nothing but the redirect has any business passing it.
             @Flag(name: .long, help: .hidden) var resolved = false
+            @OptionGroup var operation: OperationOptions
             @OptionGroup var target: TargetOptions
             @OptionGroup var options: ClientOptions
 
@@ -822,6 +850,7 @@ extension Session {
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
+                if operation.opID != nil, rowFlag == nil { throw ValidationError("--op-id requires --companion or --page") }
                 if rebased || diff != nil || workingTree || file != nil || project != nil || onClose != nil { return try validateRebased() }
                 if companion, page { throw ValidationError("--page cannot be combined with --companion") }
                 if let rowFlag, html == nil && url == nil { throw ValidationError("\(rowFlag) requires --html or --url") }
@@ -872,7 +901,7 @@ extension Session {
             }
 
             func makeRequest() throws -> ControlRequest {
-                ControlRequest(cmd: companion ? .sessionCompanionPage : page ? .sessionPage : .sessionOverlayOpen, target: target.target,
+                operation.stamp(ControlRequest(cmd: companion ? .sessionCompanionPage : page ? .sessionPage : .sessionOverlayOpen, target: target.target,
                                args: options.withWindow(ControlArgs(cwd: html == nil && !rebased ? cwd : cwd.map(Overlay.absolutePath),
                                                                      command: command, wait: wait ? true : nil,
                                                                      sizePercent: sizePercent, follow: follow ? true : nil,
@@ -889,7 +918,7 @@ extension Session {
                                                                      rebased: rebased ? true : nil, diff: diff,
                                                                      workingTree: workingTree ? true : nil,
                                                                      file: try file.map(Overlay.absoluteFileTarget), project: project.map(Overlay.absolutePath),
-                                                                     onClose: onClose)))
+                                                                     onClose: onClose))))
             }
 
             /// Both phases live in `OverlayRedirectCommands.swift`: the open is sent via the same

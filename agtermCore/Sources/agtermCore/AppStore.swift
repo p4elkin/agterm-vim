@@ -154,10 +154,9 @@ public final class AppStore {
     @ObservationIgnored var pendingCloseTasks: [UUID: Task<Void, Never>] = [:]
 
     @ObservationIgnored let persistence: PersistenceStore
-    /// catalogOperations is agterm-server's operation table, written in every save of this store; nil on a Mac.
+    /// catalogOperations is the operation table of the catalog this store serves, written in every save; nil before its first operation.
     @ObservationIgnored public var catalogOperations: CatalogOperationTable?
-    /// catalogMirrored is set once a remote window's store holds its server's catalog; until then its saved view
-    /// state is the only record of how this Mac showed the rows.
+    /// catalogMirrored is set once a remote window's store holds its first catalog; until then its saved view state is kept.
     @ObservationIgnored public internal(set) var catalogMirrored = false
     /// catalogState is a remote window's connection to its server, nil for a local window. Observed: the window
     /// strip draws it.
@@ -171,14 +170,16 @@ public final class AppStore {
     public internal(set) var catalogDetachedWorkspaces: Set<UUID> = []
     /// catalogHiddenViews keeps the view of each row a detach hides, so it comes back on reattach and is saved meanwhile.
     @ObservationIgnored var catalogHiddenViews: [UUID: RemoteWindowViewState.SessionView] = [:]
-    /// catalogHiddenCollapsed keeps whether each workspace a detach hides was collapsed.
+    /// catalogHiddenCollapsed and catalogHiddenFocus keep whether each workspace a detach hides was collapsed or focused.
     @ObservationIgnored var catalogHiddenCollapsed: [UUID: Bool] = [:]
+    @ObservationIgnored var catalogHiddenFocus: Set<UUID> = []
     /// snapshotDidSave runs after each snapshot write that landed.
     @ObservationIgnored let snapshotDidSave: (() -> Void)?
     /// snapshotUnsaved is true from a failed snapshot write until the next one that lands.
-    @ObservationIgnored var snapshotUnsaved = false
+    @ObservationIgnored public internal(set) var snapshotUnsaved = false
     @ObservationIgnored let recentClosedStore: RecentClosedStore?
     @ObservationIgnored var recentClosedDidChange: (() -> Void)?
+    @ObservationIgnored var recentClosedWindow: UUID?
     @ObservationIgnored let controlEventSink: ((ControlEventDraft) -> Void)?
     /// A session that is really gone: its surfaces are torn down and no undo can bring it back. Distinct from
     /// the `.sessionClosed` EVENT, which a soft close emits at the start of its undo grace — anything that
@@ -199,10 +200,15 @@ public final class AppStore {
     @ObservationIgnored public var onRemoteRowVisibility: ((Session, Bool) -> Void)?
     /// Told when an attached session is seen here, so its origin clears its own count and auto-reset status.
     @ObservationIgnored public var onRemoteSessionSeen: ((UUID) -> Void)?
+    /// onOriginFrame sends a frame to an attached session's origin; false when the origin does not take it.
+    @ObservationIgnored public var onOriginFrame: ((UUID, PresentationFrame.Body) -> Bool)?
     /// onReplicaPageChanged is told the local id of a page shown for an origin whose reported state changed.
     @ObservationIgnored public var onReplicaPageChanged: ((UUID) -> Void)?
     /// Called when an attached row is renamed here, with the name to send its origin; nil clears it.
     @ObservationIgnored public var onRemoteSessionRenamed: ((UUID, String?) -> Void)?
+    @ObservationIgnored var remoteTextWaits: [RemoteTextWait: CheckedContinuation<RemoteTextOutcome, Never>] = [:]
+    /// remoteTextDeadline is how long a text page action waits for the presenter's result.
+    @ObservationIgnored public var remoteTextDeadline = PresentationPageResult.deadline
     @ObservationIgnored let paneFinalizer: (([UUID]) -> Void)?
 
     /// Told the pane identities of every session or split leaving the visible model, hard or soft, which
@@ -269,6 +275,9 @@ public final class AppStore {
     /// server sets it; a store on the Mac keeps every surface rule.
     public let headless: Bool
 
+    /// askRegistry indexes this store's session asks and keeps their results.
+    public let askRegistry: AskRegistry
+
     public init(workspaces: [Workspace] = [], selectedSessionID: UUID? = nil,
                 persistence: PersistenceStore = PersistenceStore(),
                 recentClosedStore: RecentClosedStore? = nil,
@@ -278,8 +287,10 @@ public final class AppStore {
                 sessionDidFinalize: ((UUID) -> Void)? = nil,
                 paneFinalizer: (([UUID]) -> Void)?,
                 launchPaneDrop: (([UUID]) -> Void)? = nil,
-                headless: Bool = false) {
+                headless: Bool = false,
+                askRegistry: AskRegistry = .shared) {
         self.headless = headless
+        self.askRegistry = askRegistry
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
         self.persistence = persistence
@@ -370,6 +381,7 @@ public final class AppStore {
     public func controlTree(paneForeground: (Session) -> CommandRestore.PaneForeground?,
                             splitPaneForeground: (Session) -> CommandRestore.PaneForeground? = { _ in nil },
                             liveAttribution: (UUID) -> SessionHost.Attribution? = { _ in nil },
+                            liveHostStale: (UUID) -> Bool = { _ in false },
                             fontSize: (Session) -> Double? = { _ in nil },
                             splitFontSize: (Session) -> Double? = { _ in nil },
                             scratchFontSize: (Session) -> Double? = { _ in nil },
@@ -401,6 +413,8 @@ public final class AppStore {
                     ? liveAttribution(session.paneIdentity) ?? .unknown : nil
                 let splitAttribution: SessionHost.Attribution? = local && session.hasSplit && session.splitSurface?.backedByZmx == true
                     ? session.splitPaneIdentity.flatMap(liveAttribution) ?? .unknown : nil
+                let mainStale = mainAttribution != nil && liveHostStale(session.paneIdentity)
+                let splitStale = splitAttribution != nil && session.splitPaneIdentity.map(liveHostStale) == true
                 let idle = session.agentIndicator.status == .idle
                 let status = idle ? nil : session.agentIndicator.status.rawValue
                 let statusPane = idle ? nil : session.agentIndicator.statusPane?.rawValue
@@ -417,9 +431,10 @@ public final class AppStore {
                                               visible: surface.isVisible(in: session), cwd: paneCwd,
                                               backedByZmx: session.zmxBacking(for: surface),
                                               lead: ZmxLeadBook.shared.role(pane: pane),
-                                              reconnect: RemoteReconnectBook.shared.readback(pane: pane),
+                                              reconnect: RemoteReconnectBook.shared.readback(pane: pane), attachEnded: attachEnded(pane),
                                               paneID: token?.isEmpty == false ? token : nil,
-                                              pendingMessages: pendingMessages(token: token))
+                                              pendingMessages: pendingMessages(session, pane: pane, token: token),
+                                              remote: remotelyPresented(session, pane: pane))
                 }
                 var node = ControlSessionNode(id: session.id.uuidString, name: session.displayName,
                                               cwd: (session.content == .page ? parent(of: session) : nil)?.effectiveCwd
@@ -447,6 +462,8 @@ public final class AppStore {
                                               ended: session.ended ? true : nil,
                                               pending: remoteActions?.pendingState(of: session.id),
                                               scratchBacked: isRemoteWindow && session.scratchDaemon != nil ? true : nil,
+                                              scratchPaneID: session.scratchDaemon?.identity.uuidString,
+                                              scratchPendingMessages: scratchPendingMessages(session),
                                               interactions: interactionNodes(session),
                                               commandWait: (session.initialCommand != nil && session.commandWait) ? true : nil,
                                               splitCommandWait: (session.splitInitialCommand != nil && session.splitCommandWait)
@@ -465,6 +482,7 @@ public final class AppStore {
                                               statusShape: idle ? nil : session.agentIndicator.shape?.rawValue,
                                               statusChangedAt: session.statusChangedAt?.timeIntervalSince1970,
                                               statusNote: idle ? nil : session.agentIndicator.note,
+                                              activePanes: activePanes(of: session),
                                               background: session.backgroundWatermark,
                                               paneBackgrounds: session.paneBackgrounds.isEmpty ? nil : session.paneBackgrounds,
                                               unseen: session.unseenCount > 0 ? session.unseenCount : nil,
@@ -483,7 +501,9 @@ public final class AppStore {
                                               named: session.customName?.trimmedOrNil != nil,
                                               context: session.effectiveContext, remoteHost: session.remoteHost,
                                               splitCwd: session.hasSplit ? session.cwd(for: .right) : nil,
+                                              scratchCwd: session.scratchSurface == nil ? nil : session.cwd(for: .scratch),
                                               liveAttribution: mainAttribution?.rawValue, splitLiveAttribution: splitAttribution?.rawValue,
+                                              liveHostStale: mainStale ? true : nil, splitLiveHostStale: splitStale ? true : nil,
                                               presentation: presentationNode(of: session), presenters: presentersNode(of: session),
                                               remoteOverlays: remoteOverlayNodes(of: session),
                                               htmlOverlays: htmlOverlayNodes(session, zoom: htmlZoom),
@@ -651,9 +671,9 @@ public final class AppStore {
             replaceSidebarSelection(with: sessionID)
         }
         disableFocusIfSelectionOutsideSet(sessionID)
-        if let sessionID { clearUnseen(sessionID) }
+        if let sessionID { markSeen(sessionID) }
         clearAutoResetIndicator(sessionID)
-        clearAutoResetIndicator(previous)
+        if previous != sessionID { clearAutoResetIndicator(previous) }
         // only when the selection actually moved: re-arming on a same-id select would make the dwell measure
         // time since the last select CALL rather than time continuously selected, and paths that reselect the
         // current session (`overlay open --follow`, `session.search`, a banner click) would defer it forever.
@@ -665,7 +685,7 @@ public final class AppStore {
     /// Reset a session's indicator to idle when marked `autoReset`; no-op for nil, unknown, or non-autoReset.
     private func clearAutoResetIndicator(_ id: UUID?) {
         guard let id, let session = session(withID: id), session.agentIndicator.autoReset else { return }
-        setAgentIndicator(AgentIndicator(), forSession: id)
+        clearStatus(id, reason: .select)
     }
 
     /// Clears a session's unseen-notification badge; no-op for an unknown id, and never saves (ephemeral).
@@ -734,28 +754,30 @@ public final class AppStore {
     }
 
     /// Removes a session, tears down its surface, and — if it was active — reselects the most-recently-active
-    /// surviving session in scope (`closeReselectionTarget(after:removing:)`), falling back to the positional neighbor.
-    public func closeSession(_ sessionID: UUID, alreadyFinalized: UUID? = nil) {
+    /// surviving session in scope (`closeReselectionTarget(after:removing:)`), falling back to the positional neighbor;
+    /// returns the Recent Closed entry written for it, if any.
+    @discardableResult
+    public func closeSession(_ sessionID: UUID, alreadyFinalized: UUID? = nil) -> UUID? {
         // a parent closes with its companions; one Recent Closed entry carries the whole group
         let companions = companions(of: sessionID)
         // recorded before the companions close, which takes a page companion's page with it
         let recorded = companions.filter(\.isPersistable).map(sessionSnapshot)
         for companion in companions.reversed() {
-            closeSession(companion.id, alreadyFinalized: alreadyFinalized, recordsRecent: false)
+            _ = closeSession(companion.id, alreadyFinalized: alreadyFinalized, recordsRecent: false)
         }
-        closeSession(sessionID, alreadyFinalized: alreadyFinalized, recordsRecent: true, companions: recorded)
         // a converted companion can still own a parked companion recorded under it
-        finalizeParkedCompanions(of: [sessionID] + companions.map(\.id))
+        defer { finalizeParkedCompanions(of: [sessionID] + companions.map(\.id)) }
+        return closeSession(sessionID, alreadyFinalized: alreadyFinalized, recordsRecent: true, companions: recorded)
     }
 
     /// closeSessionRow closes one row and none of its companions: a catalog row's companions leave only when
     /// their own catalog sessions do.
-    func closeSessionRow(_ sessionID: UUID) {
-        closeSession(sessionID, alreadyFinalized: nil, recordsRecent: false)
+    func closeSessionRow(_ sessionID: UUID, alreadyFinalized: UUID? = nil) {
+        _ = closeSession(sessionID, alreadyFinalized: alreadyFinalized, recordsRecent: false)
     }
 
-    private func closeSession(_ sessionID: UUID, alreadyFinalized: UUID?, recordsRecent: Bool, companions: [SessionSnapshot] = []) {
-        guard let location = location(ofSession: sessionID) else { return }
+    private func closeSession(_ sessionID: UUID, alreadyFinalized: UUID?, recordsRecent: Bool, companions: [SessionSnapshot] = []) -> UUID? {
+        guard let location = location(ofSession: sessionID) else { return nil }
         let wasActive = selectedSessionID == sessionID
         let workspace = workspaces[location.workspaceIndex]
         let removed = workspace.sessions[location.sessionIndex]
@@ -763,11 +785,7 @@ public final class AppStore {
         workspaces[location.workspaceIndex].sessions.remove(at: location.sessionIndex)
         emitSessionClosed(removed, workspace: workspace.id)
         dropLaunchPanes([removed])
-        if recordsRecent {
-            recordRecentClosedSession(removed, workspaceID: workspace.id, workspaceName: workspace.name,
-                                      workspaceIndex: location.workspaceIndex, sessionIndex: location.sessionIndex,
-                                      companions: companions)
-        }
+        let recent = recordClosedSession(removed, workspace: workspace, at: location, local: recordsRecent, companions: companions)
         finalizePaneIdentities([removed], alreadyFinalized: alreadyFinalized)
         removed.surface?.teardown()
         removed.splitSurface?.teardown()
@@ -789,6 +807,7 @@ public final class AppStore {
         }
         dropFromFlaggedOrder([sessionID])
         save()
+        return recent
     }
 
     /// Whether a workspace may be removed: one is always kept, so only when more than one exists.
@@ -804,7 +823,7 @@ public final class AppStore {
         let removingActive = selectedSessionID.map { id in workspace.sessions.contains { $0.id == id } } ?? false
         // record the membership BEFORE `dropFocusMember` below prunes it, so Reopen Closed Item can re-mark it
         recordRecentClosedWorkspace(workspace, selectedSessionID: removingActive ? selectedSessionID : nil,
-                                    focusMember: focusedWorkspaceIDs.contains(workspaceID))
+                                    focusMember: focusedWorkspaceIDs.contains(workspaceID), workspaceIndex: index)
         for session in workspace.sessions {
             releaseLeavingSession(session)
             emitSessionClosed(session, workspace: workspace.id)

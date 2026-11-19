@@ -3,6 +3,49 @@ import Testing
 @testable import agtermCore
 
 struct LinkPolicyTests {
+    private static let linkID = UUID(uuidString: "0F5C1E2A-3B4D-4E6F-8A9B-0C1D2E3F4A5B")!
+    private static let sessionLinks = [
+        "agterm://session/0F5C1E2A-3B4D-4E6F-8A9B-0C1D2E3F4A5B",
+        "agterm://session/0f5c1e2a-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+        "AGTERM://SESSION/0F5C1E2A-3B4D-4E6F-8A9B-0C1D2E3F4A5B",
+    ]
+    private static let rejectedSessionLinks: [String] = {
+        let id = linkID.uuidString
+        let valid = "agterm://session/" + id
+        return [valid + "/", valid + "?", valid + "#", valid + "?a=1",
+                "agterm://@session/" + id, "agterm://u:p@session/" + id,
+                "agterm://session:80/" + id, "agterm://session:/" + id,
+                "agterm://session//" + id, "agterm://session/x/" + id,
+                "agterm:///session/" + id, "agterm:session/" + id,
+                "agterm://session/" + id.replacingOccurrences(of: "-", with: ""),
+                "agterm://session/{" + id + "}", "agterm://session/%30" + id.dropFirst(),
+                "agterm://window/" + id, "agterm://session", "agterm://session/",
+                valid + " ", " " + valid, "agterm://session/not-a-uuid"]
+    }()
+
+    @Test(arguments: sessionLinks)
+    func exactSessionLinksParseWithoutChangingDisposition(_ raw: String) {
+        #expect(LinkPolicy.sessionLink(raw) == Self.linkID)
+        #expect(LinkPolicy.disposition(for: raw) == .ignore)
+    }
+
+    @Test(arguments: LinkOpenMode.allCases, sessionLinks)
+    func sessionLinksSelectOnlyFromShellOrigins(_ mode: LinkOpenMode, _ raw: String) {
+        for origin in [LinkPolicy.ClickOrigin.pane(Self.session), .remotePane(Self.session), .scratch(Self.session)] {
+            #expect(LinkPolicy.route(for: raw, mode: mode, origin: origin) == .selectSession(Self.linkID))
+        }
+        for origin in [LinkPolicy.ClickOrigin.hud, .programOverlay, .quick] {
+            #expect(LinkPolicy.route(for: raw, mode: mode, origin: origin) == .ignore)
+        }
+    }
+
+    @Test(arguments: rejectedSessionLinks, LinkOpenMode.allCases)
+    func malformedSessionLinksAreIgnoredEverywhere(_ raw: String, _ mode: LinkOpenMode) {
+        #expect(LinkPolicy.sessionLink(raw) == nil)
+        for origin in [LinkPolicy.ClickOrigin.pane(Self.session), .remotePane(Self.session), .scratch(Self.session), .hud, .programOverlay, .quick] {
+            #expect(LinkPolicy.route(for: raw, mode: mode, origin: origin) == .ignore)
+        }
+    }
     // MARK: disposition (open / reveal / ignore)
 
     /// The garbage suffixes model a `String(cString:)` over-read past `len`: the trailing space + junk
@@ -540,8 +583,13 @@ struct LinkPolicyTests {
     // regression: a plain-http page the app's web views cannot load was routed to the overlay
     @Test(arguments: [
         ("http://localhost/", true), ("http://LOCALHOST:8080/x", true), ("http://devbox/", true),
-        ("http://mac.local:3000/", true), ("http://127.0.0.1:5173/", true), ("http://93.184.216.34/", true),
-        ("http://[::1]:8080/", true), ("http://[2001:db8::1]/", true),
+        ("http://mac.local:3000/", true), ("http://127.0.0.1:5173/", true), ("http://93.184.216.34/", false),
+        ("http://[::1]:8080/", true), ("http://[2001:db8::1]/", false), ("http://100.101.102.103:8171/", false),
+        ("http://10.0.0.1/", true), ("http://192.168.1.10/", true), ("http://192.169.0.1/", false),
+        ("http://172.16.0.1/", true), ("http://172.31.255.255/", true), ("http://172.15.255.255/", false), ("http://172.32.0.0/", false),
+        ("http://169.254.1.1/", true), ("http://169.253.0.1/", false), ("http://127.255.0.1/", true),
+        ("http://[fc00::1]/", true), ("http://[fdff:ffff::1]/", true), ("http://[fbff::1]/", false),
+        ("http://[fe80::1]/", true), ("http://[febf::1]/", true), ("http://[fec0::1]/", false),
         ("http://example.com/", false), ("http://www.example.com:8080/a", false), ("http://local/", true),
         ("http://notlocal.localx/", false), ("http://1.2.3.example/", false), ("http://999.1.1.1/", false),
         ("https://example.com/", true),
@@ -813,6 +861,7 @@ struct LinkPolicyTests {
         #expect(LinkPolicy.Route.browser(web).localFile == nil)
         #expect(LinkPolicy.Route.overlay(web, session: session, sizePercent: nil).localFile == nil)
         #expect(LinkPolicy.Route.ignore.localFile == nil)
+        #expect(LinkPolicy.Route.selectSession(session).localFile == nil)
     }
 
     @Test(arguments: [("/x/app.log", nil, true), ("/x/run.OUT", nil, true), ("/x/app.log", 42, false), ("/x/notes.txt", nil, false),

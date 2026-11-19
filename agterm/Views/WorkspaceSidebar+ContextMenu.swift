@@ -137,11 +137,12 @@ extension WorkspaceSidebar.Coordinator {
                 companion.representedObject = node
                 companion.isEnabled = !serverBlocked
                 menu.addItem(companion)
-                if store.session(withID: node.id)?.content == .terminal, !store.isRemoteWindow {
+                if store.session(withID: node.id)?.content == .terminal {
                     let copy = NSMenuItem(title: "Duplicate as Companion", action: #selector(menuDuplicateCompanion(_:)),
                                           keyEquivalent: "")
                     copy.target = self
                     copy.representedObject = node
+                    copy.isEnabled = !serverBlocked
                     menu.addItem(copy)
                 }
                 if let session = store.session(withID: node.id), session.parentID == nil {
@@ -149,7 +150,8 @@ extension WorkspaceSidebar.Coordinator {
                                              keyEquivalent: "")
                     convert.target = self
                     convert.representedObject = node
-                    convert.isEnabled = session.remoteHost == nil
+                    // a server window's row is converted by its server, a row attached from another host by its origin
+                    convert.isEnabled = !store.isRemoteWindow || !serverBlocked
                     menu.addItem(convert)
                 }
                 menu.addItem(.separator())
@@ -158,7 +160,12 @@ extension WorkspaceSidebar.Coordinator {
                 sessionTargets.contains { ownerWorkspaceID(ofSession: $0) != workspace.id }
                     && store.canMoveSessions(sessionTargets, toWorkspace: workspace.id)
             }
-            if !targets.isEmpty {
+            if sessionCount == 1, let id = sessionTargets.first, let submenu = companionMoveMenu(for: id) {
+                let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+                moveTo.submenu = submenu
+                moveTo.isEnabled = !serverBlocked
+                menu.addItem(moveTo)
+            } else if !targets.isEmpty {
                 let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
                 for target in targets {
@@ -182,8 +189,11 @@ extension WorkspaceSidebar.Coordinator {
             let flag = NSMenuItem(title: flagTitle, action: #selector(menuToggleFlag(_:)), keyEquivalent: "")
             flag.target = self
             flag.representedObject = SessionBatchRequest(sessionIDs: sessionTargets)
+            flag.isEnabled = !store.marksBlocked
             menu.addItem(flag)
-            menu.addItem(tintMenuItem(forSessions: sessionTargets))
+            let tint = tintMenuItem(forSessions: sessionTargets)
+            tint.isEnabled = !store.marksBlocked
+            menu.addItem(tint)
             if sessionCount == 1 {
                 let reveal = NSMenuItem(title: "Reveal in Finder", action: #selector(menuRevealInFinder(_:)), keyEquivalent: "")
                 reveal.target = self
@@ -235,13 +245,15 @@ extension WorkspaceSidebar.Coordinator {
             menu.addItem(membership)
             menu.addItem(.separator())
             // targets every session of the workspace, including the ones the flagged tree layout hides.
-            let flagAll = NSMenuItem(title: store.allSessionsFlagged(inWorkspace: node.id) ? "Unflag All Sessions" : "Flag All Sessions",
+            let flagAll = NSMenuItem(title: store.workspaceAllFlagged(node.id) ? "Unflag All Sessions" : "Flag All Sessions",
                                      action: #selector(menuToggleWorkspaceFlag(_:)), keyEquivalent: "")
             flagAll.target = self
             flagAll.representedObject = node
-            flagAll.isEnabled = store.workspaces.first { $0.id == node.id }?.sessions.isEmpty == false
+            flagAll.isEnabled = store.workspaceHasSessions(node.id) && !store.marksBlocked
             menu.addItem(flagAll)
-            menu.addItem(tintMenuItem(forWorkspace: node.id))
+            let workspaceTint = tintMenuItem(forWorkspace: node.id)
+            workspaceTint.isEnabled = !store.marksBlocked
+            menu.addItem(workspaceTint)
             menu.addItem(.separator())
             let delete = NSMenuItem(title: "Delete Workspace", action: #selector(menuDeleteWorkspace(_:)), keyEquivalent: "")
             delete.target = self
@@ -301,6 +313,34 @@ extension WorkspaceSidebar.Coordinator {
         store.moveSessions(request.sessionIDs, toWorkspace: targetID)
     }
 
+    private func companionMoveMenu(for id: UUID) -> NSMenu? {
+        guard let parentID = store.session(withID: id)?.parentID else { return nil }
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for workspace in store.workspaces {
+            let parents = workspace.sessions.filter { candidate in
+                guard candidate.parentID == nil, candidate.id != parentID else { return false }
+                if case .success = store.canMoveCompanion(id, under: candidate.id) { return true }
+                return false
+            }
+            guard !parents.isEmpty else { continue }
+            submenu.addItem(.sectionHeader(title: workspace.name))
+            for parent in parents {
+                let item = NSMenuItem(title: parent.displayName, action: #selector(menuMoveCompanion(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = SessionBatchRequest(sessionIDs: [id], targetID: parent.id)
+                submenu.addItem(item)
+            }
+        }
+        return submenu.items.isEmpty ? nil : submenu
+    }
+
+    @objc private func menuMoveCompanion(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? SessionBatchRequest, let id = request.sessionIDs.first,
+              let parentID = request.targetID else { return }
+        actions.moveCompanion(id, under: parentID, at: nil, in: store)
+    }
+
     @objc private func menuClose(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest else { return }
         // pass THIS sidebar's window-local store — a background window's Close must target its own
@@ -310,7 +350,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuClearStatus(_ sender: NSMenuItem) {
         guard let request = sender.representedObject as? SessionBatchRequest else { return }
-        for id in request.sessionIDs { store.setAgentIndicator(AgentIndicator(), forSession: id) }
+        for id in request.sessionIDs { store.clearStatus(id) }
     }
 
     @objc private func menuMarkForAttention(_ sender: NSMenuItem) {
@@ -325,6 +365,7 @@ extension WorkspaceSidebar.Coordinator {
 
     @objc private func menuToggleWorkspaceFlag(_ sender: NSMenuItem) {
         guard let node = sender.representedObject as? SidebarNode else { return }
+        if actions.sendWorkspaceFlag(!store.workspaceAllFlagged(node.id), to: node.id, in: store) { return }
         store.applyWorkspaceFlag(.toggle, to: node.id)
     }
 

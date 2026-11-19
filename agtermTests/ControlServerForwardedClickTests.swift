@@ -139,6 +139,7 @@ final class ControlServerForwardedClickTests: XCTestCase {
             (stateDir.appendingPathComponent("gone.md").path, session.paneIdentity, .notFound),
             ("src/gone.py:3", session.paneIdentity, .notFound),
             (binary, session.paneIdentity, .notAPage),
+            ("agterm://session/0F5C1E2A-3B4D-4E6F-8A9B-0C1D2E3F4A5B", session.paneIdentity, .notAPage),
             ("https://example.com/a", session.paneIdentity, .notAPage),
             (try write("x.md", "# x\n"), UUID(), .paneNotAttached),
         ]
@@ -171,7 +172,7 @@ final class ControlServerForwardedClickTests: XCTestCase {
         let (store, session) = try addSession()
         store.toggleSplit(session.id)
         let presenter = try present(session)
-        lead(.leader, pane: try XCTUnwrap(session.splitPaneIdentity))
+        lead(.leader, pane: session.paneIdentity)
         let files = try ["a.md", "b.txt", "c.html"].map { try write($0, "# a\n") } + [try writePNG()]
 
         for file in files {
@@ -219,12 +220,52 @@ final class ControlServerForwardedClickTests: XCTestCase {
         XCTAssertEqual(session.remoteOverlays.slot(nil)?.job, presenter.requests.last?.page)
     }
 
+    func testAClickedLogReachesAPresenterWithLiveTextPagesAsALogPage() async throws {
+        let (_, session) = try addSession()
+        let presenter = try present(session, liveText: true)
+
+        click(try write("app.log", "one\n"), in: session, pane: session.paneIdentity)
+        try await waitUntil { presenter.requests.count == 1 }
+
+        XCTAssertEqual(presenter.requests.first?.textLog, TextLog(tail: TextPage.defaultTail, follow: true))
+        XCTAssertEqual(session.remoteOverlays.slot(nil)?.page?.overlay.logState?.following, true)
+    }
+
+    func testAClickedLogReachesAnOlderPresenterAsAPlainTextPage() async throws {
+        let (_, session) = try addSession()
+        let presenter = try present(session)
+        let file = try write("app.log", "one\n")
+
+        click(file, in: session, pane: session.paneIdentity)
+        try await waitUntil { presenter.requests.count == 1 }
+
+        XCTAssertEqual(presenter.requests.first?.source, .text(path: file, line: nil))
+        XCTAssertNil(presenter.requests.first?.textLog)
+        XCTAssertTrue(presenter.refusals.isEmpty)
+    }
+
+    func testAForwardedClickReplacesAHiddenClickedLogPage() async throws {
+        let (_, session) = try addSession()
+        let presenter = try present(session, liveText: true)
+        click(try write("a.log", "a\n"), in: session, pane: session.paneIdentity)
+        try await waitUntil { presenter.requests.count == 1 }
+        let first = try XCTUnwrap(presenter.requests.first)
+        hide(first.page, in: session)
+
+        click(try write("b.log", "b\n"), in: session, pane: session.paneIdentity)
+        try await waitUntil { presenter.requests.count == 2 }
+
+        XCTAssertTrue(presenter.bodies.contains(.pageClose(PresentationPageChange(page: first.page))))
+        XCTAssertEqual(session.remoteOverlays.slot(nil)?.job, presenter.requests.last?.page)
+        XCTAssertNotNil(presenter.requests.last?.textLog)
+    }
+
     // regression: a refused forwarded click released the hidden clicked page this Mac shows itself
     func testARefusedForwardedClickLeavesAHiddenPageShownHere() async throws {
         let (store, session) = try addSession()
         store.toggleSplit(session.id)
         let presenter = try present(session)
-        lead(.leader, pane: try XCTUnwrap(session.splitPaneIdentity))
+        lead(.leader, pane: session.paneIdentity)
         let local = URL(fileURLWithPath: try write("local.md", "# local\n"))
         let opened = await withCheckedContinuation { continuation in
             server.openMarkdownLink(local, session: session.id, sizePercent: nil) { continuation.resume(returning: $0) }
@@ -263,14 +304,36 @@ final class ControlServerForwardedClickTests: XCTestCase {
         XCTAssertNil(session.htmlOverlay)
     }
 
+    func testALeadingViewersClickReturnsItsPageAndRefusalToThatViewer() async throws {
+        let (_, session) = try addSession()
+        let holder = try present(session)
+        let leader = try viewer(session, leads: [session.paneIdentity])
+        let id = try XCTUnwrap(viewerID)
+        let file = try write("a.md", "# a\n")
+        let send = { (raw: String) in
+            self.server.presentationHub.receive(PresentationFrame(gen: leader.generation, rev: 1, body: .linkClick(
+                PresentationLinkClick(raw: raw, pane: session.paneIdentity, mode: .overlay))), from: id)
+        }
+
+        send(stateDir.appendingPathComponent("gone.md").path)
+        try await waitUntil { !leader.refusals.isEmpty }
+        send(file)
+        try await waitUntil { !leader.requests.isEmpty }
+
+        XCTAssertEqual(leader.refusals, [.notFound])
+        XCTAssertEqual(leader.requests.map(\.source), [.markdown(path: file)])
+        XCTAssertTrue(holder.requests.isEmpty && holder.refusals.isEmpty)
+    }
+
     private var subscriber: PresentationHub.SubscriberID?
 
-    private func present(_ session: Session) throws -> Presenter {
+    private func present(_ session: Session, liveText: Bool = false) throws -> Presenter {
         for pane in [session.paneIdentity] + [session.splitPaneIdentity].compactMap({ $0 }) { lead(.follower, pane: pane) }
         server.attachPresentationHub()
         let sink = Presenter()
         let kinds = PresentationHub.pageKinds + [PresentationHub.pageContentKind, PresentationHub.pageDocumentKind,
                                                  PresentationHub.linkClickKind, PresentationHub.pageLinksKind]
+            + (liveText ? [PresentationHub.pageTextKind] : [])
         let id = try server.presentationHub.subscribe(
             session: session.id, hello: PresentationHello(version: 1, kinds: kinds, mode: .presenter), sink: sink
         ) { PresentationSnapshot(status: nil, hud: nil) }
@@ -279,14 +342,30 @@ final class ControlServerForwardedClickTests: XCTestCase {
         return sink
     }
 
+    private func viewer(_ session: Session, leads: [UUID]) throws -> Presenter {
+        let sink = Presenter()
+        let kinds = PresentationHub.pageKinds + [PresentationHub.pageContentKind, PresentationHub.linkClickKind,
+                                                 PresentationHub.pageLinksKind, PresentationHub.leadReportKind]
+        let id = try server.presentationHub.subscribe(
+            session: session.id, hello: PresentationHello(version: 1, kinds: kinds, mode: .presenter), sink: sink
+        ) { PresentationSnapshot(status: nil, hud: nil) }
+        server.presentationHub.receive(PresentationFrame(gen: sink.generation, rev: 0, body: .leadReport(
+            PresentationLeadReport(leaders: leads))), from: id)
+        viewerID = id
+        return sink
+    }
+
+    private var viewerID: PresentationHub.SubscriberID?
+
     private func click(_ raw: String, in session: Session, pane: UUID, mode: LinkOpenMode = .overlay) {
-        server.receiveForwardedClick(PresentationLinkClick(raw: raw, pane: pane, mode: mode), forSession: session.id)
+        let holder = server.presentationHub.presenter(of: session.id) ?? -1
+        server.receiveForwardedClick(PresentationLinkClick(raw: raw, pane: pane, mode: mode), forSession: session.id, from: holder)
     }
 
     private func hide(_ page: String, in session: Session) {
         server.library.store(forSession: session.id)?.receiveRemotePageFrame(.pageState(PresentationPageState(
             page: page, title: nil, address: nil, load: .loaded, error: nil, canGoBack: false, canGoForward: false,
-            hidden: true, appliedSeq: 0)), forSession: session.id)
+            hidden: true, appliedSeq: 0)), forSession: session.id, from: server.presentationHub.presenter(of: session.id) ?? -1)
     }
 
     private func lead(_ role: ZmxLeadRole, pane: UUID) {

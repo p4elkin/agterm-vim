@@ -23,7 +23,7 @@ public enum ForwardPolicy {
              .notify, .sessionStatus, .sessionContext, .sessionSeen, .sessionNew, .sessionMark,
              .sessionClose, .sessionRename, .zmxKill, .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionText, .sessionType,
              .sessionHudOpen, .sessionHudUpdate, .sessionHudClose, .askOpen, .askResult, .askCancel, .zmxNew,
-             .sessionOverlayJobRun:
+             .sessionOverlayJobRun, .sessionTerminate:
             return .served
         case .sessionOverlayReload, .sessionOverlayNavigate, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
              .pickOpen, .pickResult, .pickCancel,
@@ -32,7 +32,7 @@ public enum ForwardPolicy {
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,
              .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch,
-             .sessionOverlayChanges, .sessionOverlayWrap:
+             .sessionOverlayChanges, .sessionOverlayWrap, .sessionOverlayFiles, .sessionOverlayExpand:
             return .forwarded
         case .sessionOverlayOpen, .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayResult, .zmxAttach:
             return .routed
@@ -47,7 +47,8 @@ public enum ForwardPolicy {
              .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
              .sessionCompanionConvert, .recentList, .recentOpen, .recentClear,
-             .windowRemoteOpen, .windowRemoteDismiss, .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach:
+             .windowRemoteOpen, .windowRemoteDismiss, .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach,
+             .sessionUndo, .sessionCompanionMove, .updateCheck:
             return .refused("no windows or UI")
         // agterm-server's catalog stream; this origin has no catalog
         case .catalogSubscribe, .catalogOp:
@@ -58,7 +59,7 @@ public enum ForwardPolicy {
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
              .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
              .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe, .sessionCompanionPageAttach,
-             .zmxAttachGroup:
+             .zmxAttachGroup, .zmxKillPane:
             return .refused("a Mac feature")
         }
     }

@@ -140,7 +140,7 @@ extension GhosttySurfaceView {
         var ke = buildKeyEvent(from: event, action: isFlagPress(event) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE)
         ke.text = nil
         _ = ghostty_surface_key(surface, ke)
-        guard clickIntent(event) != .normal, NSEvent.pressedMouseButtons == 0,
+        guard clickIntent(event) != .normal, !mouseButtonsDown(),
               let point = lastReportedMousePoint, point.x >= 0, point.y >= 0 else { return }
         refreshLinkHover(at: point, with: event)
     }
@@ -295,6 +295,8 @@ extension GhosttySurfaceView {
     /// and on `ownsPointer` so it stops at the chrome drawn over this pane (issue #324). The position report
     /// stays ungated — libghostty tracks the pointer across the whole surface either way.
     override func mouseMoved(with event: NSEvent) {
+        // libghostty re-reports a link only on a new cell, so entering a HUD mid-cell would leave this label up
+        if underHoveredHud { linkHover?.label = nil }
         reportMousePos(from: event)
         guard deckVisible, ownsPointer(at: event.locationInWindow) else { return }
         Self.nsCursor(for: mouseShape).set()
@@ -312,7 +314,7 @@ extension GhosttySurfaceView {
     /// ⌘-hovered link stays highlighted after the mouse leaves the terminal until ⌘ is released. Skipped
     /// mid-drag (a button down) so a selection crossing the edge isn't reported at `-1, -1`.
     override func mouseExited(with event: NSEvent) {
-        guard let surface, NSEvent.pressedMouseButtons == 0 else { return }
+        guard let surface, !mouseButtonsDown() else { return }
         pointerInside = false
         ghostty_surface_mouse_pos(surface, -1, -1, mods(event))
         lastReportedMousePoint = NSPoint(x: -1, y: -1)
@@ -662,18 +664,46 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     }
 
     private func followLink(_ raw: String, intent: LinkPolicy.ClickIntent) {
-        LinkOpener.shared.follow(raw, from: linkClickOrigin, pane: linkClickPane, cwd: linkClickCwd, intent: intent)
+        LinkOpener.shared.follow(raw, from: linkClickOrigin, pane: linkClickPane, cwd: linkClickCwd, intent: intent,
+                                 remote: linkClickRemoteSession)
     }
 
-    /// linkClickPane is the identity of the pane this surface shows, nil for a surface no session pane owns.
+    /// applyLinkHover shows the link under a ⌘-held pointer, naming the session a session link would select.
+    func applyLinkHover(_ link: String) {
+        // the callback hops to main, so one queued before teardown arrives after the label was cleared
+        guard !isDestroyed else { return }
+        let (origin, pane) = (linkClickOrigin, linkClickPane)
+        linkHover?.label = link.isEmpty || underHoveredHud
+            ? nil : LinkHover.label(for: link) { LinkOpener.shared.sessionName($0, origin, pane) }
+    }
+
+    /// underHoveredHud is true while a HUD panel over this pane has the pointer: the panel takes the link chord's click,
+    /// so this pane's links are unreachable and show no target.
+    private var underHoveredHud: Bool { HudLinkClick.hovered.map { $0 !== self } ?? false }
+
+    /// linkClickPane is the identity of the pane this surface shows, nil for a surface no session pane owns. A scratch
+    /// running on its row's origin is named by the origin's identity, which the click carries there.
     var linkClickPane: UUID? {
-        session.flatMap { isSplitPane ? $0.splitPaneIdentity : $0.paneIdentity }
+        if let session { return isSplitPane ? session.splitPaneIdentity : session.paneIdentity }
+        return scratchOwner?.originScratch
     }
 
-    /// The directory a relative link names a file in: this pane's reported cwd. Nil for the scratch, quick and
-    /// overlay terminals, whose own directory the app does not track, so a relative link there stays ignored.
+    /// linkClickRemoteSession is the row whose host runs this surface's program, so a loopback address it prints names
+    /// that host: a remote pane, a scratch on its origin, or an overlay showing an origin job. Nil for what runs here.
+    var linkClickRemoteSession: UUID? {
+        if let session { return session.remoteHost == nil ? nil : session.id }
+        if let owner = scratchOwner { return owner.originScratch == nil ? nil : owner.id }
+        guard hudBodyFile == nil, let owner = focusSession, owner.overlayRunsOnOrigin(self) else { return nil }
+        return owner.id
+    }
+
+    /// The directory a relative link names a file in: this pane's reported cwd, a local scratch's included. Nil
+    /// for a remote window's scratch, whose directory is on the server, and for the quick and overlay
+    /// terminals, whose own directory the app does not track, so a relative link there stays ignored.
     var linkClickCwd: String? {
-        session.map { isSplitPane ? $0.cwd(for: .right) : $0.effectiveCwd }
+        if let session { return isSplitPane ? session.cwd(for: .right) : session.effectiveCwd }
+        guard let owner = scratchOwner, owner.originScratch == nil else { return nil }
+        return owner.cwd(for: .scratch)
     }
 
     /// Which kind of surface a clicked link came from, read off the ownership each factory already sets.
@@ -681,7 +711,7 @@ extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
     var linkClickOrigin: LinkPolicy.ClickOrigin {
         if hudBodyFile != nil { return .hud }
         if let session { return session.remoteHost == nil ? .pane(session.id) : .remotePane(session.id) }
-        if let owner = watermarkSession { return .scratch(owner.id) }
+        if let owner = watermarkSession { return owner.originScratch == nil ? .scratch(owner.id) : .remotePane(owner.id) }
         return focusSession == nil ? .quick : .programOverlay
     }
 

@@ -248,6 +248,12 @@ public final class HeadlessActions: ControlActions {
         return ControlResponse(ok: true, result: ControlResult(affected: resolved.count))
     }
 
+    /// A close here already ends the session's daemons, so terminate is close, and nothing is kept to undo.
+    public func terminateSessions(_ targets: [String], window: String?, undoable: Bool) -> ControlResponse {
+        guard !undoable else { return ControlResponse(ok: false, error: "session.terminate --undoable is not supported by this control host") }
+        return closeSessions(targets, window: window)
+    }
+
     public func renameSession(_ target: String?, window: String?, name: String) -> ControlResponse {
         withSession(target, window: window) { store, session in
             store.renameSession(session.id, to: name)

@@ -75,14 +75,18 @@ struct ServerHookInstallTests {
                                   environment: ["PATH": fixture.bin.path], openCode: nil).run()
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [fixture.home.appendingPathComponent(".config/agterm/agent-status/\(AgentHooksInstall.wrapperName)").path, "active"]
-        process.environment = ["PATH": "/usr/bin:/bin", "AGTERM_SESSION_ID": "s1", "AGTERM_SOCKET": "/tmp/agterm.sock"]
+        process.executableURL = fixture.home.appendingPathComponent(".config/agterm/agent-status/\(AgentHooksInstall.wrapperName)")
+        process.arguments = ["active"]
+        let socket = fixture.root.appendingPathComponent("agterm.sock").path
+        process.environment = ["PATH": "/usr/bin:/bin", "HOME": fixture.home.path, "AGTERM_SESSION_ID": "s1", "AGTERM_SOCKET": socket]
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         try process.run()
-        process.waitUntilExit()
+        defer { if process.isRunning { process.terminate() } }
+        try #require(finished.wait(timeout: .now() + 5) == .success)
 
         #expect(process.terminationStatus == 0)
-        #expect(try String(contentsOf: calls, encoding: .utf8) == "session status active --target s1 --socket /tmp/agterm.sock\n")
+        #expect(try String(contentsOf: calls, encoding: .utf8) == "session status active --target s1 --socket \(socket)\n")
     }
 
     @Test func missingJqSkipsCodexAndReportsIncomplete() throws {
@@ -96,6 +100,52 @@ struct ServerHookInstallTests {
         #expect(report.lines.contains(AgentHooksFiles.CodexResult.noJq.text))
         #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".codex/config.toml").path))
         #expect(FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".claude/settings.json").path))
+    }
+
+    @Test func codexHomeReceivesTheHooksAndTheSkill() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try fixture.directory(".codex")
+        try fixture.directory("custom-codex")
+        try fixture.tool("jq", printing: "")
+        let codexHome = fixture.home.appendingPathComponent("custom-codex").path
+
+        let report = try install(fixture, environment: ["CODEX_HOME": codexHome])
+
+        #expect(report.complete)
+        #expect(report.lines.contains(AgentHooksFiles.CodexResult.merged.text(codexHome: codexHome)))
+        #expect(try fixture.read("custom-codex/config.toml").contains(".config/agterm/agent-status"))
+        #expect(FileManager.default.fileExists(atPath: codexHome + "/skills/agterm/SKILL.md"))
+        #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".codex/config.toml").path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".codex/skills").path))
+    }
+
+    @Test func missingCodexHomeIsReportedWithoutFallingBackToTheDefault() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try fixture.directory(".codex")
+        try fixture.tool("jq", printing: "")
+        let codexHome = fixture.home.appendingPathComponent("absent-codex").path
+
+        let report = try install(fixture, environment: ["CODEX_HOME": codexHome])
+
+        #expect(!report.complete)
+        #expect(report.lines.contains(AgentHooksFiles.CodexResult.noCodex.text(codexHome: codexHome)))
+        #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".codex/config.toml").path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent(".codex/skills").path))
+    }
+
+    @Test func emptyCodexHomeUsesTheDefault() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try fixture.directory(".codex")
+        try fixture.tool("jq", printing: "")
+
+        let report = try install(fixture, environment: ["CODEX_HOME": ""])
+
+        #expect(report.complete)
+        #expect(report.lines.contains(AgentHooksFiles.CodexResult.merged.text))
+        #expect(try fixture.read(".codex/config.toml").contains(".config/agterm/agent-status"))
     }
 
     @Test func openCodeVersionComesFromItsCommand() throws {

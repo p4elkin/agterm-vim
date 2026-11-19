@@ -145,6 +145,8 @@ struct WorkspaceSidebar: NSViewRepresentable {
         /// reveal so unrelated updates (cwd/title/badge) to the already-selected session don't re-expand a
         /// collapsed workspace or yank the scroll position back.
         private var lastRevealedSelection: UUID?
+        // a moved companion keeps its id, so only its parent tells the reveal it now sits under another row
+        private var lastRevealedParent: UUID?
         /// Last-seen `TreeShape`; a change is structural and forces a full rebuild.
         private var lastShape: [TreeShape] = []
         /// Last-seen VISIBLE projection of the shape (session lists filtered through `AppStore.isRowVisible`).
@@ -283,7 +285,10 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 let selected = outline.selectedRowIndexes.contains(row)
                 (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.setColors(selected: selected)
             }
-            outline.enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
+            outline.enumerateAvailableRowViews { rowView, _ in
+                rowView.needsDisplay = true
+                (rowView as? SidebarRowView)?.applyDisclosureAppearance()
+            }
         }
 
         /// Pin the outline's appearance to the terminal theme's brightness so AppKit-drawn chrome — the
@@ -359,14 +364,14 @@ struct WorkspaceSidebar: NSViewRepresentable {
             focusActiveTerminal()
         }
 
-        /// Re-apply the status glyph on every visible session row so a global agent-status color change
-        /// (from Settings) re-renders it. Appearance changes are rare, so the full sweep is cheap.
+        // global status colors are absent from RowContent, so a settings change needs this sweep
         private func reapplyStatusGlyphs() {
             guard let outline = outlineView else { return }
             for row in 0 ..< outline.numberOfRows {
                 guard let node = outline.item(atRow: row) as? SidebarNode, node.kind == .session,
                       let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView else { continue }
                 cell.statusIcon.apply(effectiveIndicator(forSession: node.id))
+                cell.setCompanionMarker(foldedAttention(forSession: node.id))
             }
         }
 
@@ -451,8 +456,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
             var newSessionPending = false
             /// The row's own tint, so a recolor or a clear reloads just that row.
             var tint: SidebarTint?
-            /// Names of a folded parent's companions that need attention.
-            var foldedAttention: [String] = []
+            var foldedAttention: [CompanionStatus] = []
             /// info is the shown info line; a change reloads the row and re-asks its height.
             var info: [SessionInfoSpan]?
 
@@ -642,7 +646,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
                        indicator: session.agentIndicator, flagged: session.flagged,
                        parked: session.parked, focusMember: false, parkedCount: 0,
                        presentationNotice: presentationNotice(for: session), tint: session.tint,
-                       foldedAttention: foldedAttention(forSession: session.id).map(\.displayName),
+                       foldedAttention: foldedAttention(forSession: session.id),
                        info: sessionInfo(for: session))
         }
 
@@ -857,10 +861,10 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 lastRevealedSelection = nil
                 return
             }
-            // the row-selection sync runs every call, but the intrusive reveal — expanding a collapsed owner
-            // and scrolling into view — only fires on a real selection change, so unrelated cwd/title/badge
-            // updates leave a user-collapsed workspace and a user-moved scroll position alone.
-            let selectionChanged = selectedID != lastRevealedSelection
+            // the intrusive reveal (expanding a collapsed owner, scrolling into view) fires only when the selection
+            // or its parent changes, so cwd/title/badge updates leave a user-collapsed workspace and scroll alone.
+            let parentID = store.session(withID: selectedID)?.parentID
+            let selectionChanged = selectedID != lastRevealedSelection || parentID != lastRevealedParent
             // a session selected by keyboard nav may live in a collapsed workspace, whose row is -1 until
             // expanded; expand its owner first so the row resolves. A VIEW action, so suppress the persist:
             // navigating into a deliberately collapsed workspace shows the session without un-collapsing it
@@ -889,6 +893,7 @@ struct WorkspaceSidebar: NSViewRepresentable {
                 outline.scrollRowToVisible(row)
             }
             lastRevealedSelection = selectedID
+            lastRevealedParent = parentID
         }
 
         /// The workspace node holding `sessionID` and, for a nested companion, its parent's node, outermost

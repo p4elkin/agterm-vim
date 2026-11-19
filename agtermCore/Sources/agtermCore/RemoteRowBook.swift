@@ -33,6 +33,13 @@ public struct RemoteRowBook {
             }
         }
 
+        /// covers is whether the book records `session`, the test `init` applies.
+        @MainActor
+        public static func covers(_ session: Session) -> Bool {
+            guard session.remoteHost != nil, let binding = session.remotePresentation?.binding, binding.origin != nil else { return false }
+            return binding.daemon(forLocalPane: session.paneIdentity) != nil
+        }
+
         @MainActor
         public init?(session: Session, windowID: UUID, workspaceID: UUID, position: Int,
                      parentRemoteSessionID: String? = nil) {

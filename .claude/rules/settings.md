@@ -244,8 +244,10 @@ paths:
   `restore-denylist.conf`, seeded with `tmux`, `screen`, and `zellij`. A control character anywhere in the
   argv also refuses, matching what `session.restore set` rejects a pin for: the line is typed, so the line
   editor reads the byte before the shell parser and quoting cannot protect it. U+FFFD refuses with it,
-  since `parseProcArgs` decodes lossily and replaying it would run a different argument. Both refuse at
-  RENDER, keeping `hadForeground` true so a stale `initialCommand` stays preempted. A pin loaded from a
+  since `parseProcArgs` decodes lossily and replaying it would run a different argument. A `!` refuses when
+  the line is typed into csh or tcsh (`LaunchSeedPolicy.receivingShell`: ghostty `command`'s program, else
+  the account's login shell), which expand history even inside single quotes; Live's zsh and fish wrappers
+  keep it literal, and a deliberate pin is not checked. All refuse at RENDER, keeping `hadForeground` true so a stale `initialCommand` stays preempted. A pin loaded from a
   snapshot never passed the dispatcher's check, so `restoreInput` applies it again at the sink; both share
   `CommandRestore.hasControlCharacter`. Feed captured argv once through
   shell-quoted `config.initial_input` in rerun mode, then nil it. A wrapped live pane consumes the pending
@@ -285,7 +287,7 @@ paths:
 - `hiddenInterfaceElements` stores raw names and preserves unknown values while toggling known ones; empty
   maps nil. Titlebar cases are `sidebarToggle`, `workspaceName`, `sessionName`, `windowName`, `remoteHost`,
   `sessionContext`, `recentSessions`, `scratch`, `split`, `dashboard`, `quickTerminal`, `customCommands`,
-  `overlayToggle`;
+  `overlayToggle`, `updates`;
   sidebar cases are `newWorkspace`, `newSession`, `flaggedView`, `focusFilter`, and row-level
   `workspaceAddSession`, `workspaceIcons`, `sessionIcons` and `workspaceChevrons` ([[sidebar]] owns its layout).
   The two icon toggles show the glyph their rows
@@ -293,6 +295,9 @@ paths:
   A `hiddenByDefault` case (`workspaceName`, `customCommands` and `overlayToggle`) is governed by
   `shownInterfaceElements` instead, the same shape with the opposite sense, and its name in the hidden list is ignored. Attention
   has its separate default-off setting.
+  `updates` is the one state-shown control (CLAUDE.md): its button sits at the far right outside the group counts and
+  shows only while `UpdateFlow.showsIcon` holds, a scheduled find Sparkle left to it; hiding the element hides the
+  button and leaves Sparkle silent until Check for Updates, `update check` or a later launch's check.
   `workspaceName` leads the identity as `workspace — session — window`, looked up from the ACTIVE SESSION
   (`workspace(forSession:)`, never `currentWorkspaceID`, which an empty workspace can hold while the old
   session stays selected). `TitlebarComposition` caps it at `workspaceNameLimit` characters with an
@@ -341,14 +346,16 @@ paths:
   size in Appearance, which `testSidebarDensityPickerPersistsAndTheAppearanceTabFits` keeps from scrolling.
   The control catalog carries it as `sidebar.density`.
 - `terminalInputSource` is a macOS input source id, nil = off. `InputSourceLock` in `agtermCore` decides and
-  `TerminalInputSource` is the only caller of Text Input Source selection: it selects the id while any
-  agterm window is key, whatever holds first responder there (terminals, pages, palettes, ask dialogs,
-  rename fields, Settings, alerts), reselects on every source-change notification, and
-  restores the earlier source when no agterm window is key and in `applicationWillTerminate`.
+  `TerminalInputSource` is the only caller of Text Input Source selection: it selects the id while agterm
+  is active and any of its windows is key, whatever holds first responder there (terminals, pages, palettes,
+  ask dialogs, rename fields, Settings, alerts), reselects on every source-change notification, and
+  restores the earlier source otherwise and in `applicationWillTerminate`.
   One app-wide rule, because a responder-scoped lock released in some text fields and not others.
-  It keys on key-window changes, never app activation, because the quick terminal takes key
-  while agterm stays inactive. The source-change notification is delivered to an inactive app (measured
-  with the quick panel key), so the observer needs no suspension override.
+  Key window alone is not enough: a long-running instance was measured enforcing over other apps with
+  agterm in the background, the window still reporting key unidentified. `isActive` is true while the
+  quick panel is key over another app (measured), so the gate keeps it, and activation edges are observed
+  alongside key-window ones. The source-change notification reaches agterm while it is inactive and another
+  app is frontmost (measured), so the observer needs no suspension override.
   Selection is system-wide and macOS restores nothing itself (measured with the per-document input source
   option off), so a crash leaves the id selected; never persist the baseline to restore at the next
   launch, which would overwrite a later choice made elsewhere.

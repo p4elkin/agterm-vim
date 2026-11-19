@@ -68,7 +68,7 @@ jobs:
           path: |
             agterm/Resources/zmx
             .zmx-build-stamp
-          key: zmx-v1-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
+          key: zmx-v2-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
       # the session-host fixtures attach to a real zmx daemon; a cache miss builds it here
       - name: Stage zmx
         run: scripts/setup.sh --zmx-only
@@ -209,7 +209,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/linux/x86_64
-          key: zmx-linux-v1-${{ steps.zmx.outputs.rev }}-x86_64-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
+          key: zmx-linux-v2-${{ steps.zmx.outputs.rev }}-x86_64-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
       - name: Build the Linux zmx
         # the musl zmx agterm-server runs; AgtermServerTests drive real daemons with it
         if: steps.zmx-cache.outputs.cache-hit != 'true'
@@ -273,18 +273,18 @@ jobs:
             agterm/Resources/ghostty
             agterm/Resources/terminfo
             .ghostty-build-stamp
-          key: ghosttykit-v2-${{ steps.revisions.outputs.ghostty }}-${{ hashFiles('scripts/ghostty-patches/*.patch') }}
+          key: ghosttykit-v3-${{ steps.revisions.outputs.ghostty }}-${{ hashFiles('scripts/ghostty-patches/*.patch') }}
       - name: Cache zmx
         uses: actions/cache@v6
         with:
           path: |
             agterm/Resources/zmx
             .zmx-build-stamp
-          key: zmx-v1-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
+          key: zmx-v2-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
       - name: Install xcodegen
         run: brew install xcodegen
       - name: Build libghostty + app (Release)
-        run: scripts/build.sh
+        run: scripts/with-helper-prebuild.sh scripts/build.sh
       - name: Surface teardown under mailbox pressure
         run: python3 scripts/test-surface-teardown.py build/DerivedData/Build/Products/Release/agterm.app --evidence surface-teardown
       - name: Upload surface teardown diagnostics
@@ -309,9 +309,12 @@ jobs:
               exit 1
             fi
           done
-      # Release needs allow-jit and disable-library-validation for Rebased. Unsigned executable memory
-      # stays Debug-only; dropping a TCC key removes the user's permission prompt (#396).
-      # Pin the exact Release set; adding or dropping a key is a deliberate act that edits this list.
+      # this ad-hoc Release build carries the shipping set: the TCC keys plus allow-jit and
+      # disable-library-validation, which Rebased needs and which also lets it load Sparkle.framework.
+      # allow-unsigned-executable-memory stays Debug-only, and the TCC set must not shrink either — losing one
+      # silently removes the user's only path to granting that permission (#396).
+      # Pin the exact set; adding or dropping a key is a deliberate act that edits this list. The notarized app's
+      # set is checked by scripts/release.sh after its Developer ID re-sign.
       - name: Verify the app's Release entitlements
         shell: bash
         run: |
@@ -345,7 +348,7 @@ jobs:
       # added to the shipping file and missed here leaves Debug unable to prompt for it, with every job
       # green — the failure surfaces only when someone verifies the new permission by hand in a Debug
       # instance. Derive Debug's expected content from the shipping file so the two cannot drift.
-      - name: Verify the Debug entitlements are the shipping set plus one exception
+      - name: Verify the Debug and ad-hoc entitlements are the shipping set plus their exceptions
         shell: bash
         run: |
           keys() { plutil -convert json -o - -- "$1" | jq -r 'to_entries[] | "\(.key)=\(.value|tojson)"' | sort; }
@@ -356,6 +359,14 @@ jobs:
           if [ "$debug" != "$expected" ]; then
             echo "agterm-debug.entitlements is not the shipping set plus allow-unsigned-executable-memory." >&2
             diff <(echo "$expected") <(echo "$debug") >&2 || true
+            exit 1
+          fi
+          adhoc=$(keys agterm/agterm-adhoc.entitlements)
+          # the fork's shipping set already holds disable-library-validation (Rebased), so ad-hoc adds nothing
+          expected=$release
+          if [ "$adhoc" != "$expected" ]; then
+            echo "agterm-adhoc.entitlements is not the shipping set." >&2
+            diff <(echo "$expected") <(echo "$adhoc") >&2 || true
             exit 1
           fi
 
@@ -386,14 +397,14 @@ jobs:
             agterm/Resources/ghostty
             agterm/Resources/terminfo
             .ghostty-build-stamp
-          key: ghosttykit-v2-${{ steps.revisions.outputs.ghostty }}-${{ hashFiles('scripts/ghostty-patches/*.patch') }}
+          key: ghosttykit-v3-${{ steps.revisions.outputs.ghostty }}-${{ hashFiles('scripts/ghostty-patches/*.patch') }}
       - name: Cache zmx
         uses: actions/cache@v6
         with:
           path: |
             agterm/Resources/zmx
             .zmx-build-stamp
-          key: zmx-v1-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
+          key: zmx-v2-${{ steps.revisions.outputs.zmx }}-${{ steps.revisions.outputs.zmx_target }}-${{ hashFiles('scripts/zmx-patches/**/*.patch') }}
       - name: Install xcodegen
         run: brew install xcodegen
       # The zsh plain-login seam needs zsh here; the fish seam switches the runner shell below.
@@ -409,7 +420,7 @@ jobs:
       - name: Build hosted tests
         run: |
           xcodegen generate
-          xcodebuild build-for-testing \
+          scripts/with-helper-prebuild.sh xcodebuild build-for-testing \
             -project agterm.xcodeproj \
             -scheme agtermTests \
             -destination 'platform=macOS' \
@@ -442,7 +453,7 @@ jobs:
           TEST_RUNNER_AGTERM_REQUIRE_FISH: "1"
         run: |
           sudo dscl . -create "/Users/$(id -un)" UserShell "$(which fish)"
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project agterm.xcodeproj \
             -scheme agtermTests \
             -destination 'platform=macOS' \

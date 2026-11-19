@@ -1,11 +1,21 @@
 import Foundation
 import agtermCore
 
+/// RemoteOrigin is what a host serves remote windows from, as its `version` and `window list` tell.
+enum RemoteOrigin {
+    case mac([ControlWindowNode])
+    /// server is agterm-server, or an agterm that serves no window; its window opens and reports why.
+    case server
+    case unanswered
+    case failed(String)
+}
+
 /// RemoteAttaching is the part of the control server File ▸ Attach Remote drives. `AppActions` holds it
 /// weakly: the server already owns the actions.
 @MainActor
 protocol RemoteAttaching: AnyObject {
     func remoteTree(host: String?) async -> ControlResponse
+    func remoteOrigin(host: String) async -> RemoteOrigin
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse
     func attachRemoteGroup(host: String, session: String, window: String?) async -> ControlResponse
     func openHud(_ target: String?, window: String?, spec: HudSpec) -> ControlResponse
@@ -14,6 +24,11 @@ protocol RemoteAttaching: AnyObject {
     func hudGeneration(session: String) -> Int?
     func createRemoteCompanion(_ request: RemoteCompanionRequest, of rowID: UUID, in store: AppStore, select: Bool,
                                progress: (String) -> Void) async -> ControlResponse
+    /// attachedRoute is how `request` runs on its row's origin when the row is attached from another host; nil otherwise.
+    func attachedRoute(_ request: ControlRequest) -> RemoteRoute?
+    func runRemoteRoute(_ route: RemoteRoute) async -> ControlResponse
+    func reopenAttached(_ id: UUID, window: String?) async -> ControlResponse
+    func undoOriginClose(_ undo: AttachedUndo, window: String) async -> ControlResponse
 }
 
 extension ControlServer: RemoteAttaching {
@@ -23,6 +38,30 @@ extension ControlServer: RemoteAttaching {
 }
 
 extension AppActions {
+    /// forwardAttached sends a GUI action on a row attached from another host to its origin, showing the ssh wait and a
+    /// failure in a HUD over the row; false when `id` is not such a row, which then runs here as before.
+    func forwardAttached(_ request: ControlRequest, row id: UUID, in store: AppStore, action: String) -> Bool {
+        guard let remoteAttacher, let row = store.session(withID: id), let origin = AttachedOrigin(row),
+              let route = remoteAttacher.attachedRoute(request) else { return false }
+        guard let windowID = library.windowID(for: store) else { return true }
+        let hud = RemoteAttachHud(attacher: remoteAttacher, session: id.uuidString, window: windowID.uuidString, action: action)
+        if case .refused(let refusal) = route {
+            hud.fail(refusal.error ?? "\(action) is not available here")
+            return true
+        }
+        hud.progress("asking \(origin.host)…")
+        Task {
+            let reply = await remoteAttacher.runRemoteRoute(route)
+            if reply.ok {
+                hud.close()
+                store.noteUserActivity()
+            } else {
+                hud.fail(reply.error ?? "\(action) did not reach \(origin.host)")
+            }
+        }
+        return true
+    }
+
     static let remoteAttachErrorSeconds: Double = 5
     /// remoteAttachProgressSeconds makes a progress panel timed, so a soft-closed session drops it.
     static let remoteAttachProgressSeconds: Double = 30
@@ -37,14 +76,52 @@ extension AppActions {
         pickRemote(prompt: "Attach from which Mac?", in: windowID) { [weak self] in self?.attachRemote($0, in: windowID) }
     }
 
-    /// openRemoteWindow asks which configured machine's agterm-server to show, then opens its window or raises
-    /// the one already showing it.
+    /// openRemoteWindow asks which configured machine to show, then opens its window or raises the one already
+    /// showing it; a Mac with several open windows is asked which.
     func openRemoteWindow() {
         guard let windowID = library.activeWindowID else { return }
-        pickRemote(prompt: "Open a window for which server?", in: windowID) { [weak self] host in
-            guard let self, let openWindow else { return }
-            openWindow(library.newRemoteWindow(host: host).id)
+        pickRemote(prompt: "Open a window for which host?", in: windowID) { [weak self] host in
+            self?.openRemoteWindow(host, in: windowID)
         }
+    }
+
+    func openRemoteWindow(_ host: String, in windowID: WindowInfo.ID) {
+        guard let remoteAttacher, let openWindow else { return }
+        let hud = RemoteAttachHud(attacher: remoteAttacher, session: library.store(for: windowID)?.selectedSessionID?.uuidString,
+                                  window: windowID.uuidString, action: "Open Remote Window")
+        Task {
+            hud.progress("asking \(host) for its windows…")
+            let origin = await remoteAttacher.remoteOrigin(host: host)
+            let windows: [ControlWindowNode]
+            switch origin {
+            case .failed(let reason):
+                hud.fail(reason)
+                return
+            case .server, .unanswered:
+                hud.close()
+                openWindow(library.newRemoteWindow(host: host).id)
+                return
+            case .mac(let listed):
+                windows = RemoteOriginWindow.offered(listed)
+            }
+            guard let first = windows.first else {
+                hud.fail("\(host) has no open window")
+                return
+            }
+            hud.close()
+            guard let chosen = windows.count == 1 ? first : await pickOriginWindow(windows, host: host, in: windowID),
+                  let id = UUID(uuidString: chosen.id) else { return }
+            openWindow(library.newRemoteWindow(host: host, originWindow: id, originName: chosen.name).id)
+        }
+    }
+
+    private func pickOriginWindow(_ windows: [ControlWindowNode], host: String, in windowID: WindowInfo.ID) async -> ControlWindowNode? {
+        // the window may have closed during the ssh wait, and a controller no window renders would never resolve the pick
+        guard let controller = PickRegistry.shared.controller(for: windowID) else { return nil }
+        let items = windows.map { ControlPickItem(id: $0.id, label: $0.name) }
+        let pick = PendingPick(id: UUID().uuidString, items: items, prompt: "Open which window of \(host)?")
+        guard let picked = await controller.pick(pick), picked.result == .picked else { return nil }
+        return windows.first { $0.id == picked.id }
     }
 
     /// pickRemote asks for one `remotes.conf` entry in `windowID`'s picker, skipping the question for one entry.

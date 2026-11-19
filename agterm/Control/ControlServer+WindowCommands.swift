@@ -44,7 +44,8 @@ extension ControlServer {
         // whichever is frontmost while it is on.
         library.controlWindowNodes(geometry: { WindowRegistry.shared.geometry(for: $0) },
                                    flags: { WindowRegistry.shared.windowFlags(for: $0) },
-                                   normalModeWindow: NormalModeController.shared.isActive ? library.activeWindowID : nil)
+                                   normalModeWindow: NormalModeController.shared.isActive ? library.activeWindowID : nil,
+                                   viewers: { [unowned self] in originViewers($0) })
     }
 
     func windowList() -> ControlResponse {

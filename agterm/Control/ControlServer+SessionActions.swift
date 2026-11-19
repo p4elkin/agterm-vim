@@ -105,7 +105,8 @@ extension ControlServer: ControlActions {
         if let refusal = textLogRefusal(in: store, sessionID: id, options: options) { return refusal }
         let overlay = HtmlOverlay(source: page, navigation: options.navigation, javascript: options.javascript,
                                   chromeless: options.chromeless, persistent: options.persistent, browse: options.browse,
-                                  clicked: options.clicked, textLog: options.textLog, markdownLinks: options.markdownLinks)
+                                  clicked: options.clicked, textLog: options.textLog, markdownLinks: options.markdownLinks,
+                                  imagePixels: options.imagePixels)
         switch store.openRemotePage(id, overlay: overlay, options: options) {
         case .opened:
             if page.kind != .url { schedulePageClaimExpiry(after: AppStore.pageClaimWindow) }
@@ -427,7 +428,13 @@ extension ControlServer: ControlActions {
     /// the current axis. `on|off|toggle` is computed against `isSplit` and keeps a hidden pane alive;
     /// `session.split.close` is the teardown verb.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?) -> ControlResponse {
-        splitSession(target, window: window, mode: mode, axis: axis, command: nil)
+        splitSession(target, window: window, mode: mode, axis: axis, command: nil, focus: true)
+    }
+
+    /// splitSession with `focus` false leaves first responder and a new split's pane focus alone, for a split
+    /// another Mac asked for.
+    func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?, focus: Bool) -> ControlResponse {
+        splitSession(target, window: window, mode: mode, axis: axis, command: nil, focus: focus)
     }
 
     /// The command-carrying form: a seed the new pane runs instead of a login shell, consumed by the pane
@@ -437,6 +444,11 @@ extension ControlServer: ControlActions {
     /// what the pane already runs.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
                       command: ControlSplitCommand?) -> ControlResponse {
+        splitSession(target, window: window, mode: mode, axis: axis, command: command, focus: true)
+    }
+
+    private func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
+                              command: ControlSplitCommand?, focus: Bool) -> ControlResponse {
         return resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
@@ -456,13 +468,13 @@ extension ControlServer: ControlActions {
             }
             switch parsedMode {
             case .on:
-                store.setSplitVisibility(id, shown: true, axis: axis)
+                store.setSplitVisibility(id, shown: true, axis: axis, focusesNewSplit: focus)
             case .off:
                 store.setSplitVisibility(id, shown: false)
             case .toggle:
-                store.toggleSplit(id, axis: axis)
+                store.toggleSplit(id, axis: axis, focusesNewSplit: focus)
             }
-            actions.focusSplitPane(session, wantSplit: session.splitFocused)
+            if focus { actions.focusSplitPane(session, wantSplit: session.splitFocused) }
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }
@@ -514,8 +526,9 @@ extension ControlServer: ControlActions {
             let respawningVisible = want && session.scratchActive && session.scratchSurface != nil
                 && !(command ?? "").isEmpty
             if want, let command, !command.isEmpty {
-                // closeScratch clears scratchActive, so the toggle below re-shows it and the factory uses it.
-                if session.scratchSurface != nil { store.closeScratch(id, emitVisibility: !respawningVisible) }
+                // replaceScratch clears scratchActive and ends a Live scratch's daemon, so the toggle below re-shows
+                // it and the factory starts the command in a new one.
+                store.replaceScratch(id, emitVisibility: !respawningVisible)
                 session.scratchCommand = command
             }
             if want, follow, store.selectedSessionID != id { store.selectSession(id) }
@@ -590,8 +603,8 @@ extension ControlServer: ControlActions {
     /// ride the EPHEMERAL indicator, lasting only until the next `session.status` without them.
     /// `update.pane` (`StatusPane`, dispatcher-validated, nil = `left`/main) records the pane that set the
     /// status, driving the pane-scoped keystroke-clear and pane-aware reveal. Renders on every non-idle one.
-    /// While a session is blocked or holds a `completed` without auto-reset, a non-`blocked` write from ANOTHER
-    /// pane is refused whole (`AppStore.applyControlStatus`) with a `status owned by pane` error and no sound.
+    /// `AppStore.applyControlStatus` decides what the row shows from every pane's report; a write the row does not
+    /// show, under another pane's block or beside its work, is still accepted and plays its sound.
     func setSessionStatus(_ target: String?, window: String?, update: ControlSessionStatusUpdate) async -> ControlResponse {
         // bind active/prefix targets before suspension, but preserve unknown-sound error precedence.
         let captured = resolver.resolveSessionTarget(target, window: window)
@@ -621,15 +634,9 @@ extension ControlServer: ControlActions {
                                        autoReset: update.autoReset ?? false,
                                        color: update.color, shape: update.shape, statusPane: resolvedPane,
                                        note: update.note)
-        // rejected writes must return before playback: no status change means no sound.
-        switch store.applyControlStatus(indicator, forSession: id, ifIdle: update.ifIdle) {
-        case .refused(let owner):
-            return ControlResponse(ok: false, error: "status owned by pane \(owner.rawValue) " +
-                "(write from that pane to change it)")
-        case .skipped:
+        // a skipped write must return before playback: no status change means no sound.
+        if store.applyControlStatus(indicator, forSession: id, ifIdle: update.ifIdle) == .skipped {
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
-        case .applied:
-            break
         }
         // the blocked marker goes even when this Mac has no blocked sound: the presenter plays its own setting
         let explicit = prepared == nil ? nil : update.sound
@@ -773,7 +780,7 @@ extension ControlServer: ControlActions {
     /// is ephemeral so it triggers no save.
     func markSessionSeen(_ target: String?, window: String?) -> ControlResponse {
         resolver.resolveSession(target, window: window) { store, id in
-            store.clearUnseen(id)
+            store.markSeen(id)
             return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
         }
     }

@@ -204,7 +204,7 @@ holds the pane the shortcut fired from, so `session type --pane "$AGT_PANE"` typ
 Run a command AS the session's process (closes when it exits, no echoed command line):
 
 ```bash
-agtermctl session new --command "ssh host -p 22"     # a default-PATH binary: argv-split (quotes respected), no shell, no echo
+agtermctl session new --command "ssh host -p 22"     # a default-PATH binary, no echoed command line; wrap a ; or && list in sh -c
 agtermctl session new --command "zsh -lc 'htop'"     # Homebrew/non-default binary: --command has the app's GUI PATH, so wrap in a login shell (or use an absolute path); bare "htop" exits 127
 agtermctl session new --command "zsh -lc 'make test'" --wait   # HOLD the row open after the command exits (press any key to close) so its final output stays readable; --wait needs --command
 ```
@@ -854,10 +854,11 @@ Without `--pane` the status is treated as coming from the main (`left`) pane, so
 can be wiped by typing in the main pane and the reveal lands on the wrong surface.
 
 The tag also protects a block from the OTHER pane's agent: while the session is `blocked`, or `completed`
-without `--auto-reset`, a status from a different pane that is not itself `blocked` is refused with
-`status owned by pane <pane>`,
-so an agent reporting `active` after every tool call cannot erase its neighbour's request for input. With
-an agent in each pane, tag both or the second one's ordinary work looks like it comes from the first.
+without `--auto-reset`, a status from a different pane that is not itself `blocked` leaves that status shown, so an agent reporting `active` after every
+tool call cannot erase its neighbour's request for input. It keeps the row active while either pane works,
+too: one agent finishing leaves the row on the other's work, and `tree`'s `activePanes` says which panes are
+still working. With an agent in each pane, tag both or the second one's ordinary work looks like it comes
+from the first.
 
 ```bash
 # an agent working in the split pane; $AGT_PANE is set in a custom keymap command, else name it

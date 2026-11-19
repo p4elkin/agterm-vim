@@ -76,6 +76,10 @@ final class ControlServer {
     /// here because an extension cannot hold it. Main-actor only.
     let presentationHub = PresentationHub(staleTimeout: 30)
     var presentationStreams: [PresentationStream] = []
+    lazy var mailRelay = PresentationMailRelay { [unowned self] in
+        publishPresentationMail()
+        for catalog in originCatalogs.values { catalog.publisher.markDirty() }
+    }
     /// Remote overlay jobs this Mac handed to presenters.
     let overlayJobs = OverlayJobs()
     var overlayJobStreams: [String: OverlayJobStream] = [:]
@@ -89,11 +93,28 @@ final class ControlServer {
     /// How long an adopted stream may stay silent before its first hello.
     var presentationHelloDeadline: TimeInterval = 10
 
+    /// this Mac's windows served as remote windows; `ControlServer+MacCatalog` owns the logic.
+    var catalogStreams: [CatalogStream] = []
+    var catalogHeartbeat: Task<Void, Never>?
+    var originCatalogs: [UUID: OriginCatalog] = [:]
+    var originSignatures: [UUID: Set<String>] = [:]
+    var restartingPanes: Set<UUID> = []
+    /// originRead is the inventory read in flight, answering whether it succeeded; a request during it rereads.
+    var originRead: Task<Bool, Never>?
+    var originRereads = false
+    /// originEvidence is the last inventory read's evidence, which a window's new catalog starts from.
+    var originEvidence: CatalogPaneEvidence?
+    var originEventsWired = false
+    /// originLiveActive is whether this launch runs Live sessions, which serving a window needs; hosted tests set it.
+    var originLiveActive: () -> Bool = { GhosttyApp.shared.launchRestoreMode == .live }
+
     /// This Mac as a VIEWER: one client per attached session. `ControlServer+RemotePresentation` owns the
     /// logic. The transport is injectable so a hosted test needs no ssh.
     var remoteClients: [UUID: RemotePresentationClient] = [:]
     var remoteRowBook: RemoteRowBookWriter?
     var remoteRowSupervisor: RemoteRowSupervisor?
+    /// restoredOriginChecks is each host whose restored rows are being checked, with its failures in a row.
+    var restoredOriginChecks: [String: Int] = [:]
     var remoteTransport: RemotePresentationTransport = RemotePresentationProcess()
     var remoteTick: Task<Void, Never>?
     /// Whether someone is at this Mac; a Mac nobody is at never takes the presenter role. Injectable for tests.
@@ -108,9 +129,18 @@ final class ControlServer {
     var remoteLinkRefusalHuds: [UUID: Int] = [:]
     /// pageLauncher and forwardLauncher start a page's channel helper and port forward; injectable so a hosted test needs no ssh.
     var pageLauncher: RemotePageLauncher = RemotePageProcess()
+    /// catalogPageClaims are the remote page rows a claim runs for; `ControlServer+CatalogPage` owns them.
+    var catalogPageClaims: Set<UUID> = []
+    /// forwardedPages names the server each page a remote window created lives on, so its result is read there after
+    /// that window is gone; `ControlServer+RemoteActions` owns them.
+    var forwardedPages: [UUID: String] = [:]
+    /// catalogPagePause is the wait before a remote page row's claim is tried again.
+    var catalogPagePause: () async -> Void = { try? await Task.sleep(for: .seconds(2)) }
     var forwardLauncher: RemoteForwardLauncher = RemoteForwardProcessLauncher()
+    let linkForwards = LinkForwards()
     var pendingReplicaStates: Set<UUID> = []
     var replicaFlushScheduled = false
+    var openWorkTracking = 0
 
     nonisolated private func cachedWindows() -> [ControlWindowNode] {
         cacheLock.lock(); defer { cacheLock.unlock() }
@@ -196,12 +226,9 @@ final class ControlServer {
     var liveReset: LiveResetCoordinator?
     /// The scheduler's rows for `hooks.list`, wired by `agtermApp` once the controller exists.
     var hookStatus: () -> [ControlHookEntry] = { [] }
-    /// companionPageTokens are page-companion attachments handed to another Mac and not claimed yet, by token.
-    var companionPageTokens: [String: CompanionPageToken] = [:]
-    /// pendingCompanionClaims are claimed attachments whose channel is not adopted yet, by claim id.
-    var pendingCompanionClaims: [UUID: CompanionPageServing] = [:]
-    /// companionPageStreams are the live channels of page-companion attachments, by claim id.
-    var companionPageStreams: [UUID: PageServeStream] = [:]
+    /// pageAttachments are this Mac's page rows handed to other Macs.
+    lazy var pageAttachments = PageAttachmentBook(clock: { [unowned self] in hudClock() },
+                                                  servedPage: { [unowned self] in servedPage(session: $0, page: $1) })
     /// originEpoch names this app run in respawn counts, so a viewer never reads a restarted counter as older.
     let originEpoch = UUID().uuidString
     /// respawnGenerations counts each session's pane respawns by daemon name, for the presentation snapshot.
@@ -312,6 +339,7 @@ final class ControlServer {
     func start() {
         // ahead of the socket: a remote window mirrors its server whether or not this instance serves control
         wireRemoteCatalogs()
+        wireOriginEvents()
         guard listener == nil else { return }
 
         guard socketPath.utf8.count < 104 else {
@@ -375,7 +403,10 @@ final class ControlServer {
         // outside the guard: the lock is taken in `init`, so an instance that never bound (path too long,
         // or a bind that failed) still holds one and would otherwise keep it for the whole process.
         defer { releaseOwnership() }
+        mailRelay.stop()
         shutdownPresentationStreams()
+        shutdownCatalogStreams()
+        pageAttachments.shutdown()
         stopRemoteCatalogs()
         stopRemotePresentations()
         guard let loop = listener else { return }
@@ -419,6 +450,9 @@ final class ControlServer {
     /// instance create a fresh inode and lock that instead, which excludes nobody.
     private func releaseOwnership() {
         guard lockFD >= 0 else { return }
+        // a child spawned on another thread holds a copy of the descriptor until it execs,
+        // so close alone keeps the lock
+        flock(lockFD, LOCK_UN)
         close(lockFD)
         lockFD = -1
     }
@@ -507,6 +541,15 @@ final class ControlServer {
             return
         }
 
+        // a catalog stream is handed off the same way; its hello names the window it mirrors
+        if request.cmd == .catalogSubscribe {
+            let response = runBlocking { await server.dispatch(request) }
+            guard server.responseWriter(conn, response), response.ok else { return }
+            handedOff = true
+            runBlocking { await server.adoptCatalogStream(descriptor: conn) }
+            return
+        }
+
         // a claimed job's helper keeps its connection the same way, and a claim whose reply never reached
         // the helper leaves nobody to run the job
         if request.cmd == .sessionOverlayJobRun {
@@ -536,10 +579,24 @@ final class ControlServer {
             return
         }
 
+        // an operation from a window mirroring one of this Mac's waits on zmx reads and a new row's panes, so it
+        // runs from a worker and never reaches the remote route below
+        if request.args?.opID != nil {
+            handedOff = true
+            let worker = Thread {
+                defer { close(conn) }
+                let response = runBlocking { await server.originOperation(request) }
+                _ = server.responseWriter(conn, response ?? ControlResponse(ok: false, error: "no operation id"))
+            }
+            worker.name = "com.umputun.agterm.control.catalog"
+            worker.start()
+            return
+        }
+
         // a remote window's structural command is decided here and sent from a worker, so the accept thread
         // never waits on ssh while local structural commands keep their inline order
         if let route = runBlocking({ await server.remoteRoute(request) }) {
-            guard case .send = route else {
+            if case .refused = route {
                 _ = server.responseWriter(conn, runBlocking { await server.runRemoteRoute(route) })
                 return
             }
@@ -589,9 +646,10 @@ final class ControlServer {
     /// but bounded, and stays inline to keep cache order.
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
     nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
-        // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket
+        // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket;
+        // update.check waits on the feed
         [.zmxTree, .zmxAttach, .zmxAttachGroup, .zmxNew, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
-         .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune, .windowRemoteOpen].contains(cmd)
+         .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune, .windowRemoteOpen, .updateCheck].contains(cmd)
     }
 
     // these polling reads cannot change window nodes; skip the AppKit rebuild
@@ -643,10 +701,11 @@ final class ControlServer {
 
     /// Run an async closure on a fresh task, blocking the calling background thread until it finishes —
     /// bridges the synchronous read loop to the main-actor dispatch without hopping the loop thread itself.
-    nonisolated private static func runBlocking<T: Sendable>(_ body: @escaping @Sendable () async -> T) -> T {
+    nonisolated static func runBlocking<T: Sendable>(_ body: @escaping @Sendable () async -> T) -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let box = ResultBox<T>()
-        Task {
+        // above the default: a same-priority task waits behind every task already queued on the shared pool
+        Task(priority: .high) {
             box.value = await body()
             semaphore.signal()
         }
@@ -674,13 +733,13 @@ final class ControlServer {
             return response
         }
         switch request.cmd {
-        case .tree, .eventsRead, .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionRename,
-                .sessionReveal, .sessionMove,
+        case .tree, .eventsRead, .sessionNew, .sessionDuplicate, .sessionSelect, .sessionGo, .sessionClose, .sessionTerminate, .sessionUndo,
+                .sessionRename, .sessionReveal, .sessionMove,
                 .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete, .workspaceMove,
                 .workspaceFocus,
                 .workspaceFilter, .workspaceCollapse, .workspaceExpand, .workspaceFlag,
                 .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
-                .sessionCompanionConvert, .sessionCompanionPageAttach,
+                .sessionCompanionConvert, .sessionCompanionMove, .sessionCompanionPageAttach,
                 .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionRestart, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom,
                 .surfaceCursor,
@@ -698,15 +757,16 @@ final class ControlServer {
                 .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch,
-                .sessionOverlayChanges, .sessionOverlayWrap,
+                .sessionOverlayChanges, .sessionOverlayFiles, .sessionOverlayWrap, .sessionOverlayExpand,
                 .sessionBackground, .sessionText, .quick, .quickType, .quickText,
                 .windowNew, .windowList, .windowSelect, .windowGo,
                 .windowClose, .windowRename, .windowDelete, .windowResize, .windowMove, .windowZoom,
                 .windowFullscreen, .windowMinimize, .windowRemoteOpen, .windowRemoteDismiss,
                 .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach,
-                .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxReset, .zmxNew, .zmxTree,
-                .zmxAttach, .zmxAttachGroup, .zmxPresent, .zmxScreen, .catalogSubscribe, .catalogOp, .sessionOverlayJobRun,
-                .sessionOverlayPageServe, .dashboard, .version, .rebasedMirrorList, .rebasedMirrorPrune,
+                .restoreClear, .restoreCapture, .restoreMode, .zmxList, .zmxPrune, .zmxKill, .zmxKillPane, .zmxReset, .zmxNew,
+                .zmxTree, .zmxAttach, .zmxAttachGroup, .zmxPresent, .zmxScreen, .catalogSubscribe, .catalogOp,
+                .sessionOverlayJobRun, .sessionOverlayPageServe, .dashboard, .version, .updateCheck, .rebasedMirrorList,
+                .rebasedMirrorPrune,
                 .recentList, .recentOpen, .recentClear:
             return ControlResponse(ok: false, error: "control dispatcher did not handle \(request.cmd.rawValue)")
         case .debugAppearance:
@@ -874,7 +934,8 @@ final class ControlServer {
                                               zmxResolver: zmxForegroundResolver)
                 }
             },
-            liveAttribution: { attributions[$0] },
+            liveAttribution: { attributions[$0]?.attribution },
+            liveHostStale: { attributions[$0]?.staleHost == true },
             fontSize: { ($0.addressableSurface as? GhosttySurfaceView)?.currentFontSize() },
             splitFontSize: { ($0.splitSurface as? GhosttySurfaceView)?.currentFontSize() },
             scratchFontSize: { ($0.scratchSurface as? GhosttySurfaceView)?.currentFontSize() },
@@ -923,6 +984,7 @@ final class ControlServer {
             sidebarDensity: GhosttyApp.shared.sidebarDensity
         )
         tree.remote = windowID.flatMap(library.remoteNode(for:))
+        tree.catalogViewers = windowID.flatMap(originViewers)
         return tree
     }
 

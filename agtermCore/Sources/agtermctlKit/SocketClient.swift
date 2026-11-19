@@ -248,15 +248,6 @@ struct SocketClient {
     /// a bare `ok`. Never JSON: `--json` prints the server's own line through `printResponse`, and a
     /// re-encoding here would drop every field this build does not model. Pure so it can be unit-tested
     /// directly; `printResponse` routes it to stdout/stderr.
-    private static func formatVersion(_ app: AppIdentity, installed: AppIdentity?, versions: CatalogVersions?) -> String {
-        var lines = [formatIdentity(app)]
-        if let installed, installed != app { lines.append("installed: \(formatIdentity(installed))") }
-        if let versions {
-            lines.append("server: \(versions.server), protocol: \(versions.protocolVersion), catalog: \(versions.catalog)")
-        }
-        return lines.joined(separator: "\n")
-    }
-
     static func formatResponse(_ response: ControlResponse, echoID: Bool = false) -> String {
         if let receipt = response.result?.receipt { return formatResponse(response, receipt: receipt, echoID: echoID) }
         if !response.ok {
@@ -300,8 +291,8 @@ struct SocketClient {
             let reopened = "reopened \(open.item.kind) \(open.item.title)"
             return open.complete ? reopened : reopened + " (incomplete: the entry stays in the list)"
         }
-        if let app = response.result?.app {
-            return formatVersion(app, installed: response.result?.installed, versions: response.result?.versions)
+        if let result = response.result, let app = result.app {
+            return formatVersion(app, result: result)
         }
         if let text = response.result?.text {
             return text
@@ -386,6 +377,23 @@ struct SocketClient {
     static func formatIdentity(_ identity: AppIdentity) -> String {
         guard let commit = identity.commit, !commit.isEmpty else { return identity.version }
         return "\(identity.version) (\(commit))"
+    }
+
+    static func formatVersion(_ app: AppIdentity, result: ControlResult) -> String {
+        var lines = [formatIdentity(app)]
+        if let installed = result.installed, installed != app { lines.append("installed: \(formatIdentity(installed))") }
+        if let versions = result.versions {
+            lines.append("server: \(versions.server), protocol: \(versions.protocolVersion), catalog: \(versions.catalog)")
+        }
+        if let updates = result.updates { lines.append(formatUpdates(updates)) }
+        return lines.joined(separator: "\n")
+    }
+
+    static func formatUpdates(_ updates: ControlUpdateStatus) -> String {
+        let mode = updates.automaticChecks ? "automatic" : "manual"
+        guard let last = updates.lastCheck else { return "updates: \(mode), never checked" }
+        let date = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: last))
+        return "updates: \(mode), last checked \(date)"
     }
 
     /// The restore policy as separate lines: "what the next launch will do" and "what this one did" are
@@ -614,17 +622,22 @@ struct SocketClient {
                 let tags = splitTag + realizedTag + overlayTag
                     + (session.scratch ? " (scratch)" : "") + pendingTag + interactionTag
                 let splitCwdSuffix = session.splitCwd.map { $0 == session.cwd ? "" : "  split cwd: \($0)" } ?? ""
+                let scratchCwdSuffix = session.scratchCwd.map { $0 == session.cwd ? "" : "  scratch cwd: \($0)" } ?? ""
                 let titleSuffix = session.title.map { "  title: \($0)" } ?? ""
-                let attribution = session.liveAttribution.map { "  live attribution: \($0)" } ?? ""
-                let splitAttribution = session.splitLiveAttribution.map { "  split live attribution: \($0)" } ?? ""
+                let earlier = " (earlier helper)"
+                let attribution = session.liveAttribution.map {
+                    "  live attribution: \($0)" + (session.liveHostStale == true ? earlier : "")
+                } ?? ""
+                let splitAttribution = session.splitLiveAttribution.map {
+                    "  split live attribution: \($0)" + (session.splitLiveHostStale == true ? earlier : "")
+                } ?? ""
                 let presentation = session.presentation.map {
                     "  presentation: \($0.state)" + ($0.mode == "presenter" ? ", presenter" : "")
                         + ($0.error.map { " (\($0))" } ?? "")
                 } ?? ""
-                let presenters = session.presenters.map {
-                    ($0.presenter == true ? "  presented remotely" : "") + ($0.mirrors > 0 ? "  mirrored by: \($0.mirrors)" : "")
-                } ?? ""
-                lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(session.cwd)\(splitCwdSuffix)\(titleSuffix)\(attribution)\(splitAttribution)\(presentation)\(presenters)")
+                let presenters = session.presenters.map { $0.viewedBy > 0 ? "  viewed by: \($0.viewedBy)" : "" } ?? ""
+                let cwds = session.cwd + splitCwdSuffix + scratchCwdSuffix
+                lines.append("  \(smark) \(session.name)\(tags)  [\(session.id)]  \(cwds)\(titleSuffix)\(attribution)\(splitAttribution)\(presentation)\(presenters)")
             }
         }
         return lines.joined(separator: "\n")

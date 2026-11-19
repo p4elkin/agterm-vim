@@ -38,7 +38,7 @@ extension PresentationHubTests {
         let mirror = try hub.subscribe(session: Self.session, hello: PresentationHello(version: 1, kinds: ["forward"], mode: .mirror),
                                        sink: mirrorSink) { Self.empty }
         var received: [PresentationFrame.Body] = []
-        hub.onPresenterFrame = { session, body in
+        hub.onPresenterFrame = { session, _, body in
             #expect(session == Self.session)
             received.append(body)
         }

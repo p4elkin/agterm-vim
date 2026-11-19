@@ -25,13 +25,17 @@ C-boundary concurrency before changing the bridge.
 - For every new capability, propose useful control API/CLI coverage: protocol command and arguments,
   dispatch, `agtermctl`, read-back, and tests. Control-native features count; skip only chrome with nothing
   meaningful to drive.
-- A session attached from another Mac is a normal view, not an extra.
-  Every new or changed capability that works locally works there too, unless it was explicitly deferred
-  or declined: design the remote path (presentation, page serving, control routing) together with the
-  local one, and a missing remote path is part of the task, never an exclusion to note.
+- A remote session, attached from another Mac or served by an agterm-server Linux host, is a normal view,
+  not an extra.
+  Every new or changed capability that works locally works there too: design the remote path (presentation,
+  page serving, control routing) together with the local one, and a missing remote path is part of the task.
+  The only exception is one Eugene approves in a direct AskUserQuestion that explains what would not work
+  remotely, why, and what supporting it would cost; a plan line, PR note or peer's agreement is not that
+  approval.
 - For each hideable titlebar/sidebar element, ask whether it should join host-free `InterfaceElement` and
   Settings > Interface. Never add that preference without approval.
   A control enabled there stays visible and is disabled when it cannot act; never show or hide it by state.
+  The one exception is the update button: it shows only while an update is waiting, and disappears otherwise.
 - The HTML overlay displays a page over a session; it is not a browser.
   Moving within what the page was opened with is in scope: an HTML file's grant folder, a markdown file's link
   root, a URL page's origin, and any origin for a `--browse` page; a terminal click may replace a hidden clicked page.
@@ -40,6 +44,9 @@ C-boundary concurrency before changing the bridge.
 - A decline of a feature request that a custom command covers explains the extension model with the request
   as the worked example: README's "bind X yourself", `site/docs.html#extend`, the agent skill, the cookbook.
   It also points "can you add X" requests to Discussions ▸ Ideas instead of issues.
+- Custom forks are not supported. An answer, recipe or decision is made for agterm itself and is never limited or
+  adjusted for what a reporter's fork has or lacks. agterm-linux stays in view only as `agtermCore`'s downstream
+  consumer (module boundaries below).
 - When adding a process that runs user commands or reparents a session, weigh its effect on macOS TCC
   attribution per service, up front. The responsible process is not always TCC's authorization subject:
   the #574 microphone test recorded `agterm-session-host` as responsible, `com.umputun.agterm` as the
@@ -108,6 +115,8 @@ C-boundary concurrency before changing the bridge.
   files, and 800-line types; test configs raise file/type limits to 2000 and inherit all other rules.
   Disabled/tuned rules reflect deliberate conventions. Zero findings are required.
 - Every change must build, pass `swift test`, `make test-app`, and `make lint`.
+- An intermittent CI failure is looked up in `docs/ci-flakes.md` by test name or log text before it is
+  investigated, and gets an entry there once it is understood.
 - Run each gate ONCE, at the end, and scope everything else to what changed: a new or changed test runs
   via `-only-testing:<Target>/<Class>/<test>`. Never re-run a whole XCUITest suite to verify a narrow
   change; `agtermUITests/ControlAPIUITests` alone is 82 methods and about 7.5 minutes, and tells you
@@ -115,30 +124,16 @@ C-boundary concurrency before changing the bridge.
 - The app build's Bundle helper executables phase runs `swift build` on `agtermCore/.build`, so any SwiftPM
   process holding that directory (a hung `swift test` included) stalls `xcodebuild` there with no output;
   check `ps` for one before reading a quiet build as compiling.
-- **An XCUITest run started from a shell inside a live agterm window can die at runner init** with
-  `Failed to initialize for UI testing ... Timed out while enabling automation mode` after 60s, before any
-  test case runs. The block is at runner initialization, so app code under test cannot reach it; it is not
-  a defect in the diff under test. The timeout is intermittent: one retry passed on the same stale host
-  minutes after a failure (2026-09-26), so retry once before treating it as blocking.
-  [Unverified] cause: TCC attributes the authorization to the responsible process,
-  `/Applications/agterm.app/Contents/MacOS/agterm-session-host` hosting that shell; when a deploy replaced
-  the app after that process launched, the running image stops matching the file and tccd logs
-  `IDENTITY_ATTRIBUTION: Failed to copy signing info for <pid> ... #-67034` (errSecCSStaticCodeChanged) in
-  the same window. The correlation is measured; the causal link to the timeout is not. Diagnose with
-  `log show --predicate 'subsystem == "com.apple.TCC"' --last 6m --style compact` plus
-  `ps -p <pid> -o lstart` against the binary's mtime. If the retry also fails, diagnose the attribution
-  issue before considering a restart; restarting agterm is Eugene's decision, never the agent's.
-  Hosted `agtermTests` can be blocked over the same period (2026-10-02): the host waits in
-  `_prepareTestConfigurationAndIDESession` with zero test cases started, and `xcodebuild` logs
-  `Connection peer refused channel request for "dtxproxy:XCTestManager_IDEInterface:..."` two minutes after
-  connecting. Both runners recovered once Eugene allowed the pending authorization, with the same stale
-  session host and the same `testmanagerd` still running, so neither needs a restart. SIP refuses
-  `launchctl kickstart -k` on `testmanagerd`. [Unverified] which authorization that was.
+- An XCUITest or hosted test run that times out at runner init (`Timed out while enabling automation mode`)
+  or waits with zero test cases started: see `.claude/rules/ui-tests.md` before retrying or restarting.
 - A TCC-gated tool run from a shell in the live terminal (`screencapture`, XCUITest) can be denied after a
   deploy replaces the app under a running `agterm-session-host`, even with an existing grant.
   `codesign -v <pid>` reports the code on disk does not match, and tccd logs
   `Failed to match existing code requirement`. Check both before calling a permission missing;
   a Debug instance can capture its own view in-process instead.
+- After the helper binary is replaced, nehelper refuses Local Network for about 30 s while it rebuilds its
+  UUID cache (`Caching 0 UUID(s)`, then `Caching 1 UUID(s) for com.umputun.agterm`); retry a failed LAN
+  probe after that before treating it as a failure.
 - For maintainer work, ask before splitting a touched long file and do not raise limits reflexively.
   Contributors need not refactor preexisting length; mention it without blocking or suggesting a limit bump.
 
@@ -258,7 +253,8 @@ C-boundary concurrency before changing the bridge.
 
 - `scripts/setup.sh` builds upstream `ghostty-org/ghostty` at `GHOSTTY_REV` using
   `zig build -Demit-xcframework=true -Dxcframework-target=native`, after applying
-  `scripts/ghostty-patches/*.patch`. That directory documents each backport and its removal.
+  `scripts/ghostty-patches/*.patch`, then runs the patches' Zig tests before staging anything.
+  That directory documents each backport, its tests and its removal.
 - `GHOSTTY_REV` is `83fb956` (v1.4.0, 2026-10-27), a plain reproducibility pin carrying upstream's
   hidden-surface GPU release.
   It sat at `4dcb09ada` (2026-04-30) from June while later builds blanked scrollback on a font-size
@@ -349,6 +345,11 @@ C-boundary concurrency before changing the bridge.
   keeps a new command off every page that merely mentions the catalog. `control-api.md` owns that rule.
   The positioning claim must stay consistent in substance, not byte-identical: `site/index.html`'s title and
   social tags insert `macOS` for search intent, and `site/llms.txt` carries a libghostty-based variant.
+- `site/docs.html` is the complete user reference, written for people: every behavior, setting, flag, file format,
+  env var and JSON field a user sees or scripts against, organized by task in short paragraphs, lists and tables,
+  with screenshots for anything visual.
+  The mechanism behind a behavior (which process answers what, transport, internal limits) goes in
+  `.claude/rules` or `ARCHITECTURE.md`, never the guide. One body text color.
 - `site/index.html` reflects major features and current `softwareVersion`; `site/commands.html` mirrors
   every command, arguments, and read-back field.
 - `cookbook/` is not a synchronized surface. Recipes pin a minimum version;
@@ -385,6 +386,10 @@ C-boundary concurrency before changing the bridge.
   media fallbacks as in `.surfaces-grid`.
 - Demo and screenshot staging shows two or three agent statuses at most, and never notification badges
   next to statuses; they are alternative mechanisms.
+- A screenshot may show the username, the hostname, the agent's plan and usage, and Claude Code or codex working
+  on agterm itself with nothing private in it. A feature that serves agents is shown with real agents on agterm,
+  other sessions with made-up output; never another project's content, private folder or host names.
+  Start codex with `--no-daemon`: a bare `codex` runs its hooks in the background service, which reports no status.
 
 ## Path-scoped rules
 
@@ -401,6 +406,7 @@ spans intact, and format long catalogs as lists.
 - `keymap.md`: keymap parser, built-ins, custom commands/tokens, reload/edit.
 - `notifications.md`: OSC/control notifications, suppression, reveal, badges, status.
 - `ui-tests.md`: launch isolation including FB11763863, AppKit/XCUITest traps, cadence.
+- `tests.md`: shared state, clocks, waits, ptys and stubs that keep any suite from flaking on CI.
 - `libghostty.md`: surfaces, rendering, AppKit, theme, overlays, cursor.
 - `app-icon.md`: adaptive Icon Composer build.
 - `ci.md`: jobs, filters, coverage, badge.

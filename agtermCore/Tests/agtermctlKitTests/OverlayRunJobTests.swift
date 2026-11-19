@@ -10,7 +10,7 @@ struct OverlayRunJobTests {
         let origin: Int32
         private let lock = NSLock()
         private var received: [OverlayJobFrame] = []
-        private let done = DispatchSemaphore(value: 0)
+        private var finished = false
 
         init(helper: Int32, origin: Int32) {
             self.helper = helper
@@ -39,7 +39,7 @@ struct OverlayRunJobTests {
                         lock.withLock { received.append(frame) }
                     }
                 }
-                done.signal()
+                lock.withLock { finished = true }
             }.start()
         }
 
@@ -48,11 +48,12 @@ struct OverlayRunJobTests {
             write(String(decoding: line, as: UTF8.self))
         }
 
-        func frames() -> [OverlayJobFrame] {
+        func frames() async -> [OverlayJobFrame] {
             // Linux wakes the runner's blocked read, and so ends the stream, only on shutdown
             shutdown(helper, Int32(SHUT_RDWR))
             close(helper)
-            _ = done.wait(timeout: .now() + 5)
+            let deadline = Date().addingTimeInterval(5)
+            while !lock.withLock({ finished }), Date() < deadline { try? await Task.sleep(for: .milliseconds(10)) }
             close(origin)
             return lock.withLock { received }
         }
@@ -80,10 +81,10 @@ struct OverlayRunJobTests {
         OverlayLaunchContext(command: command, cwd: "/tmp", sessionEnvironment: ["AGTERM_ENABLED": "1"])
     }
 
-    func gone(_ pid: pid_t) -> Bool {
+    func gone(_ pid: pid_t) async -> Bool {
         for _ in 0..<100 {
             if kill(pid, 0) != 0 || zombie(pid) { return true }
-            usleep(20_000)
+            try? await Task.sleep(for: .milliseconds(20))
         }
         return false
     }
@@ -101,17 +102,17 @@ struct OverlayRunJobTests {
         (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-run-job-\(UUID().uuidString).pid")
     }
 
-    func readPID(_ path: String) -> pid_t? {
+    func readPID(_ path: String) async -> pid_t? {
         for _ in 0..<100 {
             if let text = try? String(contentsOfFile: path, encoding: .utf8), let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 return pid
             }
-            usleep(20_000)
+            try? await Task.sleep(for: .milliseconds(20))
         }
         return nil
     }
 
-    @Test func aProgramExitingThreeReportsThreeAndTheHelperExitsThree() throws {
+    @Test func aProgramExitingThreeReportsThreeAndTheHelperExitsThree() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("exit 3"))
         let runner = OverlayJobRunner(socket: origin.helper)
@@ -119,16 +120,16 @@ struct OverlayRunJobTests {
         let status = runner.run(try runner.claim("job"), baseEnvironment: Self.base)
 
         #expect(status == 3)
-        #expect(origin.frames() == [.started, .exited(3)])
+        #expect(await origin.frames() == [.started, .exited(3)])
     }
 
-    @Test func aRefusedClaimLaunchesNothing() {
+    @Test func aRefusedClaimLaunchesNothing() async {
         let origin = FakeOrigin()
         origin.serve(reply: #"{"ok":false,"error":"job not claimable"}"#, context: nil)
         let runner = OverlayJobRunner(socket: origin.helper)
 
         #expect(throws: SocketClientError.self) { try runner.claim("job") }
-        #expect(origin.frames().isEmpty)
+        #expect(await origin.frames().isEmpty)
     }
 
     @Test(arguments: [
@@ -147,7 +148,7 @@ struct OverlayRunJobTests {
         #expect(OverlayJobRunner.statusFields(line) == nil)
     }
 
-    @Test func aCancelFromTheAppEndsTheProgramCanceled() throws {
+    @Test func aCancelFromTheAppEndsTheProgramCanceled() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("sleep 30"))
         let runner = OverlayJobRunner(socket: origin.helper, grace: 0.3)
@@ -157,10 +158,10 @@ struct OverlayRunJobTests {
         let status = runner.run(claimed, baseEnvironment: Self.base)
 
         #expect(status == 128 + SIGTERM)
-        #expect(origin.frames() == [.started, .canceled])
+        #expect(await origin.frames() == [.started, .canceled])
     }
 
-    @Test func aCancelKillsAProgramThatIgnoresTheFirstSignal() throws {
+    @Test func aCancelKillsAProgramThatIgnoresTheFirstSignal() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context(#"trap "" TERM; sleep 30"#))
         let runner = OverlayJobRunner(socket: origin.helper, grace: 0.3)
@@ -172,7 +173,7 @@ struct OverlayRunJobTests {
 
         #expect(status == 128 + SIGKILL)
         #expect(Date().timeIntervalSince(started) < 10)
-        #expect(origin.frames() == [.started, .canceled])
+        #expect(await origin.frames() == [.started, .canceled])
     }
 
     @Test func aReportTheAppNeverGetsLeavesTheHelpersStatusAlone() throws {
@@ -188,13 +189,13 @@ struct OverlayRunJobTests {
 
     // the fork runs its own Linux spawn, which hands the child the terminal before exec ([[headless-origin]])
     #if canImport(Darwin)
-    @Test func aSuspendedSpawnRunsNothingUntilContinued() throws {
+    @Test func aSuspendedSpawnRunsNothingUntilContinued() async throws {
         let marker = NSTemporaryDirectory() + "agterm-suspended-\(UUID().uuidString)"
         defer { unlink(marker) }
         let environment = Self.base.merging(["AGTERM_OVL_CMD": "echo ran > '\(marker)'"]) { _, new in new }
 
         let pid = try OverlayJobRunner.spawn(environment: environment, cwd: "/", suspended: true)
-        Thread.sleep(forTimeInterval: 0.3)
+        try await Task.sleep(for: .milliseconds(300))
         #expect(!FileManager.default.fileExists(atPath: marker))
         kill(pid, SIGCONT)
         var status: Int32 = 0
@@ -206,18 +207,18 @@ struct OverlayRunJobTests {
     }
     #endif
 
-    @Test func theProgramDoesNotInheritTheAppConnection() throws {
+    @Test func theProgramDoesNotInheritTheAppConnection() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context("test ! -e /dev/fd/\(origin.helper)"))
         let runner = OverlayJobRunner(socket: origin.helper)
 
         #expect(runner.run(try runner.claim("job"), baseEnvironment: Self.base) == 0)
-        #expect(origin.frames() == [.started, .exited(0)])
+        #expect(await origin.frames() == [.started, .exited(0)])
     }
 
     #if canImport(Darwin)
     // regression: a descriptor another thread had not yet marked close-on-exec reached the overlay's program
-    @Test func anInheritableHelperDescriptorDoesNotReachTheProgram() throws {
+    @Test func anInheritableHelperDescriptorDoesNotReachTheProgram() async throws {
         let original = open("/dev/null", O_RDONLY | O_CLOEXEC)
         try #require(original >= 0)
         defer { close(original) }
@@ -229,11 +230,11 @@ struct OverlayRunJobTests {
         let runner = OverlayJobRunner(socket: origin.helper)
 
         #expect(runner.run(try runner.claim("job"), baseEnvironment: Self.base) == 0)
-        #expect(origin.frames() == [.started, .exited(0)])
+        #expect(await origin.frames() == [.started, .exited(0)])
     }
     #endif
 
-    @Test func theTerminalTypeComesFromTheHelpersOwnTerminal() throws {
+    @Test func theTerminalTypeComesFromTheHelpersOwnTerminal() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply, context: context(#"test "$TERM" = xterm-kitty"#))
         let runner = OverlayJobRunner(socket: origin.helper)
@@ -242,7 +243,7 @@ struct OverlayRunJobTests {
         base["TERM"] = "xterm-kitty"
 
         #expect(runner.run(try runner.claim("job"), baseEnvironment: base) == 0)
-        #expect(origin.frames() == [.started, .exited(0)])
+        #expect(await origin.frames() == [.started, .exited(0)])
     }
 
     struct TerminfoCase: Sendable, CustomTestStringConvertible {
@@ -275,7 +276,7 @@ struct OverlayRunJobTests {
         #expect(environment["PATH"] == base["PATH"])
     }
 
-    @Test func theProgramGetsTheHelpersEnvironmentUnderTheContext() throws {
+    @Test func theProgramGetsTheHelpersEnvironmentUnderTheContext() async throws {
         let bin = (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-run-job-bin-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: bin) }
@@ -294,10 +295,10 @@ struct OverlayRunJobTests {
                                                                            "AGTERM_SESSION_ID": "stale"])
 
         #expect(status == 0)
-        #expect(origin.frames() == [.started, .exited(0)])
+        #expect(await origin.frames() == [.started, .exited(0)])
     }
 
-    @Test func aCancelEndsTheProgramsDescendantsToo() throws {
+    @Test func aCancelEndsTheProgramsDescendantsToo() async throws {
         let origin = FakeOrigin()
         let path = pidFile()
         defer { try? FileManager.default.removeItem(atPath: path) }
@@ -308,9 +309,9 @@ struct OverlayRunJobTests {
 
         _ = runner.run(claimed, baseEnvironment: Self.base)
 
-        let descendant = try #require(readPID(path))
-        #expect(gone(descendant))
-        #expect(origin.frames() == [.started, .canceled])
+        let descendant = try #require(await readPID(path))
+        #expect(await gone(descendant))
+        #expect(await origin.frames() == [.started, .canceled])
     }
 
     @Test func runJobParsesUnderSessionOverlay() throws {
@@ -320,7 +321,7 @@ struct OverlayRunJobTests {
         #expect(command.job == "job-id")
     }
 
-    @Test func aProgramThatCannotStartReportsLaunchFailed() throws {
+    @Test func aProgramThatCannotStartReportsLaunchFailed() async throws {
         let origin = FakeOrigin()
         origin.serve(reply: Self.okReply,
                      context: OverlayLaunchContext(command: "true", cwd: "/nonexistent-\(UUID().uuidString)",
@@ -330,14 +331,14 @@ struct OverlayRunJobTests {
         let status = runner.run(try runner.claim("job"), baseEnvironment: Self.base)
 
         #expect(status == 127)
-        guard case .launchFailed? = origin.frames().first else {
+        guard case .launchFailed? = await origin.frames().first else {
             Issue.record("expected launch-failed")
             return
         }
     }
 
     #if os(Linux)
-    @Test func underARealTerminalTheProgramOwnsItReadsItsKeysAndSetsTheExitStatus() throws {
+    @Test func underARealTerminalTheProgramOwnsItReadsItsKeysAndSetsTheExitStatus() async throws {
         let helper = try #require(Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("agtermctl").path)
         try #require(FileManager.default.isExecutableFile(atPath: helper))
         let cwd = (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-run-job-cwd-\(UUID().uuidString)")
@@ -370,7 +371,8 @@ struct OverlayRunJobTests {
         let status = terminal.drain(until: pid)
 
         #expect(status == 4)
-        #expect(try #require(origin).frames() == [.started, .exited(4)])
+        let served = try #require(origin)
+        #expect(await served.frames() == [.started, .exited(4)])
     }
 
     static func listen(at path: String) throws -> Int32 {

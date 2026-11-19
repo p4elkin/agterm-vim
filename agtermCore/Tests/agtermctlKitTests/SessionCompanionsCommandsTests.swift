@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import Testing
 import agtermCore
 @testable import agtermctlKit
@@ -44,6 +45,45 @@ struct SessionCompanionsCommandsTests {
         #expect(try request(["session", "convert", "--companion"]) == ControlRequest(cmd: .sessionCompanionConvert, target: "active"))
     }
 
+    @Test func sessionMoveWithParentSendsTheCompanionMoveCommand() throws {
+        var args = ControlArgs(window: "win")
+        args.parent = "p2"
+        args.index = 0
+        #expect(try request(["session", "move", "--target", "c1", "--parent", "p2", "--index", "0", "--window", "win"])
+            == ControlRequest(cmd: .sessionCompanionMove, target: "c1", args: args))
+        let appended = try request(["session", "move", "--parent", "p2"])
+        #expect(appended.cmd == .sessionCompanionMove)
+        #expect(appended.target == "active")
+        #expect(appended.args?.index == nil)
+        #expect(try request(["session", "move", "w1", "--target", "c1"]).cmd == .sessionMove)
+    }
+
+    @Test func sessionMoveWithParentCarriesItsOperationIdAndEpoch() throws {
+        let move = try Session.Move.parse(["--target", "c1", "--parent", "p2", "--op-id", "op-1", "--epoch", "e1"])
+
+        let request = try move.makeRequest()
+
+        #expect(request.cmd == .sessionCompanionMove)
+        #expect(request.args?.opID == "op-1")
+        #expect(request.args?.epoch == "e1")
+    }
+
+    @Test(arguments: [["--index", "1"], ["--parent", "p2", "w1"], ["--parent", "p2", "--to", "up"], ["--parent", "p2", "--after", "a"],
+                      ["--parent", "p2", "--before", "b"], ["--parent", "p2", "--target", "c1", "--target", "c2"],
+                      ["--parent", "p2", "--index", "-1"]])
+    func sessionMoveWithParentRefusesConflictingOptions(extra: [String]) {
+        #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["session", "move"] + extra) }
+    }
+
+    @Test func anAppThatDoesNotKnowTheMoveCommandReadsAsTooOld() {
+        let unknown = ControlResponse(ok: false, error: "invalid request: unknown cmd session.companion.move")
+        let send = companionSend({ _ in SocketReply(response: unknown, raw: Data()) }, json: false)
+        #expect(throws: ExitCode.self) { try send(ControlRequest(cmd: .sessionCompanionMove, target: "c1")) }
+        let refused = ControlResponse(ok: false, error: "not a companion")
+        let passing = companionSend({ _ in SocketReply(response: refused, raw: Data()) }, json: false)
+        #expect((try? passing(ControlRequest(cmd: .sessionCompanionMove, target: "c1")))?.response == refused)
+    }
+
     @Test func sessionConvertNeedsTheCompanionFlag() {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["session", "convert"]) }
     }
@@ -78,5 +118,14 @@ struct SessionCompanionsCommandsTests {
 
     @Test func overlayOpenWithCompanionNeedsAPage() {
         #expect(throws: (any Error).self) { try Agtermctl.parseAsRoot(["session", "overlay", "open", "top", "--companion"]) }
+    }
+
+    @Test func anAttachedConvertParsesOnItsOrigin() throws {
+        let forward = AttachedForward.convert(session: "s1")
+
+        let parsed = try request(forward.originArgv)
+
+        #expect(parsed == ControlRequest(cmd: .sessionCompanionConvert, target: "s1"))
+        #expect(parsed.cmd == forward.command)
     }
 }
