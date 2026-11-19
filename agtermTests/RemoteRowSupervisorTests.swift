@@ -14,6 +14,7 @@ final class RemoteRowSupervisorTests: XCTestCase {
     private var sleeps: [TimeInterval] = []
     private var reattached: [RemoteRowSupervisor.Pane] = []
     private var onSleep: (() -> Void)?
+    private var panes: [UUID] = []
 
     override func setUp() async throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-supervisor-\(UUID().uuidString)")
@@ -22,6 +23,11 @@ final class RemoteRowSupervisorTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        for pane in panes {
+            ZmxLeadBook.shared.forget(pane: pane)
+            RemoteReconnectBook.shared.cancel(pane: pane)
+        }
+        panes = []
         store = nil
         library = nil
         try? FileManager.default.removeItem(at: directory)
@@ -46,6 +52,7 @@ final class RemoteRowSupervisorTests: XCTestCase {
             store.toggleSplit(session.id)
             daemons[try XCTUnwrap(session.splitPaneIdentity)] = ZmxSupport.daemonName(for: originRight)
         }
+        panes += daemons.keys
         store.bindRemote(RemoteBinding(remoteSessionID: "R1", daemonsByLocalPane: daemons, presentationVersion: 1,
                                        origin: .init(host: "p4linux", endpoint: endpoint, sessionName: "build")),
                          forSession: session.id)
@@ -81,6 +88,45 @@ final class RemoteRowSupervisorTests: XCTestCase {
         XCTAssertEqual(trees, ["p4linux", "p4linux"])
         XCTAssertEqual(sleeps, [RemoteRowSupervisor.retryInterval])
         XCTAssertEqual(session.remotePresentation?.rowState, .attached)
+    }
+
+    // the reconnect book attached the pane while the tree call was out
+    func testAPaneAttachedAgainBeforeTheAnswerIsNotReattached() async throws {
+        let session = try row()
+        answers = [try tree(listing: [originLeft])]
+        let watcher = supervisor()
+
+        watcher.paneExited(session.paneIdentity, inSession: session.id)
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: "fresh", claim: false), pane: session.paneIdentity, reattaching: true)
+
+        try await settle("classified") { session.remotePresentation?.rowState == .attached }
+        try await settle("asked once and done") { trees.count == 1 && sleeps.isEmpty }
+        XCTAssertTrue(reattached.isEmpty)
+    }
+
+    func testAPaneWaitingToReconnectIsProbedNowAndReattachedOnlyOnceTheBookLetsItGo() async throws {
+        let session = try row()
+        let pane = session.paneIdentity
+        answers = [try tree(listing: [originLeft])]
+        let book = RemoteReconnectBook.shared
+        book.wait(pane: pane, session: session.id, host: "p4linux", cover: true, now: Date())
+        _ = book.due(now: Date())
+        _ = book.finished(pane: pane, ok: false, now: Date().addingTimeInterval(3600))
+        XCTAssertTrue(book.due(now: Date()).isEmpty, "backing off")
+        var probedNow = false
+        onSleep = { [unowned self] in
+            guard sleeps.count == 1 else { return }
+            XCTAssertTrue(reattached.isEmpty, "the book owns the attach of a dropped link")
+            probedNow = book.due(now: Date()) == [pane]
+            book.cancel(pane: pane)
+        }
+        let watcher = supervisor()
+
+        watcher.paneExited(pane, inSession: session.id)
+
+        try await settle("reattached as the backstop") { reattached == [.init(session: session.id, local: pane)] }
+        XCTAssertTrue(probedNow, "the host answered, so the probe does not wait for its backoff")
+        XCTAssertEqual(trees.count, 2)
     }
 
     func testBothPanesOfOneHostShareOneTreeCall() async throws {

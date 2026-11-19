@@ -7,16 +7,26 @@ import agtermCore
 final class PaneLeadTests: XCTestCase {
     private var panes: [UUID] = []
     private var reattached: [(view: GhosttySurfaceView, claim: Bool)] = []
+    private var deadlines: [(delay: TimeInterval, work: @MainActor () -> Void)] = []
+    private var realAfter = PaneLead.after
+    private var realHasSpawned = PaneLead.hasSpawned
 
     override func setUp() async throws {
         try await super.setUp()
         PaneLead.reattach = { [unowned self] view, claim in reattached.append((view, claim)) }
+        realAfter = PaneLead.after
+        realHasSpawned = PaneLead.hasSpawned
+        PaneLead.after = { [unowned self] delay, work in deadlines.append((delay, work)) }
+        PaneLead.hasSpawned = { _ in true }
     }
 
     override func tearDown() async throws {
         panes.forEach(ZmxLeadBook.shared.forget)
         PaneLead.reattach = nil
         PaneLead.roleChanged = nil
+        PaneLead.reconnect = nil
+        PaneLead.after = realAfter
+        PaneLead.hasSpawned = realHasSpawned
         panes.forEach(RemoteReconnectBook.shared.cancel)
         PaneLead.waitToReconnect = nil
         try await super.tearDown()
@@ -152,6 +162,94 @@ final class PaneLeadTests: XCTestCase {
         PaneLead.linkLost(try XCTUnwrap(RemoteLinkNotice(title: "agterm-remote;fresh:lost")), from: view)
 
         XCTAssertEqual(parked, [true])
+    }
+
+    // a pane whose state was forgotten under a live attach: its wrapper waits on the bar for the app
+    func testALostLinkOnAPaneWithNoAttachmentOnRecordIsStillParked() throws {
+        var parked: [Bool] = []
+        PaneLead.waitToReconnect = { parked.append($1) }
+        let (view, identity) = pane(nonce: "current")
+        ZmxLeadBook.shared.forget(pane: identity)
+
+        PaneLead.linkLost(try XCTUnwrap(RemoteLinkNotice(title: "agterm-remote;current:lost")), from: view)
+
+        XCTAssertEqual(parked, [false])
+    }
+
+    /// The app's part of a fresh covered attach: a new attachment and its report deadline.
+    private func attachCovered(_ view: GhosttySurfaceView, _ identity: UUID, nonce: String, claim: Bool = false) {
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: nonce, claim: claim), pane: identity, reattaching: true)
+        PaneLead.awaitReport(from: view, pane: identity, nonce: nonce)
+    }
+
+    func testASilentCoveredAttachIsAttachedAgainThenLeftToAKeyPress() throws {
+        let (view, identity) = pane()
+        var again: [Bool] = []
+        var changed = 0
+        PaneLead.reconnect = { _, cover in
+            again.append(cover)
+            return true
+        }
+        PaneLead.roleChanged = { _ in changed += 1 }
+
+        attachCovered(view, identity, nonce: "a")
+        XCTAssertEqual(deadlines.map(\.delay), [ZmxLeadBook.reportDeadline])
+        deadlines.removeFirst().work()
+        XCTAssertEqual(again, [true], "attached again, covered, without the claim")
+
+        attachCovered(view, identity, nonce: "b")
+        deadlines.removeFirst().work()
+        attachCovered(view, identity, nonce: "c")
+        deadlines.removeFirst().work()
+
+        XCTAssertEqual(again.count, ZmxLeadBook.silentAttachLimit, "the retries are bounded")
+        XCTAssertEqual(changed, 1, "the cover learns it stalled")
+        XCTAssertTrue(view.leadCovered)
+        XCTAssertTrue(deadlines.isEmpty, "a stalled attach arms nothing")
+        XCTAssertTrue(PaneLead.consumes(try key(.keyDown, code: 0), in: view), "the key is not swallowed as on its way")
+        XCTAssertEqual(reattached.map(\.claim), [true])
+    }
+
+    func testAReportDeadlineAfterTheReportOrAfterAReplacementDoesNothing() throws {
+        let (view, identity) = pane()
+        PaneLead.reconnect = { _, _ in
+            XCTFail("nothing is overdue")
+            return true
+        }
+
+        attachCovered(view, identity, nonce: "a")
+        PaneLead.report(try notice("a:leader:1"), from: view)
+        deadlines.removeFirst().work()
+
+        attachCovered(view, identity, nonce: "b")
+        attachCovered(view, identity, nonce: "c")
+        deadlines.removeFirst().work()
+
+        XCTAssertFalse(ZmxLeadBook.shared.stalled(pane: identity))
+        XCTAssertTrue(ZmxLeadBook.shared.reattaching(pane: identity))
+    }
+
+    func testAnAttachThatCouldNotStartOrHasNotSpawnedKeepsItsDeadlineArmed() throws {
+        let (view, identity) = pane()
+        var attempts = 0
+        PaneLead.reconnect = { _, _ in
+            attempts += 1
+            return false
+        }
+
+        PaneLead.hasSpawned = { _ in false }
+        attachCovered(view, identity, nonce: "a")
+        deadlines.removeFirst().work()
+        XCTAssertEqual(attempts, 0, "a pane that never spawned is not overdue")
+        XCTAssertEqual(deadlines.count, 1)
+
+        PaneLead.hasSpawned = { _ in true }
+        for _ in 0..<ZmxLeadBook.silentAttachLimit { deadlines.removeFirst().work() }
+        XCTAssertEqual(attempts, ZmxLeadBook.silentAttachLimit)
+        deadlines.removeFirst().work()
+
+        XCTAssertTrue(ZmxLeadBook.shared.stalled(pane: identity), "a failing attach still ends in the key press")
+        XCTAssertTrue(deadlines.isEmpty)
     }
 
     func testALostLinkWithAnotherAttachmentsNonceIsDropped() throws {

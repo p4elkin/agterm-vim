@@ -101,6 +101,72 @@ struct ZmxLeadTests {
         #expect(!book.covered(pane: left))
     }
 
+    @MainActor
+    @Test func aSilentFreshAttachIsReplacedTwiceThenLeftToAKeyPress() throws {
+        let book = ZmxLeadBook()
+        let pane = UUID()
+        book.begin(ZmxLeadAttachment(nonce: "a", claim: false), pane: pane, reattaching: true)
+
+        #expect(book.overdue(pane: pane, nonce: "a") == .attachAgain)
+        book.begin(ZmxLeadAttachment(nonce: "b", claim: false), pane: pane, reattaching: true)
+        #expect(book.overdue(pane: pane, nonce: "a") == nil, "the deadline of an attach already replaced")
+        #expect(book.overdue(pane: pane, nonce: "b") == .attachAgain)
+        book.begin(ZmxLeadAttachment(nonce: "c", claim: false), pane: pane, reattaching: true)
+        #expect(book.overdue(pane: pane, nonce: "c") == .stalled)
+
+        // still covered, but no longer on its way: the cover asks for a key and the key may claim
+        #expect(book.covered(pane: pane))
+        #expect(book.stalled(pane: pane))
+        #expect(!book.reattaching(pane: pane))
+        #expect(book.role(pane: pane) == nil)
+        #expect(book.overdue(pane: pane, nonce: "c") == nil, "a stalled attach has no second deadline")
+
+        // the key press attaches once more; silent again, it stalls without another round of retries
+        book.begin(ZmxLeadAttachment(nonce: "d", claim: true), pane: pane, reattaching: true)
+        #expect(!book.stalled(pane: pane))
+        #expect(book.overdue(pane: pane, nonce: "d") == .stalled)
+    }
+
+    @MainActor
+    @Test func aReportOrAForgottenPaneStartsTheSilentCountOver() throws {
+        let book = ZmxLeadBook()
+        let pane = UUID()
+        for nonce in ["a", "b", "c"] {
+            book.begin(ZmxLeadAttachment(nonce: nonce, claim: false), pane: pane, reattaching: true)
+            _ = book.overdue(pane: pane, nonce: nonce)
+        }
+        #expect(book.stalled(pane: pane))
+
+        // a late report still ends the stall
+        #expect(book.apply(try #require(ZmxLeadNotice(title: "zmx-role;c:leader:1")), pane: pane) == .leader)
+        #expect(!book.stalled(pane: pane))
+        #expect(!book.covered(pane: pane))
+        book.begin(ZmxLeadAttachment(nonce: "d", claim: false), pane: pane, reattaching: true)
+        #expect(book.overdue(pane: pane, nonce: "d") == .attachAgain)
+
+        book.begin(ZmxLeadAttachment(nonce: "e", claim: false), pane: pane, reattaching: true)
+        #expect(book.overdue(pane: pane, nonce: "e") == .attachAgain)
+        book.forget(pane: pane)
+        book.begin(ZmxLeadAttachment(nonce: "f", claim: false), pane: pane, reattaching: true)
+        #expect(book.overdue(pane: pane, nonce: "f") == .attachAgain)
+    }
+
+    @MainActor
+    @Test func theDeadlineOfAnAttachThatReportedOrWasNeverCoveredChangesNothing() throws {
+        let book = ZmxLeadBook()
+        let reported = UUID(), uncovered = UUID()
+        book.begin(ZmxLeadAttachment(nonce: "a", claim: false), pane: reported, reattaching: true)
+        #expect(book.apply(try #require(ZmxLeadNotice(title: "zmx-role;a:follower:1")), pane: reported) == .follower)
+        book.begin(ZmxLeadAttachment(nonce: "b", claim: true), pane: uncovered)
+
+        #expect(book.overdue(pane: reported, nonce: "a") == nil)
+        #expect(book.overdue(pane: uncovered, nonce: "b") == nil)
+        #expect(book.overdue(pane: UUID(), nonce: "a") == nil)
+        #expect(book.role(pane: reported) == .follower)
+        #expect(!book.stalled(pane: reported))
+        #expect(!book.covered(pane: uncovered))
+    }
+
     @Test func screenParsesTheHeaderAndKeepsTheTextVerbatim() throws {
         let screen = try #require(ZmxScreen(output: "42 89 60 2 17 1\n> draft\n\nstatus line\n\n   \n"))
 

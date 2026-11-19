@@ -28,6 +28,14 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- A remote pane no longer stays covered on "Taking over…" for good. A fresh attach that sends no role
+  report within 10 seconds is attached again, twice at most; after that the cover reads "No answer from
+  the session" and the first key attaches with the claim. Before, such a pane swallowed every key and
+  ignored `session lead`: on 2026-11-19 a reconnect wave left 67 panes without a role.
+- A dropped link attaches a remote pane once, not twice. The reconnect probe and the row supervisor both
+  reacted to the same loss, so each pane got a second attach about a second after the first.
+- A pane whose ssh dropped is parked for reconnect even when the app holds no lead state for it. Such a
+  pane used to sit on the `Connection lost` bar with no retry.
 - A remote pane no longer stays frozen after a network outage when `~/.ssh/config` multiplexes the host
   (`ControlMaster auto`). The pane rode the shared connection, which stayed open on the dead link, so the
   pane never showed `Connection lost · reconnecting…` and was never attached again; some panes came back
