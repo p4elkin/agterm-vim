@@ -651,6 +651,7 @@ struct agtermApp: App {
         Self.wirePane(view, session: session, store: store, services: services)
         view.dashboardFontOverride = old.dashboardFontOverride
         ZmxLeadBook.shared.begin(lead, pane: identity, reattaching: cover)
+        if cover { PaneLead.awaitReport(from: view, pane: identity, nonce: lead.nonce) }
         if session.remoteHost != nil { RemoteRespawnBook.shared.attachStarted(pane: identity, session: session.id) }
         // the old client's exit must not close the pane the new one now owns
         _ = old.claimProcessExit()

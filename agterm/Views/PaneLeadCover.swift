@@ -24,7 +24,7 @@ struct PaneLeadCover: View {
                     Image(systemName: "rectangle.on.rectangle.slash")
                         .font(.system(size: 28, weight: .light))
                     Text(Self.title(role: book.role(pane: identity), reattaching: book.reattaching(pane: identity),
-                                    remote: session.remoteHost != nil))
+                                    stalled: book.stalled(pane: identity), remote: session.remoteHost != nil))
                         .font(.system(size: 14, weight: .medium))
                     if !book.reattaching(pane: identity) {
                         Text("Press any key to use it here")
@@ -48,8 +48,10 @@ struct PaneLeadCover: View {
         .allowsHitTesting(covered)
     }
 
-    static func title(role: ZmxLeadRole?, reattaching: Bool, remote: Bool) -> String {
+    static func title(role: ZmxLeadRole?, reattaching: Bool, stalled: Bool = false, remote: Bool) -> String {
         if reattaching { return "Taking over…" }
+        // the attach stayed silent past its deadline and retries: a key press attaches again with the claim
+        if stalled { return "No answer from the session" }
         if role == .unowned { return "Reconnecting…" }
         return remote ? "In use on the Mac it runs on" : "In use from another Mac"
     }

@@ -76,6 +76,9 @@ public struct ZmxLeadState: Equatable, Sendable {
     /// True from a fresh attach that replaced a covered surface until its first report, so the cover
     /// stays up over a terminal that has nothing to show yet.
     public private(set) var reattaching: Bool
+    /// True once a covered fresh attach stayed silent past its deadline and its retries. The cover
+    /// stays, but nothing is on its way any more, so a key press may attach again with the claim.
+    public private(set) var stalled = false
     private var generation: UInt32 = 0
 
     public init(attachment: ZmxLeadAttachment, reattaching: Bool = false) {
@@ -85,7 +88,7 @@ public struct ZmxLeadState: Equatable, Sendable {
 
     /// True when the pane draws output laid out for another client's grid, or nothing yet, and must be
     /// covered.
-    public var covered: Bool { reattaching || role == .follower || role == .unowned }
+    public var covered: Bool { reattaching || stalled || role == .follower || role == .unowned }
 
     /// Applies `notice` and says whether the role changed. A report for another attachment's nonce is
     /// forged or left over from a surface this pane replaced; an older generation lost a race.
@@ -96,9 +99,26 @@ public struct ZmxLeadState: Equatable, Sendable {
         // a re-attach starts with no role, so its first report always changes it
         guard role != notice.role else { return false }
         reattaching = false
+        stalled = false
         role = notice.role
         return true
     }
+
+    /// Gives up waiting for the first report. False for an attach that is not waiting for one.
+    mutating func stall() -> Bool {
+        guard reattaching else { return false }
+        reattaching = false
+        stalled = true
+        return true
+    }
+}
+
+/// What the owner does with a covered fresh attach whose first report is overdue.
+public enum ZmxLeadOverdue: Equatable, Sendable {
+    /// Replace it with one more attach, without the claim.
+    case attachAgain
+    /// The retries are spent: the cover now asks for a key press.
+    case stalled
 }
 
 /// The reply of `zmx screen`: a line of six numbers, then the text of the daemon's own terminal.
@@ -152,6 +172,13 @@ public final class ZmxLeadBook {
     /// onChange runs after any pane's state is replaced, changed or forgotten, so an attached row can report
     /// what it now leads to its origin.
     @ObservationIgnored public var onChange: (() -> Void)?
+    /// How long a covered fresh attach may stay silent before its owner asks `overdue`. A report
+    /// normally trails the attach by about a second; ssh's own connect timeout is five.
+    public static let reportDeadline: TimeInterval = 10
+    /// Silent attaches in a row that are replaced before the pane is left to a key press, so a host
+    /// that accepts the attach but never reports is not attached to forever.
+    public static let silentAttachLimit = 2
+    @ObservationIgnored private var silent: [UUID: Int] = [:]
 
     init() {}
 
@@ -172,8 +199,25 @@ public final class ZmxLeadBook {
     public func apply(_ notice: ZmxLeadNotice, pane: UUID) -> ZmxLeadRole? {
         guard var state = states[pane], state.apply(notice) else { return nil }
         states[pane] = state
+        silent[pane] = nil
         onChange?()
         return state.role
+    }
+
+    /// The owner's call when the report deadline of the attach carrying `nonce` passes. Nil when that
+    /// attach reported, was replaced or was forgotten meanwhile. No clock of its own: the owner arms
+    /// one deadline per covered attach, which keeps the retries deterministic to test.
+    public func overdue(pane: UUID, nonce: String) -> ZmxLeadOverdue? {
+        guard var state = states[pane], state.attachment.nonce == nonce, state.reattaching else { return nil }
+        let count = silent[pane, default: 0]
+        guard count >= Self.silentAttachLimit else {
+            silent[pane] = count + 1
+            return .attachAgain
+        }
+        guard state.stall() else { return nil }
+        states[pane] = state
+        onChange?()
+        return .stalled
     }
 
     public func role(pane: UUID?) -> ZmxLeadRole? { pane.flatMap { states[$0]?.role } }
@@ -182,9 +226,12 @@ public final class ZmxLeadBook {
 
     public func reattaching(pane: UUID?) -> Bool { pane.flatMap { states[$0]?.reattaching } ?? false }
 
+    public func stalled(pane: UUID?) -> Bool { pane.flatMap { states[$0]?.stalled } ?? false }
+
     public func forget(pane: UUID) {
         states[pane] = nil
         claims.remove(pane)
+        silent[pane] = nil
         onChange?()
     }
 }

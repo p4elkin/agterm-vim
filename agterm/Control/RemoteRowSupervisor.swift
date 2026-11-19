@@ -7,6 +7,10 @@ import Foundation
 /// layout removed it, or the tree no longer lists its daemon, and attaching would create a fresh one.
 /// A failed presentation stream asks the same tree once whether its row's session ended, since a row
 /// whose panes never exit after that is otherwise never classified again.
+///
+/// A dropped link reaches both this and `RemoteReconnectBook`. The book owns that attach: this only
+/// tells it the host answered and keeps the pane as a backstop, and it never replaces an attach that
+/// began while its tree call was out. Attaching twice puts two clients of one pane on the daemon at once.
 @MainActor
 final class RemoteRowSupervisor {
     struct Pane: Hashable {
@@ -88,10 +92,18 @@ final class RemoteRowSupervisor {
         }
         store.setRemoteRowState(state, forSession: pane.session)
         guard state != .disconnected else { return }
+        guard !RemoteReconnectBook.shared.waiting(pane: pane.local) else {
+            // the host answered, so the book's probe goes out now instead of on its backoff; the pane stays
+            // here until that attach began, in case the book lets it go without one
+            if state == .attached { RemoteReconnectBook.shared.retryNow(pane: pane.local, now: Date()) }
+            return
+        }
         waiting[host]?.remove(pane)
         guard state == .attached, let daemon = binding.daemon(forLocalPane: pane.local),
               let listed = answer.result?.remote?.sessions.first(where: { $0.id == binding.remoteSessionID }),
               listed.panes.contains(where: { $0.daemon == daemon }) else { return }
+        // stopping a pane forgets its lead state, so one on record is an attach that began since
+        guard ZmxLeadBook.shared.states[pane.local] == nil else { return }
         store.releaseRemotePaneHold(pane.local, forSession: pane.session)
         reattach(pane)
     }

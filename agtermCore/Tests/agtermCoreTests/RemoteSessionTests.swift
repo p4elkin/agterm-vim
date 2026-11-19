@@ -128,7 +128,10 @@ struct RemoteSessionTests {
                                                        pane: .left, lead: ZmxLeadAttachment(claim: false))
 
         #expect(!line.contains("agterm_connection_wait"))
-        #expect(!line.contains("ControlPath"))
+        // no pooled master, and not the user's shared one either: an unpooled pane opens its own connection
+        #expect(!line.contains("ControlMaster=auto"))
+        #expect(line.contains("ControlMaster=no"))
+        #expect(line.contains("ControlPath=none"))
     }
 
     @Test func aJobHelperWaitsForItsConnectionOrSaysThereIsNone() {
@@ -142,9 +145,40 @@ struct RemoteSessionTests {
     @Test func presentIsNonInteractiveAndRunsTheBridgeForThatSession() throws {
         let argv = try RemoteSession.presentCommand(host: "buildbox", session: "0F1E2D3C")
 
-        #expect(argv.prefix(7) == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "buildbox"])
-        #expect(argv.count == 8)
-        #expect(argv[7].contains(RemoteSession.cliPathPrefix), "sshd's PATH does not reach an installed CLI")
+        #expect(argv.prefix(6) == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5"])
+        try #require(argv.count == 12)
+        #expect(argv[10] == "buildbox")
+        #expect(argv[11].contains(RemoteSession.cliPathPrefix), "sshd's PATH does not reach an installed CLI")
+    }
+
+    private static let ownConnection = ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
+
+    /// A pane or a stream that rides the user's shared `ControlMaster` connection never sees ssh exit 255
+    /// while that master stays open on a dead link, so it freezes with no reconnect; a probe through the
+    /// same master answers for the master, not for the host.
+    @Test func aPaneAStreamAndTheProbeEachOpenTheirOwnConnection() throws {
+        let commands = [
+            try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon),
+            try RemoteSession.presentCommand(host: "buildbox", session: "0F1E2D3C"),
+            try RemoteSession.probeCommand(host: "buildbox"),
+        ]
+        for argv in commands {
+            let host = try #require(argv.firstIndex(of: "buildbox"))
+            let options = Array(argv[..<host])
+            #expect(options.indices.contains { options[$0...].starts(with: Self.ownConnection) },
+                    "no multiplexing opt-out before the host in \(argv)")
+        }
+    }
+
+    @Test func aShortCallStillSharesTheUsersConnection() throws {
+        let commands = [
+            try RemoteSession.treeCommand(host: "buildbox"),
+            try RemoteSession.newCommand(host: "buildbox", options: ControlZmxNewOptions(name: "n", command: nil, cwd: nil)),
+            try RemoteSession.controlCommand(host: "buildbox", arguments: ["tree"]),
+        ]
+        for argv in commands {
+            #expect(!argv.contains { $0.hasPrefix("ControlMaster") || $0.hasPrefix("ControlPath") }, "\(argv)")
+        }
     }
 
     @Test func presentRunsTheBridgeForExactlyThatSession() throws {
@@ -300,8 +334,9 @@ struct RemoteSessionTests {
 
     @Test func attachForcesAPtyAndNeverBoundsItsLifetime() throws {
         let argv = try RemoteSession.attachCommand(host: "buildbox", endpoint: endpoint, daemon: daemon)
-        #expect(argv.prefix(9) == ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                                   "-o", "LogLevel=ERROR", "buildbox"])
+        #expect(argv.prefix(13) == ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                                    "-o", "ControlMaster=no", "-o", "ControlPath=none",
+                                    "-o", "LogLevel=ERROR", "buildbox"])
         #expect(!argv.contains { $0.hasPrefix("ServerAlive") })
     }
 
@@ -323,7 +358,8 @@ struct RemoteSessionTests {
 
     @Test func theProbeOnlyAsksTheHostToAnswer() throws {
         #expect(try RemoteSession.probeCommand(host: "buildbox")
-            == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "buildbox", "true"])
+            == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                "-o", "ControlMaster=no", "-o", "ControlPath=none", "buildbox", "true"])
         #expect(throws: RemoteSession.InvocationError.invalidHost) {
             try RemoteSession.probeCommand(host: "-oProxyCommand=touch /tmp/pwned")
         }

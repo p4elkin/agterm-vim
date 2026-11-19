@@ -1,5 +1,8 @@
 import agtermCore
 import AppKit
+import os
+
+private let leadLogger = Logger(subsystem: "com.umputun.agterm", category: "PaneLead")
 
 /// App side of explicit zmx leadership: a pane's zmx client reports its role, a pane that does not lead
 /// is covered, and taking the lead is always a FRESH attach into a new surface. The covered surface drew
@@ -29,6 +32,15 @@ enum PaneLead {
     static var heldExit: ((_ view: GhosttySurfaceView) -> Void)?
     /// ownerRespawn reads a daemon's leader before a parent respawns, then returns what publishes the respawn.
     static var ownerRespawn: ((_ session: UUID, _ daemon: String) -> () -> Void)?
+    /// Runs `work` once `delay` has passed. A seam, so a test fires a report deadline by hand.
+    static var after: (_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) -> Void = { delay, work in
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            work()
+        }
+    }
+    /// Whether a pane's program was spawned. A seam: a test's surface never spawns.
+    static var hasSpawned: (_ view: GhosttySurfaceView) -> Bool = { $0.isRealized }
 
     /// The key that took a pane over, swallowed until it is released so neither its repeats nor its
     /// release reach the program through the new surface.
@@ -53,11 +65,38 @@ enum PaneLead {
     /// The attach wrapper's lost-connection report. Only the pane's current attachment is believed, and
     /// only an origin that reported a role before will report one after the attach, so only it is covered.
     /// A reconnect that lost the link before its first report inherits that from the attach it replaced.
+    ///
+    /// A pane with no attachment on record is believed too. Nothing contradicts the report then, and a
+    /// pane whose state was forgotten under a live attach would otherwise sit on the reconnecting bar for
+    /// good: its wrapper waits for the app, and the app would wait for nothing.
     static func linkLost(_ notice: RemoteLinkNotice, from view: GhosttySurfaceView) {
         if !view.isDestroyed, scratchStopped?(view) == true { return }
-        guard !view.isDestroyed, let pane = UUID(uuidString: view.paneToken),
-              ZmxLeadBook.shared.states[pane]?.attachment.nonce == notice.nonce else { return }
-        waitToReconnect?(view, ZmxLeadBook.shared.role(pane: pane) != nil || ZmxLeadBook.shared.reattaching(pane: pane))
+        guard !view.isDestroyed, let pane = UUID(uuidString: view.paneToken) else { return }
+        let book = ZmxLeadBook.shared
+        guard book.states[pane].map({ $0.attachment.nonce == notice.nonce }) ?? true else { return }
+        waitToReconnect?(view, book.role(pane: pane) != nil || book.reattaching(pane: pane) || book.stalled(pane: pane))
+    }
+
+    /// Arms the report deadline of a covered fresh attach. A daemon that takes the attach and never
+    /// reports would otherwise leave the pane covered for good, with every key swallowed. A silent attach
+    /// is replaced without the claim; `ZmxLeadBook` bounds that, and then the cover asks for a key.
+    static func awaitReport(from view: GhosttySurfaceView, pane: UUID, nonce: String) {
+        after(ZmxLeadBook.reportDeadline) { [weak view] in
+            guard let view, !view.isDestroyed, ZmxLeadBook.shared.states[pane]?.attachment.nonce == nonce else { return }
+            // a pane that has not spawned yet has had no chance to report
+            guard hasSpawned(view) else { return awaitReport(from: view, pane: pane, nonce: nonce) }
+            switch ZmxLeadBook.shared.overdue(pane: pane, nonce: nonce) {
+            case .attachAgain:
+                leadLogger.notice("pane \(pane, privacy: .public): no role report after the attach, attaching again")
+                // an attach that could not start keeps this surface, so its deadline is armed again
+                if reconnect?(view, true) != true { awaitReport(from: view, pane: pane, nonce: nonce) }
+            case .stalled:
+                leadLogger.notice("pane \(pane, privacy: .public): still no role report, left to a key press")
+                roleChanged?(view)
+            case nil:
+                break
+            }
+        }
     }
 
     /// True when `event` belongs to a takeover or a pane waiting to reconnect, and must not reach the terminal.
@@ -85,7 +124,8 @@ enum PaneLead {
         guard view.leadCovered else { return false }
         // a modifier alone is not the press the cover asks for, and app shortcuts stay the app's
         guard event.type == .keyDown, !event.modifierFlags.contains(.command) else { return true }
-        // already on its way: the fresh surface is covered too until its first report
+        // already on its way: the fresh surface is covered too until its first report. A stalled one is
+        // not reattaching any more, so its key falls through and takes the lead
         guard !ZmxLeadBook.shared.reattaching(pane: UUID(uuidString: view.paneToken)) else { return true }
         // a key held since before a drop sends only repeats while the pane waits, so it was never latched
         guard !event.isARepeat else { return true }

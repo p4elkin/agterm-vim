@@ -2178,8 +2178,17 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the third missed check, unless the user's config sets a nonzero one. The check runs with the attach's own arguments, so a `Match command`
   or `Match sessiontype` block answers it the way it answers the attach, and a `Match exec` command runs
   twice per attach. An explicit `ServerAliveInterval 0` reads the same as unset and gets the default; a
-  large value is the opt-out. When the pane's ssh joins an existing `ControlMaster` connection the options
-  do nothing; that master's own settings decide.
+  large value is the opt-out.
+  The pane attach, the presentation stream, the reconnect probe and an overlay job all pass
+  `ControlMaster=no`/`ControlPath=none` (`RemoteSession.ownConnection`), so each opens its own connection
+  even when the user's config multiplexes the host. A channel on a shared master never sees ssh exit 255:
+  the keepalive options above do nothing there, that master's own settings decide, and a master with no
+  keepalive stays open on a dead link while every pane on it freezes with no reconnect (measured
+  2026-11-16: 76 panes, 42 minutes). sshd also caps the channels of one connection (`MaxSessions`, 10 by
+  default), and the streams of 59 rows alone filled a master raised to 64. The price is one TCP
+  connection per pane and per row, opened together after an outage: an origin with many rows needs
+  `MaxStartups` above sshd's `10:30:100`, or it drops part of that burst and those panes wait out a
+  backoff. Short calls (`tree`, `new`, relayed control commands) keep the shared connection.
 - `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
   command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
   VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments
@@ -2278,7 +2287,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   lead or link nonce reports `RemoteLinkNotice` (`OSC 2;agterm-remote;<lead nonce>:lost`, intercepted beside
   `zmx-role;`) and waits on `cat`, which ends with the app's pty. The pane then never reaches `onExitHeld`;
   `PaneLead.linkLost` believes only the current attachment's nonce and runs the same `remotePaneStopped`
-  cleanup. A failed probe's stderr is kept as the entry's `reason`, last non-empty line, sanitized and
+  cleanup. A pane with NO attachment on record is believed too: nothing contradicts the report, and a
+  pane whose lead state was forgotten under a live attach would otherwise sit on the bar for good, its
+  wrapper waiting for an app that waits for nothing (seen 2026-11-19 on seven panes). A failed probe's stderr is kept as the entry's `reason`, last non-empty line, sanitized and
   capped, replaced by every failure and nil when ssh said nothing; it is never classified, since an
   offline host and a refused login both exit 255 and the retry must not give up on either. The pane's
   child is `cat` with echo off, so nothing can be printed into it: `RemotePaneNotice` inside
@@ -2349,6 +2360,12 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   `attached` reattaches through `PaneLead`'s path without a claim, `disconnected` retries every 30
   seconds, `endedOnHost` stops. It never reattaches a pane the origin closed: the last layout removed it,
   or the tree no longer lists its daemon, and an attach would create a fresh daemon under that name.
+  A dropped link reaches both this and `RemoteReconnectBook`, and the book owns that attach. For a pane
+  the book still waits on, an `attached` answer only calls `retryNow` (the host answered, so the probe
+  skips its backoff) and the pane stays in the supervisor's set as a backstop. A pane with lead state on
+  record is left alone: stopping a pane forgets that state, so one on record is an attach that began
+  while the tree call was out. Without both checks every dropped link attached the pane twice, about a
+  second apart, which put two clients of one pane on the daemon at once.
   A failed presentation stream (`streamFailed`) adds its row to the same per-host call, once, with no retry:
   only `endedOnHost` is kept, since a `disconnected` set there would have no waiting pane to clear it,
   and not even that once the stream is connected again: the tree omits a live session that is not fully backed.
@@ -2791,7 +2808,13 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   after the bytes behind it, so a replay could be parsed at the old grid.
 - `agtermApp.reattachPane` runs none of the pane's close paths: session, daemon and pane identity stay,
   so the program keeps its `AGTERM_PANE_ID`. The cover stays up from the swap until the new client's
-  first report. An open search owned by the old surface is cleared synchronously, since END_SEARCH
+  first report. That wait is bounded: `replacePane` arms `PaneLead.awaitReport` for a covered attach, and
+  when `ZmxLeadBook.reportDeadline` (10 s) passes without a report `ZmxLeadBook.overdue` answers
+  `attachAgain` (a fresh attach without the claim, at most `silentAttachLimit` = 2 in a row) and then
+  `stalled`. A stalled pane stays covered, reads "No answer from the session", and is no longer
+  `reattaching`, so the first key or `session.lead` attaches again with the claim; `lead` stays absent
+  in the tree. A report, or forgetting the pane, starts the count over. A pane that has not spawned yet
+  keeps its deadline armed without counting. An open search owned by the old surface is cleared synchronously, since END_SEARCH
   answers through a callback `destroySurface` clears first; a dashboard cell's transient font is carried
   as the override and never seeds the new surface's own size. `remotePaneStopped` drops the pane's
   lead state when an attach ends on its exit prompt or waits to reconnect, a failed take-over included,

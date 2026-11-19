@@ -102,7 +102,9 @@ public enum RemoteSession {
         guard isPlain(session) else { throw InvocationError.invalidSession }
         let chain = cliPathPrefix + " && exec agtermctl zmx present " + CommandRestore.shellQuotedLine([session])
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
-        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false, controlPath: controlPath) + [remote]
+        // a pooled row rides its leased master; any other stream opens a connection of its own
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false, controlPath: controlPath,
+                            options: controlPath == nil ? ownConnection : []) + [remote]
     }
 
     /// catalogCommand carries agterm-server's catalog stream for a remote window, for as long as it is open; plain
@@ -133,7 +135,7 @@ public enum RemoteSession {
         let remote = CommandRestore.shellQuotedLine(["/bin/sh", "-c", chain])
         // one channel per job unless the pool leases it one: an unleased shared connection was measured refusing
         // channels (`Session open refused by peer`)
-        let options = controlPath == nil ? ["-o", "ControlMaster=no", "-o", "ControlPath=none"] : []
+        let options = controlPath == nil ? ownConnection : []
         return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, controlPath: controlPath,
                             options: options) + [remote]
     }
@@ -320,7 +322,7 @@ public enum RemoteSession {
                                            fileExists: (String) -> Bool) throws -> [String] {
         switch transport {
         case .ssh:
-            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true)
+            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, options: ownConnection)
         case .mosh(let server, let client):
             // mosh splits its `--ssh=` value with shellwords, so the two options reach ssh as separate
             // options. Required on a Mac far side: mosh's bootstrap is a non-login shell, where a
@@ -340,9 +342,12 @@ public enum RemoteSession {
         + "\\033[?2031l\\033[?2048l\\033[=0u"
 
     /// One ssh invocation that only proves the host answers again, before a waiting pane is attached anew.
+    /// Without a pooled master it opens its own connection: through the user's shared master it would prove that
+    /// the master answers, not the host.
     public static func probeCommand(host: String, controlPath: String? = nil) throws -> [String] {
         try validate(host: host)
-        return sshArguments(host: host, connectTimeout: 5, interactive: false, controlPath: controlPath) + ["true"]
+        return sshArguments(host: host, connectTimeout: 5, interactive: false, controlPath: controlPath,
+                            options: controlPath == nil ? ownConnection : []) + ["true"]
     }
 
     /// connectionWait defines `agterm_connection_wait`, for a command libghostty launches and the app cannot hold back
@@ -362,6 +367,15 @@ public enum RemoteSession {
             + "; agterm_connection_wait || { printf '%s\\n' \(failed); exit 255; }; exec " + line
         return CommandRestore.shellQuotedLine(["/usr/bin/env", "/bin/sh", "-c", script])
     }
+
+    /// Opts one invocation out of the user's `ControlMaster` multiplexing. Every link that stays up and has no
+    /// pooled master takes it: a pane, a presentation stream and an overlay job each hold a channel for hours,
+    /// and sshd caps the channels of one connection (`MaxSessions`, 10 by default), so a shared master was
+    /// measured refusing them (`Session open refused by peer`). A channel on a master also never sees ssh exit
+    /// 255: when the link dies the master stays open unless its own settings carry a keepalive, and every pane
+    /// on it freezes with no reconnect. The probe takes it for the same reason. Short calls keep the shared
+    /// connection, which is what the user configured it for.
+    static let ownConnection = ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
 
     private static func sshArguments(host: String, connectTimeout: Int, interactive: Bool, controlPath: String? = nil,
                                      options: [String] = []) -> [String] {
