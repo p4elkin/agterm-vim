@@ -93,10 +93,12 @@ final class ControlServerMacCatalogTests: XCTestCase {
     private func offMain<T: Sendable>(_ body: @escaping @Sendable () -> T) -> T? {
         let done = expectation(description: "client work finished")
         let box = Box<T>()
-        Thread {
+        // typed first: a literal handed to Thread inherits this class's main-actor isolation and aborts off main
+        let work: @Sendable () -> Void = {
             box.value = body()
             done.fulfill()
-        }.start()
+        }
+        Thread(block: work).start()
         wait(for: [done], timeout: 10)
         return box.value
     }

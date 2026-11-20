@@ -402,7 +402,7 @@ final class ControlServerZmxTests: XCTestCase {
         XCTAssertEqual(library.activeWindowID, front)
     }
 
-    func testAnAttachIntoABackgroundWindowIsOnDiskWhenItReturns() async throws {
+    func testAnAttachIntoABackgroundWindowIsTheBooksToSaveWhenItReturns() async throws {
         let front = try XCTUnwrap(library.activeWindowID)
         let destination = library.newWindow(name: "other").id
         _ = try XCTUnwrap(library.loadStore(for: destination))
@@ -414,11 +414,13 @@ final class ControlServerZmxTests: XCTestCase {
             args: ControlArgs(host: "buildbox", window: destination.uuidString)))
 
         let id = try XCTUnwrap(dispatched?.result?.id)
+        // a terminal row is RemoteRowBook's, so the window snapshot leaves it out and the book records it
         let saved = PersistenceStore(directory: stateDir.appendingPathComponent("windows"), fileName: "\(destination.uuidString).json").load()
-        let attached = try XCTUnwrap(saved.workspaces.flatMap { $0.attached ?? [] }.first)
-        XCTAssertEqual(attached.session.id.uuidString, id)
-        XCTAssertEqual(attached.origin.host, "buildbox")
-        XCTAssertEqual(attached.origin.panes.count, 2)
+        XCTAssertTrue(saved.workspaces.flatMap { $0.attached ?? [] }.isEmpty)
+        let record = try XCTUnwrap(RemoteRowBook.records(from: library, previous: []).first { $0.windowID == destination })
+        XCTAssertEqual(record.host, "buildbox")
+        XCTAssertEqual(record.daemonsByPane.count, 2)
+        XCTAssertNotNil(library.store(for: destination)?.session(withID: try XCTUnwrap(UUID(uuidString: id))))
     }
 
     func testAttachRefusesAClosedOrUnknownDestination() async throws {

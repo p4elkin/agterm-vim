@@ -116,14 +116,16 @@ final class ControlServerPresentationTests: XCTestCase {
     private final class Box<T>: @unchecked Sendable { var value: T? }
     private struct UnexpectedFrame: Error {}
 
-    private func openStream(for session: Session, mode: PresentationMode = .mirror) throws -> (StreamClient, PresentationSnapshot) {
+    private func openStream(for session: Session, mode: PresentationMode = .mirror,
+                            kinds: [String] = ["status", "hud"]) throws -> (StreamClient, PresentationSnapshot) {
         let client = try XCTUnwrap(StreamClient(path: socketPath))
         clients.append(client)
         let id = session.id.uuidString
+        let kindList = kinds.map { "\"\($0)\"" }.joined(separator: ",")
         let opened = offMain { () -> (String?, PresentationFrame?, PresentationFrame?) in
             client.send(#"{"cmd":"zmx.present","target":"\#(id)"}"#)
             let reply = client.readLine()
-            client.send(#"{"kind":"hello","gen":0,"rev":0,"hello":{"version":1,"kinds":["status","hud"],"mode":"\#(mode.rawValue)"}}"#)
+            client.send(#"{"kind":"hello","gen":0,"rev":0,"hello":{"version":1,"kinds":[\#(kindList)],"mode":"\#(mode.rawValue)"}}"#)
             return (reply, client.frame(), client.frame())
         }
         let (reply, hello, snapshot) = try XCTUnwrap(opened)
@@ -133,7 +135,7 @@ final class ControlServerPresentationTests: XCTestCase {
             throw UnexpectedFrame()
         }
         client.generation = try XCTUnwrap(hello).gen
-        XCTAssertEqual(answer.kinds, ["status", "hud"])
+        XCTAssertEqual(answer.kinds, kinds)
         return (client, state)
     }
 
@@ -259,7 +261,8 @@ final class ControlServerPresentationTests: XCTestCase {
             return first.frame()
         }
         XCTAssertEqual(granted??.body, .presenterGranted)
-        let (next, _) = try openStream(for: session, mode: .presenter)
+        let (next, _) = try openStream(for: session, mode: .presenter, kinds: ["status", "hud", PresentationHub.pendingSnapshotKind,
+                                                                             PresentationHub.jobTokenKind])
         let nextGeneration = next.generation
         let refused = offMain {
             next.send(#"{"kind":"presenter.acquire","gen":\#(nextGeneration),"rev":0}"#)
@@ -270,6 +273,8 @@ final class ControlServerPresentationTests: XCTestCase {
                                  buttons: [ControlAskButton(id: "yes", label: "Yes")], style: .terminal)
         let window = try XCTUnwrap(server.library.windows.first?.id)
         let pane = session.paneIdentity
+        followRemoteLead(pane: pane)
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
         XCTAssertEqual(store.presentAsk(pending, in: session, paneIdentity: pane, window: window), true)
         let offered = offMain { first.frame() }
         XCTAssertEqual(offered??.body, .askRequest(PresentationAsk(pending, pane: .identity(pane),
@@ -279,7 +284,7 @@ final class ControlServerPresentationTests: XCTestCase {
         clients.removeAll { $0 === first }
         let handoff = try XCTUnwrap(offMain { (next.frame(), next.frame()) })
 
-        let owner = server.presentationHub.presenterGeneration(session: session.id)
+        let owner = try XCTUnwrap(server.presentationHub.presenter(of: session.id))
         XCTAssertEqual(handoff.0?.body, .presenterGranted)
         XCTAssertEqual(handoff.1?.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner)))
         XCTAssertEqual(session.askPaneIdentity, pane)
@@ -289,7 +294,7 @@ final class ControlServerPresentationTests: XCTestCase {
         XCTAssertEqual(dismissed??.body, .askDismiss(PresentationAskRef(id: pending.id, owner: owner)))
     }
 
-    func testATakeOnAMacOriginDismissesTheAskOnTheOldViewerAndReoffersIt() throws {
+    func testATakeOnAMacOriginMovesTheRoleButLeavesTheAskWithItsViewer() throws {
         let (server, store, session) = try makeServer()
         let (first, _) = try openStream(for: session, mode: .presenter)
         let firstGeneration = first.generation
@@ -304,25 +309,31 @@ final class ControlServerPresentationTests: XCTestCase {
         let window = try XCTUnwrap(server.library.windows.first?.id)
         let pane = session.paneIdentity
         XCTAssertEqual(store.presentAsk(pending, in: session, paneIdentity: pane, window: window), true)
-        let oldOwner = server.presentationHub.presenterGeneration(session: session.id)
+        let oldOwner = try XCTUnwrap(server.presentationHub.presenter(of: session.id))
         let offered = offMain { first.frame() }
         XCTAssertEqual(offered??.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: oldOwner)))
 
         let nextGeneration = next.generation
-        let taken = try XCTUnwrap(offMain {
+        let taken = offMain {
             next.send(#"{"kind":"presenter.take","gen":\#(nextGeneration),"rev":0}"#)
-            return (next.frame(), next.frame())
-        })
-        let left = try XCTUnwrap(offMain { (first.frame(), first.frame()) })
+            return next.frame()
+        }
+        let left = offMain { first.frame() }
 
-        let owner = server.presentationHub.presenterGeneration(session: session.id)
-        XCTAssertEqual(left.0?.body, .askDismiss(PresentationAskRef(id: pending.id, owner: oldOwner)))
-        XCTAssertEqual(left.1?.body, .presenterRefused)
-        XCTAssertEqual(taken.0?.body, .presenterGranted)
-        XCTAssertEqual(taken.1?.body, .askRequest(PresentationAsk(pending, pane: .identity(pane), owner: owner)))
-        XCTAssertNotEqual(owner, oldOwner)
-        XCTAssertFalse(store.resolveRemoteAsk(PresentationAskAnswer(id: pending.id, owner: oldOwner, button: "yes"),
-                                              forSession: session.id), "the old viewer's late answer is refused")
+        XCTAssertEqual(taken??.body, .presenterGranted)
+        XCTAssertEqual(left??.body, .presenterRefused)
+        XCTAssertNotEqual(server.presentationHub.presenter(of: session.id), oldOwner)
+        XCTAssertEqual(session.askRemoteOwner, oldOwner, "open work follows the pane lead, not the role")
+        XCTAssertTrue(store.resolveRemoteAsk(PresentationAskAnswer(id: pending.id, owner: oldOwner, button: "yes"),
+                                             forSession: session.id))
+    }
+
+    /// followRemoteLead makes `pane` follow on this Mac, as when a viewer leads it, so its work routes to a viewer.
+    private func followRemoteLead(pane: UUID) {
+        let attachment = ZmxLeadAttachment(claim: false)
+        ZmxLeadBook.shared.begin(attachment, pane: pane)
+        _ = ZmxLeadNotice(title: "zmx-role;\(attachment.nonce):\(ZmxLeadRole.follower.rawValue):1")
+            .map { ZmxLeadBook.shared.apply($0, pane: pane) }
     }
 
     func testAStatusChangeReachesTheViewerAfterTheSnapshot() throws {
