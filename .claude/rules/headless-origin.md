@@ -271,10 +271,11 @@ The Phase 0 baseline passed 4193 tests in 175 suites.
   another suite writing to stdout meanwhile lands in its pipe (`runEchoesNewIdForCreateCommand` reads
   `ok\n` extra). `.serialized` orders only its own suite.
 - Darwin-only, guarded with `#if canImport(Darwin)`:
-  - whole files: `CodexStatusHookTests` (imports Darwin), `QuitReasonTests` (Apple events),
-    `HudMarkdownTests` (the markdown renderer is plain text on Linux), `SessionInfoMarkupTests` (the
-    session info line takes markdown source as literal text on Linux, the same fallback), `HudHelperTests` (the Mac-side
-    `hud.sh` painter; the headless origin has no surface to paint, and why the suite hangs here is unproved);
+  - whole files: `CodexStatusHookTests` (imports Darwin), `SessionInfoMarkupTests` (the session info line
+    takes markdown source as literal text on Linux), and `HudHelperTests`, a fork guard upstream does not carry:
+    the headless origin has no surface to paint, and on p4linux the spawned `hud.sh` inherits SIGTERM blocked,
+    so all 30 tests fail `hud.sh ignored SIGTERM` and the run then hangs (2026-11-20; `49fd0c11` had dropped it);
+    `QuitReasonTests` and `HudMarkdownTests` carry upstream's own guards;
   - single tests: the `TerminfoInstallTests` that spawn ssh, infocmp or a login shell (`posix_spawn` is
     `ENOSYS` on Linux by design), `ControlDispatcherHudTests.markdownThatRendersNothingIsNoMessage` and
     four `HudTests` markdown bodies plus the bullet check in `aFramelessPanelIsAsTallAsItsText`
