@@ -617,7 +617,6 @@ struct PresentationFramesTests {
         #expect(try PresentationCodec.decode(olderLine).body == .unknown("\(kind).unknown-to-this-build"))
     }
 
-
     @Test func statusClearAndSeenRoundTrip() throws {
         let bodies: [PresentationFrame.Body] = [.statusClear(PresentationStatusClear(reason: .submit, pane: .identity(UUID()))),
                                                 .statusClear(PresentationStatusClear(reason: .select)),

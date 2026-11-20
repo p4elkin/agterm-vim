@@ -847,6 +847,11 @@ extension Session {
 
             private var rowFlag: String? { companion ? "--companion" : page ? "--page" : nil }
 
+            private func validateLine() throws {
+                if line != nil, text == nil { throw ValidationError("--line requires --text") }
+                if let line, line < 1 { throw ValidationError("--line must be 1 or more") }
+            }
+
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
@@ -861,8 +866,7 @@ extension Session {
                 if [command, html, url, image, markdown, text].compactMap({ $0 }).count != 1 {
                     throw ValidationError("provide exactly one of COMMAND, --html, --url, --image, --markdown or --text")
                 }
-                if line != nil, text == nil { throw ValidationError("--line requires --text") }
-                if let line, line < 1 { throw ValidationError("--line must be 1 or more") }
+                try validateLine()
                 try validateLog()
                 let pageOnly = [rowFlag != nil, block, wait, navigation, javascript, chromeless, persistent, browse, cwd != nil].contains(true)
                 let pageOnlyFlags = "--companion, --page, --block, --wait, --navigation, --js, --chromeless, --persistent, --browse or --cwd"

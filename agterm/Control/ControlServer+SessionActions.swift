@@ -428,13 +428,13 @@ extension ControlServer: ControlActions {
     /// the current axis. `on|off|toggle` is computed against `isSplit` and keeps a hidden pane alive;
     /// `session.split.close` is the teardown verb.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?) -> ControlResponse {
-        splitSession(target, window: window, mode: mode, axis: axis, command: nil, focus: true)
+        splitSession(target, window: window, mode: mode, seed: (axis, nil), focus: true)
     }
 
     /// splitSession with `focus` false leaves first responder and a new split's pane focus alone, for a split
     /// another Mac asked for.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?, focus: Bool) -> ControlResponse {
-        splitSession(target, window: window, mode: mode, axis: axis, command: nil, focus: focus)
+        splitSession(target, window: window, mode: mode, seed: (axis, nil), focus: focus)
     }
 
     /// The command-carrying form: a seed the new pane runs instead of a login shell, consumed by the pane
@@ -444,11 +444,12 @@ extension ControlServer: ControlActions {
     /// what the pane already runs.
     func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
                       command: ControlSplitCommand?) -> ControlResponse {
-        splitSession(target, window: window, mode: mode, axis: axis, command: command, focus: true)
+        splitSession(target, window: window, mode: mode, seed: (axis, command), focus: true)
     }
 
-    private func splitSession(_ target: String?, window: String?, mode: String?, axis: SplitAxis?,
-                              command: ControlSplitCommand?, focus: Bool) -> ControlResponse {
+    private func splitSession(_ target: String?, window: String?, mode: String?,
+                              seed: (axis: SplitAxis?, command: ControlSplitCommand?), focus: Bool) -> ControlResponse {
+        let (axis, command) = seed
         return resolver.resolveSession(target, window: window) { store, id in
             guard let session = store.session(withID: id) else {
                 return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
