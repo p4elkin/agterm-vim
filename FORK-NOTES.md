@@ -71,13 +71,16 @@ is the `.claude/rules` file that owns the design.
   and reaches the Mac as a `--url` page (`HeadlessPages`, `PageServer`); `Info.plist` exempts `ts.net` from ATS for it.
   `scripts/headless/install.sh` installs it as a systemd user service.
   From a Mac, `agtermctl zmx new <host>` creates a session there and attaches it, a split made on the
-  origin grows on the Mac, and the presenter role follows the pane lead (`presenter.take`).
+  origin grows on the Mac once the origin shows it, and the presenter role follows the pane lead
+  (`presenter.take`); open work follows upstream's per-pane lead, not the role. A presenter that leaves hands
+  the role at once to the oldest Mac still asking for it (`PresentationHub.handOn`).
   On the origin, `agtermctl zmx attach <host> <id> --beside <row>` asks the Mac presenting that row to
   attach the session right after it, which is how a p4linux offload gets its Mac row.
   The origin owns a remote row's name: a rename on either side reaches the other over the stream
   (`name`, `rename`), and a rename made while disconnected is sent when the stream returns.
   Remote rows are saved in `RemoteRowBook` (`remote-rows.json`) and come back at launch, with the name the
-  row last showed; a supervisor
+  row last showed; upstream's window snapshot keeps only the attached rows the book cannot record (pages),
+  so no row comes back twice; a supervisor
   reattaches a dropped one and the row says Disconnected or Ended (`remoteState`); a failed presentation
   stream also asks the origin, so a row whose session ended reads Ended even when no pane exits
   ([[control-api]], `RemoteRowSupervisor`).
@@ -347,8 +350,8 @@ Mark a turn in an agent conversation and come back to it later without scrolling
 
 - `agtermctl session status <state> --note TEXT` — a one-line reason on the agent status, read back as
   `statusNote` on `tree` and `note` on the `status` event, far rows included. `control-api.md` has the rules.
-- A `completed` written without `--auto-reset` is owned by its pane like a `blocked`: another pane's
-  non-`blocked` write is refused with `status owned by pane <pane>`. `control-api.md` has the rules.
+- A `completed` written without `--auto-reset` is held by its pane like a `blocked`: another pane's
+  non-`blocked` write is accepted and counted, and the row keeps the owner's status. `control-api.md` has the rules.
 - `agtermctl session mark` and `session bookmark add|list|go|remove` — the bookmarks above.
 - `agtermctl mode on|off|toggle` — errors when there is no key window, since a mode no keystroke can
   reach would be a lie.

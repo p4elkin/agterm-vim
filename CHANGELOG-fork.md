@@ -84,6 +84,17 @@ publishes an empty body with only a warning on stderr.
 
 ### Changed
 
+- Another pane's status write over a `blocked`, or a `completed` without `--auto-reset`, is accepted now
+  instead of refused: it plays its sound, its `active` reads back in `activePanes`, and the row keeps showing
+  the owner's status. The `status owned by pane <pane>` error is gone (upstream #1016 made the block a hold;
+  the fork's sticky completed holds the same way).
+- An ask, pick or overlay open on an attached row follows the Mac that leads its pane (upstream #1023).
+  Taking the presenter role (`presenter.take`) no longer moves it; typing in that pane does.
+- A split the origin adds after the attach attaches on the Mac through upstream's path, still only once the
+  origin shows it, and keeps the row's mosh transport.
+- Fork releases ship without upstream's Sparkle updater: `release.sh` builds no feed and no appcast, so a
+  fork build never offers umputun/agterm's DMG as an update.
+
 - The recency dwell picker left Settings ▸ Agent Status, so the tab fits the window again with upstream's
   new Navigation toggle. The 20-second default is unchanged; set `recencyDwell` in `settings.json` to change it.
 
