@@ -31,7 +31,7 @@ struct ForwardPolicyTests {
         "notify", "session.status", "session.context", "session.seen", "session.new", "session.mark",
         "session.close", "session.rename", "zmx.kill", "session.split", "session.split.close", "session.swap",
         "session.text", "session.type", "session.hud.open", "session.hud.update", "session.hud.close",
-        "ask.open", "ask.result", "ask.cancel", "session.overlay.job.run",
+        "ask.open", "ask.result", "ask.cancel", "session.overlay.job.run", "session.terminate",
     ]
     static let forwarded: Set<String> = [
         "session.overlay.reload", "session.overlay.navigate", "session.overlay.submit", "session.overlay.copy",
@@ -40,7 +40,7 @@ struct ForwardPolicyTests {
         "session.copy", "session.paste", "session.selectall", "session.search",
         "session.bookmark.add", "session.bookmark.list", "session.bookmark.go", "session.bookmark.remove",
         "session.overlay.hide", "session.overlay.show", "session.overlay.toggle", "session.overlay.follow", "session.overlay.search",
-        "session.overlay.changes", "session.overlay.wrap",
+        "session.overlay.changes", "session.overlay.wrap", "session.overlay.files", "session.overlay.expand",
     ]
     static let routed: Set<String> = [
         "session.overlay.open", "session.overlay.close", "session.overlay.resize", "session.overlay.result",

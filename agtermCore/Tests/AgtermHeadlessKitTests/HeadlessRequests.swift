@@ -163,6 +163,15 @@ enum HeadlessRequests {
             $0.pane = "left"
             $0.force = true
         },
+        request(.zmxKillPane, target: target) {
+            $0.pane = "left"
+            $0.paneID = target
+            $0.force = true
+        },
+        request(.sessionTerminate, target: target),
+        request(.sessionUndo, target: "undo-1"),
+        request(.sessionCompanionMove, target: target) { $0.parent = target },
+        request(.updateCheck),
         request(.sessionHudOpen, target: target) { $0.message = "m" },
         request(.sessionHudUpdate, target: target) { $0.message = "m" },
         request(.sessionHudClose, target: target),
@@ -186,6 +195,8 @@ enum HeadlessRequests {
         request(.sessionOverlayText, target: target),
         request(.sessionOverlayFollow, target: target) { $0.mode = "on" },
         request(.sessionOverlayWrap, target: target) { $0.mode = "on" },
+        request(.sessionOverlayExpand, target: target) { $0.mode = "on" },
+        request(.sessionOverlayFiles, target: target) { $0.to = "1" },
         request(.sessionOverlaySearch, target: target) { $0.text = "x" },
         request(.sessionOverlayChanges, target: target) { $0.to = "next" },
         request(.sessionOverlayJobRun, target: target),

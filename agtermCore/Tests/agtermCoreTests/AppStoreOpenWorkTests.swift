@@ -61,9 +61,9 @@ struct AppStoreOpenWorkTests {
     }
 
     private func viewer(_ session: Session, leads: Bool = false, acquire: Bool = false,
-                        kinds: [String] = PresentationHub.supportedKinds) throws -> Viewer {
+                        kinds: [String] = PresentationHub.supportedKinds, mode: PresentationMode = .presenter) throws -> Viewer {
         let sink = Sink()
-        let hello = PresentationHello(version: 1, kinds: kinds, mode: .presenter)
+        let hello = PresentationHello(version: 1, kinds: kinds, mode: mode)
         let id = try hub.subscribe(session: session.id, hello: hello, sink: sink) { PresentationSnapshot(status: nil, hud: nil) }
         let viewer = Viewer(id: id, gen: sink.frames[0].gen, sink: sink)
         if acquire { hub.receive(PresentationFrame(gen: viewer.gen, rev: 0, body: .presenterAcquire), from: id) }
@@ -261,8 +261,8 @@ struct AppStoreOpenWorkTests {
         let gui = ask(style: .gui), choice = pick()
         store.presentAskRemotely(gui, in: session, paneIdentity: nil, window: window)
         _ = store.presentPickRemotely(choice, in: session, window: window)
-        let older = try viewer(session, acquire: false, kinds: [PresentationHub.pendingSnapshotKind, PresentationHub.jobTokenKind])
-        hub.receive(PresentationFrame(gen: older.gen, rev: 0, body: .presenterAcquire), from: older.id)
+        // a mirror: a viewer asking for the role would take it in place when `only` leaves
+        let older = try viewer(session, kinds: [PresentationHub.pendingSnapshotKind, PresentationHub.jobTokenKind], mode: .mirror)
 
         hub.unsubscribe(only.id)
         pass(session, local: local(controller, window: window))
@@ -274,6 +274,22 @@ struct AppStoreOpenWorkTests {
         #expect(store.askRegistry.owner(for: gui.id) == .window(window))
         #expect(SessionPickBook.shared.placement(forSession: session.id) == nil)
         #expect(SessionPickBook.shared.result(for: choice.id) == ControlPickResult(result: .cancelled))
+    }
+
+    @Test func aLostViewersAskGoesToTheViewerThatTakesTheRoleInPlace() throws {
+        let (_, session) = try session()
+        let window = UUID(), controller = PickController()
+        let only = try viewer(session, leads: true, acquire: true)
+        let gui = ask(style: .gui)
+        store.presentAskRemotely(gui, in: session, paneIdentity: nil, window: window)
+        let waiting = try viewer(session, acquire: true)
+
+        hub.unsubscribe(only.id)
+        pass(session, local: local(controller, window: window))
+
+        #expect(hub.presenter(of: session.id) == waiting.gen)
+        #expect(waiting.sink.asks.map(\.id) == [gui.id])
+        #expect(controller.pendingAsk == nil)
     }
 
     @Test func aLostViewersPickComesIntoAFreeModalEvenWhereAGuiAskCouldNotBeSeen() throws {

@@ -20,18 +20,18 @@ extension HeadlessActionsTests {
         #expect(call.environment["AGTERM_STATE_DIR"] == fixture.headless.config.stateDirectory)
         #expect(call.workingDirectory == fixture.session.effectiveCwd)
         #expect(fixture.session.allPanesBackedByZmx)
-        #expect(sink.layouts == [PresentationLayout(panes: [primary, split], primary: primary, axis: "horizontal", shown: true)])
+        #expect(sink.layouts == [PresentationLayout(panes: [primary, split], primary: primary, axis: "horizontal", shown: true, scratchShown: false)])
 
         #expect(try await fixture.dispatch(.sessionSwap).ok)
         #expect(fixture.session.paneIdentity == split)
         #expect(fixture.session.surface?.paneToken == split.uuidString)
         #expect(fixture.session.splitSurface?.paneToken == primary.uuidString)
-        #expect(sink.layouts.last == PresentationLayout(panes: [split, primary], primary: split, axis: "horizontal", shown: true))
+        #expect(sink.layouts.last == PresentationLayout(panes: [split, primary], primary: split, axis: "horizontal", shown: true, scratchShown: false))
 
         #expect(try await fixture.dispatch(.sessionSplitClose).ok)
         #expect(fixture.runner.calls.last?.arguments == ["kill", ZmxSupport.daemonName(for: primary), "--force"])
         #expect(!fixture.session.hasSplit)
-        #expect(sink.layouts.last == PresentationLayout(panes: [split], primary: split, shown: false))
+        #expect(sink.layouts.last == PresentationLayout(panes: [split], primary: split, shown: false, scratchShown: false))
         #expect(fixture.streams.closed.isEmpty)
     }
 

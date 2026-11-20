@@ -378,8 +378,9 @@ struct ServerStreamsTests {
     }
 
     func drop(_ viewer: Viewer, from session: Session) async {
+        let held = streams.presentationHub.presenter(of: session.id)
         viewer.disconnect()
-        let released = await eventually { !streams.presentationHub.hasPresenter(session: session.id) }
+        let released = await eventually { streams.presentationHub.presenter(of: session.id) != held }
         #expect(released)
     }
 
@@ -444,11 +445,9 @@ struct ServerStreamsTests {
         let first = await offPool { viewer.first { if case .pickRequest = $0 { true } else { false } } }
         #expect(first != nil)
 
+        // the waiting viewer takes the role in place, so no vacancy is announced
         await drop(viewer, from: session)
-        let vacant = await offPool { mirror.first { $0 == .presenterVacant } }
-        #expect(vacant == .presenterVacant)
-        try mirror.send(.presenterAcquire)
-        let granted = await offPool { mirror.first { $0 == .presenterGranted || $0 == .presenterRefused } }
+        let granted = await offPool { mirror.first { $0 == .presenterGranted || $0 == .presenterVacant } }
         #expect(granted == .presenterGranted)
 
         let offered = await offPool { mirror.first { if case .pickRequest = $0 { true } else { false } } }

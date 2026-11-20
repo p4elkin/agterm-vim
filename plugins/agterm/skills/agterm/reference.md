@@ -363,7 +363,7 @@ when zero), and `revealsParked` (whether this workspace is in the window's parke
 the read side of `sidebar parked --workspace`; true-only, and reported independently of the window's hide
 flag, like `focused` beside `workspaceFilter`, so the set stays legible with hiding off).
 
-The tree object itself carries twenty-nine top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries thirty top-level read-only fields: `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when the setting is Disabled), `recencyDwellMs` (how long a session must
 stay selected before it joins `sessionRecency`, in milliseconds — `recencyDwell` in `settings.json`, omitted when
@@ -412,7 +412,8 @@ its dwell while its window was frontmost, so a script's `session select` in a ba
 reselection after a close behind the user do not count. Only sessions in an OPEN window appear, each
 narrowed by its own window's navigation scope as `sessionRecency` is; the active window's active session is
 dropped, other windows' selected sessions stay. App-wide like `app`, so it is the same whatever `--window`
-says; omitted when empty),
+says; omitted when empty), `catalogViewers` (how many Macs mirror this window as a remote window, omitted at
+none),
 `pickPending` (the id of the native picker currently awaiting an answer in this
 window, omitted when none is pending), `askPending` (the pending GUI question's id, omitted when absent),
 and `app` (which agterm is serving this socket: `version`, plus

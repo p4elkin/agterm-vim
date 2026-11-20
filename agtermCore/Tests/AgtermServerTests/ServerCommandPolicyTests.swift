@@ -29,6 +29,11 @@ struct ServerCommandPolicyTests {
         "the Mac app's own updater": [.updateCheck],
         "makes a Mac viewer": [.zmxAttach, .zmxAttachGroup],
         "UI-test seam": [.debugAppearance],
+        "a fork feature agterm-server does not carry": [
+            .sessionPark, .sessionMark, .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
+            .sessionRebasedShow, .sessionRebasedToggle, .sidebarParked, .normalMode, .sessionPairing, .overlayRedirectToggle,
+            .zmxNew, .rebasedMirrorList, .rebasedMirrorPrune,
+        ],
         "deferred to docs/backlog/server-user-event-hooks.md": [.hooksList, .hooksReload],
     ]
 

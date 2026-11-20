@@ -164,7 +164,8 @@ reports the same value), `zoomedSurface`, the four `dashboard*` fields, `session
 jump-back targets, session ids most recent first, with the active session dropped and the visible
 navigation scope applied; omitted when there is nothing to jump back to), `appSessionRecency` (the
 app-wide visit order across open windows, `{session, window}` objects most recent first, the same under
-any `--window`; omitted when empty), `pickPending`,
+any `--window`; omitted when empty), `catalogViewers` (how many Macs mirror the window as a remote window),
+`pickPending`,
 `askPending` (GUI asks only), `app` (the
 serving app's `version`, plus `commit` when the build recorded one — the same value `agtermctl version`
 returns), `liveReset` (the Live sessions reset state, omitted when nothing is pending and no launch

@@ -4,10 +4,10 @@ import Foundation
 extension AppStore {
     /// attachedSnapshots is `workspace`'s rows attached from another host, each with its place among the workspace's
     /// rows; nil when it has none. A row `RemoteRowBook` records is the book's to restore, never saved here too, or
-    /// it would come back twice and lose its transport.
-    func attachedSnapshots(of workspace: Workspace) -> [AttachedSessionSnapshot]? {
+    /// it would come back twice and lose its transport; `includingBookRows` is for tests of the restore path.
+    func attachedSnapshots(of workspace: Workspace, includingBookRows: Bool = false) -> [AttachedSessionSnapshot]? {
         let rows = workspace.sessions.enumerated().compactMap { index, session -> AttachedSessionSnapshot? in
-            guard !RemoteRowBook.Record.covers(session) else { return nil }
+            guard includingBookRows || !RemoteRowBook.Record.covers(session) else { return nil }
             return session.attachedOrigin.map { AttachedSessionSnapshot(index: index, session: attachedSessionSnapshot(session), origin: $0) }
         }
         return rows.isEmpty ? nil : rows

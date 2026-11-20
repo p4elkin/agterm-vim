@@ -6,9 +6,19 @@ import Testing
 struct AppStoreAttachedRestoreTests {
     private let home = FileManager.default.homeDirectoryForCurrentUser.path
 
+    /// snapshotWithBookRows also carries the terminal rows `RemoteRowBook` owns, so the snapshot's restore path is tested.
+    private func snapshotWithBookRows(_ store: AppStore) -> Snapshot {
+        var snapshot = store.snapshot()
+        for index in snapshot.workspaces.indices {
+            guard let workspace = store.workspaces.first(where: { $0.id == snapshot.workspaces[index].id }) else { continue }
+            snapshot.workspaces[index].attached = store.attachedSnapshots(of: workspace, includingBookRows: true)
+        }
+        return snapshot
+    }
+
     private func relaunched(_ store: AppStore) -> AppStore {
         let restored = makeStore()
-        restored.restore(from: store.snapshot(), launchRestore: true)
+        restored.restore(from: snapshotWithBookRows(store), launchRestore: true)
         return restored
     }
 
@@ -22,7 +32,8 @@ struct AppStoreAttachedRestoreTests {
         row.context = "deploy"
         let last = try #require(store.addSession(toWorkspace: work.id, cwd: "/last"))
 
-        let saved = try #require(store.snapshot().workspaces.first)
+        #expect(store.snapshot().workspaces.first?.attached == nil)
+        let saved = try #require(snapshotWithBookRows(store).workspaces.first)
         #expect(saved.sessions.map(\.id) == [first.id, last.id])
         let attached = try #require(saved.attached?.first)
         #expect(saved.attached?.count == 1)
@@ -71,7 +82,7 @@ struct AppStoreAttachedRestoreTests {
         let store = makeStore()
         let work = store.addWorkspace(name: "work")
         let row = try addAttachedRow(to: store, workspace: work.id, split: true)
-        var snapshot = store.snapshot()
+        var snapshot = snapshotWithBookRows(store)
         snapshot.workspaces[0].attached?[0].origin.panes.removeAll { $0.pane == row.splitPaneIdentity }
 
         let restored = makeStore()
@@ -140,7 +151,7 @@ struct AppStoreAttachedRestoreTests {
         #expect(restored.companions(of: parent.id).map(\.id) == [page.id])
     }
 
-    @Test func anAttachedRowIsOnDiskOnceItIsBound() throws {
+    @Test func anAttachedPageRowIsOnDiskOnceItIsBoundAndATerminalRowIsLeftToTheBook() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-attached-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = AppStore(persistence: PersistenceStore(directory: directory))
@@ -150,7 +161,8 @@ struct AppStoreAttachedRestoreTests {
 
         let saved = PersistenceStore(directory: directory).load().workspaces.flatMap { $0.attached ?? [] }
 
-        #expect(saved.map(\.session.id) == [row.id, page.id])
+        #expect(saved.map(\.session.id) == [page.id])
+        #expect(RemoteRowBook.Record.covers(row))
     }
 
     @Test func aServerWindowRowIsNotSaved() throws {
