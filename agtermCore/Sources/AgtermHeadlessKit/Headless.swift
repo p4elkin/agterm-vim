@@ -201,7 +201,7 @@ public final class Headless {
         }
         let daemon = ZmxSupport.daemonName(for: session.paneIdentity)
         let environment = paneEnvironment(for: session, in: store, pane: .left, identity: session.paneIdentity)
-        guard zmx(["run", daemon, "-d", "sh", "-c", command], environment: environment, workingDirectory: directory) != nil else {
+        guard createDaemon(daemon, ["-d", "sh", "-c", command], environment: environment, workingDirectory: directory) else {
             // zmx may have created the daemon before failing; an unclaimed one would outlive the session
             _ = zmx(["kill", daemon, "--force"])
             store.closeSession(session.id)
@@ -259,8 +259,8 @@ public final class Headless {
             let daemon = ZmxSupport.daemonName(for: identity)
             let directory = session.effectiveCwd
             let environment = paneEnvironment(for: session, in: store, pane: .right, identity: identity)
-            guard zmx(["run", daemon, "-d", "sh", "-c", command?.command ?? "true"],
-                      environment: environment, workingDirectory: directory) != nil else {
+            guard createDaemon(daemon, ["-d", "sh", "-c", command?.command ?? "true"],
+                                environment: environment, workingDirectory: directory) else {
                 _ = zmx(["kill", daemon, "--force"])
                 return ControlResponse(ok: false, error: "zmx could not create \(daemon)")
             }
@@ -360,6 +360,12 @@ public final class Headless {
     }
 
     /// One zmx invocation against this origin's own socket directory; nil when it failed.
+    func createDaemon(_ name: String, _ arguments: [String], environment: [String: String], workingDirectory: String?) -> Bool {
+        guard case .ok = runner.createDaemon(name, arguments: arguments, environment: environment,
+                                             workingDirectory: workingDirectory, timeout: Self.commandTimeout) else { return false }
+        return true
+    }
+
     func zmx(_ arguments: [String], environment: [String: String] = [:], workingDirectory: String? = nil) -> String? {
         guard case .ok(let output) = runner.run(arguments, environment: environment, workingDirectory: workingDirectory,
                                                timeout: Self.commandTimeout) else { return nil }

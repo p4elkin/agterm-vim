@@ -69,7 +69,7 @@ is the `.claude/rules` file that owns the design.
   presenting the session, by `ForwardPolicy`, and a program overlay runs there under that Mac's overlay.
   An `--html` page is served by the origin itself on its Tailscale name (`AGTERM_HEADLESS_PAGE_HOST`, port 19510)
   and reaches the Mac as a `--url` page (`HeadlessPages`, `PageServer`); `Info.plist` exempts `ts.net` from ATS for it.
-  `scripts/headless/install.sh` installs it as a systemd user service.
+  `scripts/headless/install.sh` installs it as a systemd user service; each session it creates gets a systemd scope of its own.
   From a Mac, `agtermctl zmx new <host>` creates a session there and attaches it, a split made on the
   origin grows on the Mac once the origin shows it, and the presenter role follows the pane lead
   (`presenter.take`); open work follows upstream's per-pane lead, not the role. A presenter that leaves hands

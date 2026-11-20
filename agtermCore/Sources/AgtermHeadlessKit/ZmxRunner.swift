@@ -15,9 +15,18 @@ public enum ZmxResult: Sendable, Equatable {
 public protocol ZmxRunning: Sendable {
     func run(_ arguments: [String], environment: [String: String], workingDirectory: String?, input: Data?,
              timeout: TimeInterval) -> ZmxResult
+    /// createDaemon is `zmx run <name> <arguments>`, the one call that leaves a daemon behind.
+    func createDaemon(_ name: String, arguments: [String], environment: [String: String], workingDirectory: String?,
+                      timeout: TimeInterval) -> ZmxResult
 }
 
 extension ZmxRunning {
+    public func createDaemon(_ name: String, arguments: [String], environment: [String: String],
+                             workingDirectory: String?, timeout: TimeInterval) -> ZmxResult {
+        run(["run", name] + arguments, environment: environment, workingDirectory: workingDirectory, input: nil,
+            timeout: timeout)
+    }
+
     public func run(_ arguments: [String], environment: [String: String] = [:], workingDirectory: String? = nil,
                     input: Data? = nil, timeout: TimeInterval) -> ZmxResult {
         run(arguments, environment: environment, workingDirectory: workingDirectory, input: input, timeout: timeout)
@@ -44,17 +53,32 @@ public struct ProcessZmxRunner: ZmxRunning {
 
     private let executable: String
     private let zmxDirectory: String
+    private let placement: DaemonPlacement
     private let baseEnvironment: [String: String]
 
-    public init(executable: String, zmxDirectory: String,
+    public init(executable: String, zmxDirectory: String, placement: DaemonPlacement = .direct,
                 baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) {
         self.executable = executable
         self.zmxDirectory = zmxDirectory
+        self.placement = placement
         self.baseEnvironment = baseEnvironment
     }
 
     public func run(_ arguments: [String], environment: [String: String], workingDirectory: String?, input: Data?,
                     timeout: TimeInterval) -> ZmxResult {
+        launch([executable] + arguments, environment: environment, workingDirectory: workingDirectory, input: input,
+               timeout: timeout)
+    }
+
+    public func createDaemon(_ name: String, arguments: [String], environment: [String: String],
+                             workingDirectory: String?, timeout: TimeInterval) -> ZmxResult {
+        launch(placement.prefix(for: name) + [executable, "run", name] + arguments, environment: environment,
+               workingDirectory: workingDirectory, input: nil, timeout: timeout)
+    }
+
+    /// `command[0]` is the executable's path.
+    private func launch(_ command: [String], environment: [String: String], workingDirectory: String?, input: Data?,
+                        timeout: TimeInterval) -> ZmxResult {
         // A headless child owns its routing; the server may itself be running inside a remote pane.
         let inherited = baseEnvironment.filter { !$0.key.hasPrefix("AGTERM_") && $0.key != "AGTERMCTL" }
         var merged = inherited.merging(environment) { $1 }
@@ -76,7 +100,7 @@ public struct ProcessZmxRunner: ZmxRunning {
             return .launchFailed(error.localizedDescription)
         }
         let pid: pid_t
-        switch ChildProcess.spawn(executable, arguments: arguments, environment: merged.map { "\($0.key)=\($0.value)" },
+        switch ChildProcess.spawn(command[0], arguments: Array(command.dropFirst()), environment: merged.map { "\($0.key)=\($0.value)" },
                                   workingDirectory: workingDirectory,
                                   stdio: (stdin?.readEnd, capture.stdoutWrite, capture.stderrWrite)) {
         case .running(let spawned):

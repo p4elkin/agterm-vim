@@ -145,4 +145,74 @@ struct ZmxRunnerTests {
     @Test func theBackgroundEntryPassesInput() async {
         #expect(await runner("/bin/cat").runInBackground([], input: Data("bg".utf8), timeout: 5) == .ok("bg"))
     }
+
+    @Test func aCreateRunsInsideItsOwnScopeAndOtherCallsDoNot() throws {
+        let scratch = try Scratch()
+        defer { scratch.remove() }
+        let log = scratch.path("launcher.log")
+        let launcher = try scratch.executable("systemd-run", """
+            #!/bin/sh
+            echo "$*" >> '\(log)'
+            while [ "$1" != -- ]; do shift; done
+            shift
+            exec "$@"
+            """)
+        let runner = ProcessZmxRunner(executable: "/bin/echo", zmxDirectory: scratch.root,
+                                      placement: .systemdScope(systemdRun: launcher), baseEnvironment: [:])
+
+        let created = runner.createDaemon("agterm-x", arguments: ["-d", "sh"], environment: [:], workingDirectory: nil,
+                                          timeout: 5)
+
+        #expect(created == .ok("run agterm-x -d sh\n"))
+        #expect(runner.run(["list"], timeout: 5) == .ok("list\n"))
+        let lines = try String(contentsOfFile: log, encoding: .utf8).split(separator: "\n")
+        #expect(lines.count == 1)
+        let launched = try #require(lines.first).split(separator: " ").map(String.init)
+        #expect(launched.prefix(4) == ["--user", "--scope", "--quiet", "--collect"])
+        #expect(launched[4].hasPrefix("--unit=agterm-x-") && launched[4].hasSuffix(".scope"))
+        #expect(Array(launched.dropFirst(5)) == ["--", "/bin/echo", "run", "agterm-x", "-d", "sh"])
+    }
+
+    @Test func aDirectPlacementCreatesWithoutALauncher() {
+        let created = runner("/bin/echo").createDaemon("agterm-x", arguments: ["-d"], environment: [:],
+                                                       workingDirectory: nil, timeout: 5)
+
+        #expect(created == .ok("run agterm-x -d\n"))
+    }
+
+    @Test func aScopeNeedsTheUserManagersSocketAndSystemdRunOnPath() throws {
+        let scratch = try Scratch()
+        defer { scratch.remove() }
+        let run = try scratch.executable("systemd-run", "#!/bin/sh\n")
+        let environment = ["XDG_RUNTIME_DIR": scratch.root, "PATH": "/nowhere:" + scratch.root]
+
+        #expect(DaemonPlacement.detect(environment: environment) == .direct)
+        try FileManager.default.createDirectory(atPath: scratch.path("systemd"), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: scratch.path("systemd/private"), contents: Data())
+        #expect(DaemonPlacement.detect(environment: environment) == .systemdScope(systemdRun: run))
+        #expect(DaemonPlacement.detect(environment: environment.merging(["PATH": "/nowhere"]) { $1 }) == .direct)
+        #expect(DaemonPlacement.direct.prefix(for: "agterm-x").isEmpty)
+    }
+
+    private struct Scratch {
+        let root: String
+
+        init() throws {
+            root = FileManager.default.temporaryDirectory.appendingPathComponent("zmx-placement-\(UUID().uuidString)").path
+            try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
+        }
+
+        func path(_ name: String) -> String { root + "/" + name }
+
+        func executable(_ name: String, _ body: String) throws -> String {
+            let file = path(name)
+            guard FileManager.default.createFile(atPath: file, contents: Data(body.utf8),
+                                                 attributes: [.posixPermissions: 0o755]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            return file
+        }
+
+        func remove() { try? FileManager.default.removeItem(atPath: root) }
+    }
 }

@@ -28,6 +28,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- The headless server's systemd numbers now describe the server. Each session it creates runs in a systemd
+  scope of its own, so a restart no longer logs every row's agents as the service's memory (a 53 GB peak
+  on 2026-11-20 for a 58 MB server). Sessions created before the update stay in the service until they end.
 - A remote pane no longer stays covered on "Taking over…" for good. A fresh attach that sends no role
   report within 10 seconds is attached again, twice at most; after that the cover reads "No answer from
   the session" and the first key attaches with the claim. Before, such a pane swallowed every key and

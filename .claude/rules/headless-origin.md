@@ -240,8 +240,13 @@ for the host's Linux target, and installs them with `BUILD` into
 Files land by atomic rename, so a running server never sees a half-written binary.
 It installs `agterm-headless.service` as a user unit (the user has `Linger=yes`), starts it when stopped, and
 restarts it only when the server binary changed. A server running outside systemd is left alone with a hint.
-The unit sets `KillMode=process`: the zmx daemons the server starts are in its cgroup, and the default mode
-would end every session on a restart. A restart loses only presentation streams, which the Mac reconnects.
+A daemon the server creates (`createDaemon`, the two `zmx run` sites) starts in a transient scope of its own
+through `systemd-run --user --scope --collect` when `main.swift`'s `DaemonPlacement.detect` finds the user manager,
+a copy of upstream's `ServerPlacement`. Before 2026-11-20 they stayed in the service's cgroup, so systemd's
+memory peak (53 GB) and CPU total were every row's agents, and `memory.peak` never reset while the cgroup never emptied.
+The unit still sets `KillMode=process` for daemons from before that and for a `.direct` placement:
+the default mode would end those sessions on a restart. A restart loses only presentation streams, which the
+Mac reconnects. `Headless.init`'s default runner stays `.direct`, so tests never create a scope on the host.
 Park and replay (`agterm-zmx-park --zmx <bin> --zmx-dir <dir>`, in agterm-agents) carry the server's daemons
 across a reboot under their original names, keyed to a separate park state per zmx directory.
 The replay unit is ordered `Before=agterm-headless.service`: a restored pane whose daemon is not listed within

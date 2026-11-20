@@ -25,7 +25,9 @@ case .held(let fd): lock = fd
 case .taken: fail("another agterm-headless already serves \(config.socketPath)")
 case .failed(let reason): fail(reason)
 }
-let headless = Headless(config: config) { library, hub in
+let placement = DaemonPlacement.detect(environment: ProcessInfo.processInfo.environment)
+let runner = ProcessZmxRunner(executable: config.zmxExecutable, zmxDirectory: config.zmxDirectory, placement: placement)
+let headless = Headless(config: config, runner: runner) { library, hub in
     PresentationStreams(library: library, hub: hub)
 }
 // BUILD sits next to the installed binary
@@ -37,5 +39,5 @@ guard let server = ControlSocketServer(path: config.socketPath, handler: { reque
 server.start()
 let watcher = DaemonWatcher(headless: headless)
 watcher.start()
-print("agterm-headless serving \(config.socketPath), zmx \(config.zmxExecutable) in \(config.zmxDirectory)")
+print("agterm-headless serving \(config.socketPath), zmx \(config.zmxExecutable) in \(config.zmxDirectory), placement \(placement)")
 withExtendedLifetime(lock) { dispatchMain() }
