@@ -28,6 +28,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Fixed
 
+- A row attached to a headless server keeps a `completed --auto-reset` status when pane focus changes on the
+  Mac; only selecting the row ends it, and only for the pane that reported it, as on a local row. Typing on
+  the Mac now clears a headless row's status and badge by the server's `statusReset` and `badgeReset`.
 - The headless server's systemd numbers now describe the server. Each session it creates runs in a systemd
   scope of its own, so a restart no longer logs every row's agents as the service's memory (a 53 GB peak
   on 2026-11-20 for a 58 MB server). Sessions created before the update stay in the service until they end.

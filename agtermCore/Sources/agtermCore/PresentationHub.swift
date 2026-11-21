@@ -185,8 +185,8 @@ public final class PresentationHub {
     /// before this is reached; the receiver checks that the sender owns the page or overlay a frame names.
     public var onPresenterFrame: (@MainActor (UUID, Int, PresentationFrame.Body) -> Void)?
 
-    /// Called when any subscribed viewer marks its session seen.
-    public var onSeen: (@MainActor (UUID) -> Void)?
+    /// Called with the viewer's token when any subscribed viewer marks its session seen.
+    public var onSeen: (@MainActor (UUID, Int) -> Void)?
 
     /// Called when any subscribed viewer renames its session; nil asks to clear the name. The handler
     /// publishes `name` back even when nothing changed, which is the sender's confirmation.
@@ -348,7 +348,7 @@ public final class PresentationHub {
         guard let subscriber = subscribers[id], frame.gen == subscriber.generation else { return }
         switch frame.body {
         case .ack: subscriber.pingedAt = nil
-        case .seen: onSeen?(subscriber.session)
+        case .seen: onSeen?(subscriber.session, id.generation)
         case .rename(let name): onRename?(subscriber.session, name)
         case .ping: send(.ack, to: id)
         case .presenterAcquire:

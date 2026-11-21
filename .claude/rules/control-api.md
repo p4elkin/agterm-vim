@@ -2473,8 +2473,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   presentation snapshot that carries it stays far inside a frame.
 - Seeing an attached row here (`AppStore.clearUnseen`, reached by selection, pane focus and the zoom refocus)
   sends a `seen` frame, which any viewer may send, mirrors included. The headless origin clears the
-  session's unseen count and runs the auto-reset a selection runs; `session.seen` there clears the count
-  alone, as here.
+  session's unseen count; only for a viewer whose hello lacks `status.clear` does it also run the auto-reset
+  a selection runs, since a current one sends `seen` on every pane focus and `status.clear` on selection.
+  `session.seen` there clears the count alone, as here.
 - The info line follows the same local, mirrored and effective split (`Session.info`, `mirroredInfo`,
   `effectiveInfo`), with a local line winning and `clear` revealing the origin's. The origin sends its
   LOCAL line's source, markdown flag and configured `hideAfter` in the `info` frame and the snapshot. The

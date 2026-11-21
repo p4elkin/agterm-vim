@@ -53,6 +53,12 @@ final class HeadlessActionFixture {
         return try #require(response.result?.tree?.workspaces.flatMap(\.sessions).first { $0.id == session.id.uuidString })
     }
 
+    func writeSettings(_ json: String) throws {
+        let directory = URL(fileURLWithPath: headless.config.stateDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try json.write(to: directory.appendingPathComponent("settings.json"), atomically: true, encoding: .utf8)
+    }
+
     /// Shows a split on the fixture session with a daemon-backed right pane, as the server's own split does.
     func split() throws -> UUID {
         store.setSplitVisibility(session.id, shown: true)

@@ -681,7 +681,7 @@ struct PresentationHubTests {
             hub.receive(PresentationFrame(gen: generation, rev: 0, body: .presenterAcquire), from: id)
         }
         var seen: [UUID] = []
-        hub.onSeen = { seen.append($0) }
+        hub.onSeen = { session, _ in seen.append(session) }
         hub.onPresenterFrame = { _, _, _ in Issue.record("seen is separate from presenter work") }
         hub.receive(PresentationFrame(gen: generation + 1, rev: 0, body: .seen), from: id)
         #expect(seen.isEmpty)

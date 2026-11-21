@@ -14,10 +14,10 @@ struct HeadlessAskTests {
         private var subscriber: PresentationHub.SubscriberID?
         private var generation = 0
 
-        init(_ fixture: HeadlessActionFixture, mode: PresentationMode = .presenter) throws {
+        init(_ fixture: HeadlessActionFixture, mode: PresentationMode = .presenter, kinds: [String] = []) throws {
             hub = fixture.headless.hub
             subscriber = try fixture.headless.hub.subscribe(session: fixture.session.id,
-                hello: PresentationHello(version: 1, kinds: [], mode: mode), sink: self) {
+                hello: PresentationHello(version: 1, kinds: kinds, mode: mode), sink: self) {
                 fixture.store.presentationSnapshot(forSession: fixture.session.id)
             }
         }

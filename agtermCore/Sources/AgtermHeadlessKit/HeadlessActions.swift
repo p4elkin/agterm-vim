@@ -8,8 +8,6 @@ public final class HeadlessActions: ControlActions {
     private let headless: Headless
     private let identity: AppIdentity
     private let hudClock: () -> Date
-    /// Read on every `session.type`, so an edited `statusReset` applies without a restart; nothing else in it is used.
-    private let settings: SettingsStore
     private struct HudAutoHide {
         let revision: UUID
         let deadline: Date
@@ -21,7 +19,6 @@ public final class HeadlessActions: ControlActions {
     public init(headless: Headless, installDirectory: URL, hudClock: @escaping () -> Date = Date.init) {
         self.headless = headless
         self.hudClock = hudClock
-        settings = SettingsStore(directory: URL(fileURLWithPath: headless.config.stateDirectory))
         let commit = (try? String(contentsOf: installDirectory.appendingPathComponent("BUILD"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         identity = AppIdentity(version: Headless.programVersion, recordedCommit: commit)
@@ -164,13 +161,6 @@ public final class HeadlessActions: ControlActions {
             store.clearUnseen(session.id)
             return ControlResponse(ok: true, result: ControlResult(id: session.id.uuidString))
         }
-    }
-
-    /// A viewer's `seen` stands for opening the row there, so it also runs the auto-reset a selection
-    /// runs on the Mac; `session.seen` clears the count alone.
-    static func markSessionSeen(_ session: Session, in store: AppStore) {
-        store.clearUnseen(session.id)
-        if session.agentIndicator.autoReset { store.setAgentIndicator(AgentIndicator(), forSession: session.id) }
     }
 
     public func createSession(_ options: ControlSessionCreateOptions) -> ControlResponse {
@@ -485,7 +475,7 @@ public final class HeadlessActions: ControlActions {
         if !options.text.isEmpty, let store = headless.library.store(forSession: lane.session),
            store.session(withID: lane.session)?.agentIndicator.clearedBy(
                pane: lane.pane, keystroke: InterruptKeystroke.classify(text: options.text),
-               reset: settings.load().effectiveStatusReset) == true {
+               reset: headless.settings.load().effectiveStatusReset) == true {
             store.setAgentIndicator(AgentIndicator(), forSession: lane.session)
         }
         return ControlResponse(ok: true, result: ControlResult(id: lane.session.uuidString))

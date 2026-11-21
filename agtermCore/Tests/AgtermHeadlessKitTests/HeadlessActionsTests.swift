@@ -354,7 +354,7 @@ struct HeadlessActionsTests {
     }
 
     @Test(arguments: [(PresentationMode.presenter, true), (.mirror, true), (.presenter, false), (.mirror, false)])
-    func aSeenFrameClearsUnseenAndOnlyAutoResetStatus(mode: PresentationMode, autoReset: Bool) async throws {
+    func aSeenFrameFromAViewerWithoutStatusClearAlsoRunsTheSelectionReset(mode: PresentationMode, autoReset: Bool) async throws {
         let fixture = try HeadlessActionFixture()
         defer { fixture.cleanUp() }
         let workspace = try #require(fixture.store.workspaces.first)
@@ -377,6 +377,112 @@ struct HeadlessActionsTests {
             #expect(viewer.bodies.last == .status(nil))
         }
         #expect(fixture.runner.calls.isEmpty)
+    }
+
+    private func statusClearViewer(_ fixture: HeadlessActionFixture,
+                                   mode: PresentationMode = .presenter) throws -> HeadlessAskTests.Sink {
+        let viewer = try HeadlessAskTests.Sink(fixture, mode: mode, kinds: [PresentationHub.statusClearKind])
+        if mode == .presenter { viewer.send(.presenterAcquire) }
+        return viewer
+    }
+
+    @Test(arguments: [PresentationMode.presenter, .mirror])
+    func aSeenFrameFromAStatusClearViewerLowersTheBadgeAndKeepsAnAutoResetStatus(mode: PresentationMode) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let viewer = try statusClearViewer(fixture, mode: mode)
+        fixture.session.unseenCount = 4
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "completed"; $0.autoReset = true }.ok)
+
+        viewer.send(.seen)
+
+        #expect(fixture.session.unseenCount == 0)
+        #expect(fixture.session.agentIndicator.status == .completed)
+        #expect(fixture.session.agentIndicator.autoReset)
+    }
+
+    @Test(arguments: ["completed", "blocked", "active"])
+    func aSelectStatusClearEndsAnAutoResetStatus(_ status: String) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let viewer = try statusClearViewer(fixture)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = status; $0.autoReset = true }.ok)
+
+        viewer.send(.statusClear(PresentationStatusClear(reason: .select)))
+
+        #expect(fixture.session.agentIndicator.status == .idle)
+        #expect(viewer.bodies.last == .status(nil))
+    }
+
+    @Test func aSelectStatusClearKeepsTheOtherSplitsActivity() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        _ = try fixture.split()
+        let viewer = try statusClearViewer(fixture)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "active"; $0.pane = "right" }.ok)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "blocked"; $0.autoReset = true; $0.pane = "left" }.ok)
+        #expect(fixture.session.agentIndicator.status == .blocked)
+        #expect(fixture.session.agentIndicator.statusPane == .left)
+        #expect(try await fixture.node().activePanes == ["right"])
+
+        viewer.send(.statusClear(PresentationStatusClear(reason: .select)))
+
+        #expect(fixture.session.agentIndicator.status == .active)
+        #expect(fixture.session.agentIndicator.statusPane == .right)
+    }
+
+    @Test(arguments: ["completed", "blocked"])
+    func aSelectStatusClearLeavesAStatusWithoutAutoReset(_ status: String) async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let viewer = try statusClearViewer(fixture)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = status }.ok)
+
+        viewer.send(.statusClear(PresentationStatusClear(reason: .select)))
+
+        #expect(fixture.session.agentIndicator.status.rawValue == status)
+    }
+
+    @Test func aKeyStatusClearFollowsTheOriginsStatusReset() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        try fixture.writeSettings(#"{"statusReset": "enter"}"#)
+        let viewer = try statusClearViewer(fixture)
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "completed" }.ok)
+        let pane = PresentationPane.identity(fixture.session.paneIdentity)
+
+        viewer.send(.statusClear(PresentationStatusClear(reason: .key, pane: pane)))
+        #expect(fixture.session.agentIndicator.status == .completed)
+
+        viewer.send(.statusClear(PresentationStatusClear(reason: .submit, pane: pane)))
+        #expect(fixture.session.agentIndicator.status == .idle)
+    }
+
+    @Test func aViewedStatusSeenLowersTheBadgeAndKeepsTheStatus() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        let viewer = try statusClearViewer(fixture)
+        fixture.session.unseenCount = 4
+        #expect(try await fixture.dispatch(.sessionStatus) { $0.status = "completed"; $0.autoReset = true }.ok)
+
+        viewer.send(.statusSeen(PresentationSeen(reason: .viewed)))
+
+        #expect(fixture.session.unseenCount == 0)
+        #expect(fixture.session.agentIndicator.status == .completed)
+    }
+
+    @Test func aKeyStatusSeenFollowsTheOriginsBadgeReset() async throws {
+        let fixture = try HeadlessActionFixture()
+        defer { fixture.cleanUp() }
+        try fixture.writeSettings(#"{"badgeReset": "enter"}"#)
+        let viewer = try statusClearViewer(fixture)
+        fixture.session.unseenCount = 4
+
+        viewer.send(.statusSeen(PresentationSeen(reason: .key)))
+        #expect(fixture.session.unseenCount == 4)
+
+        viewer.send(.statusSeen(PresentationSeen(reason: .submit)))
+        #expect(fixture.session.unseenCount == 0)
     }
 
     @Test(arguments: [PresentationMode.presenter, .mirror])

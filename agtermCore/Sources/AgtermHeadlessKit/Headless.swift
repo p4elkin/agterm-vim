@@ -27,12 +27,15 @@ public final class Headless {
     /// Each daemon's login shell, by daemon name, from `DaemonWatcher`'s last listing.
     var daemonLeaders: [String: Int32] = [:]
     let procRoot: String
+    /// Read on every use, so an edited `statusReset` or `badgeReset` applies without a restart; nothing else in it is used.
+    let settings: SettingsStore
 
     public init(config: HeadlessConfig, runner: (any ZmxRunning)? = nil, shellLookup: (() -> String?)? = nil,
                 overlayClock: @escaping () -> Date = Date.init, procRoot: String = "/proc",
                 streams makeStreams: (WindowLibrary, PresentationHub) -> any HeadlessStreams) {
         self.config = config
         self.procRoot = procRoot
+        settings = SettingsStore(directory: URL(fileURLWithPath: config.stateDirectory))
         overlayJobs = OverlayJobs(now: overlayClock)
         self.shellLookup = shellLookup ?? { Self.passwordDatabaseShell() }
         self.runner = runner ?? ProcessZmxRunner(executable: config.zmxExecutable, zmxDirectory: config.zmxDirectory)
@@ -54,10 +57,15 @@ public final class Headless {
         attachRenamePresentation()
     }
 
+    /// A viewer that sends `status.clear` sends `seen` on every pane focus too, so only an older one's `seen` also
+    /// runs the selection reset.
     private func attachSeenPresentation() {
-        hub.onSeen = { [weak self] id in
-            guard let (store, session) = self?.resolve(id.uuidString) else { return }
-            HeadlessActions.markSessionSeen(session, in: store)
+        hub.onSeen = { [weak self] id, sender in
+            guard let self, let store = library.store(forSession: id) else { return }
+            store.clearUnseen(id)
+            guard !hub.supports(PresentationHub.statusClearKind, owner: sender) else { return }
+            store.applyPresenterClear(PresentationStatusClear(reason: .select), forSession: id,
+                                      reset: settings.load().effectiveStatusReset)
         }
     }
 
@@ -71,6 +79,7 @@ public final class Headless {
 
     private func attachAskPresentation() {
         let library = library
+        let settings = settings
         // chained, as agterm-server's own is: the registry is process-wide and another owner may resolve first
         let earlier = AskRegistry.shared.resolveOwner
         AskRegistry.shared.resolveOwner = { [weak library] owner in
@@ -106,6 +115,10 @@ public final class Headless {
                 store.failHandback(forSession: id)
             case .overlayRejected(let change): store.rejectRemoteOverlay(change.job, forSession: id, from: sender)
             case .overlayClosed(let change): store.remoteOverlaySurfaceClosed(change.job, forSession: id, from: sender)
+            case .statusClear(let clear):
+                store.applyPresenterClear(clear, forSession: id, reset: settings.load().effectiveStatusReset)
+            case .statusSeen(let seen):
+                store.applyPresenterSeen(seen, forSession: id, badgeReset: settings.load().effectiveBadgeReset)
             default: break
             }
         }
