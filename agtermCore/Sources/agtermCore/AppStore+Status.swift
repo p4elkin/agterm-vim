@@ -167,7 +167,8 @@ extension AppStore {
         case .viewed: return
         case .key, .submit, .interrupt:
             guard let keystroke = reason.keystroke, let pane = clear.pane.flatMap({ originPane($0, in: session) }) else { return }
-            clearStatus(by: keystroke, pane: pane, reset: reset, forSession: id)
+            // the presenter's own rule when it sent one, so a remote row follows that Mac's Status reset
+            clearStatus(by: keystroke, pane: pane, reset: clear.reset ?? reset, forSession: id)
         }
     }
 

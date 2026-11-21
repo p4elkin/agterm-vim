@@ -168,17 +168,19 @@ extension AppStore {
         _ = sendToOrigin(.statusSeen(PresentationSeen(reason: .viewed)), forSession: id)
     }
 
-    /// forwardStatusKeystroke hands typing in `pane` on a bridged status to the origin, whose reset rule decides; its
+    /// forwardStatusKeystroke hands typing in `pane` on a bridged status to the origin with this Mac's Status
+    /// `reset`, which the origin applies in place of its own (an origin from before the field uses its own); its
     /// answer comes back as a status frame. False when the row decides here: nothing bridged, typing other than an
     /// interrupt in a pane that does not own the status, which no origin rule clears, a pane the origin has no twin
     /// of, or an origin that does not take the frame. An interrupt in any pane goes, since it also ends that pane's
     /// activity on the origin. Plain typing goes once per status.
-    public func forwardStatusKeystroke(_ keystroke: StatusKeystroke, pane: StatusPane, forSession id: UUID) -> Bool {
+    public func forwardStatusKeystroke(_ keystroke: StatusKeystroke, pane: StatusPane, reset: StatusReset? = nil,
+                                       forSession id: UUID) -> Bool {
         guard let session = session(withID: id), let state = session.remotePresentation, state.statusBridged,
               keystroke == .interrupt || (state.statusOwnerResolved && (session.agentIndicator.statusPane ?? .left) == pane),
               let origin = originPane(of: pane, in: session) else { return false }
         if keystroke == .other, state.statusKeySent { return true }
-        guard sendToOrigin(.statusClear(PresentationStatusClear(reason: PresentationClearReason(keystroke), pane: origin)),
+        guard sendToOrigin(.statusClear(PresentationStatusClear(reason: PresentationClearReason(keystroke), pane: origin, reset: reset)),
                            forSession: id) else { return false }
         if keystroke == .other { session.remotePresentation?.statusKeySent = true }
         return true

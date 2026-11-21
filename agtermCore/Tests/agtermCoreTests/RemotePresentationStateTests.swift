@@ -1090,6 +1090,21 @@ struct RemotePresentationStateTests {
                                   .statusClear(PresentationStatusClear(reason: .submit, pane: .identity(Self.remoteLeft)))])
     }
 
+    @Test func typingOnABridgedStatusCarriesThisMacsReset() throws {
+        let (store, session) = try attached()
+        let frames = presenting(store, session)
+        store.applyRemoteStatus(status(.completed, pane: .identity(Self.remoteLeft)), forSession: session.id)
+
+        #expect(store.forwardStatusKeystroke(.other, pane: .left, reset: .never, forSession: session.id))
+        #expect(store.forwardStatusKeystroke(.interrupt, pane: .left, reset: .never, forSession: session.id))
+
+        #expect(session.agentIndicator.status == .completed)
+        #expect(frames.bodies == [
+            .statusClear(PresentationStatusClear(reason: .key, pane: .identity(Self.remoteLeft), reset: .never)),
+            .statusClear(PresentationStatusClear(reason: .interrupt, pane: .identity(Self.remoteLeft), reset: .never)),
+        ])
+    }
+
     // an Esc in a pane the glyph did not stand for stayed here, and the origin kept that pane's cancelled work
     @Test func anInterruptInAPaneTheGlyphDoesNotStandForGoesToTheOrigin() throws {
         let (store, session) = try attached()

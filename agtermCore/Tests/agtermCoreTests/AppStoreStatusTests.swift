@@ -764,6 +764,21 @@ struct AppStoreStatusTests {
         #expect((session.agentIndicator.status == .idle) == cleared)
     }
 
+    // the presenter's own Status reset travels with its keystroke and wins over the origin's
+    @Test(arguments: [(PresentationClearReason.key, StatusReset.never, StatusReset.firstKey, false),
+                      (.submit, .never, .firstKey, false), (.interrupt, .never, .firstKey, false),
+                      (.key, .firstKey, .never, true), (.submit, .enter, .never, true), (.key, .enter, .firstKey, false)])
+    func aPresenterKeystrokeClearsUnderThePresentersResetWhenItSendsOne(
+        _ reason: PresentationClearReason, _ sent: StatusReset, _ origin: StatusReset, _ cleared: Bool
+    ) throws {
+        let (store, session) = try blockedSession()
+
+        store.applyPresenterClear(PresentationStatusClear(reason: reason, pane: .identity(session.paneIdentity), reset: sent),
+                                  forSession: session.id, reset: origin)
+
+        #expect((session.agentIndicator.status == .idle) == cleared)
+    }
+
     @Test func aPresenterKeystrokeInAnotherPaneOrNoPaneOfTheSessionChangesNothing() throws {
         let (store, session) = try blockedSession(split: true)
         let split = try #require(session.splitPaneIdentity)

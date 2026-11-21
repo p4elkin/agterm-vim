@@ -630,6 +630,27 @@ struct PresentationFramesTests {
         }
     }
 
+    @Test func aClearCarriesThePresentersReset() throws {
+        let frame = PresentationFrame(gen: 1, rev: 2, body: .statusClear(PresentationStatusClear(reason: .key, reset: .never)))
+
+        let line = try PresentationCodec.encode(frame)
+
+        #expect(String(decoding: line, as: UTF8.self).contains(#""reset":"never""#))
+        #expect(try PresentationCodec.decode(line.dropLast()) == frame)
+    }
+
+    @Test func aClearWithAnUnknownOrNoResetDecodesWithoutOne() throws {
+        for status in [#"{"reason":"key","reset":"sometimes"}"#, #"{"reason":"key"}"#] {
+            let line = #"{"kind":"status.clear","gen":1,"rev":1,"status":"# + status + "}"
+            guard case .statusClear(let clear) = try PresentationCodec.decode(Data(line.utf8)).body else {
+                Issue.record("not a status clear")
+                return
+            }
+            #expect(clear.reason == .key)
+            #expect(clear.reset == nil)
+        }
+    }
+
     @Test func aClearWithAnUnknownReasonOrPaneStillDecodes() throws {
         let line = #"{"kind":"status.clear","gen":1,"rev":1,"status":{"reason":"wave","pane":"nowhere"}}"#
 

@@ -1,5 +1,6 @@
 /// PresentationClearReason is what a presenter saw that may end its origin's status glyph or unseen badge. The origin
-/// decides under its own reset settings, so the reason travels rather than the outcome.
+/// decides, so the reason travels rather than the outcome; a keystroke's clear also carries the presenter's own Status
+/// reset, which the origin applies in place of its own.
 public enum PresentationClearReason: String, Sendable {
     case key, submit, interrupt
     /// select: the presenter moved selection onto or off the session, which ends an auto-reset status.
@@ -29,29 +30,34 @@ public enum PresentationClearReason: String, Sendable {
 }
 
 /// PresentationStatusClear asks the origin to end a session's status for `reason`; `pane` is the origin pane a
-/// keystroke landed in. Both decode leniently, nil when unknown, because a frame that fails to decode closes the
+/// keystroke landed in, and `reset` the presenter's Status reset, nil from a presenter that sends none. All decode
+/// leniently, nil when unknown, because a frame that fails to decode closes the
 /// stream; the origin ignores a clear it cannot place.
 public struct PresentationStatusClear: Codable, Equatable, Sendable {
     public var reason: PresentationClearReason?
     public var pane: PresentationPane?
+    public var reset: StatusReset?
 
-    private enum CodingKeys: String, CodingKey { case reason, pane }
+    private enum CodingKeys: String, CodingKey { case reason, pane, reset }
 
-    public init(reason: PresentationClearReason, pane: PresentationPane? = nil) {
+    public init(reason: PresentationClearReason, pane: PresentationPane? = nil, reset: StatusReset? = nil) {
         self.reason = reason
         self.pane = pane
+        self.reset = reset
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         reason = (try? container.decode(String.self, forKey: .reason)).flatMap(PresentationClearReason.init(rawValue:))
         pane = try? container.decodeIfPresent(PresentationPane.self, forKey: .pane)
+        reset = (try? container.decode(String.self, forKey: .reset)).flatMap(StatusReset.init(rawValue:))
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(reason?.rawValue, forKey: .reason)
         try container.encodeIfPresent(pane, forKey: .pane)
+        try container.encodeIfPresent(reset?.rawValue, forKey: .reset)
     }
 }
 

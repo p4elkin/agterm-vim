@@ -799,7 +799,7 @@ struct agtermApp: App {
         view.onUserInputClearsStatus = { [weak view] keystroke in
             let pane = fixedPane ?? ((view?.isSplitPane ?? false) ? .right : .left)
             let reset = GhosttyApp.shared.statusReset
-            if store.forwardStatusKeystroke(keystroke, pane: pane, forSession: sessionID) { return }
+            if store.forwardStatusKeystroke(keystroke, pane: pane, reset: reset, forSession: sessionID) { return }
             // a status mirrored from an origin pane this Mac has no counterpart for is not this pane's to clear
             guard store.session(withID: sessionID)?.remotePresentation?.allowsKeystrokeStatusClear != false else { return }
             store.clearStatus(by: keystroke, pane: pane, reset: reset, forSession: sessionID)

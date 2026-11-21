@@ -131,8 +131,10 @@ forwarded to a Mac, because a session viewed only on a closed laptop, or made on
 has no presenter while room delivery and the compact tools still type into it.
 Typed text clears a pane's `blocked` or `completed` status by `statusReset` in `<state dir>/settings.json`
 (`Headless.settings`), read on every call so an edit applies to the next one. A presenter's `status.clear` and
-`status.seen` frames follow the same `statusReset` and `badgeReset`, as agterm-server's do. Those are the only keys
-the server reads there, and a missing or unreadable file means `firstKey`. The Mac's own settings never reach this server.
+`status.seen` frames follow the same `statusReset` and `badgeReset`, as agterm-server's do, except that a typed
+`status.clear` carrying `reset` (the presenting Mac's own Status reset) is applied by that instead
+(`applyPresenterClear`). Those are the only keys the server reads there, and a missing or unreadable file means
+`firstKey`. No other Mac setting reaches this server.
 
 ## The pane environment
 
