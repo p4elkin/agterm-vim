@@ -361,6 +361,70 @@ final class ControlServerRemotePresentationTests: XCTestCase {
         XCTAssertEqual(transport.links[0].sent.last, .presenterTake)
     }
 
+    func testAUserReturningTakesNoRoleForASleepingRow() throws {
+        let (fix, transport) = try connected()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        fix.server.userPresent = { false }
+        try lead(pane, "leader")
+        XCTAssertTrue(fix.store.sleepRemoteRow(fix.session.id, reason: .timer))
+
+        fix.server.userPresent = { true }
+        fix.server.userReturned()
+
+        XCTAssertFalse(fix.server.leadsHere(fix.session.id), "a sleep forgets the panes' leads")
+        XCTAssertFalse(transport.links[0].sent.contains(.presenterTake))
+    }
+
+    func testASleepingPresenterKeepsItsModeAndTakesTheRoleOnlyOnceItsWokenPrimaryLeads() throws {
+        let (fix, transport) = try connected()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        fix.server.library.onRowWake = { _ in }
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        try transport.feed(.presenterGranted, rev: 1)
+        XCTAssertEqual(fix.session.remotePresentation?.mode, .presenter)
+        let takes = transport.links[0].sent.filter { $0 == .presenterTake }.count
+
+        XCTAssertTrue(fix.store.sleepRemoteRow(fix.session.id, reason: .timer))
+        fix.server.userReturned()
+        XCTAssertEqual(fix.session.remotePresentation?.mode, .presenter, "nothing tells the origin to give the role up")
+
+        XCTAssertTrue(fix.store.wakeRemoteRow(fix.session.id, reason: .shown, onScreen: true))
+        fix.server.userReturned()
+        try lead(pane, "follower")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .presenterTake }.count, takes, "no report has made it leader yet")
+
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .presenterTake }.count, takes + 1)
+    }
+
+    func testAMirrorThatTookTheRoleWhileThisRowSleptKeepsItUntilThisMacsPaneLeads() throws {
+        let (fix, transport) = try connected()
+        let pane = fix.session.paneIdentity
+        defer { ZmxLeadBook.shared.forget(pane: pane) }
+        fix.server.library.onRowWake = { _ in }
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        try transport.feed(.presenterGranted, rev: 1)
+        XCTAssertTrue(fix.store.sleepRemoteRow(fix.session.id, reason: .timer))
+        let takes = transport.links[0].sent.filter { $0 == .presenterTake }.count
+
+        try transport.feed(.presenterRefused, rev: 2)
+        XCTAssertEqual(fix.session.remotePresentation?.mode, .mirror)
+        fix.server.userReturned()
+        XCTAssertTrue(fix.store.wakeRemoteRow(fix.session.id, reason: .shown, onScreen: true))
+        fix.server.userReturned()
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .presenterTake }.count, takes)
+
+        try lead(pane, "leader")
+        fix.server.paneLeadChanged(pane: pane, inSession: fix.session.id)
+        XCTAssertEqual(transport.links[0].sent.filter { $0 == .presenterTake }.count, takes + 1)
+    }
+
     private func connectedWithNames() throws -> (fix: (server: ControlServer, store: AppStore, session: Session),
                                                  transport: Transport) {
         let fix = try fixture()

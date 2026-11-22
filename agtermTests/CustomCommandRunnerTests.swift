@@ -141,6 +141,27 @@ final class CustomCommandRunnerTests: XCTestCase {
         XCTAssertEqual(scratchContext.paneID, scratch.uuidString)
     }
 
+    func testARunOnAnAsleepRowWithItsHiddenSplitFocusedNamesTheRightPane() throws {
+        let fixture = try fixture()
+        let workspace = try XCTUnwrap(fixture.store.workspaces.first?.id)
+        let session = try XCTUnwrap(fixture.store.addSession(toWorkspace: workspace, cwd: "/srv", remoteHost: "box"))
+        session.hasSplit = true
+        session.splitPaneIdentity = UUID()
+        session.splitFocused = true
+        session.surface = RunnerTestSurface()
+        session.splitSurface = RunnerTestSurface()
+        XCTAssertTrue(fixture.store.sleepRemoteRow(session.id, reason: .timer))
+        let marker = stateDir.appendingPathComponent("pane-\(UUID().uuidString)")
+
+        XCTAssertNil(fixture.runner.run(CustomCommand(name: "pane", command: "printf %s {AGT_PANE} > \(marker.path)",
+                                                      shortcut: ""),
+                                        session: session, in: fixture.store))
+
+        wait { (try? String(contentsOf: marker, encoding: .utf8))?.isEmpty == false }
+        XCTAssertEqual(session.focusedPane, .right)
+        XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "right")
+    }
+
     func testAScratchCommandOnAnAttachedSessionNamesTheLocalScratchShell() throws {
         let fixture = try fixture()
         let workspace = try XCTUnwrap(fixture.store.workspaces.first?.id)
@@ -1498,4 +1519,11 @@ final class CustomCommandRunnerTests: XCTestCase {
         let home = URL(fileURLWithPath: NSHomeDirectory()).resolvingSymlinksInPath().path
         XCTAssertEqual(fields, [file.path, "user@box", home])
     }
+}
+
+private final class RunnerTestSurface: TerminalSurface {
+    let paneToken = ""
+    let isRealized = true
+    func teardown() {}
+    func promoteToPrimaryPane() {}
 }

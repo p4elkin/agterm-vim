@@ -9,6 +9,9 @@ public enum ControlEventKind: String, Codable, CaseIterable, Sendable, Equatable
     /// A `Session.parked` edge. It is its own kind rather than a payload on `tree.changed`, whose drafts
     /// `WindowLibrary` coalesces per window and re-emits empty, which would drop the mark it carried.
     case sessionParked = "session.parked"
+    /// A remote row's sleep and wake edges, with `reason` (a `RemoteSleepReason`).
+    case sessionSlept = "session.slept"
+    case sessionWoke = "session.woke"
     case sessionSelected = "session.selected"
     case treeChanged = "tree.changed"
     case paneSplit = "pane.split"
@@ -56,13 +59,17 @@ public struct ControlEventPayload: Codable, Sendable, Equatable {
     public var messageID: String?
     /// The `remote.opened` / `remote.closed` row's session id on its origin, the id `zmx attach` takes.
     public var remoteSessionID: String?
+    /// The `session.slept` / `session.woke` reason, a `RemoteSleepReason` raw value.
+    public var reason: String?
 
     public init(name: String? = nil, status: String? = nil, pane: String? = nil,
                 blink: Bool? = nil, color: String? = nil, shape: String? = nil,
                 parked: Bool? = nil, previous: String? = nil, note: String? = nil,
                 title: String? = nil, body: String? = nil,
                 host: String? = nil, paneID: String? = nil, parent: String? = nil,
-                from: String? = nil, messageID: String? = nil, remoteSessionID: String? = nil) {
+                from: String? = nil, messageID: String? = nil, remoteSessionID: String? = nil,
+                reason: String? = nil) {
+        self.reason = reason
         self.remoteSessionID = remoteSessionID
         self.parent = parent
         self.from = from

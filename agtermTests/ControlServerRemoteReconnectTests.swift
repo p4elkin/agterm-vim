@@ -238,6 +238,37 @@ final class ControlServerRemoteReconnectTests: XCTestCase {
         XCTAssertFalse(RemoteReconnectBook.shared.waiting(pane: session.paneIdentity))
     }
 
+    func testASleepCancelsADueReconnectEntrySoTheTickNeverReconnectsThePane() throws {
+        let (session, view) = try replica()
+        let server = server(probe: 0)
+        PaneLead.reconnect = { _, _ in
+            XCTFail("a sleeping row is attached by its wake, never by the reconnect book")
+            return true
+        }
+        server.waitToReconnect(view, cover: false)
+        XCTAssertTrue(RemoteReconnectBook.shared.waiting(pane: session.paneIdentity))
+
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+        server.tickReconnects()
+
+        XCTAssertFalse(RemoteReconnectBook.shared.waiting(pane: session.paneIdentity))
+    }
+
+    func testASleepCancelsAReconnectEntryThatIsBackingOff() throws {
+        let (session, view) = try replica()
+        let server = server(probe: 0)
+        server.waitToReconnect(view, cover: false)
+        let book = RemoteReconnectBook.shared
+        _ = book.due(now: Date())
+        _ = book.finished(pane: session.paneIdentity, ok: false, now: Date().addingTimeInterval(3600))
+        XCTAssertTrue(book.due(now: Date()).isEmpty, "backing off")
+        XCTAssertTrue(book.waiting(pane: session.paneIdentity))
+
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+
+        XCTAssertFalse(book.waiting(pane: session.paneIdentity))
+    }
+
     private final class GatedProbe: RemoteCommandRunner, @unchecked Sendable {
         private let lock = NSLock()
         private var started = false

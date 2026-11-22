@@ -80,13 +80,20 @@ final class RemoteRowSupervisor {
         guard let store = library.store(forSession: pane.session), let session = store.session(withID: pane.session) else {
             return false
         }
-        return session.paneRole(forIdentity: pane.local) != nil && !store.canCloseRemovedRemotePane(pane.local, forSession: pane.session)
+        return !session.asleep && session.paneRole(forIdentity: pane.local) != nil
+            && !store.canCloseRemovedRemotePane(pane.local, forSession: pane.session)
     }
 
     private func settle(_ pane: Pane, host: String, answer: ControlResponse) {
         guard let store = library.store(forSession: pane.session), let session = store.session(withID: pane.session),
               let binding = session.remotePresentation?.binding,
               let state = RemoteRowState.classify(tree: answer, binding: binding) else {
+            waiting[host]?.remove(pane)
+            return
+        }
+        // a row that slept while the call was out attaches at its wake, with fresh lines; only an end outlives that
+        guard !session.asleep else {
+            if state == .endedOnHost { store.setRemoteRowState(state, forSession: pane.session) }
             waiting[host]?.remove(pane)
             return
         }

@@ -30,6 +30,7 @@ when_to_use: >
   session, open a page as its own session row in the sidebar, run my custom command, send a message to the other pane or another agent, read my messages,
   wait for a message, tell me when the selected session changes,
   wait until that worker session finishes, bring back the session I just closed, park a session,
+  put a remote row to sleep or wake it, type into or read a sleeping remote row,
   hide parked rows, turn on normal mode,
   move this workspace or session to another window,
   attach a session from another Mac, attach a remote session with all its companions, attach a remote session under a row here as its companion, open a remote window for my Linux server,
@@ -325,7 +326,8 @@ entries in `surfaces` report their own Boolean, while scratch and overlays omit 
 `liveHostStale` and `splitLiveHostStale` (true for a pane whose session host is from an earlier agterm
 build or login, which `zmx reset` moves to the current one; omitted otherwise),
 `remoteHost` (the machine an attached session came from, the read side of `zmx attach`; omitted for a local
-session; an attached row is saved and attached again at relaunch, while a remote window rebuilds its rows),
+session; an attached row is saved and comes back asleep at relaunch, while a remote window rebuilds its rows),
+`asleep`/`asleepSince` (fork only: a sleeping remote row, see `session sleep`; omitted while awake),
 `remoteSessionID` (the origin's id for the session an attached row shows, the id `zmx attach` takes; on a remote window's row it equals the row's `id`; omitted for a local session),
 `presentation` (attached session only: the mirroring stream's `state` - `connecting`, `connected`,
 `unsupported`, or `failed` with `error` - not the ssh connection's - plus `mode`, `presenter` while its stream holds that role, else `mirror`),
@@ -357,7 +359,8 @@ that window, omitted when no pick is pending.
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
 `--kind` over `status`, `notify`, `session.created` (carries `parent` for a
 companion), `session.closed`, `session.selected` (a window's
-selection moved; carries the session that lost it as `previous`), `session.parked`, `tree.changed`,
+selection moved; carries the session that lost it as `previous`), `session.parked`, `session.slept` and
+`session.woke` (fork only, with `reason`), `tree.changed`,
 `pane.split`, `pane.scratch`, `pane.focused` (a session's selection moved between its two split panes;
 carries the pane and its `paneID`), `remote.opened`, `remote.closed`, `app.launched` (once per app run, when
 hooks and the socket are ready) and `message` (mail queued for a pane; carries `paneID`, `from` and
@@ -527,6 +530,12 @@ omitted when expanded).
   agterm sets the mark, it kills nothing — the caller stops the process and restarts it later. Persisted,
   idempotent, no `clear`. Read back as the tree node's true-only `parked`; both edges emit a
   `session.parked` event.
+- `session sleep|wake` (fork only) — free a remote row's pane terminals and ssh now, or attach them again.
+  agterm sleeps a row off screen for `remoteSleepAfterMinutes` (30) by itself, and showing it wakes it.
+  A bare `session sleep` is refused, since the active row is on screen: pass `--target`. On a sleeping row
+  `session type` and the other commands that need the live pane wake it first, while `session text` reads
+  the host's screen and leaves it asleep. Read back as the tree node's `asleep`; edges emit `session.slept` /
+  `session.woke`. [Details](reference.md#session).
 - `session context <TEXT|--clear> [--target] [--window W]` — set what the session is ABOUT, shown in the
   title bar: a PR number, an issue, the task in hand. Use it when you
   start work a session's name cannot describe. Exactly one of TEXT or `--clear`; a blank TEXT is an error,
@@ -868,7 +877,7 @@ chosen open local window's current workspace (default: frontmost after discovery
 keeps the frontmost window unchanged; an invalid or closed target fails. Takes the ID from that
 listing, not the name, and resolves the remote again first, so a session that has gone fails instead of
 handing back a fresh shell wearing its name. Closing it here ends only this side's connection. An open row is
-saved and attached again at the next launch; if the origin no longer has its session, the row stays and says it ended there. Add `--companions` to attach the group,
+saved and comes back asleep at the next launch (`session sleep`); if the origin no longer has its session, the row stays and says it ended there. Add `--companions` to attach the group,
 or `--parent ROW` to attach it as a companion of a remote row here (fork only); see
 [details](reference.md#restore). An attached page row shows the origin's page over its page channel and mirrors
 nothing; an attached terminal row mirrors the origin session's status, context, `notify`

@@ -69,6 +69,8 @@ public protocol ControlActions {
     /// Set the target's parked mark — the row is kept, whatever agent it held is not. The mode arrives
     /// PARSED, unlike `setSessionFlag`; the host resolves the session and reads `Session.parked` for `toggle`.
     func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse
+    /// Puts the target remote row to sleep or wakes it now (`session.sleep` / `session.wake`); a row already so answers ok.
+    func setSessionAsleep(_ target: String?, window: String?, asleep: Bool) -> ControlResponse
     /// moveFlaggedSession moves the flagged target just before or after the flagged `anchor` in its window's
     /// saved flagged order.
     func moveFlaggedSession(_ target: String?, window: String?, anchor: String,

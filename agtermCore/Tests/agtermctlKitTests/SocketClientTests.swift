@@ -1386,6 +1386,16 @@ struct SocketClientTests {
         #expect(lines[1] == "  * shell (not realized)  [s1]  /tmp")
     }
 
+    @Test func formatTreeTagsAnAsleepRowAsleepRatherThanUnrealized() throws {
+        let node = #"{"id":"s3","name":"far","cwd":"/srv","active":false,"split":false,"overlay":false,"scratch":false,"#
+            + #""flagged":false,"realized":false,"asleep":true,"asleepSince":1000}"#
+        let session = try JSONDecoder().decode(ControlSessionNode.self, from: Data(node.utf8))
+        let workspace = ControlWorkspaceNode(id: "w3", name: "work", active: true, sessions: [session])
+        let out = SocketClient.formatResponse(ControlResponse(ok: true, result: ControlResult(tree: ControlTree(workspaces: [workspace]))))
+        let lines = out.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines[1] == "    far (asleep)  [s3]  /srv")
+    }
+
     @Test func formatTreeLeavesARealizedSessionUntagged() {
         let session = ControlSessionNode(id: "s2", name: "shell", cwd: "/tmp", active: true, split: false,
                                          realized: true)

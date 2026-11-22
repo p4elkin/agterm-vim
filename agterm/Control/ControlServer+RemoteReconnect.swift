@@ -32,10 +32,12 @@ extension ControlServer {
 
     func tickReconnects() {
         pruneRespawnBook()
+        tickRemoteSleep()
+        retainHostPoolLeases()
         let book = RemoteReconnectBook.shared
         for pane in book.due(now: hudClock()) {
-            // a catalog pane reconnects through its pool, whose master comes back once for all its panes
-            let pool = book.entries[pane].flatMap { catalogPool(forSession: $0.session) }
+            // a pooled pane reconnects through its pool, whose master comes back once for all its panes
+            let pool = book.entries[pane].flatMap { sshPool(forSession: $0.session) }
             let probe = pool?.leaseOnce()
             guard let entry = book.entries[pane], waitingSurface(pane, in: entry.session) != nil,
                   let argv = try? RemoteSession.probeCommand(host: entry.host, controlPath: probe?.path) else {

@@ -102,6 +102,13 @@ Each entry separates a demonstrated cause from one that is only consistent with 
   exposes that instant as `jobClock`. `offeredPagesAndJobsReadBackTheirWindows` now expects the deadline to equal
   `jobClock` plus the launch window, with no wall-clock bound.
 
+### `ServerHookInstallTests.installedWrapperCallsTheBakedServerTool`
+
+- **Symptom.** `finished.wait(timeout: .now() + 5) → .timedOut` at `ServerHookInstallTests.swift:86`, the test taking 74 s.
+- **Runs.** One full local `swift test` on a 20-core Mac, 2026-11-21; run alone it passed in 0.7 s.
+- **Cause, consistent with the evidence only.** A full parallel suite starves the installed wrapper's process past the 5 s wait.
+- **Fix.** None yet; raise the wait toward the 30 s ceiling in `.claude/rules/tests.md` if it recurs.
+
 ### `ServerLifecycleTests.aShellThatExitsClosesItsSession`
 
 - **Symptom.** `eventually { session == nil }` false after 8 s.

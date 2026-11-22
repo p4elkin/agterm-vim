@@ -539,11 +539,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var rebasedAppPath: String?
     /// Days a Rebased mirror may go unused before the IDE start removes it; 0 = never. See `RebasedMirrorCleanup`.
     public var rebasedMirrorMaxAgeDays: Int?
+    /// Minutes a remote row may stay off screen before it sleeps; 0 = never. See `RemoteSleepPolicy`.
+    public var remoteSleepAfterMinutes: Int?
 
     public var effectiveRebasedAppPath: String { rebasedAppPath ?? "/Applications/Rebased.app" }
     public var effectiveRebasedMirrorMaxAgeDays: Int {
         guard let days = rebasedMirrorMaxAgeDays, days >= 0 else { return 14 }
         return days
+    }
+    public var effectiveRemoteSleepAfterMinutes: Int {
+        guard let minutes = remoteSleepAfterMinutes, minutes >= 0 else { return 30 }
+        return minutes
     }
 
     public init(fontFamily: String? = nil, fontSize: Double? = nil, theme: String? = nil,
@@ -577,6 +583,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 linkOpenMode: String? = nil, terminalInputSource: String? = nil,
                 htmlOverlayZoom: Double? = nil, welcomeShown: Bool? = nil, overlayRedirectEnabled: Bool? = nil,
                 rebasedAppPath: String? = nil, rebasedMirrorMaxAgeDays: Int? = nil,
+                remoteSleepAfterMinutes: Int? = nil,
                 sessionInfoDisplay: String? = nil, sidebarDensity: String? = nil) {
         self.sessionInfoDisplay = sessionInfoDisplay
         self.sidebarDensity = sidebarDensity
@@ -640,6 +647,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.overlayRedirectEnabled = overlayRedirectEnabled
         self.rebasedAppPath = rebasedAppPath
         self.rebasedMirrorMaxAgeDays = rebasedMirrorMaxAgeDays
+        self.remoteSleepAfterMinutes = remoteSleepAfterMinutes
     }
 
     /// The configured mode, including an object decoded from the legacy boolean schema.

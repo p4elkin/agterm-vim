@@ -74,6 +74,7 @@ public final class AppStore {
             if !restoringSelection {
                 let now = Date()
                 for id in [oldValue, selectedSessionID].compactMap({ $0 }) { session(withID: id)?.lastSelectedAt = now }
+                if !attachingTransfer { selectedSessionID.map { wakeShown([$0], now: now) } }
             }
             emitSessionSelected(previous: oldValue)
         }
@@ -81,6 +82,9 @@ public final class AppStore {
 
     /// restoringSelection is true while `restore(from:)` runs: a reload is not a selection.
     var restoringSelection = false
+
+    /// attachingTransfer is true while a move selects a row whose source surfaces are not yet released.
+    @ObservationIgnored var attachingTransfer = false
 
     /// Transient sidebar multi-selection, not persisted — `selectedSessionID` stays the durable active target.
     var sidebarSelectionRaw: [UUID] = []
@@ -215,6 +219,10 @@ public final class AppStore {
     /// can happen before any view was built for them. The launch spawn pacer discards those keys, or an
     /// expected key nobody can claim holds its queue at the head forever.
     @ObservationIgnored let launchPaneDrop: (([UUID]) -> Void)?
+    /// sshHostPools leases a restored attached row's pane lines their ssh channels; nil keeps each on its own connection.
+    @ObservationIgnored public let sshHostPools: SshHostPools?
+    /// onRowWake answers the app's renewal of a woken row's attach lines at wake time; nil while none is installed.
+    @ObservationIgnored let onRowWake: (() -> ((Session) -> Void)?)?
     /// Coalesces the high-frequency selection/font saves: a click-storm or a font ramp writes once after the
     /// burst settles instead of hitting disk per event.
     @ObservationIgnored let saveDebouncer = Debouncer()
@@ -288,8 +296,12 @@ public final class AppStore {
                 paneFinalizer: (([UUID]) -> Void)?,
                 launchPaneDrop: (([UUID]) -> Void)? = nil,
                 headless: Bool = false,
-                askRegistry: AskRegistry = .shared) {
+                askRegistry: AskRegistry = .shared,
+                sshHostPools: SshHostPools? = nil,
+                onRowWake: (() -> ((Session) -> Void)?)? = nil) {
         self.headless = headless
+        self.sshHostPools = sshHostPools
+        self.onRowWake = onRowWake
         self.askRegistry = askRegistry
         self.workspaces = workspaces
         self.selectedSessionID = selectedSessionID
@@ -518,6 +530,10 @@ public final class AppStore {
                 if session.remoteHost != nil {
                     node.remoteState = session.remotePresentation?.rowState.rawValue
                     node.remoteSession = session.remotePresentation?.binding.remoteSessionID
+                }
+                if session.asleep {
+                    node.asleep = true
+                    node.asleepSince = session.asleepSince?.timeIntervalSince1970
                 }
                 return node
             }

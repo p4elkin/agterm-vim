@@ -47,8 +47,8 @@ publishes an empty body with only a warning on stderr.
   (`ControlMaster auto`). The pane rode the shared connection, which stayed open on the dead link, so the
   pane never showed `Connection lost · reconnecting…` and was never attached again; some panes came back
   in seconds and others only after 40 minutes. A pane, a row's presentation stream and the reconnect probe
-  now each open their own connection, so the pane's keepalive ends a dead link within about 15 seconds.
-  An origin with many rows needs sshd's `MaxStartups` raised above the default `10:30:100`.
+  no longer ride that shared connection: they use agterm's own (see Changed), whose keepalive ends a dead
+  link within about 15 seconds.
 - A first IntelliJ IDEA start no longer caps the embedded IDE at 1 GB of heap over a larger `-Xmx` in your
   own IntelliJ settings. The defaults it adds (`-Xms128m`, `-Xmx2048m`, a 240 MB code cache) now apply only
   where your settings set no value. An existing IDE root keeps its `config/idea.vmoptions`: check it for a
@@ -91,6 +91,11 @@ publishes an empty body with only a warning on stderr.
 
 ### Changed
 
+- A remote row's ssh is pooled per host: its panes, its presentation stream, overlay jobs and the reconnect
+  probe share agterm's own connections to the host, up to eight sessions on each, instead of one connection
+  apiece. After an outage or a Mac wake a host reconnects with one handshake per eight sessions, so an origin
+  with many rows needs sshd's `MaxStartups` (default `10:30:100`) raised far less than before. Stock sshd
+  (`MaxSessions 10`) works. A `--transport mosh` row is unchanged.
 - Another pane's status write over a `blocked`, or a `completed` without `--auto-reset`, is accepted now
   instead of refused: it plays its sound, its `active` reads back in `activePanes`, and the row keeps showing
   the owner's status. The `status owned by pane <pane>` error is gone (upstream #1016 made the block a hold;
@@ -117,6 +122,18 @@ publishes an empty body with only a warning on stderr.
 
 ### Added
 
+- A remote row you have not looked at for 30 minutes goes to sleep: its terminals and their ssh connections
+  close on this Mac, while the session keeps running on its host and the row keeps its status, name and
+  notifications. Selecting it, zooming it or showing it on the dashboard wakes it, and zmx replays its screen;
+  the Mac-side scrollback from before the sleep is gone. A relaunch brings remote rows back asleep, except
+  the selected one, so it no longer opens every row's ssh at once. Set the delay in Settings ▸ General ▸
+  Sessions (`remoteSleepAfterMinutes`, 0 = never). A row showing a scratch, an overlay or a question never
+  sleeps, and neither does a remote window's row.
+  `session sleep` and `session wake` do it by hand, and `tree` reads `asleep`. `session sleep` refuses a row
+  on screen, the active one included, so name the row with `--target`. A command that needs the live
+  terminal (`session type`, `paste`, `copy`, `search`, `lead`, `font`, `surface cursor`) wakes the row first
+  and waits up to 20 seconds for it to attach; `session text` reads the screen from the host and leaves the
+  row asleep.
 - `tree` reports `named` on every session, true when the row has a custom name. Tools that label
   Claude sessions after their rows can now tell a name given on purpose from one derived from a folder.
 - `zmx attach HOST SESSION --parent ROW` attaches a remote session as a companion of a remote row here, so rows

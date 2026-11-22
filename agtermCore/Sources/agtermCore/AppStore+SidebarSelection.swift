@@ -47,6 +47,7 @@ extension AppStore {
             if selectedSessionID != selected {
                 activeSession?.lastSelectedAt = Date()
                 emitSessionSelected(previous: selected)
+                selectedSessionID.map { wakeShown([$0]) }
             }
             return result
         }

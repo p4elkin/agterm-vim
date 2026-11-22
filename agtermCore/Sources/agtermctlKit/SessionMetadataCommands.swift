@@ -2,7 +2,7 @@ import ArgumentParser
 import agtermCore
 
 // the `session` subcommands carrying per-session METADATA rather than driving a surface: the agent status
-// glyph, the restore-command pin, flagged and parked membership, the title-bar context and the sidebar info line.
+// glyph, the restore-command pin, flagged and parked membership, remote sleep, the title-bar context and the sidebar info line.
 extension Session {
     struct Status: RequestCommand {
         static let configuration = CommandConfiguration(abstract: "Set a session's agent status indicator.")
@@ -169,6 +169,27 @@ extension Session {
 
         func makeRequest() throws -> ControlRequest {
             ControlRequest(cmd: .sessionPark, target: target.target, args: options.withWindow(ControlArgs(mode: mode)))
+        }
+    }
+
+    struct Sleep: RequestCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Release a remote row's panes now; its origin session keeps running. Refused for a row on screen.")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionSleep, target: target.target, args: options.withWindow())
+        }
+    }
+
+    struct Wake: RequestCommand {
+        static let configuration = CommandConfiguration(abstract: "Attach an asleep remote row's panes again, without selecting it.")
+        @OptionGroup var target: TargetOptions
+        @OptionGroup var options: ClientOptions
+
+        func makeRequest() throws -> ControlRequest {
+            ControlRequest(cmd: .sessionWake, target: target.target, args: options.withWindow())
         }
     }
 

@@ -120,6 +120,13 @@ final class ControlServer {
     /// Whether someone is at this Mac; a Mac nobody is at never takes the presenter role. Injectable for tests.
     var userPresent: @MainActor () -> Bool = UserPresence.isPresent
     var presenceObservers: [NSObjectProtocol] = []
+    /// Whether a window is on screen for the remote sleep timer; `ControlServer+RemoteSleep` owns the rule.
+    var windowOnScreen: @MainActor (UUID) -> Bool = ControlServer.windowIsOnScreen
+    var lastSleepPolicyRun: Date?
+    /// The pause between checks for a woken pane's first lead report; `ControlServer+AsleepRows` owns the wait.
+    var ptyWakeSleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
+    var visibilityObservers: [NSObjectProtocol] = []
+    var windowVisibilityObservations: [UUID: WindowVisibilityObservation] = [:]
     /// remoteCatalogs holds one catalog stream per open remote window; `ControlServer+RemoteCatalog` owns them.
     var remoteCatalogs: [UUID: RemoteCatalogLink] = [:]
     /// replicaPages are the pages this Mac shows for origins, by local page id; `ControlServer+RemotePage` owns them.
@@ -294,6 +301,7 @@ final class ControlServer {
         NotificationCenter.default.addObserver(forName: .agtermWindowCatalogChanged, object: nil, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshWindowCache() }
         }
+        observeWindowVisibility()
         // window.list carries LIVE NSWindow geometry + fullscreen/zoom read at cache-build time, which a user
         // drag/resize/zoom/fullscreen changes with NO control command — and a polling window.list is
         // fast-path-served, so it never refreshes its own cache. the fullscreen notifications fire AFTER the
@@ -647,9 +655,11 @@ final class ControlServer {
     /// `session.restart` waits on process exits for seconds, while the shell it starts calls this socket.
     nonisolated static func waitsOnNetwork(_ cmd: Command) -> Bool {
         // companion creation may ssh to a remote parent's origin, which can be this Mac's own socket;
-        // update.check waits on the feed
+        // update.check waits on the feed; a pane command on an asleep row waits on its attach or reads the origin,
+        // and only the command is known here, not whether its row sleeps
         [.zmxTree, .zmxAttach, .zmxAttachGroup, .zmxNew, .sessionRestart, .sessionCompanionNew, .sessionCompanionDuplicate,
-         .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune, .windowRemoteOpen, .updateCheck].contains(cmd)
+         .sessionCompanionPage, .rebasedMirrorList, .rebasedMirrorPrune, .windowRemoteOpen, .updateCheck, .sessionText]
+            .contains(cmd) || PtyWake.commands.contains(cmd)
     }
 
     // these polling reads cannot change window nodes; skip the AppKit rebuild
@@ -723,12 +733,14 @@ final class ControlServer {
     /// Execute a request against the store/actions seam. Never throws across the socket: any failure is a
     /// `{"ok":false,"error":…}` response.
     func dispatch(_ request: ControlRequest) async -> ControlResponse {
+        var request = request
         // refresh the read cache in this same main-actor execution, so the background fast path sees the new
         // state without a separate, stallable hop.
         defer { if !Self.leavesWindowsUnchanged(request.cmd) { refreshWindowCache() } }
         // every entry, a page's bridge included, reaches a remote window's server the one way the socket does
         if let route = remoteRoute(request) { return await runRemoteRoute(route) }
         if let refusal = pageCompanionRefusal(request) { return refusal }
+        if let response = await asleepRowResponse(&request) { return response }
         if let response = await ControlDispatcher(actions: self).dispatch(request) {
             return response
         }
@@ -743,7 +755,8 @@ final class ControlServer {
                 .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionRestart, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom,
                 .surfaceCursor,
-                .sessionStatus, .sessionFlag, .sessionPark, .sessionContext, .sessionInfo, .sessionTint, .workspaceTint, .sessionSeen,
+                .sessionStatus, .sessionFlag, .sessionPark, .sessionSleep, .sessionWake, .sessionContext, .sessionInfo, .sessionTint,
+                .workspaceTint, .sessionSeen,
                 .sessionRestore, .sessionMark, .sessionRebasedShow, .sessionRebasedToggle,
                 .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove, .notify,
                 .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .hooksReload, .hooksList,
@@ -882,6 +895,7 @@ final class ControlServer {
                 return ControlResponse(ok: false, error: "no dashboard sessions resolved")
             }
             TerminalZoomRegistry.shared.controller(for: windowID)?.clear()
+            store.wakeShown(members.map(\.session), now: hudClock())
             controller.open(members: members, fontMode: fontMode)
             // set the applied size SYNCHRONOUSLY so the `dashboardFontSize` read-back is authoritative at
             // command return: the SwiftUI onChange applying the surface overrides runs a runloop turn later,

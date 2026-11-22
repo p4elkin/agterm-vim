@@ -38,6 +38,8 @@ flagged:
   - "agterm/Control/ControlServer.swift"
   - "agtermCore/Sources/agtermCore/AppStore+RemoteOverlay.swift"
   - "agterm/agtermApp.swift"
+  # sleeping remote rows: an asleep row's pane hosted by the deck mounts on a stale line or a local shell
+  - "agterm/Views/WindowContentView+Zoom.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
@@ -52,6 +54,7 @@ constructs:
   - "BuiltinAction"
   - "NormalModeState"
   - "KeybindMatcher"
+  - "WindowContentView.deckHostsSurface"
 # declined: files the candidate rule below offered and a human said no to. Only ever appended to by a
 # merger session acting on an explicit answer, never on silence. See "Keeping the lists current".
 declined:
@@ -175,6 +178,25 @@ that was fixed, failing to compile on `std.ArrayList` initialization — `= .{}`
   - `agtermApp.swift`, `CustomCommandRunner.swift`: configure the Mac-built callback environment.
   - `SessionSwitcher.swift`, `PaneShortcuts.swift`, `UndoCloseShortcut.swift`: keep the
     IDE-key-window early return.
+- Sleeping remote rows and the host ssh pools ([[control-api]], Sleeping remote rows) hook into these upstream files:
+  - `WindowContentView+Zoom.swift`: `deckHostsSurface` hosts no pane of an asleep row; without that line the
+    pane mounts on a stale attach line, or on none, which is a local shell.
+  - `Session.swift`: `asleep`, `sleepRefusal`, and `rightPaneExists` in `activeSurface`, `focusedPane`,
+    `focusedCwd` and the focused title; its other readers are in `AppStore+Panes`, `AppStore+RemoteLayout`,
+    `agtermApp+RemoteLayout`, `AppActions+Focus`, `CustomCommandRunner` and `WindowContentView+Detail`.
+  - `AppStore.swift`: the `selectedSessionID` wake, the `sshHostPools` / `onRowWake` parameters and the
+    `controlTree` fields; `AppStore+SidebarSelection.swift`: the `preservingSelection` wake.
+  - `AppStore+AttachedRestore.swift`, `AppStore+Snapshot.swift`: `placingAttached` restores asleep, `attachLine`
+    leases, and `restore(from:)` ends with `wakeRestoredAttachedRow`.
+  - `WindowLibrary.swift`, `agtermApp.swift`: the registry built before `restoredRuntime`, and `onRowWake`.
+  - `ControlServer.swift`: `asleepRowResponse` in `dispatch`, `waitsOnNetwork`, the switch row and the
+    `setDashboard` wake; the zoom and dashboard wakes in `ControlServer+SessionActions.swift`, `AppActions.swift`
+    and `WindowContentView+Dashboard.swift`.
+  - `ControlServer+Zmx.swift` (`insertRemoteRow(asleep:)`), `ControlServer+AttachedForward.swift`,
+    `ControlServer+RemotePresentation.swift`, `ControlServer+RemoteReconnect.swift` and `PaneLead.catalogChannel`
+    take `sshPool(forSession:)`, and the reconnect tick runs `tickRemoteSleep` and `retainHostPoolLeases`.
+    ⚠️ A new upstream call to `catalogPool(forSession:)` compiles and leaves a host row on its own connection.
+  - `TerminalSurface.swift`, `GhosttySurfaceView.swift`: `releaseForSleep`.
 - `.claude/rules/keymap.md`, `README.md`, `cookbook/` — text conflicts, keep both sides.
 - `plugins/agterm/skills/agterm/{reference,SKILL}.md` and the `zmx attach` help in `ZmxCommands.swift` — upstream
   still says a remote row is never saved or restored; the fork says it is (`RemoteRowBook`). Keep the fork's

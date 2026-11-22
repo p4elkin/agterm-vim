@@ -287,6 +287,23 @@ final class WindowLibraryTransferTests {
         #expect(try fixture.workspace("project").sessions.count == 1)
     }
 
+    @Test(arguments: [MoveDestination.new, .open, .closed])
+    func anAsleepRowIsNotWokenByTheMovesOwnSelection(_ kind: MoveDestination) throws {
+        let fixture = try makeFixture()
+        var woken: [UUID] = []
+        fixture.library.onRowWake = { woken.append($0.id) }
+        let project = try fixture.workspace("project")
+        let row = try #require(fixture.store.addSession(toWorkspace: project.id, cwd: "/srv", select: false, remoteHost: "box"))
+        #expect(fixture.store.sleepRemoteRow(row.id, reason: .timer))
+
+        let result = try fixture.library.transferSessions([row.id], from: fixture.source, to: destination(kind, fixture),
+                                                          workspace: .none).get()
+
+        #expect(fixture.library.store(for: result.windowID)?.selectedSessionID == row.id)
+        #expect(row.asleep)
+        #expect(woken.isEmpty)
+    }
+
     // MARK: - ordering
 
     @Test func aFailedDestinationSaveLeavesTheSourceLive() throws {

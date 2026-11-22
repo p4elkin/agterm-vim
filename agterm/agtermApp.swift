@@ -113,8 +113,13 @@ struct agtermApp: App {
         // the pacer exists before the library so the model can discard the key of a pane it removes before
         // that pane's window ever mounts; the registry that routes grants comes after
         let pacer = SpawnPacer()
+        // one runner for the host pools and the control server; the pools exist before the library loads attached rows
+        let remoteRunner = RemoteCommandProcessRunner()
+        let sshHostPools = Self.isHostedUnitTest ? nil
+            : SshHostPools(root: ControlServer.sshPoolRoot, owner: stateDirectory.path, runner: remoteRunner)
         let restored = agtermApp.restoredRuntime(stateDirectory: stateDirectory, pacer: pacer,
-                                                 flaggedLayout: launchSettings.effectiveFlaggedViewLayout)
+                                                 flaggedLayout: launchSettings.effectiveFlaggedViewLayout,
+                                                 sshHostPools: sshHostPools)
         spawnRegistry = SpawnRegistry(pacer: pacer)
         let library = restored.library
         zmxForegroundResolver = restored.foregroundResolver
@@ -136,7 +141,8 @@ struct agtermApp: App {
                                           identity: Self.appIdentity,
                                           zmxForegroundResolver: restored.foregroundResolver,
                                           zmxClient: restored.zmxClient,
-                                          zmxOutdatedBefore: restored.zmxOutdatedBefore)
+                                          zmxOutdatedBefore: restored.zmxOutdatedBefore,
+                                          remoteRunner: remoteRunner)
         _controlServer = State(initialValue: controlServer)
         actions.remoteAttacher = controlServer
         actions.companionDuplicator = controlServer
@@ -227,6 +233,11 @@ struct agtermApp: App {
             controlServer.restoreRemoteRows(from: rowBook)
             library.onStoreLoaded = { [weak controlServer] id, store in
                 controlServer?.restoreRemoteRows(rowBook.load(), windowID: id, store: store)
+            }
+            let wakeServices = SurfaceServices(library: library, actions: actions, zmxForegroundResolver: zmxForegroundResolver,
+                                               spawnRegistry: spawnRegistry, launchContext: launchContext)
+            library.onRowWake = Self.wakeRenewal(server: controlServer, services: wakeServices) { [weak controlServer] session, pane in
+                Self.surfaceEnv(for: session, pane: pane, library: library, socketPath: controlServer?.resolvedSocketPath ?? "")
             }
             let supervisor = RemoteRowSupervisor(
                 library: library,
@@ -361,7 +372,7 @@ struct agtermApp: App {
                         }
                         PaneLead.heldExit = { [weak server = controlServer] view in server?.remotePaneHeld(view) }
                         PaneLead.catalogChannel = { [weak server = controlServer] session, user in
-                            server?.catalogPool(forSession: session)?.lease(user)
+                            server?.sshPool(forSession: session)?.lease(user)
                         }
                         PaneLead.ownerRespawn = { [weak server = controlServer] session, daemon in
                             let prior = server?.priorLeader(daemon: daemon)
@@ -450,8 +461,8 @@ struct agtermApp: App {
 
     /// Builds the window library and zmx foreground resolver for the state directory. Bootstrap
     /// migrates/recovers persisted windows and inventories claimed pane identities before surfaces mount.
-    private static func restoredRuntime(stateDirectory: URL, pacer: SpawnPacer,
-                                        flaggedLayout: FlaggedViewLayout) -> RestoredRuntime {
+    private static func restoredRuntime(stateDirectory: URL, pacer: SpawnPacer, flaggedLayout: FlaggedViewLayout,
+                                        sshHostPools: SshHostPools?) -> RestoredRuntime {
         guard !isHostedUnitTest else {
             return RestoredRuntime(library: WindowLibrary(directory: stateDirectory, paneFinalizer: nil,
                                                           flaggedLayout: flaggedLayout),
@@ -476,7 +487,8 @@ struct agtermApp: App {
             launchPaneDrop: { identities in
                 for identity in identities { pacer.discard(identity) }
             },
-            flaggedLayout: flaggedLayout)
+            flaggedLayout: flaggedLayout,
+            sshHostPools: sshHostPools)
         // the reap waits for the library so a confirmed Live sessions reset can narrow its marker against the
         // current claims first; both finish before any window mounts
         let outdatedBefore = ZmxBuildRecord.launchCutoff(bundledID: Self.bundledZmxBuildID(), directory: stateDirectory)
@@ -964,6 +976,12 @@ struct agtermApp: App {
     /// background-pane status records which surface blocked; the overlay passes nil.
     @MainActor
     private func surfaceEnv(for session: Session, pane: StatusPane? = nil) -> [String: String] {
+        Self.surfaceEnv(for: session, pane: pane, library: library, socketPath: controlServer.resolvedSocketPath)
+    }
+
+    @MainActor
+    static func surfaceEnv(for session: Session, pane: StatusPane?, library: WindowLibrary,
+                           socketPath: String) -> [String: String] {
         var windowID: WindowInfo.ID?
         var workspaceID: UUID?
         if let resolvedWindowID = library.windowID(forSession: session.id) {
@@ -981,7 +999,7 @@ struct agtermApp: App {
         // a session-owned pane bakes its stable identity, so the hook resolves the surface's live slot after
         // promotion; scratch is ephemeral and gets one identity for the lifetime of its surface.
         return SurfaceEnvironment.session(sessionID: session.id, windowID: windowID,
-                                          workspaceID: workspaceID, socketPath: controlServer.resolvedSocketPath,
+                                          workspaceID: workspaceID, socketPath: socketPath,
                                           programVersion: Self.terminalProgramVersion,
                                           pane: pane, paneToken: paneIdentity?.uuidString)
     }

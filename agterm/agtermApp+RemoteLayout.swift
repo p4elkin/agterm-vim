@@ -54,7 +54,8 @@ extension agtermApp {
         }
         let ended = session.remotePresentation?.originEnded == true
         guard let view = surface as? GhosttySurfaceView else {
-            if ended, surface == nil { _ = store.closePrimaryPane(sessionID) }
+            // an asleep row's pane has no exit coming, so its model drops the pane now
+            if ended || session.asleep, surface == nil { _ = store.closePrimaryPane(sessionID) }
             return
         }
         let survivor = split ? session.surface : session.splitSurface

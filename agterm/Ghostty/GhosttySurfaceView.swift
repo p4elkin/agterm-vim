@@ -933,6 +933,16 @@ final class GhosttySurfaceView: NSView, PaneRoleMutableSurface {
         teardown()
     }
 
+    func releaseForSleep() { releaseForSleep(into: .shared) }
+
+    func releaseForSleep(into retirement: SurfaceRetirement) {
+        claimProcessExit()
+        // a retirement still pending keeps them, and a held exit queued before it would forget the woken pane's lead
+        onExitHeld = nil
+        onExit = nil
+        retireSurface(into: retirement)
+    }
+
     /// `TerminalSurface.isRealized`: the libghostty surface — and with it the spawned program — exists. False
     /// while `createSurface` is still deferred on a zero backing size (`pendingSurfaceCreation`) and after
     /// `destroySurface`, both of which leave `surface` nil.

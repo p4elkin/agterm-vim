@@ -142,6 +142,33 @@ public final class Session: Identifiable {
     /// process (`agterm-park`), never by the app — agterm marks the row and dims it, and stops nothing
     /// itself. Persisted, so a parked row comes back parked.
     public var parked: Bool = false
+    /// asleep marks a remote row whose pane surfaces were released while its row and stream stay. Observed, not
+    /// persisted: the deck gate reads it. See `RemoteSleepPolicy`.
+    public internal(set) var asleep = false
+    public internal(set) var asleepSince: Date?
+    /// offScreenSince is when the row left the screen, nil while it is on screen.
+    public var offScreenSince: Date?
+
+    /// holdsLocalState is whether the row shows something of this Mac's own that a sleep would lose. A HUD is not.
+    public var holdsLocalState: Bool {
+        scratchActive || programOverlayActive || htmlOverlayActive || rebasedOverlayActive || parkedRebased != nil
+            || askPending != nil || OverlayPane.allCases.contains { paneOverlay($0) != nil }
+            || !remoteOverlays.slots.isEmpty
+    }
+
+    /// sleepEligible admits a remote terminal row that is not a remote window's row, not ended on its host, and holds no local state.
+    public var sleepEligible: Bool { sleepRefusal == nil }
+
+    /// sleepRefusal says why the row cannot sleep, nil when it can.
+    public var sleepRefusal: String? {
+        if remoteHost == nil { return "not a remote row" }
+        if content != .terminal { return "a page row does not sleep" }
+        if remotePresentation?.binding.catalogOwned == true { return "a remote window's row does not sleep" }
+        if remotePresentation?.rowState == .endedOnHost { return "its origin session has ended" }
+        if holdsLocalState { return "it shows a local scratch, overlay or ask" }
+        return nil
+    }
+
     /// Local context, persisted for local sessions; clearing reveals any mirrored context.
     public var context: String?
     /// Ephemeral origin context, observed independently of the stream's bookkeeping.
@@ -169,7 +196,7 @@ public final class Session: Identifiable {
     /// Changes only when one live primary-slot surface replaces another; SwiftUI hosts fold it into their
     /// identity, so lazy nil→first creation stays at zero while split-survivor promotion remounts the view.
     @ObservationIgnored public private(set) var primarySurfaceHostRevision = 0
-    // observed, unlike the revision above: a respawn leaves the slot empty and nothing else remounts its host
+    // observed, unlike the revision above: a respawn or a sleep leaves the slot empty and nothing else remounts its host
     public internal(set) var primaryRespawns = 0
     @ObservationIgnored var lastRespawnAt: Date?
 
@@ -187,7 +214,9 @@ public final class Session: Identifiable {
 
     /// Whether the session HAS a split pane at all, shown or hidden/maximized, unlike `isSplit`. Stays true
     /// across a hide, cleared only by `closeSplit`, so the sidebar + title-bar indicators persist while hidden.
-    public var hasSplit: Bool = false
+    public var hasSplit: Bool = false {
+        didSet { if !hasSplit { splitReleasedAsleep = false } }
+    }
 
     /// The split's physical arrangement. A fresh or legacy session starts left/right; changing this while
     /// both panes exist transposes their layout without replacing either terminal surface.
@@ -204,8 +233,12 @@ public final class Session: Identifiable {
     @ObservationIgnored public var splitRatio: Double?
 
     /// The second pane's surface, created lazily on first split and, like `surface`, surviving view churn —
-    /// hiding the split keeps the shell alive. Freed only on `closeSplit`/`closeSession`.
-    @ObservationIgnored public var splitSurface: (any TerminalSurface)?
+    /// hiding the split keeps the shell alive. Freed on `closeSplit`/`closeSession` and a sleep; see `rightPaneExists`.
+    @ObservationIgnored public var splitSurface: (any TerminalSurface)? {
+        didSet { if splitSurface != nil { splitReleasedAsleep = false } }
+    }
+    /// splitReleasedAsleep marks a split whose surface a sleep released, until a wake builds it again.
+    @ObservationIgnored var splitReleasedAsleep = false
 
     /// A pane hidden since launch has no surface yet, so its realized sibling answers for the shared launch disposition.
     public func zmxBacking(for surface: TerminalZoomSurface) -> Bool? {
@@ -682,17 +715,17 @@ public final class Session: Identifiable {
 
     /// The cwd of the focused pane: the split (right) pane's while it has focus (shown or hidden-maximized),
     /// else the primary's, falling back to `initialCwd`. The sidebar and title bar track the focused pane
-    /// through it, while `effectiveCwd` stays the primary's. The `splitSurface != nil` guard (the
+    /// through it, while `effectiveCwd` stays the primary's. The `rightPaneExists` guard (the
     /// `activeSurface` idiom) stops a promoted survivor that momentarily re-raised `splitFocused` from masking
     /// the migrated main-pane cwd — the split fields describe the split pane only while it exists.
     public var focusedCwd: String {
-        if splitFocused, splitSurface != nil, let cwd = splitCwd { return cwd }
+        if splitFocused, rightPaneExists, let cwd = splitCwd { return cwd }
         return currentCwd ?? initialCwd
     }
 
     /// The focused pane's terminal title: the split pane's while it has focus AND exists, else the primary's
     /// (see `focusedCwd` for the existence guard).
-    private var focusedOscTitle: String? { splitFocused && splitSurface != nil ? splitTitle : oscTitle }
+    private var focusedOscTitle: String? { splitFocused && rightPaneExists ? splitTitle : oscTitle }
 
     /// The detail after the workspace name on line two of the session palette, the Ctrl-Tab switcher, and the
     /// title bar: the focused pane's terminal title unless that is already the `displayName` (so it ADDS
@@ -734,8 +767,11 @@ public final class Session: Identifiable {
     /// split hidden the detail pane maximizes this one and focus helpers target it, so typing always reaches
     /// the visible pane.
     public var activeSurface: (any TerminalSurface)? {
-        splitFocused && splitSurface != nil ? splitSurface : surface
+        splitFocused && rightPaneExists ? splitSurface : surface
     }
+
+    /// rightPaneExists is a live split surface, or a split a sleep released and no wake has built again.
+    public var rightPaneExists: Bool { splitSurface != nil || hasSplit && splitReleasedAsleep }
 
     /// The one addressable pane for control arms acting on "the session" rather than a named `--pane`
     /// (`session.copy`, `session.paste`, `session.selectall`, `font.*`): IDENTICAL to `surface` everywhere,
@@ -775,12 +811,12 @@ public final class Session: Identifiable {
     /// Which pane owns keyboard focus RIGHT NOW — the single predicate every pane-scoped cover, zoom and
     /// focus decision derives from, so none of them can disagree about which pane the user is looking at.
     /// `.right` needs `splitFocused` AND a right pane that exists: shown side-by-side (`isSplit`, whose
-    /// surface may still be unrealized) or hidden-maximized with a live `splitSurface`. Without the second
+    /// surface may still be unrealized) or hidden-maximized where `rightPaneExists`. Without the second
     /// term a promoted survivor that momentarily re-raised `splitFocused` would resolve `.right` (the
     /// `activeSurface` idiom); without `isSplit` a freshly shown split whose lazy surface has not realized
     /// yet would resolve `.left` while the user's caret sits in the right pane.
     public var focusedPane: OverlayPane {
-        splitFocused && (isSplit || splitSurface != nil) ? .right : .left
+        splitFocused && (isSplit || rightPaneExists) ? .right : .left
     }
 
     /// The focused pane's overlay pane, nil when that pane's slot is empty or its overlay hidden.

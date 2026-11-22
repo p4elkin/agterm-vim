@@ -27,9 +27,10 @@ extension AppStore {
                                ended: session.ended ? true : nil)
     }
 
-    /// attachedSession rebuilds a saved attached row. A terminal row runs its saved attach lines again without taking
-    /// the lead, and a page row waits for its origin to hand the page over.
-    func attachedSession(from saved: AttachedSessionSnapshot) -> Session {
+    /// attachedSession rebuilds a saved attached row. A terminal row comes back asleep, with no line, lead or lease, when
+    /// `asleep` is set, else runs its saved attach lines again without taking the lead; a page row waits for its origin
+    /// to hand the page over.
+    func attachedSession(from saved: AttachedSessionSnapshot, asleep: Bool = false) -> Session {
         let snapshot = saved.session
         let origin = saved.origin
         let page = origin.page == true
@@ -61,24 +62,51 @@ extension AppStore {
             return session
         }
         session.commandWait = true
-        guard let primary = attachLine(origin, pane: session.paneIdentity, role: .left) else {
-            session.initialCommand = RemoteSession.endedCommand(host: origin.host)
-            return session
-        }
-        session.initialCommand = primary
-        if let split = session.splitPaneIdentity {
-            session.splitInitialCommand = attachLine(origin, pane: split, role: .right)
-            session.splitCommandWait = true
+        session.splitCommandWait = session.splitPaneIdentity != nil
+        if asleep {
+            markRestoredAsleep(session)
+        } else {
+            applyAttachLines(origin, to: session)
         }
         return session
     }
 
+    private func applyAttachLines(_ origin: AttachedOriginSnapshot, to session: Session) {
+        guard let primary = attachLine(origin, pane: session.paneIdentity, role: .left) else {
+            session.initialCommand = RemoteSession.endedCommand(host: origin.host)
+            return
+        }
+        session.initialCommand = primary
+        if let split = session.splitPaneIdentity {
+            session.splitInitialCommand = attachLine(origin, pane: split, role: .right)
+        }
+    }
+
+    /// markRestoredAsleep puts a just-restored remote row to sleep with no event: it never had panes to release.
+    public func markRestoredAsleep(_ session: Session, now: Date = Date()) {
+        session.asleep = true
+        session.asleepSince = now
+    }
+
+    /// wakeRestoredAttachedRow gives the restore's final selection, built asleep, its lines here, with no app renewal.
+    func wakeRestoredAttachedRow(_ id: UUID?) {
+        guard let id, let session = session(withID: id), session.asleep, session.content == .terminal,
+              let origin = session.attachedOrigin else { return }
+        applyAttachLines(origin, to: session)
+        session.asleep = false
+        session.asleepSince = nil
+        session.offScreenSince = nil
+    }
+
     // a relaunch attaches without claiming: whoever took the lead while this Mac was away keeps it
     private func attachLine(_ origin: AttachedOriginSnapshot, pane: UUID, role: ZmxPaneRole) -> String? {
-        guard let daemon = origin.binding.daemon(forLocalPane: pane) else { return nil }
+        let binding = origin.binding
+        guard let daemon = binding.daemon(forLocalPane: pane) else { return nil }
         let lead = ZmxLeadAttachment(claim: false)
+        let path = sshHostPools?.lease(host: origin.host, transport: binding.origin?.transport ?? .ssh, user: "pane:\(pane)")
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
-                                                              session: origin.sessionName, pane: role, lead: lead) else { return nil }
+                                                              session: origin.sessionName, pane: role, lead: lead,
+                                                              controlPath: path) else { return nil }
         ZmxLeadBook.shared.begin(lead, pane: pane)
         return line
     }
@@ -91,13 +119,13 @@ extension AppStore {
         _ = closeExactly([id])
     }
 
-    /// placingAttached puts each saved attached row back at its place among `sessions`, skipping an id already restored
-    /// and a row saved ended, whose origin session is gone.
+    /// placingAttached puts each saved attached row back asleep at its place among `sessions`, skipping an id already
+    /// restored and a row saved ended, whose origin session is gone. `restore(from:)` wakes the final selection.
     func placingAttached(_ saved: [AttachedSessionSnapshot]?, among sessions: [Session], seen: inout Set<UUID>) -> [Session] {
         var placed = sessions
         for row in (saved ?? []).sorted(by: { $0.index < $1.index })
             where row.session.ended != true && seen.insert(row.session.id).inserted {
-            placed.insert(attachedSession(from: row), at: min(max(row.index, 0), placed.count))
+            placed.insert(attachedSession(from: row, asleep: true), at: min(max(row.index, 0), placed.count))
         }
         return placed
     }

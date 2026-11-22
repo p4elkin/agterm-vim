@@ -137,8 +137,11 @@ extension AppStore {
         scheduleTreeChanged()
     }
 
+    /// The moved row wakes, if shown, after the move (`ControlServer.transfer`).
     private func selectAttached(_ sessionID: UUID) {
+        attachingTransfer = true
         selectedSessionID = sessionID
+        attachingTransfer = false
         replaceSidebarSelection(with: sessionID)
         disableFocusIfSelectionOutsideSet(sessionID)
         // provisional until the destination saves; `land` records the visit after that

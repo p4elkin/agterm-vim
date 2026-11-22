@@ -24,7 +24,7 @@ struct Session: ParsableCommand {
         subcommands: [New.self, Duplicate.self, Close.self, Undo.self, Detach.self, Reattach.self, Select.self, Go.self, Rename.self, Reveal.self, Move.self, TypeText.self,
                       Split.self, Swap.self, Lead.self, Scratch.self, Focus.self, Resize.self, Copy.self, Paste.self,
                       SelectAll.self,
-                      Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Context.self,
+                      Text.self, Status.self, Restore.self, Restart.self, FlagCommand.self, Park.self, Sleep.self, Wake.self, Context.self,
                       Info.self, Tint.self, Seen.self, Search.self, Mark.self, BookmarkCommand.self, Background.self,
                       Overlay.self, Hud.self, RebasedCommand.self, Wait.self, Collapse.self, Expand.self, Convert.self]
     )

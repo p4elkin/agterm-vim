@@ -955,6 +955,21 @@ struct RemotePresentationClientTests {
         #expect(transport.links[1].sent.last?.body == (leads ? .presenterTake : .presenterAcquire))
     }
 
+    @Test func aPresenterWhosePanesSleepKeepsItsModeAndReportsNoLeadWithoutTakingTheRole() {
+        recorder.leads = [UUID()]
+        let client = makeClient(leads: { true })
+        client.start()
+        connect(client, mode: .presenter, kinds: ["status", PresentationHub.leadReportKind])
+        transport.deliver(line(.presenterGranted, rev: 2))
+        let before = transport.links[0].sent.count
+
+        recorder.leads = []
+        client.refreshLeads()
+
+        #expect(Array(transport.links[0].sent.map(\.body).dropFirst(before)) == [.leadReport(PresentationLeadReport(leaders: []))])
+        #expect(recorder.modes == [.mirror, .presenter])
+    }
+
     @Test func aTakeReceivedFromTheOriginHasNoEffect() {
         let client = makeClient()
         client.start()

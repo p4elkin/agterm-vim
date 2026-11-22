@@ -43,6 +43,8 @@ extension ControlServer {
         let outcome = library.resolveTransferDestination(raw, source: source).flatMap { move(source, $0) }
         if case .success(let result) = outcome {
             renewRemoteAttachments(result)
+            // after the renewal, which skips an asleep row: a row woken first would get a second nonce its line lacks
+            wakeShownMovedRows(result)
             // the debounced write would leave a crash in its gap restoring the row in the source window
             remoteRowBook?.write()
             // the library already deleted the emptied source; its willClose handler sees an empty store
@@ -55,19 +57,50 @@ extension ControlServer {
     /// reports the lead book drops, and a user attach's claim. A fresh one, as `PaneReattach` builds.
     private func renewRemoteAttachments(_ result: TransferResult) {
         guard let store = library.store(for: result.windowID) else { return }
-        for session in result.sessionIDs.compactMap(store.session(withID:)) {
-            guard let binding = session.remotePresentation?.binding else { continue }
-            let left = ZmxLeadAttachment(claim: false)
-            if let command = binding.attachPaneCommand(forLocalPane: session.paneIdentity, pane: .left, lead: left) {
-                session.initialCommand = command
-                ZmxLeadBook.shared.begin(left, pane: session.paneIdentity)
-            }
-            guard session.hasSplit, let split = session.splitPaneIdentity else { continue }
-            let right = ZmxLeadAttachment(claim: false)
-            if let command = binding.attachPaneCommand(forLocalPane: split, pane: .right, lead: right) {
-                session.splitInitialCommand = command
-                ZmxLeadBook.shared.begin(right, pane: split)
-            }
+        // an asleep row moves asleep: its wake builds the lines
+        result.sessionIDs.compactMap(store.session(withID:)).filter { !$0.asleep }.forEach(renewAttachLines(for:))
+    }
+
+    /// wakeShownMovedRows wakes the moved rows the destination shows, now that it owns them and the source released them.
+    private func wakeShownMovedRows(_ result: TransferResult) {
+        guard let store = library.store(for: result.windowID) else { return }
+        store.wakeShown(onScreenRows(inWindow: result.windowID, store: store).intersection(result.sessionIDs), now: hudClock())
+    }
+
+    /// wakeAttachLines renews a woken row's pane lines and attaches the scratch its origin showed while it slept.
+    func wakeAttachLines(for session: Session) {
+        renewAttachLines(for: session)
+        library.store(forSession: session.id)?.attachOriginScratch(forSession: session.id, attach: self)
+    }
+
+    /// renewAttachLines gives a remote terminal row fresh pane lines; one it cannot build is the ended line, never nil.
+    func renewAttachLines(for session: Session) {
+        guard let host = session.remoteHost, session.content == .terminal else { return }
+        let binding = session.remotePresentation?.binding
+        let ended = RemoteSession.endedCommand(host: binding?.origin?.host ?? host)
+        // a row whose origin session ended while it slept has nothing to attach: a fresh line would only fail
+        guard !session.ended, session.remotePresentation?.rowState != .endedOnHost else {
+            session.initialCommand = ended
+            if session.hasSplit, session.splitPaneIdentity != nil { session.splitInitialCommand = ended }
+            return
+        }
+        let pool = sshPool(forSession: session.id)
+        let left = ZmxLeadAttachment(claim: false)
+        if let command = binding?.attachPaneCommand(forLocalPane: session.paneIdentity, pane: .left, lead: left,
+                                                    controlPath: pool?.lease("pane:\(session.paneIdentity)")) {
+            session.initialCommand = command
+            ZmxLeadBook.shared.begin(left, pane: session.paneIdentity)
+        } else {
+            session.initialCommand = ended
+        }
+        guard session.hasSplit, let split = session.splitPaneIdentity else { return }
+        let right = ZmxLeadAttachment(claim: false)
+        if let command = binding?.attachPaneCommand(forLocalPane: split, pane: .right, lead: right,
+                                                    controlPath: pool?.lease("pane:\(split)")) {
+            session.splitInitialCommand = command
+            ZmxLeadBook.shared.begin(right, pane: split)
+        } else {
+            session.splitInitialCommand = ended
         }
     }
 

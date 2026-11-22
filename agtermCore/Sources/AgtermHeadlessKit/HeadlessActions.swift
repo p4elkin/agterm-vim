@@ -314,6 +314,10 @@ public final class HeadlessActions: ControlActions {
         refuse(.sessionPark)
     }
 
+    public func setSessionAsleep(_ target: String?, window: String?, asleep: Bool) -> ControlResponse {
+        refuse(asleep ? .sessionSleep : .sessionWake)
+    }
+
     public func addSessionBookmark(_ target: String?, window: String?, turn: Int?, prompt: String) -> ControlResponse {
         refuse(.sessionBookmarkAdd)
     }

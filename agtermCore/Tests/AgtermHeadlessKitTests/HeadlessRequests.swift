@@ -83,6 +83,8 @@ enum HeadlessRequests {
         request(.sessionDuplicate, target: target),
         request(.sessionFlag, target: target),
         request(.sessionPark, target: target),
+        request(.sessionSleep, target: target),
+        request(.sessionWake, target: target),
         request(.sessionTint, target: target) {
             $0.mode = "set"
             $0.tint = "red"

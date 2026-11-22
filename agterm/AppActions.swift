@@ -873,6 +873,7 @@ final class AppActions {
             return
         }
         frontmostTerminalZoom?.toggle()
+        if case .session(let row, _)? = frontmostTerminalZoom?.target { store?.wakeShown([row]) }
     }
 
     /// Toggle the frontmost window's dashboard, the ⌘⇧G / Navigate ▸ Dashboard MRU grid, equivalent to
@@ -890,6 +891,7 @@ final class AppActions {
         guard let store else { return }
         let members = store.dashboardMRUMembers(limit: DashboardLayout.maxCells)
         guard !members.isEmpty else { return }
+        store.wakeShown(members.map(\.session))
         dashboard.open(members: members, fontMode: .auto)
         // set the applied size synchronously (the SwiftUI onChange applies surface overrides a runloop turn
         // later), through the same DashboardFontMode seam as the control arm so both land on one auto size.

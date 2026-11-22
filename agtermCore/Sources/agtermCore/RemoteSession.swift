@@ -253,6 +253,20 @@ public enum RemoteSession {
         }
     }
 
+    /// screenCommand reads `daemon`'s screen on `host` through the origin's own zmx, which every origin kind ships;
+    /// `agtermctl zmx screen` would not do, as agterm-headless refuses it. A short call, so it keeps the user's ssh
+    /// config and takes no pooled master.
+    public static func screenCommand(host: String, endpoint: ControlZmxEndpoint, daemon: String, all: Bool,
+                                     connectTimeout: Int = 5) throws -> [String] {
+        try validate(host: host)
+        guard ZmxSupport.isDaemonName(daemon) else { throw InvocationError.invalidSession }
+        guard isPath(endpoint.executable), isPath(endpoint.socketDirectory) else { throw InvocationError.invalidEndpoint }
+        // the variables `attachCommand` clears, for the same reason: an inherited one renames the daemon
+        let remote = ["/usr/bin/env", "ZMX_SESSION=", "ZMX_SESSION_PREFIX=", "ZMX_DIR=" + endpoint.socketDirectory,
+                      endpoint.executable, "screen", daemon] + (all ? ["--all"] : [])
+        return sshArguments(host: host, connectTimeout: connectTimeout, interactive: false) + [CommandRestore.shellQuotedLine(remote)]
+    }
+
     /// keepAliveCheck is shell that sets `$ka` to the ServerAlive options when `ssh -G` with `arguments` reports
     /// none configured, and to nothing otherwise. When and why: control-api.md, Remote sessions.
     static func keepAliveCheck(_ arguments: [String]) -> String {

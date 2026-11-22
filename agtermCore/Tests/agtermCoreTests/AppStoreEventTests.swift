@@ -156,6 +156,29 @@ final class AppStoreEventTests {
         #expect(batch.items.allSatisfy { $0.payload.name == session.displayName })
     }
 
+    @Test func sleepAndWakeEdgesCarryTheirReasonAndARepeatStaysSilent() throws {
+        let library = WindowLibrary(directory: directory, controlEventRing: ControlEventRing(runID: run))
+        library.onRowWake = { _ in }
+        let store = try #require(library.activeStore)
+        let workspace = try #require(store.workspaces.first)
+        let row = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/srv", remoteHost: "box"))
+        defer { ZmxLeadBook.shared.forget(pane: row.paneIdentity) }
+        let anchor = try eventBatch(library.readEvents(ControlEventReadOptions(cursor: nil, kinds: nil, limit: 100)))
+
+        #expect(store.sleepRemoteRow(row.id, reason: .command))
+        #expect(store.sleepRemoteRow(row.id, reason: .timer))
+        #expect(store.wakeRemoteRow(row.id, reason: .command, onScreen: false))
+        #expect(store.wakeRemoteRow(row.id, reason: .pty, onScreen: false))
+
+        let batch = try eventBatch(library.readEvents(ControlEventReadOptions(
+            cursor: ControlEventCursor(run: anchor.run, after: anchor.next), kinds: [.sessionSlept, .sessionWoke], limit: 100
+        )))
+        #expect(batch.items.map(\.kind) == [.sessionSlept, .sessionWoke])
+        #expect(batch.items.map(\.payload.reason) == ["command", "command"])
+        #expect(batch.items.allSatisfy { $0.session == row.id.uuidString && $0.workspace == workspace.id.uuidString })
+        #expect(batch.items.allSatisfy { $0.payload.name == row.displayName })
+    }
+
     @Test func sameNormalizedStatusAndUnknownSessionDoNotEmit() throws {
         let library = WindowLibrary(directory: directory, controlEventRing: ControlEventRing(runID: run))
         let store = try #require(library.activeStore)

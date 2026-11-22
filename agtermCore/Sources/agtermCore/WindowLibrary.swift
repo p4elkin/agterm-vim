@@ -100,6 +100,8 @@ public final class WindowLibrary {
     @ObservationIgnored public var onControlEvent: ((ControlEvent) -> Void)?
     /// A closed window's store has been loaded again at runtime; launch loads are handled separately.
     @ObservationIgnored public var onStoreLoaded: (@MainActor (UUID, AppStore) -> Void)?
+    /// onRowWake renews a woken remote row's attach lines; every store reads it at wake time, launch stores included.
+    @ObservationIgnored public var onRowWake: (@MainActor (Session) -> Void)?
     /// A session's real teardown, which a soft close reaches only when its undo grace ends with no tree change.
     @ObservationIgnored public var onSessionFinalized: (@MainActor (UUID) -> Void)?
     /// A window is closing and its store is still loaded: the last moment anything can read it.
@@ -116,6 +118,8 @@ public final class WindowLibrary {
     /// presentationHub is the hub every open store publishes to, here so a deleted closed window's viewers are ended.
     @ObservationIgnored public var presentationHub: PresentationHub?
     @ObservationIgnored private let launchPaneDrop: (([UUID]) -> Void)?
+    /// sshHostPools is handed to every store, and set before `bootstrap()` because launch stores load inside `init`.
+    @ObservationIgnored public let sshHostPools: SshHostPools?
     @ObservationIgnored private let launchInventorySink: ((Set<UUID>?) -> Void)?
     @ObservationIgnored private var launchInventoryComplete = true
     @ObservationIgnored private var treeEventDebouncers: [UUID: Debouncer]
@@ -161,8 +165,10 @@ public final class WindowLibrary {
                 launchInventorySink: ((Set<UUID>?) -> Void)? = nil,
                 launchPaneDrop: (([UUID]) -> Void)? = nil,
                 controlEventRing: ControlEventRing? = nil,
-                flaggedLayout: FlaggedViewLayout = .flat) {
+                flaggedLayout: FlaggedViewLayout = .flat,
+                sshHostPools: SshHostPools? = nil) {
         self.directory = directory
+        self.sshHostPools = sshHostPools
         self.flaggedLayout = flaggedLayout
         self.recentClosedStore = RecentClosedStore(directory: directory)
         self.bookmarks = BookmarkCenter(persistence: BookmarkPersistence(directory: directory))
@@ -782,7 +788,9 @@ public final class WindowLibrary {
                 self?.onSessionFinalized?(id)
             },
             paneFinalizer: paneFinalizer,
-            launchPaneDrop: launchPaneDrop
+            launchPaneDrop: launchPaneDrop,
+            sshHostPools: sshHostPools,
+            onRowWake: { [weak self] in self?.onRowWake }
         )
         store.flaggedLayout = flaggedLayout
         wireAppRecency(store, windowID: windowID)

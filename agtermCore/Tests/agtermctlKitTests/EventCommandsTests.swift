@@ -268,6 +268,8 @@ struct EventCommandsTests {
             ControlEvent(seq: 21, ts: 0, kind: .message,
                          payload: ControlEventPayload(name: "api", paneID: "tok", from: "S:Q", messageID: "m1")),
             ControlEvent(seq: 22, ts: 0, kind: .message, payload: ControlEventPayload(name: "api", paneID: "tok", messageID: "m2")),
+            ControlEvent(seq: 23, ts: 0, kind: .sessionSlept, payload: ControlEventPayload(name: "far", reason: "command")),
+            ControlEvent(seq: 24, ts: 0, kind: .sessionWoke, payload: ControlEventPayload(name: "far", reason: "shown")),
         ]
         let human = events.map { EventFormatter.human($0, timeZone: TimeZone(secondsFromGMT: 0)!) }
         #expect(human[0] == "00:00:00 status api blocked pane=right blink")
@@ -295,6 +297,8 @@ struct EventCommandsTests {
         #expect(human[19] == "00:00:00 pane.focused api left pane-id=-")
         #expect(human[20] == "00:00:00 message api pane-id=tok from=S:Q id=m1")
         #expect(human[21] == "00:00:00 message api pane-id=tok from=- id=m2")
+        #expect(human[22] == "00:00:00 session.slept far reason=command")
+        #expect(human[23] == "00:00:00 session.woke far reason=shown")
 
         for event in events {
             let line = try EventFormatter.json(event)

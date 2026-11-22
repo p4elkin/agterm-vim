@@ -23,6 +23,10 @@ final class ControlServerTransferTests: XCTestCase {
 
     /// Through the protocol, so a signature drift that falls back to the unsupported default fails here.
     private func makeActions(rowBook: RemoteRowBookWriter? = nil) -> any ControlActions {
+        makeServer(rowBook: rowBook)
+    }
+
+    private func makeServer(rowBook: RemoteRowBookWriter? = nil) -> ControlServer {
         let server = ControlServer(library: library, actions: AppActions(library: library),
                                    settingsModel: SettingsModel(library: library, settingsStore: SettingsStore(directory: stateDir)),
                                    identity: AppIdentity(version: "test", commit: "test"), zmxClient: nil,
@@ -180,6 +184,85 @@ final class ControlServerTransferTests: XCTestCase {
             XCTAssertFalse(command.contains(old.nonce), command)
             XCTAssertFalse(command.contains(ZmxLeadAttachment.claimVariable), command)
         }
+    }
+
+    func testAMovedAsleepRowStaysAsleepAndBeginsNoLeads() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let (session, _) = try remoteRow(in: store)
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+        let lines = (session.initialCommand, session.splitInitialCommand)
+        let other = library.newWindow(name: "other")
+
+        let response = await makeActions().transferSessions(
+            [session.id.uuidString], window: nil, transfer: ControlSessionTransfer(toWindow: "other"))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertNotNil(library.store(for: other.id)?.session(withID: session.id))
+        XCTAssertTrue(session.asleep)
+        XCTAssertNil(ZmxLeadBook.shared.states[session.paneIdentity])
+        XCTAssertNil(ZmxLeadBook.shared.states[split])
+        XCTAssertEqual(session.initialCommand, lines.0)
+        XCTAssertEqual(session.splitInitialCommand, lines.1)
+    }
+
+    /// asleepHiddenSplit is a moved row whose hidden right pane a sleep released, and a wake hook that builds that pane
+    /// off the deck as `agtermApp.wakeRenewal` does, from a view that spawns nothing.
+    private func asleepHiddenSplit(_ server: ControlServer, builtWith: @escaping (String?) -> Void = { _ in }) throws -> Session {
+        let store = try XCTUnwrap(library.activeStore)
+        let (session, _) = try remoteRow(in: store)
+        store.setSplitVisibility(session.id, shown: false)
+        session.splitFocused = false
+        session.splitSurface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+        library.onRowWake = { [weak server] row in
+            server?.wakeAttachLines(for: row)
+            if !row.isSplit, !row.splitFocused, row.splitSurface == nil, row.rightPaneExists {
+                row.splitSurface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+                builtWith(row.splitInitialCommand)
+            }
+        }
+        return session
+    }
+
+    func testAnAsleepSplitMovedIntoAWindowOffScreenStaysAsleepWithItsReleasedPaneMarked() async throws {
+        let server = makeServer()
+        server.windowOnScreen = { _ in false }
+        let session = try asleepHiddenSplit(server)
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        let other = library.newWindow(name: "other")
+
+        let response = await server.transferSessions([session.id.uuidString], window: nil,
+                                                     transfer: ControlSessionTransfer(toWindow: "other"))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(library.store(for: other.id)?.selectedSessionID, session.id)
+        XCTAssertTrue(session.asleep)
+        XCTAssertNil(session.splitSurface)
+        XCTAssertTrue(session.rightPaneExists)
+        XCTAssertNil(ZmxLeadBook.shared.states[split])
+    }
+
+    func testAnAsleepSplitMovedIntoAWindowOnScreenWakesThereWithBothPanes() async throws {
+        let server = makeServer()
+        server.windowOnScreen = { _ in true }
+        var built: String?
+        let session = try asleepHiddenSplit(server) { built = $0 }
+        let split = try XCTUnwrap(session.splitPaneIdentity)
+        _ = library.newWindow(name: "other")
+
+        let response = await server.transferSessions([session.id.uuidString], window: nil,
+                                                     transfer: ControlSessionTransfer(toWindow: "other"))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertFalse(session.asleep)
+        XCTAssertNotNil(session.splitSurface, "the wake built the right pane after the source released its surfaces")
+        XCTAssertTrue(session.rightPaneExists)
+        let nonce = try XCTUnwrap(ZmxLeadBook.shared.states[split]?.attachment.nonce)
+        XCTAssertTrue(session.splitInitialCommand?.contains("\(ZmxLeadAttachment.nonceVariable)=\(nonce)") == true)
+        XCTAssertEqual(built, session.splitInitialCommand, "the right pane runs the line whose nonce the lead book holds")
+        let left = try XCTUnwrap(ZmxLeadBook.shared.states[session.paneIdentity]?.attachment.nonce)
+        XCTAssertTrue(session.initialCommand?.contains("\(ZmxLeadAttachment.nonceVariable)=\(left)") == true)
     }
 
     func testAMovedRemoteRowIsBookedInItsNewWindowAtOnce() async throws {

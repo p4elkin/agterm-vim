@@ -197,6 +197,7 @@ extension WindowContentView {
     func reconcileDashboardMembers() {
         guard dashboard.isOpen else { return }
         dashboard.reconcile(existing: Set(dashboardValidMembers))
+        store.wakeShown(dashboard.members.map(\.session))
         // a reconcile-driven close unmounts the key-catcher that held first responder with nothing to
         // re-grab it, so restore focus like Esc/Enter — but ONLY for the frontmost window: this fires
         // per-window while `focusActiveSession` targets the frontmost store, so an unguarded call would

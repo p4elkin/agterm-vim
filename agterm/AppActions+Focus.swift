@@ -110,12 +110,12 @@ extension AppActions {
     /// selection — auto-follow, attention nav (⌃⌥↑/↓), session nav (⌥⌘↑/↓/first/last), the ⌃P/attention
     /// palettes, a sidebar row click, a title-bar bell popover row, a Dock-menu session row — and a no-op
     /// (plain `focusActiveSession`) for an idle or active session, so ordinary selections and a working agent's
-    /// informational pane tag never move the pane selection. `.right`, only when `splitSurface != nil`, flips
+    /// informational pane tag never move the pane selection. `.right`, only when `rightPaneExists`, flips
     /// `splitFocused` then focuses the split surface via `focusSplitPane(wantSplit: true)` — a FIXED target,
     /// NOT the `splitFocused`-following `focusActiveSession`: a SHOWN split's deck re-render churns first
     /// responder onto the main pane, whose `onFocusChange` writes `splitFocused = false`, so a follow-the-flag
     /// target chases the wrong pane while re-asserting the split surface wins the race (its `onFocusChange`
-    /// re-sets true). The gate is `splitSurface != nil`, NOT `hasSplit`, so a promoted split survivor
+    /// re-sets true). The gate is `rightPaneExists`, NOT `hasSplit`, so a promoted split survivor
     /// (`closePrimaryPane` re-tags its `.right` block to `.left`) and a STALE `right` tag on a single-pane
     /// session (a manual `session.status --pane right`, or a collapsed split) both target the sole main pane
     /// instead of setting `splitFocused = true` with no split surface — true only while the split pane exists.
@@ -139,7 +139,7 @@ extension AppActions {
         // a shown scratch masks a non-scratch block; overlays are deliberately left alone.
         if pane != .scratch, session.scratchActive, let store { setScratchShown(false, of: session, in: store) }
         switch pane {
-        case .right where session.splitSurface != nil:
+        case .right where session.rightPaneExists:
             session.splitFocused = true
             focusSplitPane(session, wantSplit: true)
         case .scratch:

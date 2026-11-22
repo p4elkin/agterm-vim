@@ -542,6 +542,75 @@ struct SessionTests {
         #expect(session.searchDisplayText == "2 of 2")
     }
 
+    @MainActor private static let localStates: [(String, (Session) -> Void)] = [
+        ("scratch", { $0.scratchActive = true }),
+        ("program", { $0.overlayActive = true }),
+        ("html", { $0.overlayActive = true; $0.htmlOverlay = HtmlOverlay(source: .file(path: "/tmp/p.html", grantRoot: nil)) }),
+        ("rebased", { $0.overlayActive = true; $0.rebasedOverlay = RebasedOverlay(project: "/p") }),
+        ("parkedRebased", { $0.parkedRebased = ParkedRebased(overlay: RebasedOverlay(project: "/p"), sizePercent: nil) }),
+        ("ask", { session in
+            let ask = PendingAsk(id: UUID().uuidString, title: "Continue?", buttons: [ControlAskButton(id: "yes", label: "Yes")])
+            session.openAsk(ask, registry: AskRegistry())
+        }),
+        ("paneOverlay", { $0.rightOverlay = PaneOverlay(command: "top") }),
+        ("remoteOverlay", { $0.remoteOverlays.reserve(RemoteOverlaySlot(job: "job", pane: nil, owner: 1, sizePercent: nil)) }),
+    ]
+
+    @Test(arguments: 0..<8) func eachLocalStateHoldsTheRowAwake(_ index: Int) {
+        let session = Session(initialCwd: "/srv", remoteHost: "box")
+        #expect(!session.holdsLocalState)
+        #expect(session.sleepEligible)
+        let (name, apply) = Self.localStates[index]
+        apply(session)
+        #expect(session.holdsLocalState, "\(name)")
+        #expect(!session.sleepEligible, "\(name)")
+    }
+
+    @Test func aHudIsNotLocalState() {
+        let session = Session(initialCwd: "/srv", remoteHost: "box")
+        session.overlayActive = true
+        session.hudSpec = HudSpec(message: "deploying")
+        #expect(!session.holdsLocalState)
+        #expect(session.sleepEligible)
+    }
+
+    @Test func pageLocalAndCatalogRowsAreNotEligibleForSleep() {
+        #expect(!Session(initialCwd: "/srv", remoteHost: "box", content: .page).sleepEligible)
+        #expect(!Session(initialCwd: "/repo").sleepEligible)
+        let store = makeStore()
+        let workspace = store.addWorkspace(name: "work")
+        let catalog = store.addSession(toWorkspace: workspace.id, cwd: "/srv", remoteHost: "box")!
+        store.bindRemote(RemoteBinding(remoteSessionID: "r", daemonsByLocalPane: [:], presentationVersion: 1), forSession: catalog.id)
+        #expect(catalog.sleepEligible)
+        store.bindRemote(RemoteBinding(remoteSessionID: "r", daemonsByLocalPane: [:], presentationVersion: 1, catalogOwned: true),
+                         forSession: catalog.id)
+        #expect(!catalog.sleepEligible)
+    }
+
+    @Test func aRowEndedOnItsHostIsNotEligibleForSleep() {
+        let store = makeStore()
+        let row = store.addSession(toWorkspace: store.addWorkspace(name: "work").id, cwd: "/srv", remoteHost: "box")!
+        store.bindRemote(RemoteBinding(remoteSessionID: "r", daemonsByLocalPane: [:], presentationVersion: 1), forSession: row.id)
+        store.setRemoteRowState(.disconnected, forSession: row.id)
+        #expect(row.sleepEligible)
+        store.setRemoteRowState(.endedOnHost, forSession: row.id)
+        #expect(!row.sleepEligible)
+    }
+
+    @Test func sleepFieldsAreNotPersistedAcrossSnapshot() {
+        let store = makeStore()
+        let session = store.addSession(toWorkspace: store.addWorkspace(name: "work").id, cwd: "/a")!
+        session.asleep = true
+        session.asleepSince = Date(timeIntervalSince1970: 10)
+        session.offScreenSince = Date(timeIntervalSince1970: 5)
+        let restored = makeStore()
+        restored.restore(from: store.snapshot())
+        let r = restored.workspaces[0].sessions[0]
+        #expect(!r.asleep)
+        #expect(r.asleepSince == nil)
+        #expect(r.offScreenSince == nil)
+    }
+
     @Test func searchFieldsAreNotPersistedAcrossSnapshot() {
         let store = AppStore(persistence: PersistenceStore(
             directory: FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")))
@@ -967,6 +1036,16 @@ struct SessionTests {
         session.splitSurface = FakeSurface()
         #expect(session.rendersPane(.left))
         #expect(session.rendersPane(.right) == false)
+    }
+
+    @Test func aHiddenLocalSplitWithNoSurfaceIsNotTheFocusedPane() {
+        let session = Session(initialCwd: "/repo")
+        session.hasSplit = true
+        session.splitPaneIdentity = UUID()
+        session.splitFocused = true
+
+        #expect(!session.rightPaneExists)
+        #expect(session.focusedPane == .left)
     }
 
     @Test func renderedPanesFollowsTheShapeTheDeckBranchesOn() {

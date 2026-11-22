@@ -28,6 +28,8 @@ public struct ControlDispatcher {
             return await dispatchSessionCommand(request)
         case .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove:
             return await dispatchSessionBookmark(request)
+        case .sessionSleep, .sessionWake:
+            return dispatchRemoteSleep(request)
         case .sessionRebasedShow, .sessionRebasedToggle:
             return dispatchSessionRebased(request)
         case .sessionTint, .workspaceTint:

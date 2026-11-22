@@ -745,6 +745,27 @@ extension ControlServer: ControlActions {
         }
     }
 
+    /// session.sleep / session.wake. A row already in the asked state answers ok; a sleep refuses a row on screen, since
+    /// the next tick would only wake it again.
+    func setSessionAsleep(_ target: String?, window: String?, asleep: Bool) -> ControlResponse {
+        resolver.resolveSession(target, window: window) { store, id in
+            guard let session = store.session(withID: id) else {
+                return ControlResponse(ok: false, error: "no such session: \(target ?? "active")")
+            }
+            let done = ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+            guard session.asleep != asleep else { return done }
+            let shown = library.windowID(for: store).map { onScreenRows(inWindow: $0, store: store).contains(id) } ?? false
+            if asleep {
+                if let refusal = session.sleepRefusal { return ControlResponse(ok: false, error: "session.sleep: \(refusal)") }
+                if shown { return ControlResponse(ok: false, error: "session.sleep: shown rows stay awake") }
+                return store.sleepRemoteRow(id, reason: .command, now: hudClock())
+                    ? done : ControlResponse(ok: false, error: "session.sleep: the row could not sleep")
+            }
+            return store.wakeRemoteRow(id, reason: .command, onScreen: shown, now: hudClock())
+                ? done : ControlResponse(ok: false, error: "session.wake: the row's panes could not be attached again")
+        }
+    }
+
     /// moveFlaggedSession moves the target within its window's saved flagged order, just before or after
     /// `anchor`, resolved in the same window. Both must be flagged; an unchanged order still answers ok.
     func moveFlaggedSession(_ target: String?, window: String?, anchor: String,
@@ -971,6 +992,7 @@ extension ControlServer: ControlActions {
                 }
             }
             controller.set(mode, target: resolved.target)
+            wakeZoomTarget(inWindow: resolved.windowID)
             return ControlResponse(ok: true, result: ControlResult(id: resolved.controlID))
         }
     }
@@ -1006,6 +1028,7 @@ extension ControlServer: ControlActions {
                 effectiveTarget = zoomTarget
             }
             controller.set(mode, target: effectiveTarget)
+            wakeZoomTarget(inWindow: windowID)
             return ControlResponse(ok: true, result: ControlResult(id: effectiveTarget.controlID))
         }
     }

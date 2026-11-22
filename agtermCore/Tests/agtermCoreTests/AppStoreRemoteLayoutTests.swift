@@ -25,8 +25,11 @@ struct AppStoreRemoteLayoutTests {
         return (store, session)
     }
 
-    private func attachedAlone(headless: Bool = false) throws -> (AppStore, Session) {
-        let store = makeStore()
+    private func attachedAlone(headless: Bool = false, wakes: Bool = false) throws -> (AppStore, Session) {
+        let store = wakes ? AppStore(persistence: PersistenceStore(directory: FileManager.default.temporaryDirectory
+                                         .appendingPathComponent("agterm-tests-\(UUID().uuidString)")),
+                                     paneFinalizer: nil, onRowWake: { { _ in } })
+            : makeStore()
         let workspace = store.addWorkspace(name: "work")
         let session = try #require(store.addSession(toWorkspace: workspace.id, cwd: "/tmp", remoteHost: "origin"))
         session.surface = SpySurface()
@@ -335,6 +338,40 @@ struct AppStoreRemoteLayoutTests {
         #expect(!session.isSplit)
     }
 
+    @Test func anAsleepPairTakesTheOriginsSwapAxisAndVisibilityOnItsModel() throws {
+        let (store, session) = try attached()
+        let primary = session.paneIdentity
+        let split = try #require(session.splitPaneIdentity)
+        #expect(store.sleepRemoteRow(session.id, reason: .timer))
+
+        _ = store.applyRemoteLayout(PresentationLayout(panes: [originB, originA], primary: originB, axis: "horizontal", shown: false),
+                                    forSession: session.id, attach: lines)
+
+        #expect(session.paneIdentity == split)
+        #expect(session.splitPaneIdentity == primary)
+        #expect(session.splitAxis == .topBottom)
+        #expect(!session.isSplit)
+        #expect(session.hasSplit)
+        #expect(session.asleep)
+    }
+
+    @Test func anAsleepRowMapsASplitTheOriginAddsAndLeavesItsLineToTheWake() throws {
+        let (store, session) = try attachedAlone()
+        #expect(store.sleepRemoteRow(session.id, reason: .timer))
+
+        _ = store.applyRemoteLayout(PresentationLayout(panes: [originA, originB], primary: originA, axis: "horizontal", shown: true),
+                                    forSession: session.id, attach: lines)
+
+        let split = try #require(session.splitPaneIdentity)
+        #expect(session.hasSplit)
+        #expect(session.isSplit)
+        #expect(session.splitCommandWait)
+        #expect(session.remotePresentation?.binding.localPane(forRemote: originB) == split)
+        #expect(lines.panes.isEmpty)
+        #expect(session.splitInitialCommand == nil)
+        #expect(ZmxLeadBook.shared.states[split] == nil)
+    }
+
     @Test func aSlotARemovalFreedTakesThePaneTheSavedLayoutAdded() throws {
         let (store, session) = try attachedAlone()
         let replacement = UUID()
@@ -495,6 +532,57 @@ struct AppStoreRemoteLayoutTests {
 
         #expect(session.scratchActive)
         #expect(lines.scratches == [daemon])
+    }
+
+    @Test func anAsleepRowKeepsTheScratchTheOriginShowsForItsWake() throws {
+        let (store, session) = try attachedAlone(wakes: true)
+        let scratch = UUID()
+        #expect(store.sleepRemoteRow(session.id, reason: .timer))
+
+        _ = store.applyRemoteLayout(scratchLayout(scratch, shown: true), forSession: session.id, attach: lines)
+        store.attachOriginScratch(forSession: session.id, attach: lines)
+
+        #expect(lines.scratches.isEmpty)
+        #expect(session.scratchCommand == nil)
+        #expect(!session.scratchActive)
+        #expect(session.originScratch == scratch)
+        #expect(session.scratchDaemon?.shown == true)
+        #expect(store.wakeRemoteRow(session.id, reason: .shown, onScreen: true))
+
+        store.attachOriginScratch(forSession: session.id, attach: lines)
+
+        #expect(session.scratchActive)
+        #expect(session.scratchCommand == "attach-scratch \(ZmxSupport.daemonName(for: scratch))")
+        #expect(lines.scratchLocals == [try #require(session.scratchClientIdentity)])
+    }
+
+    @Test func aScratchTheOriginHidesAgainWhileTheRowSleepsStaysDownAtTheWake() throws {
+        let (store, session) = try attachedAlone(wakes: true)
+        let scratch = UUID()
+        #expect(store.sleepRemoteRow(session.id, reason: .timer))
+        _ = store.applyRemoteLayout(scratchLayout(scratch, shown: true), forSession: session.id, attach: lines)
+        _ = store.applyRemoteLayout(scratchLayout(scratch, shown: false), forSession: session.id, attach: lines)
+        #expect(store.wakeRemoteRow(session.id, reason: .shown, onScreen: true))
+
+        store.attachOriginScratch(forSession: session.id, attach: lines)
+
+        #expect(!session.scratchActive)
+        #expect(session.scratchCommand == nil)
+        #expect(lines.scratches.isEmpty)
+        #expect(session.originScratch == scratch)
+    }
+
+    @Test func aWakeAttachesNoScratchOfAnOriginThatEndedTheSession() throws {
+        let (store, session) = try attachedAlone(wakes: true)
+        #expect(store.sleepRemoteRow(session.id, reason: .timer))
+        _ = store.applyRemoteLayout(scratchLayout(UUID(), shown: true), forSession: session.id, attach: lines)
+        _ = store.remoteSessionEnded(forSession: session.id)
+        #expect(store.wakeRemoteRow(session.id, reason: .shown, onScreen: true))
+
+        store.attachOriginScratch(forSession: session.id, attach: lines)
+
+        #expect(!session.scratchActive)
+        #expect(lines.scratches.isEmpty)
     }
 
     @Test func aReplacedOriginScratchClosesTheOldAttach() throws {

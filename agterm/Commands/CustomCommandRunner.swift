@@ -564,9 +564,9 @@ final class CustomCommandRunner {
     /// active one. Returns why the process did not start, nil once it has.
     @discardableResult
     func run(_ command: CustomCommand, session: Session, in store: AppStore) -> String? {
-        // the focus flag picks primary or split, gated on the split surface existing: right after
+        // the focus flag picks primary or split, gated on `rightPaneExists`: right after
         // `session split on` the flag is already true while `splitSurface` is still nil.
-        let onSplit = session.splitFocused && session.splitSurface != nil
+        let onSplit = session.splitFocused && session.rightPaneExists
         let selectionSurface = (onSplit ? session.splitSurface : session.surface) as? GhosttySurfaceView
         return spawn(command, for: session, in: store, selectionSurface: selectionSurface, pane: onSplit ? .right : .left)
     }

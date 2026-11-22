@@ -92,6 +92,12 @@ is the `.claude/rules` file that owns the design.
   Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's
   `agtermctl` is the server's own CLI, and agterm-agents' `agtermctl` shim is gone.
   Design in `docs/plans/20260929-headless-origin-spec.md`, rules in `.claude/rules/headless-origin.md`.
+- **Sleeping remote rows** — a remote row off screen for `remoteSleepAfterMinutes` (30, 0 = never) frees its
+  pane terminals and ssh and keeps its row and stream; showing it or a pty command wakes it, `session text` reads
+  the host, restored rows start asleep, `session sleep|wake` by hand.
+  `.claude/rules/control-api.md`, Sleeping remote rows.
+- **Pooled ssh per host** — a remote row's pane attaches, stream, overlay jobs and reconnect probe share agterm's
+  own masters, eight channels each (`SshHostPools`). `.claude/rules/control-api.md`, Remote sessions.
 
 **libghostty**
 

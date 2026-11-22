@@ -371,6 +371,28 @@ final class AppActionsFocusTests: XCTestCase {
         XCTAssertTrue(session.splitFocused)
     }
 
+    func testAttentionPickOnAnAsleepRowFocusesItsBlockedRightPane() throws {
+        let pair = try makePair()
+        let store = pair.backStore
+        let session = try XCTUnwrap(store.addSession(toWorkspace: store.workspaces[0].id, cwd: NSTemporaryDirectory(),
+                                                     select: false, remoteHost: "buildbox"))
+        let split = UUID()
+        session.hasSplit = true
+        session.isSplit = true
+        session.splitPaneIdentity = split
+        store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [
+            session.paneIdentity: ZmxSupport.daemonName(for: UUID()), split: ZmxSupport.daemonName(for: UUID()),
+        ], presentationVersion: 1), forSession: session.id)
+        store.setAgentIndicator(AgentIndicator(status: .blocked, statusPane: .right), forSession: session.id)
+        session.splitSurface = SleptPaneSurface()
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+
+        pair.actions.selectAttention(windowID: pair.back, sessionID: session.id)
+
+        XCTAssertEqual(store.activeSession?.id, session.id)
+        XCTAssertTrue(session.splitFocused)
+    }
+
     func testAttentionPickLeavesAnActiveSessionsPanesAlone() throws {
         let pair = try makePair()
         let session = try addSession(to: pair.backStore, AgentIndicator(status: .active, statusPane: .left))
@@ -415,4 +437,11 @@ final class AppActionsFocusTests: XCTestCase {
         XCTAssertEqual(pair.backStore.activeSession?.id, before)
         XCTAssertFalse(session.scratchActive)
     }
+}
+
+private final class SleptPaneSurface: TerminalSurface {
+    let paneToken = ""
+    let isRealized = true
+    func teardown() {}
+    func promoteToPrimaryPane() {}
 }

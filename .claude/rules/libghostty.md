@@ -111,8 +111,14 @@ paths:
   `Contents/Resources/terminfo`. Never set `TERMINFO`; libghostty derives and overwrites it at spawn.
 - Sessions own surfaces. The eager detail deck mounts every session once in a ZStack and toggles only
   opacity, hit testing, and active state. Rehosting through identity changes invalidates Metal drawables.
+  The one exception is an asleep remote row ([[control-api]], Sleeping remote rows): `deckHostsSurface`
+  hosts neither of its panes, while its scratch and overlay hosts stay, and the observed `asleep` remounts
+  them on wake. A sleep also bumps `primaryRespawns`, so a sleep and a wake with no SwiftUI update between
+  them still remount the primary host.
 - `dismantleNSView` is a no-op. Free only through `destroySurface`, or `retireSurface` for a pane swapped out
-  while the app may be hidden (scripts/ghostty-patches 0003). After reading overlay exit status,
+  or put to sleep while the app may be hidden (scripts/ghostty-patches 0003). `releaseForSleep` claims the exit
+  and nils `onExitHeld` / `onExit` before it retires, or a held exit queued earlier would forget the woken
+  pane's lead. After reading overlay exit status,
   nil every store-capturing callback to break the store/session/surface/closure cycle.
 - Create surfaces only with nonzero backing size; otherwise Metal stays blank. Defer through
   `pendingSurfaceCreation` until `setFrameSize`.

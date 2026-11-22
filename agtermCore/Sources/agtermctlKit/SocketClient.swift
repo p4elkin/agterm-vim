@@ -613,7 +613,8 @@ struct SocketClient {
                 let splitTag = session.split ? " (split)" : (session.hasSplit == true ? " (split hidden)" : "")
                 // a session whose main pane has no terminal looks identical to a working one here, which is
                 // the whole complaint in #416 — it is listed, named, and does nothing.
-                let realizedTag = session.realized == false ? " (not realized)" : ""
+                // an asleep row has no surface by design, which is not the #416 failure
+                let realizedTag = session.asleep == true ? " (asleep)" : session.realized == false ? " (not realized)" : ""
                 let overlayHidden = session.hiddenOverlays?.contains("session") == true
                 // a parked IDE leaves `overlay` false but still names `session` hidden
                 let overlayTag = overlayHidden ? " (overlay hidden)" : session.overlay ? " (overlay)" : ""

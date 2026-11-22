@@ -121,8 +121,8 @@ extension AppStore {
         guard let session = session(withID: sessionID) else { return .noSession }
         guard session.hasSplit else { return .noSplit }
         // a catalog row follows a swap its server already made, so a pane whose attach is still starting moves
-        // as a slot, and only the surfaces that exist take their new role
-        if allowingUnrealized {
+        // as a slot, and only the surfaces that exist take their new role; an asleep row has none to wait for
+        if allowingUnrealized || session.asleep {
             (session.surface as? any PaneRoleMutableSurface)?.setPaneRole(.split)
             (session.splitSurface as? any PaneRoleMutableSurface)?.setPaneRole(.primary)
         } else if !headless {

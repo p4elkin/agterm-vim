@@ -497,6 +497,47 @@ struct RemoteSessionTests {
         #expect(try fake.calls().first?.first == "attach")
     }
 
+    @Test func aScreenReadRunsTheOriginsZmxOnTheDaemonOverTheUsersConnection() throws {
+        let fake = try FakeRemote(directoryName: "fake remote \(UUID().uuidString)")
+        defer { fake.cleanUp() }
+        let zmx = try fake.installZmx()
+        let endpoint = ControlZmxEndpoint(executable: zmx, socketDirectory: "/tmp/zmx dir")
+
+        let argv = try RemoteSession.screenCommand(host: "buildbox", endpoint: endpoint, daemon: daemon, all: false)
+        let run = try fake.runRemote(argv, exporting: ["ZMX_SESSION": "someone-elses"])
+
+        #expect(run.status == 0)
+        #expect(try fake.calls() == [["screen", daemon]])
+        #expect(try fake.recordedZmxDir() == "/tmp/zmx dir")
+        #expect(try fake.recordedZmxSessionEnv().hasPrefix("session=[] prefix=[] "))
+        #expect(Array(argv.prefix(6)) == ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5"])
+        #expect(!argv.contains { $0.hasPrefix("ControlMaster") || $0.hasPrefix("ControlPath") }, "no pool lease: \(argv)")
+    }
+
+    @Test func aFullScreenReadAsksTheOriginForTheScrollback() throws {
+        let fake = try FakeRemote()
+        defer { fake.cleanUp() }
+        let zmx = try fake.installZmx()
+
+        _ = try fake.runRemote(RemoteSession.screenCommand(host: "buildbox", endpoint: ControlZmxEndpoint(executable: zmx, socketDirectory: "/tmp/z"),
+                                                           daemon: daemon, all: true))
+
+        #expect(try fake.calls() == [["screen", daemon, "--all"]])
+    }
+
+    @Test func aScreenReadRefusesAHostileHostADaemonItCannotNameAndAnEndpointWithAControlCharacter() {
+        #expect(throws: (any Error).self) {
+            try RemoteSession.screenCommand(host: "-oProxyCommand=x", endpoint: endpoint, daemon: daemon, all: false)
+        }
+        #expect(throws: (any Error).self) {
+            try RemoteSession.screenCommand(host: "buildbox", endpoint: endpoint, daemon: "x; rm -rf ~", all: false)
+        }
+        #expect(throws: (any Error).self) {
+            try RemoteSession.screenCommand(host: "buildbox", endpoint: ControlZmxEndpoint(executable: "/opt/zmx\n", socketDirectory: "/tmp/z"),
+                                            daemon: daemon, all: false)
+        }
+    }
+
     // MARK: - the pane command
 
     private static let modeReset = "\u{1B}[0m\u{1B}[?1000l\u{1B}[?1002l\u{1B}[?1003l\u{1B}[?1006l\u{1B}[?1004l\u{1B}[?2004l\u{1B}[?2031l\u{1B}[?2048l"

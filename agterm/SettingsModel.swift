@@ -374,6 +374,10 @@ final class SettingsModel {
     }
     /// Persist that the first-run welcome has been shown, so it never appears again on this state directory.
     func setWelcomeShown(_ value: Bool?) { settings.welcomeShown = value; try? settingsStore.save(settings) }
+    func setRemoteSleepAfterMinutes(_ minutes: Int) {
+        settings.remoteSleepAfterMinutes = minutes < 0 || minutes == 30 ? nil : minutes
+        try? settingsStore.save(settings)
+    }
     func setRebasedAppPath(_ path: String) {
         guard path != settings.effectiveRebasedAppPath else { return }
         settings.rebasedAppPath = path == "/Applications/Rebased.app" ? nil : path

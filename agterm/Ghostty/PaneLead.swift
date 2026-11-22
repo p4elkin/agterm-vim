@@ -25,8 +25,8 @@ enum PaneLead {
     /// scratchStopped parks a remote window's scratch whose attach lost its link or ended; false for any other view.
     /// Installed by the app.
     static var scratchStopped: ((_ view: GhosttySurfaceView) -> Bool)?
-    /// catalogChannel leases a pane of a remote window's row its ssh channel; nil for every other row. Installed by
-    /// the app.
+    /// catalogChannel leases a remote row's pane its ssh channel on the row's pool: its remote window's, else its host's;
+    /// nil for a mosh or local row. Installed by the app.
     static var catalogChannel: ((_ session: UUID, _ user: String) -> String?)?
     /// heldExit hands a remote pane's clean exit to the respawn join. Installed by the app.
     static var heldExit: ((_ view: GhosttySurfaceView) -> Void)?
@@ -165,10 +165,12 @@ struct PaneReattach {
     @MainActor
     static func originScratch(replacing old: GhosttySurfaceView, session: Session, identity: UUID,
                               lead: ZmxLeadAttachment) -> PaneReattach? {
+        // leased under the scratch's client identity, which the retain keeps, never the daemon's `identity`
+        let controlPath = session.scratchClientIdentity.flatMap { PaneLead.catalogChannel?(session.id, "pane:\($0)") }
         guard let binding = session.remotePresentation?.binding, let origin = binding.origin,
               let command = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint,
                                                                  daemon: binding.scratchDaemon(for: identity), session: "scratch",
-                                                                 pane: .left, lead: lead)
+                                                                 pane: .left, lead: lead, controlPath: controlPath)
         else { return nil }
         return PaneReattach(command: command, wait: true, environment: old.env, workingDirectory: old.workingDirectory)
     }

@@ -239,6 +239,7 @@ extension AppStore {
         recordRecencyNow()
         // LAST, after the recency stack is re-seeded: the pick is MRU, so earlier finds an empty stack.
         reselectIfSelectionHidden()
+        wakeRestoredAttachedRow(selectedSessionID)
         // a reload is not a pane selection either
         paneFocusBaseline = selectedPaneIdentities()
     }

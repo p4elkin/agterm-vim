@@ -109,7 +109,7 @@ private struct NewSessionHostField: View {
 }
 
 /// General tab: Mouse (scroll speed, right-click-pastes, link opening, workspace-row click) and Sessions
-/// (new-session directory, restore mode, the flagged view layout, here because the Interface tab is full,
+/// (new-session directory, restore mode, the remote-row sleep delay, the flagged view layout, here because the Interface tab is full,
 /// and the inherit-global-ghostty-config toggle, here because a section of its own made the tab scroll);
 /// visual and notification settings have their own tabs.
 private struct GeneralSettingsView: View {
@@ -189,6 +189,8 @@ private struct GeneralSettingsView: View {
                     Text("Workspace tree").tag(FlaggedViewLayout.tree)
                 }
                 .accessibilityIdentifier("settings-flagged-view-layout")
+                TextField("Sleep hidden remote rows after (min, 0 = never)", value: remoteSleepAfterMinutes, format: .number)
+                    .accessibilityIdentifier("settings-remote-sleep-after")
                 TextField("IDE app", text: Binding(get: { model.settings.effectiveRebasedAppPath },
                                                        set: { model.setRebasedAppPath($0) }))
                     .accessibilityIdentifier("settings-rebased-app-path")
@@ -200,6 +202,11 @@ private struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var remoteSleepAfterMinutes: Binding<Int> {
+        Binding(get: { model.settings.effectiveRemoteSleepAfterMinutes },
+                set: { model.setRemoteSleepAfterMinutes($0) })
     }
 
     private var restoreMode: Binding<RestoreMode> {

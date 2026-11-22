@@ -16,9 +16,11 @@ struct AppStoreAttachedRestoreTests {
         return snapshot
     }
 
-    private func relaunched(_ store: AppStore) -> AppStore {
+    private func relaunched(_ store: AppStore, selecting selected: UUID? = nil) -> AppStore {
+        var snapshot = snapshotWithBookRows(store)
+        if let selected { snapshot.selectedSessionID = selected }
         let restored = makeStore()
-        restored.restore(from: snapshotWithBookRows(store), launchRestore: true)
+        restored.restore(from: snapshot, launchRestore: true)
         return restored
     }
 
@@ -59,7 +61,7 @@ struct AppStoreAttachedRestoreTests {
         let row = try addAttachedRow(to: store, workspace: work.id, split: true)
         let last = try #require(store.addSession(toWorkspace: work.id, cwd: "/last"))
 
-        let restored = relaunched(store)
+        let restored = relaunched(store, selecting: row.id)
 
         #expect(restored.workspaces[0].sessions.map(\.id) == [first.id, row.id, last.id])
         let back = try #require(restored.session(withID: row.id))
@@ -68,6 +70,7 @@ struct AppStoreAttachedRestoreTests {
         #expect(back.remotePresentation?.binding == row.remotePresentation?.binding)
         #expect(back.awaitsOriginCheck)
         #expect(!back.ended)
+        #expect(!back.asleep)
         #expect(back.commandWait)
         #expect(back.initialCommand != nil)
         #expect(back.initialCommand != RemoteSession.endedCommand(host: "box"))
@@ -76,6 +79,117 @@ struct AppStoreAttachedRestoreTests {
         #expect(back.splitInitialCommand != nil)
         #expect(ZmxLeadBook.shared.states[back.paneIdentity]?.attachment.claim == false)
         #expect(ZmxLeadBook.shared.states[try #require(back.splitPaneIdentity)]?.attachment.claim == false)
+    }
+
+    @Test func aRelaunchedRowAttachesOnItsHostPoolWhenTheStoreHasOne() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let row = try addAttachedRow(to: store, workspace: work.id, split: true)
+        let split = try #require(row.splitPaneIdentity)
+        let pools = SshHostPools(root: "/tmp/agterm-ssh-test", owner: "/state-\(UUID().uuidString)", runner: AnsweringRunner())
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        let pooled = AppStore(persistence: PersistenceStore(directory: dir), paneFinalizer: nil, sshHostPools: pools)
+
+        var snapshot = snapshotWithBookRows(store)
+        snapshot.selectedSessionID = row.id
+        pooled.restore(from: snapshot, launchRestore: true)
+
+        let back = try #require(pooled.session(withID: row.id))
+        let pool = pools.pool(for: "box")
+        let left = try #require(back.initialCommand)
+        let right = try #require(back.splitInitialCommand)
+        #expect(left.contains("ControlPath=\(pool.lease("pane:\(row.paneIdentity)"))"), "\(left)")
+        #expect(right.contains("ControlPath=\(pool.lease("pane:\(split)"))"), "\(right)")
+        #expect(!left.contains("ControlPath=none"))
+        #expect(pool.load == [2])
+    }
+
+    @Test func aRelaunchedRowKeepsItsOwnConnectionWithoutAHostPool() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let row = try addAttachedRow(to: store, workspace: work.id)
+
+        let back = try #require(relaunched(store, selecting: row.id).session(withID: row.id))
+
+        let line = try #require(back.initialCommand)
+        #expect(line.contains("ControlPath=none"), "\(line)")
+    }
+
+    @Test func everyRestoredAttachedRowButTheFinalSelectionComesBackAsleep() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let asleep = try addAttachedRow(to: store, workspace: work.id, origin: "o1", split: true)
+        let selected = try addAttachedRow(to: store, workspace: work.id, origin: "o2")
+        let other = try addAttachedRow(to: store, workspace: work.id, origin: "o3")
+        let pools = SshHostPools(root: "/tmp/agterm-ssh-test", owner: "/state-\(UUID().uuidString)", runner: AnsweringRunner())
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-tests-\(UUID().uuidString)")
+        let pooled = AppStore(persistence: PersistenceStore(directory: dir), paneFinalizer: nil, sshHostPools: pools)
+
+        var snapshot = snapshotWithBookRows(store)
+        snapshot.selectedSessionID = selected.id
+        pooled.restore(from: snapshot, launchRestore: true)
+
+        for id in [asleep.id, other.id] {
+            let back = try #require(pooled.session(withID: id))
+            #expect(back.asleep)
+            #expect(back.asleepSince != nil)
+            #expect(back.initialCommand == nil)
+            #expect(back.splitInitialCommand == nil)
+            #expect(back.commandWait)
+            #expect(ZmxLeadBook.shared.states[back.paneIdentity] == nil)
+        }
+        let split = try #require(pooled.session(withID: asleep.id)?.splitPaneIdentity)
+        #expect(pooled.session(withID: asleep.id)?.splitCommandWait == true)
+        #expect(ZmxLeadBook.shared.states[split] == nil)
+        let woken = try #require(pooled.session(withID: selected.id))
+        #expect(!woken.asleep)
+        #expect(woken.asleepSince == nil)
+        #expect(woken.offScreenSince == nil)
+        #expect(woken.initialCommand?.contains("ControlPath=") == true)
+        #expect(ZmxLeadBook.shared.states[woken.paneIdentity]?.attachment.claim == false)
+        #expect(pools.pool(for: "box").load == [1], "only the woken row's pane leases")
+        let window = LaunchSpawnWindow(selectedSessionID: pooled.selectedSessionID, sessions: pooled.workspaces.flatMap(\.sessions))
+        let sleeping = [asleep.paneIdentity, split, other.paneIdentity]
+        #expect(LaunchSpawnPlan.make(windows: [window]).order.allSatisfy { !sleeping.contains($0) })
+        ZmxLeadBook.shared.forget(pane: woken.paneIdentity)
+    }
+
+    @Test func aSelectionMovedOffAHiddenRowWakesTheAttachedRowItLandsOn() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let local = try #require(store.addSession(toWorkspace: work.id, cwd: "/local"))
+        let row = try addAttachedRow(to: store, workspace: work.id)
+        row.flagged = true
+        var snapshot = snapshotWithBookRows(store)
+        snapshot.selectedSessionID = local.id
+        snapshot.sidebarMode = .flagged
+
+        let restored = makeStore()
+        restored.restore(from: snapshot, launchRestore: true)
+
+        #expect(restored.selectedSessionID == row.id)
+        let back = try #require(restored.session(withID: row.id))
+        #expect(!back.asleep)
+        #expect(back.initialCommand != nil)
+        #expect(back.initialCommand != RemoteSession.endedCommand(host: "box"))
+        ZmxLeadBook.shared.forget(pane: back.paneIdentity)
+    }
+
+    @Test func aRestoredSelectionWhoseDaemonIsGoneWakesOnTheEndedLine() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let row = try addAttachedRow(to: store, workspace: work.id)
+        var snapshot = snapshotWithBookRows(store)
+        snapshot.selectedSessionID = row.id
+        snapshot.workspaces[0].attached?[0].origin.panes.removeAll()
+
+        let restored = makeStore()
+        restored.restore(from: snapshot, launchRestore: true)
+
+        let back = try #require(restored.session(withID: row.id))
+        #expect(restored.selectedSessionID == row.id)
+        #expect(!back.asleep)
+        #expect(back.initialCommand == RemoteSession.endedCommand(host: "box"))
     }
 
     @Test func aSplitWhoseDaemonIsNotInTheBindingIsDropped() throws {
@@ -133,6 +247,7 @@ struct AppStoreAttachedRestoreTests {
         #expect(back.initialCommand == nil)
         #expect(back.awaitsOriginCheck)
         #expect(back.remotePresentation?.connection == .connecting)
+        #expect(!back.asleep)
     }
 
     @Test func anAttachedGroupWithAPageCompanionComesBackGrouped() throws {

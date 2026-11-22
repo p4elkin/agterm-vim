@@ -25,8 +25,9 @@ extension AppStore {
            let primaryOrigin = current.remotePane(forLocal: session.paneIdentity),
            let splitOrigin = current.remotePane(forLocal: split),
            Set(layout.panes) == Set([primaryOrigin, splitOrigin]) {
-            // a replica whose attach has not realized its surface yet moves as a slot, as a catalog row's does
-            let realized = session.surface?.isRealized == true && session.splitSurface?.isRealized == true
+            // a replica whose attach has not realized its surface yet moves as a slot, as a catalog row's does; an asleep
+            // row has no surfaces, so its model takes the whole layout
+            let realized = session.asleep || session.surface?.isRealized == true && session.splitSurface?.isRealized == true
             if layout.primary == splitOrigin {
                 guard swapPanes(id, allowingUnrealized: !realized) == nil else { return [] }
             }
@@ -49,6 +50,14 @@ extension AppStore {
         addOriginSplit(session, layout: layout, binding: state.binding, origin: origin, attach: attach)
     }
 
+    /// attachOriginScratch attaches the scratch the saved layout shows, which the origin showed while the row slept.
+    public func attachOriginScratch(forSession id: UUID, attach: RemoteAttachLines) {
+        guard let session = session(withID: id), !session.asleep, !session.ended, let state = session.remotePresentation,
+              !state.binding.catalogOwned, !state.originEnded, state.rowState != .endedOnHost, let origin = state.binding.origin,
+              let layout = state.layout else { return }
+        applyOriginScratch(session, layout: layout, binding: state.binding, origin: origin, attach: attach)
+    }
+
     /// addOriginSplit attaches a pane the origin added after the attach into the row's empty split slot. A pane the
     /// binding already maps is never added again, so a replica closed here stays closed. A split the origin keeps
     /// hidden attaches once it is shown, so this Mac never holds a link for an unseen pane; a lone pane replacing
@@ -62,7 +71,8 @@ extension AppStore {
         session.hasSplit = true
         session.splitPaneIdentity = local
         session.splitAxis = layout.axis.flatMap(SplitAxis.init(rawValue:)) ?? .leftRight
-        session.splitInitialCommand = attach.paneAttach(origin, daemon: daemon, local: local)
+        // an asleep row's wake builds the line; building it here would begin a lead for a pane with no surface
+        session.splitInitialCommand = session.asleep ? nil : attach.paneAttach(origin, daemon: daemon, local: local)
         session.splitCommandWait = true
         session.isSplit = layout.shown
         if layout.shown { emitPaneVisibility(.paneSplit, session: session, shown: true) }
@@ -71,7 +81,8 @@ extension AppStore {
     }
 
     /// applyOriginScratch keeps a row's scratch on its origin's once the origin publishes one: a shown one attaches
-    /// its daemon, a hidden one keeps its surface, and a replaced or gone one, or a scratch of this Mac's, closes.
+    /// its daemon unless the row sleeps, a hidden one keeps its surface, and a replaced or gone one, or a scratch of
+    /// this Mac's, closes.
     private func applyOriginScratch(_ session: Session, layout: PresentationLayout, binding: RemoteBinding,
                                     origin: RemoteBinding.Origin, attach: RemoteAttachLines) {
         guard let shown = layout.scratchShown else { return }
@@ -84,6 +95,8 @@ extension AppStore {
         session.scratchDaemon?.shown = shown
         let client = session.originScratchClient ?? UUID()
         session.originScratchClient = client
+        // an asleep row records the origin's scratch only; its wake attaches it through `attachOriginScratch`
+        if session.asleep, shown { return }
         if shown, session.scratchSurface == nil, session.scratchCommand == nil {
             session.scratchCommand = attach.scratchAttach(origin, daemon: binding.scratchDaemon(for: identity), local: client)
         }

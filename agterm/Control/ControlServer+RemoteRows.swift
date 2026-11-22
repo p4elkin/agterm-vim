@@ -12,7 +12,7 @@ extension ControlServer {
         }
     }
 
-    /// Recreates a window's saved rows unselected, at their saved places, without claiming the lead: the
+    /// Recreates a window's saved rows unselected and asleep, at their saved places, without claiming the lead: the
     /// Mac that last led is not necessarily this one. A row already in the store is not created again.
     func restoreRemoteRows(_ records: [RemoteRowBook.Record], windowID: UUID, store: AppStore) {
         // a soft-closed companion is saved at its old index, which can sort it ahead of its parent: it waits for a
@@ -50,7 +50,7 @@ extension ControlServer {
                             splitAxis: record.splitAxis, name: name.value, namePending: name.pending)
         let placement = RemotePlacement(store: store, workspace: entry.workspaceID, parent: parent,
                                         position: position.map { min(max($0, 0), count) }, select: false)
-        _ = insertRemoteRow(row, at: placement, claim: false)
+        _ = insertRemoteRow(row, at: placement, claim: false, asleep: true)
     }
 
     /// The one top-level row in the record's own workspace showing its saved parent; with none or several the row

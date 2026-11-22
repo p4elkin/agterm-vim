@@ -1,6 +1,6 @@
 import XCTest
 @testable import agterm
-import agtermCore
+@testable import agtermCore
 
 @MainActor
 final class RemoteRowRestoreTests: XCTestCase {
@@ -20,7 +20,14 @@ final class RemoteRowRestoreTests: XCTestCase {
         }
     }
 
+    private final class Runner: RemoteCommandRunner, @unchecked Sendable {
+        func run(_ argv: [String], deadline: TimeInterval) async -> RemoteCommandResult {
+            RemoteCommandResult(status: 0, stdout: "", stderr: "")
+        }
+    }
+
     private var directory: URL!
+    private var pools: SshHostPools!
     private var library: WindowLibrary!
     private var server: ControlServer!
     private var transport: Transport!
@@ -29,7 +36,8 @@ final class RemoteRowRestoreTests: XCTestCase {
 
     override func setUp() async throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-rowrestore-\(UUID().uuidString)")
-        library = WindowLibrary(directory: directory)
+        pools = SshHostPools(root: "/tmp/agterm-ssh-test", owner: directory.path, runner: Runner())
+        library = WindowLibrary(directory: directory, paneFinalizer: nil, sshHostPools: pools)
         server = ControlServer(library: library, actions: AppActions(library: library),
                                settingsModel: SettingsModel(library: library, settingsStore: SettingsStore(directory: directory)),
                                identity: AppIdentity(version: "9.9.9"),
@@ -42,17 +50,20 @@ final class RemoteRowRestoreTests: XCTestCase {
         server.stop()
         server = nil
         library = nil
+        pools = nil
         try? FileManager.default.removeItem(at: directory)
     }
 
     private func record(window: UUID, workspace: UUID, position: Int, remoteID: String = "R1", parent: String? = nil,
-                        transport: RemoteTransport = .ssh) throws -> RemoteRowBook.Record {
+                        transport: RemoteTransport = .ssh, left: String? = nil,
+                        right: String? = nil) throws -> RemoteRowBook.Record {
+        let panes = ["\"left\",\"\(left ?? daemon)\""] + (right.map { ["\"right\",\"\($0)\""] } ?? [])
         let json = """
         {"windowID":"\(window.uuidString)","workspaceID":"\(workspace.uuidString)","position":\(position),
          "host":"p4linux","endpoint":{"executable":"\(endpoint.executable)","socketDirectory":"\(endpoint.socketDirectory)"},
          "sessionName":"build","remoteSessionID":"\(remoteID)","presentationVersion":1,\(parent.map { #""parentRemoteSessionID":"\#($0)","# } ?? "")
          "transport":\(String(decoding: try JSONEncoder().encode(transport), as: UTF8.self)),
-         "daemonsByPane":["left","\(daemon)"],"splitAxis":"vertical"}
+         "daemonsByPane":[\(panes.joined(separator: ","))],"splitAxis":"vertical"}
         """
         return try JSONDecoder().decode(RemoteRowBook.Record.self, from: Data(json.utf8))
     }
@@ -61,7 +72,80 @@ final class RemoteRowRestoreTests: XCTestCase {
         store.workspaces.flatMap(\.sessions).filter { $0.remoteHost != nil }
     }
 
-    func testASavedRowComesBackInPlaceUnselectedBoundAndStreaming() throws {
+    private func wake(_ row: Session, in store: AppStore) {
+        library.onRowWake = { [weak server] in server?.renewAttachLines(for: $0) }
+        XCTAssertTrue(store.wakeRemoteRow(row.id, reason: .shown, onScreen: true))
+    }
+
+    private func assertAsleepWithNothingSpawned(_ rows: [Session], file: StaticString = #filePath, line: UInt = #line) {
+        for row in rows {
+            XCTAssertTrue(row.asleep, file: file, line: line)
+            XCTAssertNil(row.initialCommand, file: file, line: line)
+            XCTAssertNil(row.splitInitialCommand, file: file, line: line)
+            XCTAssertNil(row.surface, file: file, line: line)
+            XCTAssertNil(row.splitSurface, file: file, line: line)
+            for pane in [row.paneIdentity] + (row.splitPaneIdentity.map { [$0] } ?? []) {
+                XCTAssertNil(ZmxLeadBook.shared.states[pane], "no lead begins for a sleeping pane", file: file, line: line)
+            }
+        }
+    }
+
+    private func launches(_ count: Int) async throws {
+        for _ in 0..<250 where transport.launches.count < count { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertEqual(transport.launches.count, count)
+    }
+
+    func testAForkPathRestoreOfThreeRowsInsertsThemAllAsleepWithOnlyTheirStreams() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+        let records = [try record(window: window, workspace: workspace, position: 0, remoteID: "R1"),
+                       try record(window: window, workspace: workspace, position: 1, remoteID: "R2",
+                                  right: ZmxSupport.daemonName(for: UUID())),
+                       try record(window: window, workspace: workspace, position: 2, remoteID: "R3")]
+
+        server.restoreRemoteRows(records, windowID: window, store: store)
+
+        let rows = remoteRows(store)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertNotNil(rows.first { $0.remoteSessionID == "R2" }?.splitPaneIdentity)
+        assertAsleepWithNothingSpawned(rows)
+        try await launches(3)
+        let pool = pools.pool(for: "p4linux")
+        XCTAssertEqual(pool.load, [3])
+        rows.forEach { _ = pool.lease("present:\($0.id)") }
+        XCTAssertEqual(pool.load, [3], "the three users are the streams")
+    }
+
+    func testAnUnaddressableForkPathRecordIsRefusedNotInsertedAsleep() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        let workspace = try XCTUnwrap(store.currentWorkspaceID)
+
+        server.restoreRemoteRows([try record(window: window, workspace: workspace, position: 0, left: "not-a-daemon")],
+                                 windowID: window, store: store)
+
+        XCTAssertTrue(remoteRows(store).isEmpty)
+        XCTAssertTrue(transport.launches.isEmpty)
+    }
+
+    func testWakingARestoredRowWhoseDaemonIsGoneGivesTheEndedLine() throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let window = try XCTUnwrap(library.activeWindowID)
+        server.restoreRemoteRows([try record(window: window, workspace: try XCTUnwrap(store.currentWorkspaceID), position: 0)],
+                                 windowID: window, store: store)
+        let row = try XCTUnwrap(remoteRows(store).first)
+        let binding = try XCTUnwrap(row.remotePresentation?.binding)
+        row.remotePresentation?.binding = RemoteBinding(remoteSessionID: binding.remoteSessionID, daemonsByLocalPane: [:],
+                                                        presentationVersion: binding.presentationVersion, origin: binding.origin)
+
+        wake(row, in: store)
+
+        XCTAssertFalse(row.asleep)
+        XCTAssertEqual(row.initialCommand, RemoteSession.endedCommand(host: "p4linux"))
+    }
+
+    func testASavedRowComesBackInPlaceUnselectedBoundAndStreaming() async throws {
         let store = try XCTUnwrap(library.activeStore)
         let window = try XCTUnwrap(library.activeWindowID)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
@@ -77,11 +161,13 @@ final class RemoteRowRestoreTests: XCTestCase {
         XCTAssertEqual(store.selectedSessionID, first.id)
         XCTAssertEqual(row.remotePresentation?.binding.remoteSessionID, "R1")
         XCTAssertEqual(row.remotePresentation?.binding.origin?.endpoint, endpoint)
+        assertAsleepWithNothingSpawned([row])
+        wake(row, in: store)
         let command = try XCTUnwrap(row.initialCommand)
         XCTAssertTrue(command.contains(endpoint.socketDirectory))
         XCTAssertTrue(command.contains(daemon))
         XCTAssertFalse(command.contains(ZmxLeadAttachment.claimVariable), "a restored row claims no lead")
-        XCTAssertEqual(transport.launches.count, 1)
+        try await launches(1)
         ZmxLeadBook.shared.forget(pane: row.paneIdentity)
     }
 
@@ -229,6 +315,8 @@ final class RemoteRowRestoreTests: XCTestCase {
                                  windowID: window, store: store)
 
         let row = try XCTUnwrap(remoteRows(store).first)
+        assertAsleepWithNothingSpawned([row])
+        wake(row, in: store)
         XCTAssertTrue(try XCTUnwrap(row.initialCommand).contains("--server=/usr/bin/mosh-server"))
         XCTAssertEqual(row.remotePresentation?.binding.origin?.transport, mosh)
         ZmxLeadBook.shared.forget(pane: row.paneIdentity)
@@ -269,6 +357,7 @@ final class RemoteRowRestoreTests: XCTestCase {
         let reopened = try XCTUnwrap(library.loadStore(for: window))
 
         XCTAssertEqual(remoteRows(reopened).count, 1)
+        assertAsleepWithNothingSpawned(remoteRows(reopened))
         remoteRows(reopened).forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
     }
 }

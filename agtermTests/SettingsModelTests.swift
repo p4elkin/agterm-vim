@@ -72,6 +72,19 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertNil(SettingsStore(directory: stateDir).load().linkOpenMode)
     }
 
+    func testSetRemoteSleepAfterMinutesPersistsAndTheDefaultRemovesTheKey() {
+        model.setRemoteSleepAfterMinutes(45)
+        XCTAssertEqual(SettingsStore(directory: stateDir).load().remoteSleepAfterMinutes, 45)
+        model.setRemoteSleepAfterMinutes(0)
+        XCTAssertEqual(SettingsStore(directory: stateDir).load().remoteSleepAfterMinutes, 0)
+        model.setRemoteSleepAfterMinutes(30)
+        XCTAssertNil(SettingsStore(directory: stateDir).load().remoteSleepAfterMinutes)
+        model.setRemoteSleepAfterMinutes(45)
+        model.setRemoteSleepAfterMinutes(-5)
+        XCTAssertNil(SettingsStore(directory: stateDir).load().remoteSleepAfterMinutes)
+        XCTAssertEqual(model.settings.effectiveRemoteSleepAfterMinutes, 30)
+    }
+
     func testSetFlaggedViewLayoutPersistsMirrorsAndBroadcasts() {
         let posted = expectation(forNotification: .agtermAppearanceChanged, object: nil)
 

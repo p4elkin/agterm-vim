@@ -207,12 +207,13 @@ renumbering. Do not reintroduce a count anywhere.
 - `session.mark`, `session.bookmark.add`, `.list`, `.go`, `.remove` (fork only, see
   "Conversation bookmarks" below)
 - `rebased.mirror.list`, `.prune` (fork only, see "Rebased mirrors" below and [[rebased-overlay]])
+- `session.sleep`, `session.wake` (fork only, see "Sleeping remote rows" below)
 
 `session.pairing`, `overlay-redirect.toggle`, `session.mark` and the `session.bookmark` family exist
 only on this fork and are listed here alone — see "Left out on purpose" in [[overlay-redirect]] for why
 the bundled skill, `site/commands.html` and `README.md` leave them out.
-The `rebased.mirror` family is the exception: it is in the bundled skill, as `--rebased` already is, and
-stays out of `site/commands.html` and `README.md`.
+The `rebased.mirror` family and `session.sleep` / `.wake` are the exception: they are in the bundled skill,
+as `--rebased` already is, and stay out of `site/commands.html` and `README.md`.
 The synchronization contract below applies to upstream commands.
 
 `terminfo install` is a CLI-only command with no protocol counterpart, one of the three exemptions from the
@@ -2179,16 +2180,37 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   or `Match sessiontype` block answers it the way it answers the attach, and a `Match exec` command runs
   twice per attach. An explicit `ServerAliveInterval 0` reads the same as unset and gets the default; a
   large value is the opt-out.
-  The pane attach, the presentation stream, the reconnect probe and an overlay job all pass
-  `ControlMaster=no`/`ControlPath=none` (`RemoteSession.ownConnection`), so each opens its own connection
-  even when the user's config multiplexes the host. A channel on a shared master never sees ssh exit 255:
-  the keepalive options above do nothing there, that master's own settings decide, and a master with no
-  keepalive stays open on a dead link while every pane on it freezes with no reconnect (measured
-  2026-11-16: 76 panes, 42 minutes). sshd also caps the channels of one connection (`MaxSessions`, 10 by
-  default), and the streams of 59 rows alone filled a master raised to 64. The price is one TCP
-  connection per pane and per row, opened together after an outage: an origin with many rows needs
-  `MaxStartups` above sshd's `10:30:100`, or it drops part of that burst and those panes wait out a
-  backoff. Short calls (`tree`, `new`, relayed control commands) keep the shared connection.
+  The pane attach, the presentation stream, the reconnect probe and an overlay job never ride the user's
+  own `ControlMaster`. A channel on a shared master never sees ssh exit 255: the keepalive options above
+  do nothing there, that master's own settings decide, and a master with no keepalive stays open on a dead
+  link while every pane on it freezes with no reconnect (measured 2026-11-16: 76 panes, 42 minutes).
+  sshd also caps the channels of one connection (`MaxSessions`, 10 by default), and the streams of 59 rows
+  alone filled a master raised to 64.
+  So an ssh row's links lease agterm's own masters (next bullet), and a link with no pool passes
+  `ControlMaster=no`/`ControlPath=none` (`RemoteSession.ownConnection`): every builder in a build with no
+  registry (hosted tests, Linux), and the links the pools never lease.
+  Short calls (`tree`, `new`, relayed control commands, `RemoteSession.screenCommand`) keep the user's connection.
+- `SshHostPools` holds one `SshConnectionPool` per host for every row that is not a remote window's.
+  `agtermApp.init` builds it before `restoredRuntime`, because restored rows build their lines inside `loadStore`;
+  `WindowLibrary` holds it and hands it to each store. `ControlServer.sshPool(forSession:)` answers a remote
+  window's row with its window's pool (`catalogPool(forSession:)`), any other ssh row with its host's, else nil.
+  - A master carries at most 8 channels (`channelsPerConnection`), under stock `MaxSessions 10`, and starts once
+    with the pane attach's keepalive. A pooled line waits up to 15 s for it (`connectionWait`) and exits 255
+    without one, and its clients exit 255 at once when it dies, so the normal reconnect runs.
+  - Leased: both pane attaches (`pane:<identity>`), the origin scratch's (`pane:<scratchClientIdentity>`), the
+    presentation stream (`present:<row>`), an overlay job (`job:<job>`) and the reconnect probe (`leaseOnce`).
+    Every builder of a pane line leases; a new one owes the same.
+  - Never leased: a `--transport mosh` row (`lease` answers nil), page serving, link forwards, and short calls.
+  - `retainHostPoolLeases` runs on the 1 s remote tick and once more when the tick stops. It keeps the `pane:`
+    users of every row open or pending close that has not ended and is not asleep, a scratch user while
+    `originScratch` is set, and one `present:` user per stream, and releases the rest. The set comes from rows,
+    not mounted surfaces, so a line built and not yet mounted keeps its lease.
+  - A pool is never closed: an idle master ends on `ControlPersist=60`. A lease never moves to another master,
+    so sleep and wake cycles can spread a host's users over more masters.
+  - A `job:` user is released by `onReplicaOverlayClosed`. Closing the row closes its replicas first
+    (`releaseLeavingSession` → `closeReplicaOverlay`), which fires it.
+  - After an outage each master costs one handshake rather than each channel, so sshd's `MaxStartups`
+    (`10:30:100`) drops far less of the burst; a link on its own connection still costs one each.
 - `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
   command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
   VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments
@@ -2347,8 +2369,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   companion, never a command, so every restore mode
   brings it back and none replays an ssh line. `RemoteRowBookWriter` rewrites it after each tree change,
   debounced, and once from `applicationWillTerminate` before `isTerminating` stops every later write. At
-  launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected, at their places,
-  without a lead claim; a reopened window restores its own through `WindowLibrary.onStoreLoaded`.
+  launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected and asleep (see Sleeping
+  remote rows), at their places, without a lead claim; a reopened window restores its own through
+  `WindowLibrary.onStoreLoaded`.
   A companion record goes under the one top-level row restored in its workspace with the same host, endpoint
   and origin id, else top-level; a bad saved parent id reads as none, so the row is never dropped for it.
 - `zmx attach --parent ROW` (fork only) is the one way to put a row from a headless origin, which reports no
@@ -2374,8 +2397,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
 - A row attached from another host (`Session.attachedOrigin`; nil for a server window's row and one not yet
   bound) is saved apart in `WorkspaceSnapshot.attached`: its place, view state and binding, never a command,
   cwd or page source, so a build predating the key ignores it rather than starting a shell in it. `bindRemote`
-  saves, since `addSession` saved before the binding existed. A relaunch runs the saved attach lines WITHOUT the
-  lead claim (`attachedSession(from:)`), and `ControlServer.checkRestoredOrigin` asks each host once. A terminal
+  saves, since `addSession` saved before the binding existed. A relaunch restores each terminal row asleep and
+  builds the saved attach lines WITHOUT the lead claim only when it wakes (`attachedSession(from:asleep:)`,
+  `wakeRestoredAttachedRow` for the final selection), and `ControlServer.checkRestoredOrigin` asks each host
+  once. A terminal
   session the tree lists is alive; one it leaves out closes the row (`closeEndedAttachedRow`, the row alone through
   `closeExactly`, its companions moving up and each checked on its own) only when
   the host's complete `zmx list` has no claim for it, since a session in a window closed there is left out but
@@ -2962,6 +2987,82 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   prune waits behind any job on the mirror queue, a fetch included ([[rebased-overlay]]).
 - Read-back is `rebased.mirror.list`, a deliberate exemption from the tree rule: a `tree` read must not walk
   the disk. No event.
+
+## Sleeping remote rows (fork only)
+
+- A sleep (`AppStore.sleepRemoteRow`) releases both pane surfaces through `releaseForSleep` ([[libghostty]]),
+  which ends their `login`, `sh` and `ssh -tt`. The row, its presentation stream, `remoteState` and a hidden
+  scratch stay, so status, name, `notify` and HUD keep arriving.
+  It forgets the panes in `ZmxLeadBook`, cancels their `RemoteReconnectBook` entries and held exits, and turns
+  `disconnected` back to `attached`: nothing retries an asleep row, and its wake attaches afresh.
+- `Session.sleepRefusal` is nil, so `sleepEligible`, only for a remote terminal row that is not a remote window's,
+  not `endedOnHost`, and not `holdsLocalState`: a shown scratch, a program, HTML or IDE overlay, an ask, a pane
+  overlay or a remote overlay slot. A HUD does not count.
+- On screen (`ControlServer.onScreenRows`) is a window's selection while the window is visible, not minimized
+  and in an app that is not hidden, plus its zoom target and dashboard members whatever the window state,
+  because those mounts bypass the deck gate.
+  `tickRemoteSleep` runs on the 1 s remote tick: it sets each row's `offScreenSince`, wakes an asleep row it
+  finds on screen, and runs `RemoteSleepPolicy` with `effectiveRemoteSleepAfterMinutes` at most once per 60 s.
+- A wake (`AppStore.wakeRemoteRow`) runs the app's renewal through `WindowLibrary.onRowWake`
+  (`agtermApp.wakeRenewal`); with none installed the row stays asleep, since a nil line spawns a local shell.
+  - `renewAttachLines` gives each pane a fresh `ZmxLeadAttachment(claim: false)` line on its pool lease, or
+    `RemoteSession.endedCommand` when it cannot build one or the row ended, never nil.
+  - Then the scratch the origin showed while the row slept, then the unshown pane of a hidden split, built off
+    the deck, because `leadsHere`, `addressableSurface`, `tree` and a `--pane` command read it too.
+  - `AppStore.wakeShown` is the one wake for a selection, a zoom target and dashboard members, called before
+    each mount. A window opening or deminiaturizing and the app unhiding re-check every window
+    (`windowBecameVisible`), and so does a registered window's `isVisible` turning true, observed because a window
+    registers before it is visible.
+- Restore brings remote terminal rows back asleep on both paths, with no line, lead or pane lease and no
+  event: `insertRemoteRow(asleep: true)`, which still builds both lines first as validation, and
+  `placingAttached`. The upstream path wakes its final selection at the end of `restore(from:)`
+  (`wakeRestoredAttachedRow`) with no app renewal. A transfer moves an asleep row asleep: its attach selects
+  without waking (`attachingTransfer`), and `ControlServer.transfer` wakes it once the source released its surfaces,
+  only when the destination shows it.
+- `session.sleep` / `session.wake [--target] [--window]` → `ControlActions.setSessionAsleep`.
+  - A row already in the asked state answers ok with no event, so `wake` on an awake or local row is ok.
+  - A sleep refuses with `session.sleep: <sleepRefusal>`: `not a remote row`, `a page row does not sleep`,
+    `a remote window's row does not sleep`, `its origin session has ended`,
+    `it shows a local scratch, overlay or ask`. Then `session.sleep: shown rows stay awake` for a row on
+    screen, which the next tick would wake. The default target is `active`, normally on screen, so a bare
+    `session sleep` is refused.
+  - A wake of a row off screen sets `offScreenSince` to now, so the next policy run does not sleep it at once.
+    A failed renewal answers `session.wake: the row's panes could not be attached again`.
+  - Control-native, with no menu item, chord or palette entry, the exemption `session.park` takes: showing
+    the row is the GUI's wake, and a manual sleep would last only until the row is shown.
+  - agterm-headless refuses both (`HeadlessCatalog`, local in `ForwardPolicy.kind(of:)`), and agterm-server
+    refuses them by design, as a fork feature it does not carry (`ServerCommandPolicyTests`).
+- Read back true-only `asleep` and `asleepSince` (epoch seconds) on `ControlSessionNode`. `tree` never wakes a
+  row, and the human tree prints `(asleep)` in place of `(not realized)`.
+  `session.slept` / `session.woke` carry `name` and `reason`, a `RemoteSleepReason`: `timer` or `command` for a
+  sleep, `shown`, `command` or `pty` for a wake. `EventFormatter.human` prints `reason=`.
+  `launch` is defined and no event carries it. Each edge also schedules a `tree.changed`.
+- A command that drives an asleep row's live pane wakes it first, in one pre-step of `ControlServer.dispatch`
+  before `ControlDispatcher`: `asleepRowResponse` (`ControlServer+AsleepRows.swift`).
+  - `PtyWake.commands`: `session.type`, `.paste`, `.selectall`, `.copy`, `.search`, `.lead`, `font.inc`,
+    `.dec`, `.reset`, and `surface.cursor`, which wakes although it reads.
+    `session.restart` forwards to the origin and `session.overlay.open` builds its own surface, so neither wakes.
+  - `PtyWake.pane(of:on:surface:)` picks the pane. Nil leaves the arm to answer in its own words: an awake row,
+    `--pane scratch` (a sleep keeps the scratch), a missing split, or arguments the arm refuses. A hidden split
+    no sleep released has no right surface awake either, so a wake command for it answers
+    `session has no split pane` with no wake.
+  - The wake has `reason: pty`, then polls every 50 ms until `ZmxLeadBook.role(pane:)` is set, any role: after a
+    follower report the arm answers `pane is in use on the Mac it runs on…`. `ptyWakeTimeout` is 20 s, above a
+    pooled line's 15 s wait for its master. The wake stands after a failure. Each error ends
+    `; the command did not run`:
+    - `<cmd>: the row was asleep and its <left|right> pane did not attach within 20 s`;
+    - `<cmd>: the row was asleep and its <pane> pane has nothing to attach`, at once when no attach began;
+    - `<cmd>: the row was asleep and could not be woken`, with no renewal.
+  - After the wait the command runs on the row it woke, its session id or `surface.cursor`'s surface id, since the
+    selection can move meanwhile. `session.search` takes no pane, so it still follows that row's focused pane.
+  - `session.text` reads the pane's daemon on the origin and leaves the row asleep. `RemoteSession.screenCommand`
+    runs the origin's own zmx (`screen <daemon> [--all]`, since agterm-headless refuses `zmx.screen`) through
+    `remoteRunner`, with a 10 s deadline and no pool lease; `--lines` keeps the last lines.
+    A failed read answers `session.text: the row is asleep and its screen on <host> could not be read: <stderr>`.
+  - `ControlServer.waitsOnNetwork` holds `session.text` and every `PtyWake.commands` entry: only the command is
+    known there, not whether its row sleeps.
+  - A command right after `session.wake` or a selection is not held for the attach: the row is awake, so the
+    pre-step passes it on.
 
 ## Documentation mirrors
 

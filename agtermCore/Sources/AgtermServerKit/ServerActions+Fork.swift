@@ -6,6 +6,7 @@ extension ServerActions {
     public func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         forkOnly("setSessionParked")
     }
+    public func setSessionAsleep(_ target: String?, window: String?, asleep: Bool) -> ControlResponse { forkOnly("setSessionAsleep") }
     public func markSessionTurn(_ target: String?, window: String?, paneID: String?) -> ControlResponse { forkOnly("markSessionTurn") }
     public func addSessionBookmark(_ target: String?, window: String?, turn: Int?, prompt: String) -> ControlResponse {
         forkOnly("addSessionBookmark")

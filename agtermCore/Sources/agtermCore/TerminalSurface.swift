@@ -43,6 +43,9 @@ public protocol TerminalSurface: AnyObject {
     /// through `any TerminalSurface`.
     func prepareForTransfer()
 
+    /// Frees this surface for a sleep, which may run while the app is hidden, leaving the zmx daemon running.
+    func releaseForSleep()
+
     /// Whether this surface's program exited and the surface stays to show it; a replacement surface starts false.
     var childExitHeld: Bool { get }
 }
@@ -51,6 +54,7 @@ public extension TerminalSurface {
     var backedByZmx: Bool { false }
 
     func prepareForTransfer() { teardown() }
+    func releaseForSleep() { prepareForTransfer() }
     var childExitHeld: Bool { false }
 }
 

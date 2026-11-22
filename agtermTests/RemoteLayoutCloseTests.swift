@@ -172,6 +172,30 @@ final class RemoteLayoutCloseTests: XCTestCase {
         XCTAssertEqual(session.splitPaneIdentity, split, "a repeated frame grows nothing")
     }
 
+    func testAnAsleepRowWhoseOriginReplacedItsOnlyPaneTakesTheNewPaneAtOnce() throws {
+        let session = try attachableReplica()
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+        let added = UUID()
+
+        agtermApp.applyRemoteLayout(PresentationLayout(panes: [added], primary: added, shown: false),
+                                   store: store, sessionID: session.id, library: library, attach: lines)
+
+        XCTAssertTrue(store.session(withID: session.id) === session)
+        XCTAssertFalse(session.hasSplit)
+        XCTAssertEqual(session.remotePresentation?.binding.localPane(forRemote: added), session.paneIdentity)
+        XCTAssertNil(ZmxLeadBook.shared.states[session.paneIdentity])
+        XCTAssertTrue(session.asleep)
+    }
+
+    func testAnAsleepRowWhoseOnlyPaneTheOriginRemovedCloses() throws {
+        let (session, _) = try replica()
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+
+        removeOriginPane(from: session)
+
+        XCTAssertNil(store.session(withID: session.id))
+    }
+
     func testASplitTheOriginKeepsHiddenDoesNotGrow() throws {
         let session = try attachableReplica()
         let added = UUID()

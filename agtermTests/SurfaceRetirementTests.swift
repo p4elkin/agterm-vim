@@ -125,6 +125,26 @@ final class SurfaceRetirementTests: XCTestCase {
         XCTAssertEqual(retirement.pendingCount, 1)
     }
 
+    func testASleepReleaseRetiresTheSurfaceAndDropsExitsQueuedBeforeIt() async throws {
+        _ = try stopChild()
+        var exited = false
+        var held = false
+        terminal.onExit = { exited = true }
+        terminal.onExitHeld = { held = true }
+        let view: GhosttySurfaceView = terminal
+        // as GhosttyCallbacks queues both, before the view is retired
+        DispatchQueue.main.async { view.onExitHeld?() }
+        DispatchQueue.main.async { view.handleProcessExit() }
+
+        terminal.releaseForSleep(into: retirement)
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertNil(terminal.surface)
+        XCTAssertEqual(retirement.pendingCount, 1)
+        XCTAssertFalse(held)
+        XCTAssertFalse(exited)
+    }
+
     func testAReattachedLiveScratchRetiresItsOldSurface() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-retirement-\(UUID().uuidString)")
         stateDir = dir

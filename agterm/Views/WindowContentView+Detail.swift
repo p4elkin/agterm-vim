@@ -118,7 +118,7 @@ extension WindowContentView {
             Group {
                 if session.isSplit {
                     shownSplit(session, gates: gates, deckInteractive: deckInteractive)
-                } else if session.splitFocused, session.splitSurface != nil {
+                } else if session.splitFocused, session.rightPaneExists {
                     // split hidden while the right pane had focus: show that pane maximized.
                     deckPane(session, pane: .right, focused: true, gates: gates)
                 } else {

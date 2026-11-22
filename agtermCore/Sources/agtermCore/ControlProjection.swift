@@ -430,6 +430,10 @@ public struct ControlSessionNode: Codable, Sendable, Equatable {
     public internal(set) var remoteState: String?
     /// The origin's id for a bound remote row's session, which commands run there must name.
     public internal(set) var remoteSession: String?
+    /// True while a remote row's panes are released by `session.sleep` or the timer; omitted while awake.
+    public internal(set) var asleep: Bool?
+    /// When the row went to sleep, as epoch seconds; omitted while awake.
+    public internal(set) var asleepSince: Double?
     /// The origin's id for the session an attached row shows, the id `zmx attach` takes; omitted for a local one.
     public let remoteSessionID: String?
 

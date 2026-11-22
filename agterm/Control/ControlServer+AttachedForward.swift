@@ -340,6 +340,7 @@ extension ControlServer: RemoteAttachLines {
         let lead = ZmxLeadAttachment(claim: false)
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
                                                               session: origin.sessionName, pane: .right, lead: lead,
+                                                              controlPath: hostPoolPath(origin, local: local),
                                                               transport: origin.transport) else {
             return Self.unaddressable(origin.host, what: "pane")
         }
@@ -352,11 +353,16 @@ extension ControlServer: RemoteAttachLines {
         let lead = ZmxLeadAttachment(claim: false)
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
                                                               session: "scratch", pane: .left, lead: lead,
+                                                              controlPath: hostPoolPath(origin, local: local),
                                                               transport: origin.transport) else {
             return Self.unaddressable(origin.host, what: "scratch")
         }
         ZmxLeadBook.shared.begin(lead, pane: local)
         return line
+    }
+
+    private func hostPoolPath(_ origin: RemoteBinding.Origin, local: UUID) -> String? {
+        library.sshHostPools?.lease(host: origin.host, transport: origin.transport, user: "pane:\(local)")
     }
 
     private static func unaddressable(_ host: String, what: String) -> String {

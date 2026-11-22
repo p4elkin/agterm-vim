@@ -32,7 +32,7 @@ struct ServerCommandPolicyTests {
         "a fork feature agterm-server does not carry": [
             .sessionPark, .sessionMark, .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
             .sessionRebasedShow, .sessionRebasedToggle, .sidebarParked, .normalMode, .sessionPairing, .overlayRedirectToggle,
-            .zmxNew, .rebasedMirrorList, .rebasedMirrorPrune,
+            .zmxNew, .rebasedMirrorList, .rebasedMirrorPrune, .sessionSleep, .sessionWake,
         ],
         "deferred to docs/backlog/server-user-event-hooks.md": [.hooksList, .hooksReload],
     ]

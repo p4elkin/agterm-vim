@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 @testable import agterm
+@testable import agtermCore
 
 @MainActor
 final class TerminalDeckTests: XCTestCase {
@@ -90,6 +91,193 @@ final class TerminalDeckTests: XCTestCase {
         XCTAssertEqual(recorder.views[0]?.frame.height, 350)
     }
 
+    func testAnAsleepRowHostsNoPaneKeepsItsHudAndRemountsTheRenewedLinesOnWake() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-deck-sleep-\(UUID().uuidString)")
+        let library = WindowLibrary(directory: stateDir)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let store = try XCTUnwrap(library.activeStore)
+        let row = try XCTUnwrap(store.addSession(toWorkspace: store.workspaces[0].id, cwd: NSTemporaryDirectory(), remoteHost: "box"))
+        row.hasSplit = true
+        row.isSplit = true
+        row.splitPaneIdentity = UUID()
+        row.overlayActive = true
+        row.hudSpec = HudSpec(message: "deploying")
+        // a selected pane is visible and expedites its spawn past the pacer
+        _ = store.selectSession(nil)
+        library.onRowWake = { session in
+            session.initialCommand = "renewed-left"
+            session.splitInitialCommand = "renewed-right"
+        }
+        let keys = (0..<16).map { _ in UUID() }
+        let pacer = SpawnPacer(interval: .seconds(60), now: { ContinuousClock().now }, schedule: { _, _ in })
+        pacer.arm(order: keys, burst: [])
+        var made: [(pane: String, line: String?, view: GhosttySurfaceView)] = []
+        var others: [GhosttySurfaceView] = []
+        func paced(_ pane: String, _ session: Session, _ line: String?) -> GhosttySurfaceView {
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.useSpawnPacer(pacer, key: keys[made.count + others.count])
+            if session.id == row.id { made.append((pane, line, view)) } else { others.append(view) }
+            return view
+        }
+        let content = WindowContentView(
+            windowID: try XCTUnwrap(library.activeWindowID), store: store, library: library,
+            makeSurface: { paced("left", $0, $0.initialCommand) }, makeSplitSurface: { paced("right", $0, $0.splitInitialCommand) },
+            makeOverlaySurface: { session, _ in paced("hud", session, nil) }, makeScratchSurface: { paced("scratch", $0, nil) },
+            captureOnExit: nil, actions: AppActions(library: library), palette: PaletteController(),
+            sessionSwitcher: SessionSwitcher(library: library, canSwitch: { false }),
+            toolbarMode: .normal, chromeText: .white, attentionButtonEnabled: false, hiddenInterfaceElements: [])
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500), styleMask: .borderless,
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer {
+            (made.map(\.view) + others).forEach { $0.teardown() }
+            window.close()
+        }
+        window.contentView = NSHostingView(rootView: content.detailPane.frame(width: 800, height: 500))
+        func pump(until condition: () -> Bool) {
+            let deadline = Date().addingTimeInterval(5)
+            while !condition(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        }
+        func views(_ pane: String) -> [GhosttySurfaceView] { made.filter { $0.pane == pane }.map(\.view) }
+
+        pump { views("left").count == 1 && views("right").count == 1 && views("hud").count == 1 }
+        XCTAssertEqual(made.map(\.pane).sorted(), ["hud", "left", "right"])
+        let hud = try XCTUnwrap(views("hud").first)
+
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        let asleep = views("left") + views("right")
+        pump { asleep.allSatisfy { $0.window == nil } }
+
+        XCTAssertTrue(asleep.allSatisfy { $0.window == nil }, "an asleep row must host neither pane")
+        XCTAssertEqual(made.count, 3, "an asleep row must not build a pane")
+        XCTAssertNotNil(hud.window, "the mirrored HUD stays hosted")
+
+        XCTAssertTrue(store.wakeRemoteRow(row.id, reason: .shown, onScreen: true))
+        pump { views("left").count == 2 && views("right").count == 2 }
+
+        XCTAssertEqual(made.filter { $0.pane == "left" }.map(\.line), [nil, "renewed-left"])
+        XCTAssertEqual(made.filter { $0.pane == "right" }.map(\.line), [nil, "renewed-right"])
+        XCTAssertEqual(views("hud").count, 1, "the HUD is not rebuilt")
+        XCTAssertNotNil(views("left").last?.window)
+        XCTAssertNotNil(views("right").last?.window)
+        XCTAssertTrue((made.map(\.view) + others).allSatisfy { !$0.isRealized }, "nothing may spawn in the test host")
+    }
+
+    func testASleepAndWakeWithNoUpdateBetweenRemountTheLeftPane() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-deck-nap-\(UUID().uuidString)")
+        let library = WindowLibrary(directory: stateDir)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let store = try XCTUnwrap(library.activeStore)
+        let row = try XCTUnwrap(store.addSession(toWorkspace: store.workspaces[0].id, cwd: NSTemporaryDirectory(), remoteHost: "box"))
+        _ = store.selectSession(nil)
+        library.onRowWake = { $0.initialCommand = "renewed-left" }
+        let keys = (0..<16).map { _ in UUID() }
+        let pacer = SpawnPacer(interval: .seconds(60), now: { ContinuousClock().now }, schedule: { _, _ in })
+        pacer.arm(order: keys, burst: [])
+        var made: [(pane: String, line: String?, view: GhosttySurfaceView)] = []
+        func paced(_ pane: String, _ session: Session, _ line: String?) -> GhosttySurfaceView {
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.useSpawnPacer(pacer, key: keys[made.count])
+            made.append((session.id == row.id ? pane : "other", line, view))
+            return view
+        }
+        let content = WindowContentView(
+            windowID: try XCTUnwrap(library.activeWindowID), store: store, library: library,
+            makeSurface: { paced("left", $0, $0.initialCommand) }, makeSplitSurface: { paced("right", $0, $0.splitInitialCommand) },
+            makeOverlaySurface: { session, _ in paced("hud", session, nil) }, makeScratchSurface: { paced("scratch", $0, nil) },
+            captureOnExit: nil, actions: AppActions(library: library), palette: PaletteController(),
+            sessionSwitcher: SessionSwitcher(library: library, canSwitch: { false }),
+            toolbarMode: .normal, chromeText: .white, attentionButtonEnabled: false, hiddenInterfaceElements: [])
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500), styleMask: .borderless,
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer {
+            made.forEach { $0.view.teardown() }
+            window.close()
+        }
+        window.contentView = NSHostingView(rootView: content.detailPane.frame(width: 800, height: 500))
+        func pump(until condition: () -> Bool) {
+            let deadline = Date().addingTimeInterval(5)
+            while !condition(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        }
+        func left() -> [(line: String?, view: GhosttySurfaceView)] {
+            made.filter { $0.pane == "left" }.map { ($0.line, $0.view) }
+        }
+        pump { left().count == 1 }
+        let old = try XCTUnwrap(left().first?.view)
+
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        XCTAssertTrue(store.wakeRemoteRow(row.id, reason: .shown, onScreen: true))
+        pump { left().count == 2 && old.window == nil }
+
+        XCTAssertEqual(left().map(\.line), [nil, "renewed-left"])
+        XCTAssertNil(old.window)
+        XCTAssertNotNil(left().last?.view.window)
+        XCTAssertTrue(made.allSatisfy { !$0.view.isRealized }, "nothing may spawn in the test host")
+    }
+
+    func testAWokenHiddenSplitWithRightFocusRemountsTheRightPane() throws {
+        let stateDir = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-deck-wake-\(UUID().uuidString)")
+        let library = WindowLibrary(directory: stateDir)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let store = try XCTUnwrap(library.activeStore)
+        let row = try XCTUnwrap(store.addSession(toWorkspace: store.workspaces[0].id, cwd: NSTemporaryDirectory(), remoteHost: "box"))
+        let split = UUID()
+        row.hasSplit = true
+        row.splitPaneIdentity = split
+        row.splitFocused = true
+        store.bindRemote(RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [
+            row.paneIdentity: ZmxSupport.daemonName(for: UUID()), split: ZmxSupport.daemonName(for: UUID()),
+        ], presentationVersion: 1), forSession: row.id)
+        _ = store.selectSession(nil)
+        row.splitSurface = SleptPaneSurface()
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        library.onRowWake = { session in
+            session.initialCommand = "renewed-left"
+            session.splitInitialCommand = "renewed-right"
+        }
+        let keys = (0..<16).map { _ in UUID() }
+        let pacer = SpawnPacer(interval: .seconds(60), now: { ContinuousClock().now }, schedule: { _, _ in })
+        pacer.arm(order: keys, burst: [])
+        var made: [(pane: String, line: String?, view: GhosttySurfaceView)] = []
+        func paced(_ pane: String, _ session: Session, _ line: String?) -> GhosttySurfaceView {
+            let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
+            view.useSpawnPacer(pacer, key: keys[made.count])
+            made.append((session.id == row.id ? pane : "other", line, view))
+            return view
+        }
+        let content = WindowContentView(
+            windowID: try XCTUnwrap(library.activeWindowID), store: store, library: library,
+            makeSurface: { paced("left", $0, $0.initialCommand) }, makeSplitSurface: { paced("right", $0, $0.splitInitialCommand) },
+            makeOverlaySurface: { session, _ in paced("hud", session, nil) }, makeScratchSurface: { paced("scratch", $0, nil) },
+            captureOnExit: nil, actions: AppActions(library: library), palette: PaletteController(),
+            sessionSwitcher: SessionSwitcher(library: library, canSwitch: { false }),
+            toolbarMode: .normal, chromeText: .white, attentionButtonEnabled: false, hiddenInterfaceElements: [])
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500), styleMask: .borderless,
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer {
+            made.forEach { $0.view.teardown() }
+            window.close()
+        }
+        window.contentView = NSHostingView(rootView: content.detailPane.frame(width: 800, height: 500))
+        func pump(until condition: () -> Bool) {
+            let deadline = Date().addingTimeInterval(5)
+            while !condition(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertTrue(made.filter { $0.pane != "other" }.isEmpty, "an asleep row must not build a pane")
+
+        XCTAssertTrue(store.wakeRemoteRow(row.id, reason: .shown, onScreen: true))
+        pump { made.contains { $0.pane == "right" } }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertEqual(made.filter { $0.pane != "other" }.map(\.pane), ["right"])
+        XCTAssertEqual(made.first { $0.pane == "right" }?.line, "renewed-right")
+        XCTAssertTrue(row.splitFocused)
+        XCTAssertTrue(made.allSatisfy { !$0.view.isRealized }, "nothing may spawn in the test host")
+    }
+
     private func topEdge(of view: NSView?, in host: NSView) -> CGFloat? {
         guard let view else { return nil }
         let rect = view.convert(view.bounds, to: host)
@@ -163,4 +351,11 @@ private struct DeckProbe: NSViewRepresentable {
         recorder.proposals[index, default: []].append(proposal)
         return proposal.replacingUnspecifiedDimensions(by: CGSize(width: 800, height: 600))
     }
+}
+
+private final class SleptPaneSurface: TerminalSurface {
+    let paneToken = ""
+    let isRealized = true
+    func teardown() {}
+    func promoteToPrimaryPane() {}
 }

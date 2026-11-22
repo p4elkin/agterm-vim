@@ -33,7 +33,7 @@ struct HeadlessCatalogTests {
         "dashboard", "debug.appearance", "session.go", "session.move",
         "session.duplicate", "session.park", "session.resize", "recent.list", "recent.open", "recent.clear",
         "workspace.tint", "session.collapse", "session.expand", "session.companion.new", "session.companion.page",
-        "session.companion.duplicate",
+        "session.companion.duplicate", "session.sleep", "session.wake",
     ])
     func windowAndUICommandsAreRefused(_ name: String) throws {
         try expectRefusal(name, reason: "no windows or UI")

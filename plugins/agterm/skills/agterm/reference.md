@@ -63,6 +63,9 @@ The event kinds and payloads are:
 - `session.parked`: session `name` and the resulting `parked` boolean. Both edges fire, so unlike the
   tree node's true-only field the payload carries `false` too. It is its own kind rather than a
   `tree.changed` payload, which is coalesced per window and re-emitted empty.
+- `session.slept` / `session.woke` (fork only): session `name` and `reason`, `timer` or `command` for a sleep and
+  `shown`, `command` or `pty` for a wake (see `session sleep`). A row restored asleep emits none. The human line
+  reads `HH:MM:SS session.slept NAME reason=timer`.
 - `session.selected`: a window's selection moved. `session` and `name` are the newly selected session,
   both absent when the selection was cleared, and `previous` is the id of the session that lost it,
   absent when there was none. It fires for every cause: a click, navigation, `session select`, a
@@ -194,6 +197,8 @@ whether the origin still has the session, separately from the presentation strea
 omitted for local and unbound rows),
 `remoteSession` (fork only, on a bound remote row: the origin's id for the session, which a command run on the
 origin must name as `--target`),
+`asleep` and `asleepSince` (fork only, on a sleeping remote row: `true`, and when it fell asleep in epoch seconds;
+both omitted while awake; see `session sleep`),
 `remoteSessionID` (the origin's id for the session an attached row shows, companions and page rows included,
 the id `zmx attach` takes; on a remote window's row it equals the row's `id`; omitted for a local session),
 `presentation` (on an attached session only: `state` is `connecting`, `connected`, `unsupported` for an
@@ -1002,6 +1007,24 @@ error keeps those names for compatibility.
   resumes it later. There is no `clear` mode, unlike `session flag`: unparking every row at once would
   leave a screen of rows that look live and hold nothing. Unknown mode errors. Read back as the tree
   node's true-only `parked`; both edges emit a `session.parked` event.
+- `session sleep [--target] [--window W]` / `session wake [--target] [--window W]` (fork only) — `sleep` frees a
+  remote row's pane terminals and their ssh now, as agterm does by itself once the row has been off screen for
+  `remoteSleepAfterMinutes` in `settings.json` (30 by default, 0 = never). The session keeps running on its
+  host, and the row keeps its stream, so status, name, `notify` and HUD still arrive. `wake` attaches the panes
+  again without selecting the row. Showing a row wakes it: selecting it, zooming it, a dashboard tile, or its
+  window coming back on screen. Restored remote rows start asleep, except the selected one.
+  A row already in the asked state answers ok, so `wake` on a local row is ok too. `sleep` refuses with
+  `session.sleep: ` and `not a remote row`, `a page row does not sleep`, `a remote window's row does not sleep`,
+  `its origin session has ended` or `it shows a local scratch, overlay or ask`, and with
+  `session.sleep: shown rows stay awake` for a row on screen. The default target is `active`, which is on
+  screen, so a bare `session sleep` is refused: pass `--target`.
+  Read back as the tree node's `asleep`; the edges emit `session.slept` and `session.woke`. `tree` never wakes a row.
+  On a sleeping row `session type`, `paste`, `selectall`, `copy`, `search`, `lead`, `font inc|dec|reset` and
+  `surface cursor` wake it first and run once the pane attaches. One that does not attach within 20 s fails
+  with `<cmd>: the row was asleep and its <pane> pane did not attach within 20 s; the command did not run`,
+  and the row stays awake. `session text` does NOT wake it: it reads the pane's screen on the host,
+  `--all` and `--lines` included, and the row stays asleep. A hidden split that was never shown has no pane to
+  wake, so those commands answer `session has no split pane` for it.
 - `session context <TEXT|--clear> [--target] [--window W]` — set or clear what the session is ABOUT, shown
   in the title bar — a PR number, an issue, the task in hand. It is set from OUTSIDE the session, so a
   hook or an orchestrator can say what a session it just created is for. Exactly one of TEXT or `--clear`, enforced at parse time and again server-side: a blank
@@ -2918,8 +2941,9 @@ be typed.
 
 Closing a remote session here ends only this side's connection: the far-side processes keep running and
 nothing agterm does from this end can kill them. The row itself is saved in `remote-rows.json` and comes
-back after a relaunch in every restore mode, reattached to the same far-side daemons, with its place under
-a parent when it was a companion, and without taking the lead from a Mac that took it meanwhile. A row whose
+back after a relaunch in every restore mode, asleep unless it is selected (see `session sleep`), with its
+place under a parent when it was a companion. It attaches to the same far-side daemons when it wakes, without
+taking the lead from a Mac that took it meanwhile. A row whose
 session the origin no longer has stays and reads `remoteState` `endedOnHost`. An attached
 page waits for the origin to hand it over and retries while the host does not answer.
 

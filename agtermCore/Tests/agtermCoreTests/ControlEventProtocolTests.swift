@@ -36,6 +36,10 @@ struct ControlEventProtocolTests {
                          payload: ControlEventPayload(name: "api", pane: "right", paneID: "tok")),
             ControlEvent(seq: 15, ts: 15.5, kind: .message, window: "win", workspace: "work", session: "sess",
                          payload: ControlEventPayload(name: "api", paneID: "tok", from: "S:Q", messageID: "m1")),
+            ControlEvent(seq: 16, ts: 16.5, kind: .sessionSlept, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", reason: "timer")),
+            ControlEvent(seq: 17, ts: 17.5, kind: .sessionWoke, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", reason: "shown")),
         ]
 
         let data = try JSONEncoder().encode(events)
@@ -79,6 +83,10 @@ struct ControlEventProtocolTests {
                          payload: ControlEventPayload(name: "api", pane: "right", paneID: "tok")),
             ControlEvent(seq: 15, ts: 15.5, kind: .message, window: "win", workspace: "work", session: "sess",
                          payload: ControlEventPayload(name: "api", paneID: "tok", from: "S:Q", messageID: "m1")),
+            ControlEvent(seq: 16, ts: 16.5, kind: .sessionSlept, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", reason: "timer")),
+            ControlEvent(seq: 17, ts: 17.5, kind: .sessionWoke, window: "win", workspace: "work", session: "sess",
+                         payload: ControlEventPayload(name: "far", reason: "shown")),
         ]
         let expected = [
             ##"{"kind":"status","payload":{"blink":true,"color":"#aabbcc","name":"api","pane":"right","##
@@ -101,6 +109,10 @@ struct ControlEventProtocolTests {
                 + ##""ts":14.5,"window":"win","workspace":"work"}"##,
             ##"{"kind":"message","payload":{"from":"S:Q","messageID":"m1","name":"api","paneID":"tok"},"seq":15,"session":"sess","##
                 + ##""ts":15.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"session.slept","payload":{"name":"far","reason":"timer"},"seq":16,"session":"sess","##
+                + ##""ts":16.5,"window":"win","workspace":"work"}"##,
+            ##"{"kind":"session.woke","payload":{"name":"far","reason":"shown"},"seq":17,"session":"sess","##
+                + ##""ts":17.5,"window":"win","workspace":"work"}"##,
         ]
 
         #expect(try events.map(canonicalJSON) == expected)

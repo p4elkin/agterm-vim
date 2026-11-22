@@ -13,7 +13,7 @@ extension ControlServer {
         let id = session.id
         guard remoteClients[id] == nil, let host = session.remoteHost,
               let binding = session.remotePresentation?.binding, session.remotePresentation?.originEnded != true else { return }
-        let pool = catalogPool(forSession: id)
+        let pool = sshPool(forSession: id)
         let path = pool?.lease("present:\(id)")
         let argv: [String]
         do {
@@ -117,7 +117,8 @@ extension ControlServer {
         resolveRemoteEnd(id)
         remoteClients.removeValue(forKey: id)?.stop()
         linkForwards.release(row: id)
-        catalogPool(forSession: id)?.release("present:\(id)")
+        // a closed row has left its store already, so the next retain releases its host pool user
+        sshPool(forSession: id)?.release("present:\(id)")
     }
 
     func stopRemotePresentations() {
@@ -126,6 +127,7 @@ extension ControlServer {
         linkForwards.stopAll()
         remoteTick?.cancel()
         remoteTick = nil
+        retainHostPoolLeases()
     }
 
     /// A soft close hides the row while its panes live on for undo, and undo or a restored workspace brings
@@ -239,7 +241,7 @@ extension ControlServer {
 
     /// Shows an overlay `id`'s origin handed over, running the job's helper on the origin over ssh.
     private func showReplicaOverlay(_ overlay: PresentationOverlay, forSession id: UUID) -> Bool {
-        let pool = catalogPool(forSession: id)
+        let pool = sshPool(forSession: id)
         let path = pool?.lease("job:\(overlay.job)")
         guard let store = library.store(forSession: id), let host = store.session(withID: id)?.remoteHost,
               let argv = try? RemoteSession.runJobCommand(host: host, job: overlay.job, token: overlay.token, controlPath: path) else {
@@ -273,17 +275,22 @@ extension ControlServer {
         remoteTick = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                guard let self, !Task.isCancelled else { return }
-                // respawn entries keep it alive so the last row's own prune still runs after that row is gone
-                guard !self.remoteClients.isEmpty || !RemoteReconnectBook.shared.isEmpty
-                        || !RemoteRespawnBook.shared.entries.isEmpty else {
-                    self.remoteTick = nil
-                    return
-                }
-                for client in self.remoteClients.values { client.tick() }
-                self.tickReconnects()
+                guard let self, !Task.isCancelled, self.remoteTickOnce() else { return }
             }
         }
+    }
+
+    /// remoteTickOnce runs one tick; false once nothing is left to tick, after a last retain releases the closed rows' users.
+    func remoteTickOnce() -> Bool {
+        // respawn entries keep it alive so the last row's own prune still runs after that row is gone
+        guard !remoteClients.isEmpty || !RemoteReconnectBook.shared.isEmpty || !RemoteRespawnBook.shared.entries.isEmpty else {
+            remoteTick = nil
+            retainHostPoolLeases()
+            return false
+        }
+        for client in remoteClients.values { client.tick() }
+        tickReconnects()
+        return true
     }
 
     /// Shows, updates or removes the HUD mirrored from `id`'s origin. `nil` removes it.

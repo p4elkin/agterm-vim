@@ -331,6 +331,9 @@ paths:
 - `rebasedMirrorMaxAgeDays` (fork only) is the days a Rebased mirror may go unused before a prune removes it.
   `effectiveRebasedMirrorMaxAgeDays` gives 14 for nil or a negative value, and 0 turns the start prune off.
   `settings.json` only, with no Settings UI, so a hand edit applies at the next launch.
+- `remoteSleepAfterMinutes` (fork only) is the minutes a remote row may stay off screen before it sleeps
+  (`RemoteSleepPolicy`). `effectiveRemoteSleepAfterMinutes` gives 30 for nil or a negative value, and 0 means never.
+  Settings > General > Sessions; the setter stores nil for 30 or a negative value.
 - `flaggedViewLayout` is a raw `FlaggedViewLayout` (`flat`|`plain`|`tree`), nil for the default `flat`, resolved by
   `effectiveFlaggedViewLayout` and mirrored to `GhosttyApp.flaggedViewLayout`. App-wide, never per window.
   Every sidebar Coordinator picks it up on `.agtermAppearanceChanged`, and only one showing the flagged view

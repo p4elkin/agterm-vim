@@ -19,6 +19,7 @@ final class RemoteRowSupervisorTests: XCTestCase {
     private var sleeps: [TimeInterval] = []
     private var reattached: [RemoteRowSupervisor.Pane] = []
     private var onSleep: (() -> Void)?
+    private var onTree: (() -> Void)?
     private var panes: [UUID] = []
 
     override func setUp() async throws {
@@ -41,6 +42,7 @@ final class RemoteRowSupervisorTests: XCTestCase {
     private func supervisor() -> RemoteRowSupervisor {
         RemoteRowSupervisor(library: library, tree: { [unowned self] host in
             trees.append(host)
+            onTree?()
             return answers.count > 1 ? answers.removeFirst() : answers[0]
         }, sleep: { [unowned self] seconds in
             sleeps.append(seconds)
@@ -93,6 +95,92 @@ final class RemoteRowSupervisorTests: XCTestCase {
         XCTAssertEqual(trees, ["p4linux", "p4linux"])
         XCTAssertEqual(sleeps, [RemoteRowSupervisor.retryInterval])
         XCTAssertEqual(session.remotePresentation?.rowState, .attached)
+    }
+
+    func testARowThatSleepsWhileItsPaneWaitsIsNotReattached() async throws {
+        let session = try row()
+        answers = [ControlResponse(ok: false, error: "unreachable"), try tree(listing: [originLeft])]
+        onSleep = { [unowned self] in XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer)) }
+        let watcher = supervisor()
+
+        watcher.paneExited(session.paneIdentity, inSession: session.id)
+
+        try await settle("slept once") { sleeps.count == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(trees.count, 1)
+        XCTAssertTrue(reattached.isEmpty, "a wake attaches a sleeping row with fresh lines")
+        XCTAssertEqual(session.remotePresentation?.rowState, .attached, "nothing retries an asleep row")
+    }
+
+    func testARowThatSleepsWhileAFailingTreeCallIsOutKeepsItsState() async throws {
+        let session = try row()
+        answers = [ControlResponse(ok: false, error: "unreachable")]
+        onTree = { [unowned self] in XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer)) }
+        let watcher = supervisor()
+
+        watcher.paneExited(session.paneIdentity, inSession: session.id)
+
+        try await settle("asked") { trees.count == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(session.remotePresentation?.rowState, .attached)
+        XCTAssertTrue(sleeps.isEmpty)
+    }
+
+    func testARowThatSleepsWhileItsTreeCallIsOutIsNotReattached() async throws {
+        let session = try row()
+        answers = [try tree(listing: [originLeft])]
+        onTree = { [unowned self] in XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer)) }
+        let watcher = supervisor()
+
+        watcher.paneExited(session.paneIdentity, inSession: session.id)
+
+        try await settle("asked") { trees.count == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(reattached.isEmpty)
+        XCTAssertTrue(sleeps.isEmpty)
+    }
+
+    func testASleepForgetsAHeldExit() throws {
+        let session = try row()
+        store.remotePaneHeld(session.paneIdentity, forSession: session.id)
+        XCTAssertTrue(store.remotePaneIsHeld(session.paneIdentity, forSession: session.id))
+
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+
+        XCTAssertFalse(store.remotePaneIsHeld(session.paneIdentity, forSession: session.id))
+    }
+
+    func testAFailedStreamOnASleepingRowStillReadsEndedOnHost() async throws {
+        let session = try row()
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+        answers = [try tree(listing: nil)]
+        let watcher = supervisor()
+
+        watcher.streamFailed(inSession: session.id)
+
+        try await settle("ended") { session.remotePresentation?.rowState == .endedOnHost }
+        XCTAssertTrue(session.asleep)
+    }
+
+    func testASleepClaimsThePaneExitSoTheSupervisorIsNeverTold() throws {
+        let session = try row()
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), fontSize: 12, command: "/bin/cat")
+        view.session = session
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 480, height: 320), styleMask: [],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        addTeardownBlock { window.orderOut(nil) }
+        XCTAssertTrue(view.isRealized)
+        session.surface = view
+        view.onExit = {}
+        view.onExitHeld = {}
+
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
+
+        XCTAssertFalse(view.claimProcessExit(), "the exit is claimed before the surface is freed")
+        XCTAssertNil(view.onExit)
+        XCTAssertNil(view.onExitHeld, "a held exit queued before the sleep reaches no supervisor")
     }
 
     // the reconnect book attached the pane while the tree call was out

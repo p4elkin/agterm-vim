@@ -29,6 +29,9 @@ public enum Command: String, Codable, Sendable, CaseIterable {
     case sessionStatus = "session.status"
     case sessionFlag = "session.flag"
     case sessionPark = "session.park"
+    /// A remote row's pane surfaces released or renewed now (fork only); reads back as the node's `asleep`.
+    case sessionSleep = "session.sleep"
+    case sessionWake = "session.wake"
     case sessionContext = "session.context"
     case sessionInfo = "session.info"
     case sessionTint = "session.tint"

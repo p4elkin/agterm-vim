@@ -1744,6 +1744,21 @@ struct CommandsTests {
         #expect(validationMessage(["session", "park", "bogus"]) == "mode must be on, off, or toggle")
     }
 
+    @Test func sessionSleepAndWakeDefaultToTheActiveRow() throws {
+        #expect(try request(["session", "sleep"]) == ControlRequest(cmd: .sessionSleep, target: "active"))
+        #expect(try request(["session", "wake"]) == ControlRequest(cmd: .sessionWake, target: "active"))
+    }
+
+    @Test func sessionSleepAndWakeCarryTargetAndWindow() throws {
+        #expect(try request(["session", "sleep", "--target", "9f3c", "--window", "w1"])
+            == ControlRequest(cmd: .sessionSleep, target: "9f3c", args: ControlArgs(window: "w1")))
+        #expect(try request(["session", "wake", "--target", "9f3c"]) == ControlRequest(cmd: .sessionWake, target: "9f3c"))
+    }
+
+    @Test func sessionSleepTakesNoMode() {
+        #expect(throws: (any Error).self) { try request(["session", "sleep", "on"]) }
+    }
+
     @Test func fontInc() throws {
         #expect(try request(["font", "inc", "--target", "s1"]) == ControlRequest(cmd: .fontInc, target: "s1"))
     }

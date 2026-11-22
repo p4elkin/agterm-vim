@@ -24,6 +24,19 @@ struct AppSettingsTests {
         #expect(try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).effectiveRebasedMirrorMaxAgeDays == days)
     }
 
+    @Test func remoteSleepAfterMinutesRoundTrips() throws {
+        let settings = AppSettings(remoteSleepAfterMinutes: 45)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded.remoteSleepAfterMinutes == 45)
+        #expect(decoded.effectiveRemoteSleepAfterMinutes == 45)
+    }
+
+    @Test(arguments: [("{}", 30), (#"{"remoteSleepAfterMinutes":-5}"#, 30), (#"{"remoteSleepAfterMinutes":0}"#, 0),
+                      (#"{"remoteSleepAfterMinutes":1}"#, 1)])
+    func remoteSleepAfterMinutesDefaultsTo30AndKeepsZeroAsNever(_ json: String, _ minutes: Int) throws {
+        #expect(try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8)).effectiveRemoteSleepAfterMinutes == minutes)
+    }
+
     @Test func jsonRoundTrips() throws {
         let original = AppSettings(fontFamily: "SF Mono", fontSize: 14, theme: "Adwaita Dark")
         let data = try JSONEncoder().encode(original)

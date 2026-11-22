@@ -346,6 +346,26 @@ final class ControlServerSessionActionsTests: XCTestCase {
         XCTAssertGreaterThan(Date().timeIntervalSince(started), 0.3)
     }
 
+    func testSwapOnAnAsleepRowMovesItsPaneSlotsAtOnce() async throws {
+        let store = try XCTUnwrap(library.activeStore)
+        let session = try XCTUnwrap(store.addSession(toWorkspace: try XCTUnwrap(store.currentWorkspaceID), cwd: "/tmp",
+                                                     remoteHost: "box"))
+        session.hasSplit = true
+        session.splitPaneIdentity = UUID()
+        session.initialCommand = "attach-left"
+        session.splitInitialCommand = "attach-right"
+        let (primary, split) = (session.paneIdentity, try XCTUnwrap(session.splitPaneIdentity))
+        XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .command))
+
+        let response = await server.swapSessionPanes(session.id.uuidString, window: nil)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(session.paneIdentity, split)
+        XCTAssertEqual(session.splitPaneIdentity, primary)
+        XCTAssertEqual(session.initialCommand, "attach-right")
+        XCTAssertTrue(session.asleep)
+    }
+
     func testSwapImmediatelyAfterSplitOnWaitsForBothSlots() async throws {
         let (_, session) = try addSession()
         XCTAssertTrue(server.splitSession(session.id.uuidString, window: nil, mode: "on").ok)
@@ -2033,6 +2053,149 @@ final class ControlServerSessionActionsTests: XCTestCase {
         XCTAssertTrue(server.setSessionParked(nil, window: nil, mode: .on).ok)
 
         XCTAssertTrue(active.parked)
+    }
+
+    // MARK: - session.sleep / session.wake
+
+    private func sleepFixture(onScreen: Bool = true, now: Date = Date(timeIntervalSince1970: 5_000)) throws -> (AppStore, Session) {
+        server.windowOnScreen = { _ in onScreen }
+        server.hudClock = { now }
+        library.onRowWake = { [weak server] in server?.wakeAttachLines(for: $0) }
+        let store = try XCTUnwrap(library.activeStore)
+        let row = try XCTUnwrap(store.addSession(toWorkspace: try XCTUnwrap(store.currentWorkspaceID), cwd: "/tmp", select: false,
+                                                 remoteHost: "box"))
+        return (store, row)
+    }
+
+    func testSleepReleasesAnOffScreenRemoteRowThroughTheDispatch() async throws {
+        let (_, row) = try sleepFixture()
+
+        let response = await server.dispatch(ControlRequest(cmd: .sessionSleep, target: row.id.uuidString))
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(response.result?.id, row.id.uuidString)
+        XCTAssertTrue(row.asleep)
+        XCTAssertEqual(row.asleepSince, Date(timeIntervalSince1970: 5_000))
+    }
+
+    func testSleepOfAnAsleepRowAnswersOKAndKeepsItsSince() throws {
+        let (store, row) = try sleepFixture()
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .timer, now: Date(timeIntervalSince1970: 10)))
+
+        let response = server.setSessionAsleep(row.id.uuidString, window: nil, asleep: true)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(row.asleepSince, Date(timeIntervalSince1970: 10))
+    }
+
+    func testSleepRefusesARowThatCannotSleepByItsReasonBeforeTheScreen() throws {
+        let (store, row) = try sleepFixture()
+        let local = try XCTUnwrap(store.activeSession)
+        row.scratchActive = true
+
+        XCTAssertEqual(server.setSessionAsleep(local.id.uuidString, window: nil, asleep: true).error, "session.sleep: not a remote row")
+        XCTAssertEqual(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: true).error,
+                       "session.sleep: it shows a local scratch, overlay or ask")
+        XCTAssertFalse(row.asleep)
+    }
+
+    func testSleepRefusesTheSelectedRowOfAVisibleWindowAndABareSleep() throws {
+        let (store, row) = try sleepFixture()
+        store.selectSession(row.id)
+
+        XCTAssertEqual(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: true).error, "session.sleep: shown rows stay awake")
+        XCTAssertEqual(server.setSessionAsleep(nil, window: nil, asleep: true).error, "session.sleep: shown rows stay awake")
+        XCTAssertFalse(row.asleep)
+    }
+
+    func testSleepRefusesAZoomTargetEvenInAHiddenWindow() throws {
+        let (_, row) = try sleepFixture(onScreen: false)
+        let windowID = try XCTUnwrap(library.activeWindowID)
+        let lens = TerminalZoomController()
+        TerminalZoomRegistry.shared.register(windowID, controller: lens)
+        defer { TerminalZoomRegistry.shared.unregister(windowID) }
+        lens.set(.on, target: .session(row.id, .primary))
+
+        XCTAssertEqual(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: true).error, "session.sleep: shown rows stay awake")
+        XCTAssertFalse(row.asleep)
+    }
+
+    func testWakeOffScreenRenewsTheRowStartsItsClockAndLeavesTheSelection() throws {
+        let (store, row) = try sleepFixture()
+        let selected = store.selectedSessionID
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        row.initialCommand = nil
+
+        let response = server.setSessionAsleep(row.id.uuidString, window: nil, asleep: false)
+
+        XCTAssertTrue(response.ok, response.error ?? "")
+        XCTAssertEqual(response.result?.id, row.id.uuidString)
+        XCTAssertFalse(row.asleep)
+        XCTAssertNotNil(row.initialCommand)
+        XCTAssertEqual(row.offScreenSince, Date(timeIntervalSince1970: 5_000))
+        XCTAssertEqual(store.selectedSessionID, selected)
+    }
+
+    func testSleepAndWakeEmitTheCommandReason() throws {
+        let (_, row) = try sleepFixture()
+        var events: [ControlEvent] = []
+        library.onControlEvent = { events.append($0) }
+
+        XCTAssertTrue(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: true).ok)
+        XCTAssertTrue(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: false).ok)
+
+        let edges = events.filter { $0.kind == .sessionSlept || $0.kind == .sessionWoke }
+        XCTAssertEqual(edges.map(\.kind), [.sessionSlept, .sessionWoke])
+        XCTAssertEqual(edges.map(\.payload.reason), ["command", "command"])
+    }
+
+    func testWakeOfAZoomTargetCountsItOnScreen() throws {
+        let (store, row) = try sleepFixture(onScreen: false)
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        let windowID = try XCTUnwrap(library.activeWindowID)
+        let lens = TerminalZoomController()
+        TerminalZoomRegistry.shared.register(windowID, controller: lens)
+        defer { TerminalZoomRegistry.shared.unregister(windowID) }
+        lens.set(.on, target: .session(row.id, .primary))
+        row.offScreenSince = Date(timeIntervalSince1970: 1)
+
+        XCTAssertTrue(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: false).ok)
+
+        XCTAssertFalse(row.asleep)
+        XCTAssertNil(row.offScreenSince)
+    }
+
+    func testWakeOfAnAwakeOrLocalRowAnswersOK() throws {
+        let (store, row) = try sleepFixture()
+        let local = try XCTUnwrap(store.activeSession)
+
+        XCTAssertTrue(server.setSessionAsleep(row.id.uuidString, window: nil, asleep: false).ok)
+        XCTAssertTrue(server.setSessionAsleep(local.id.uuidString, window: nil, asleep: false).ok)
+        XCTAssertFalse(row.asleep)
+    }
+
+    func testWakeWithNoRenewalInstalledErrorsAndLeavesTheRowAsleep() throws {
+        let (store, row) = try sleepFixture()
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command))
+        library.onRowWake = nil
+
+        let response = server.setSessionAsleep(row.id.uuidString, window: nil, asleep: false)
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.error, "session.wake: the row's panes could not be attached again")
+        XCTAssertTrue(row.asleep)
+    }
+
+    func testTheTreeReadsAnAsleepRowWithoutWakingIt() async throws {
+        let (store, row) = try sleepFixture()
+        XCTAssertTrue(store.sleepRemoteRow(row.id, reason: .command, now: Date(timeIntervalSince1970: 5_000)))
+
+        let response = await server.dispatch(ControlRequest(cmd: .tree))
+
+        let node = try XCTUnwrap(response.result?.tree?.workspaces.flatMap(\.sessions).first { $0.id == row.id.uuidString })
+        XCTAssertEqual(node.asleep, true)
+        XCTAssertEqual(node.asleepSince, 5_000)
+        XCTAssertTrue(row.asleep)
     }
 
     // the helper centers on the grid in the body's header, so a resize that changes the panel must rewrite

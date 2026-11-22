@@ -44,7 +44,7 @@ public enum ForwardPolicy {
              .sidebarParked, .sidebarWidth, .normalMode, .themeSet, .themeList,
              .fontInc, .fontDec, .fontReset, .keymapReload, .keymapList, .keymapRun, .configReload,
              .quick, .quickType, .quickText, .dashboard, .debugAppearance,
-             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionResize, .workspaceTint,
+             .sessionGo, .sessionMove, .sessionDuplicate, .sessionPark, .sessionSleep, .sessionWake, .sessionResize, .workspaceTint,
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
              .sessionCompanionConvert, .recentList, .recentOpen, .recentClear,
              .windowRemoteOpen, .windowRemoteDismiss, .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach,

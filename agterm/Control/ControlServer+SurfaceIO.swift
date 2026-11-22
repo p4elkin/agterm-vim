@@ -333,7 +333,8 @@ extension ControlServer {
     /// `surface:<session-id>:<kind>` ids from `tree`, `quick`, or `active` for the frontmost (or `--window`)
     /// window's active surface — so both `surface.*` commands address the same set. Unlike zoom it changes
     /// nothing, so it neither selects nor realizes the target: an unrealized surface is reported, not waited
-    /// for. `GhosttySurfaceView.readCursorColumn` owns how the column is derived and when it declines.
+    /// for, except on an asleep remote row, which `ControlServer+AsleepRows` wakes first.
+    /// `GhosttySurfaceView.readCursorColumn` owns how the column is derived and when it declines.
     ///
     /// a nonempty `paneID` requires a session target and resolves left, right or scratch.
     func readSurfaceCursor(_ target: String?, window: String?, paneID: String?) -> ControlResponse {

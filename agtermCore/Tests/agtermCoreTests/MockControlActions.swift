@@ -47,6 +47,7 @@ class MockControlActionsBase {
         case workspaceFlag(target: String?, window: String?, ControlToggleMode)
         case sessionFlag(target: String?, window: String?, String?)
         case sessionPark(target: String?, window: String?, ControlToggleMode)
+        case sessionAsleep(target: String?, window: String?, asleep: Bool)
         case flaggedMove(target: String?, window: String?, anchor: String, FlaggedOrderPlacement)
         case sessionContext(target: String?, window: String?, context: String?)
         case sessionInfo(target: String?, window: String?, info: SessionInfo?)
@@ -191,6 +192,7 @@ class MockControlActionsBase {
     var nextSidebarVisibilityResponse = ControlResponse(ok: true)
     var nextSidebarViewModeResponse = ControlResponse(ok: true)
     var nextSidebarParkedResponse = ControlResponse(ok: true)
+    var nextSessionAsleepResponse = ControlResponse(ok: true)
     var nextNormalModeResponse = ControlResponse(ok: true)
     var nextOverlayPairingResponse = ControlResponse(ok: true)
     var nextOverlayRedirectToggleResponse = ControlResponse(ok: true)
@@ -452,6 +454,11 @@ class MockControlActionsBase {
     func setSessionParked(_ target: String?, window: String?, mode: ControlToggleMode) -> ControlResponse {
         calls.append(.sessionPark(target: target, window: window, mode))
         return ControlResponse(ok: true)
+    }
+
+    func setSessionAsleep(_ target: String?, window: String?, asleep: Bool) -> ControlResponse {
+        calls.append(.sessionAsleep(target: target, window: window, asleep: asleep))
+        return nextSessionAsleepResponse
     }
 
     func moveFlaggedSession(_ target: String?, window: String?, anchor: String,

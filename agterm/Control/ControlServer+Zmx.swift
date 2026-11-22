@@ -423,9 +423,9 @@ extension ControlServer {
     }
 
     /// Inserts a bound remote row and opens its presentation stream. Shared by a user attach, which has just
-    /// discovered the session, and a launch restore, which trusts its saved record. Nothing is inserted when
-    /// a pane command cannot be built.
-    func insertRemoteRow(_ row: RemoteRow, at placement: RemotePlacement, claim: Bool) -> RemoteRowInsert {
+    /// discovered the session, and a launch restore, which trusts its saved record and inserts it `asleep`: no line,
+    /// lead or pane lease until its wake. Nothing is inserted when a pane command cannot be built.
+    func insertRemoteRow(_ row: RemoteRow, at placement: RemotePlacement, claim: Bool, asleep: Bool = false) -> RemoteRowInsert {
         let leads = (left: ZmxLeadAttachment(claim: claim), right: ZmxLeadAttachment(claim: claim))
         let primary: String
         let split: String?
@@ -459,11 +459,28 @@ extension ControlServer {
             // a new split focuses its right pane; an attached session opens on its left one
             created.splitFocused = false
         }
+        // the first build validated both lines; with the pane identities minted, a pooled row rebuilds them on its leases
+        if asleep {
+            created.initialCommand = nil
+            created.splitInitialCommand = nil
+            store.markRestoredAsleep(created)
+        } else if let pools = library.sshHostPools {
+            func pooled(_ daemon: String, pane: UUID, role: ZmxPaneRole, lead: ZmxLeadAttachment) -> String? {
+                guard let path = pools.lease(host: row.host, transport: row.transport, user: "pane:\(pane)") else { return nil }
+                return try? RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: daemon,
+                                                            session: row.sessionName, pane: role, lead: lead, controlPath: path)
+            }
+            if let line = pooled(row.left, pane: created.paneIdentity, role: .left, lead: leads.left) { created.initialCommand = line }
+            if let right = row.right, let local = created.splitPaneIdentity,
+               let line = pooled(right, pane: local, role: .right, lead: leads.right) {
+                created.splitInitialCommand = line
+            }
+        }
         var daemons = [created.paneIdentity: row.left]
-        ZmxLeadBook.shared.begin(leads.left, pane: created.paneIdentity)
+        if !asleep { ZmxLeadBook.shared.begin(leads.left, pane: created.paneIdentity) }
         if let right = row.right, let local = created.splitPaneIdentity {
             daemons[local] = right
-            ZmxLeadBook.shared.begin(leads.right, pane: local)
+            if !asleep { ZmxLeadBook.shared.begin(leads.right, pane: local) }
         }
         let origin = RemoteBinding.Origin(host: row.host, endpoint: row.endpoint, sessionName: row.sessionName,
                                           transport: row.transport)

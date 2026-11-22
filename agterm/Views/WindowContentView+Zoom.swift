@@ -102,7 +102,9 @@ extension WindowContentView {
     /// either renders the `Color.clear` placeholder in `sessionDetail` (an NSView lives in one host at a
     /// time) while every other slot stays mounted, keeping the deck entry's shape constant and its surfaces
     /// realizing behind the modal layer. The two exclusions are mutually exclusive, so at most one is active.
+    /// An asleep row's panes have no host at all until a wake renews their lines.
     func deckHostsSurface(session: Session, surface: TerminalZoomSurface) -> Bool {
+        if session.asleep, surface == .primary || surface == .split { return false }
         if dashboardHostsSurface(session: session, surface: surface) { return false }
         guard case let .session(sessionID, zoomSurface) = terminalZoom.target else { return true }
         return sessionID != session.id || zoomSurface != surface
