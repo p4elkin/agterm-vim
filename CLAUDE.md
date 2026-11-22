@@ -412,6 +412,6 @@ spans intact, and format long catalogs as lists.
 - `ci.md`: jobs, filters, coverage, badge.
 - `release.md`: local signing, notarization, release, Homebrew, changelog, the two fork docs a feature must update.
 - `overlay-redirect.md`: which machine an overlay opens on, the two pairing fields, the two-phase open.
-- `fork-merge.md`: merging upstream into this fork, the gate set, the files that keep colliding.
+- `.claude/fork-merge.md` (not a rule, not auto-loaded; read it before a merge): merging upstream into this fork, the gate set, the files that keep colliding.
 - `headless-origin.md`: the Linux headless origin server, and the Linux test gate.
 - `rebased-overlay.md`: Rebased hosted in-process in the overlay slot: JVM, bridge plugin, frame, keys.

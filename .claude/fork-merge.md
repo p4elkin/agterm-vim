@@ -1,6 +1,7 @@
 ---
 # The merge-danger lists the triage job and the fork-merge-triage skill both read at run time.
 # They live here rather than in the skill so they are versioned with the code they describe.
+# Kept out of .claude/rules/ on purpose: a rules file with no `paths:` loads into every session (about 4.5K tokens).
 #
 # flagged: a conflict here clears the stomach test only when its enclosing declaration is not one of
 # the constructs below. Nothing about a flagged file is an automatic stop; it raises the bar.

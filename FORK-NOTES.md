@@ -125,7 +125,7 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 - `tree` reports `appSessionRecency` beside `sessionRecency`: the sessions last visited in any open window,
   each with its window, for a recent-session picker that reaches across windows. The list lives in the
   fork-only `AppSessionRecency.swift` and `WindowLibrary+SessionRecency.swift`; no file joins the
-  `fork-merge.md` lists. `.claude/rules/windows.md` and `control-api.md`.
+  `.claude/fork-merge.md` lists. `.claude/rules/windows.md` and `control-api.md`.
 - `tree` reports `sessionRecency`; `keymap list` reports the `nmap` binds in their own section;
   `agtermctl mode on|off|toggle`; `window.list` reports `normalMode`. `.claude/rules/control-api.md`.
 - `zmx list` reports `socketDirectory`, the private `ZMX_DIR` the app's own client is using, so an
@@ -381,7 +381,7 @@ Mark a turn in an agent conversation and come back to it later without scrolling
   timeout. Proposed upstream as umputun/agterm#624; drop once it lands. Tests:
   `testRunDrainsOutputLargerThanThePipeBufferBeforeTheProcessExits`, `testRunGivesUpOnAWriteEndHeldPastTheChildsExit`.
 - `.claude/rules/keymap.md`, `control-api.md`, `notifications.md`, `overlay-redirect.md` and
-  `fork-merge.md` document the design and how the fork is kept current.
+  `.claude/fork-merge.md` document the design and how the fork is kept current.
 
 ## Not done
 
