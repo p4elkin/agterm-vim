@@ -2791,7 +2791,7 @@ state is its own column. A claim's `pane` is `left`, `right`, or `scratch` for a
 The header also carries `endpoint.executable` and `endpoint.socketDirectory`, which is what another machine
 needs to reach these daemons; a server older than remote sessions omits the key. It repeats the socket
 directory as the top-level `socketDirectory` too, so a caller attaches to a daemon instead of recomputing the
-hash of the state directory; a plain shell or a mosh session must carry that path in `ZMX_DIR` to find them
+hash of the state directory; a plain or ssh shell must carry that path in `ZMX_DIR` to find them
 at all. A row whose daemon was created before the recorded first launch with this zmx build carries
 `outdated: true` (omitted otherwise).
 
@@ -2871,9 +2871,9 @@ each pane (a page session needs none), and the far side must be new enough to an
 half-attached. It also needs `agtermctl` installed by the cask or the Help action: a machine merely
 running agterm has no CLI an ssh command can find, and the read fails with exit 127.
 
-`agtermctl zmx attach HOST SESSION [--window W] [--workspace W | --workspace-name NAME [--create-workspace]]
-[--transport ssh|mosh] [--mosh-server PATH] [--mosh PATH]` opens one of those sessions here, marked remote, in
-the destination window's current workspace, selected, with the remote session's split when it has one.
+`agtermctl zmx attach HOST SESSION [--window W] [--workspace W | --workspace-name NAME [--create-workspace]]`
+opens one of those sessions here over ssh, marked remote, in the destination window's current workspace,
+selected, with the remote session's split when it has one.
 `--window` takes a local open window ID, unique prefix, or `active`; omitted, it uses the frontmost window
 after discovery. An invalid or closed destination fails without creating a session. Targeting a background
 window leaves the frontmost window unchanged. `--workspace W` (id, unique prefix, `active`, or `root` for the top-level sessions) or
@@ -2881,16 +2881,6 @@ window leaves the frontmost window unchanged. `--workspace W` (id, unique prefix
 `--create-workspace` with a name creates it when missing and reuses it otherwise, and a missing name without it
 fails before anything is created. A missing workspace is created only once the row can be placed, so a refused
 attach adds none. A companion that joins its parent's row goes where that row is.
-`--transport mosh` carries the attach over mosh instead of
-ssh, which survives a network change and a laptop sleep. Both path flags are refused without
-`--transport mosh`, and a path holding whitespace or shell syntax is refused rather than escaped.
-`--mosh-server PATH` names the far side's `mosh-server`. It is optional: with no value the argv is
-`mosh ... host --` and the far side uses its own `mosh-server` lookup. A Homebrew `mosh-server` is what
-needs it, because mosh starts its ssh bootstrap as a non-login shell, where `/opt/homebrew/bin` is not on
-PATH. `--mosh PATH` names the LOCAL `mosh` on this machine. agterm resolves it itself, taking the first of
-`/opt/homebrew/bin/mosh`, `/usr/local/bin/mosh` and `/usr/bin/mosh` that exists and falling back to a bare
-`mosh`, so the attach works in a GUI-launched pane whose PATH also lacks `/opt/homebrew/bin`; pass the
-flag only when mosh is somewhere else.
 `SESSION` is the
 `id` from `zmx tree`, never the name: remote names are editable and repeat across workspaces. Returns the
 new local session's `id`; read `remoteHost` and `remoteSessionID` on its tree node. The remote is resolved AGAIN before anything
@@ -2920,8 +2910,8 @@ A top-level attached row then follows its origin session: a companion created or
 `agtermctl zmx attach HOST SESSION --parent ROW` (fork only) attaches the session as a companion of `ROW`, a
 remote row here of the same host and zmx endpoint (id, unique prefix or `active`, across every open window; a
 companion `ROW` means its parent). It is how a row from an origin that does not report companions, such as a
-headless one, joins a group. The row lands in `ROW`'s window and workspace over `ROW`'s transport, so
-`--window`, `--transport`, `--mosh-server`, `--mosh`, `--beside` and `--companions` are refused beside it. Also
+headless one, joins a group. The row lands in `ROW`'s window and workspace, so
+`--window`, `--beside` and `--companions` are refused beside it. Also
 refused: a local `ROW`, a page `ROW`, a page session, and a session whose origin names a different parent.
 A session already attached here may be attached again under `ROW`; closing the old row afterwards only ends its
 connection, so the far-side program keeps running in the new one. Returns `result.id` and `result.parent`; an app

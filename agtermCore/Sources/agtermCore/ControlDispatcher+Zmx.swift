@@ -44,21 +44,6 @@ extension ControlDispatcher {
             guard RemoteSession.isPlain(session) else {
                 return ControlResponse(ok: false, error: "invalid remote session")
             }
-            // trimmed like the host, so a padded spelling is not an unknown transport; the two paths are
-            // NOT trimmed, an empty one being the quoting bug `RemoteTransport.parse` exists to refuse
-            let rawTransport = request.args?.transport?.trimmedOrNil
-            let rawMoshServer = request.args?.moshServer
-            let rawMosh = request.args?.mosh
-            let transport: RemoteTransport
-            do {
-                transport = try RemoteTransport.parse(transport: rawTransport, moshServer: rawMoshServer,
-                                                      mosh: rawMosh)
-            } catch {
-                return ControlResponse(ok: false,
-                                       error: RemoteTransport.refusalMessage(transport: rawTransport,
-                                                                             moshServer: rawMoshServer,
-                                                                             mosh: rawMosh))
-            }
             if let parent = request.args?.parent?.trimmedOrNil {
                 return await actions.attachRemoteSession(host: host, session: session, parent: parent)
             }
@@ -69,21 +54,9 @@ extension ControlDispatcher {
             case .failure(let rejection): return ControlResponse(ok: false, error: rejection.message)
             }
             if request.cmd == .zmxAttachGroup {
-                // every member attaches over ssh, so a requested mosh is refused rather than quietly not used
-                guard transport == .ssh else {
-                    return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach.group --transport"))
-                }
                 return await actions.attachRemoteGroup(host: host, session: session, window: window, workspace: workspace)
             }
-            // the workspace form has no transport overload, so a mosh attach into a chosen workspace is refused
-            // rather than quietly made over ssh
-            if workspace != nil {
-                guard transport == .ssh else {
-                    return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --transport with --workspace"))
-                }
-                return await actions.attachRemoteSession(host: host, session: session, window: window, workspace: workspace)
-            }
-            return await actions.attachRemoteSession(host: host, session: session, window: window, transport: transport)
+            return await actions.attachRemoteSession(host: host, session: session, window: window, workspace: workspace)
         case .zmxPresent:
             // no `active` default: a viewer names the session it attached, and a guess would stream another
             guard let session = request.target?.trimmedOrNil else {
@@ -150,8 +123,8 @@ extension ControlDispatcher {
         guard request.cmd == .zmxAttach else {
             return ControlResponse(ok: false, error: "zmx.attach --parent attaches one session, not its companions")
         }
-        guard args.attach == nil, args.window == nil, args.transport == nil, args.moshServer == nil, args.mosh == nil else {
-            return ControlResponse(ok: false, error: "zmx.attach --parent takes the parent row's window and transport")
+        guard args.attach == nil, args.window == nil else {
+            return ControlResponse(ok: false, error: "zmx.attach --parent takes the parent row's window")
         }
         guard let trimmed = parent.trimmedOrNil, RemoteSession.isPlain(trimmed) else {
             return ControlResponse(ok: false, error: "invalid parent")

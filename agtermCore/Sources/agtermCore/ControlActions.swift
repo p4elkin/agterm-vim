@@ -381,10 +381,6 @@ public protocol ControlActions {
     func claimPageServe(_ token: String) -> ControlResponse
     /// Attach into an open local window, defaulting to the frontmost window after discovery.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse
-    /// The same attach over a chosen transport. A host that has not adopted this overload refuses a
-    /// requested mosh through the default rather than attaching over ssh, which the caller did not ask for.
-    func attachRemoteSession(host: String, session: String, window: String?,
-                             transport: RemoteTransport) async -> ControlResponse
     /// attachRemoteGroup attaches a remote top-level session, then each companion its origin lists, from one
     /// discovery read. A partial attach answers not ok with `result.id` and `result.remoteGroup` still set.
     func attachRemoteGroup(host: String, session: String, window: String?) async -> ControlResponse

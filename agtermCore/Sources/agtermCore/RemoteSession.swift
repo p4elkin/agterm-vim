@@ -1,55 +1,5 @@
 import Foundation
 
-/// How an attach reaches the far side. ssh is the default and the pre-existing behavior; mosh survives
-/// roaming and laptop sleep, at the cost of a different argv shape (see `RemoteSession.attachCommand`).
-public enum RemoteTransport: Codable, Equatable, Sendable {
-    case ssh
-    case mosh(server: String?, client: String?)
-
-    /// Wire strings to the enum, shared by the dispatcher and the CLI so both refuse the same values.
-    /// `moshServer` and `mosh` are refused outside mosh: each can mean one thing there — the far side's
-    /// server, and the LOCAL binary the pane runs. An EMPTY path is refused too, unlike an omitted one: a
-    /// shell-quoting bug must not silently ask mosh to find its own server, or the pane its own client,
-    /// which is what omitting the flag means. A non-empty one must be `isPlainMoshServer`: mosh
-    /// interpolates `--server=` raw into the far side's shell line, and the client path is a command the
-    /// pane's own shell runs.
-    public static func parse(transport: String?, moshServer: String?, mosh: String? = nil) throws -> RemoteTransport {
-        switch transport {
-        case nil, "ssh":
-            guard moshServer == nil, mosh == nil else { throw RemoteSession.InvocationError.invalidTransport }
-            return .ssh
-        case "mosh":
-            if let moshServer, !RemoteSession.isPlainMoshServer(moshServer) {
-                throw RemoteSession.InvocationError.invalidTransport
-            }
-            if let mosh, !RemoteSession.isPlainMoshServer(mosh) {
-                throw RemoteSession.InvocationError.invalidTransport
-            }
-            return .mosh(server: moshServer, client: mosh)
-        default:
-            throw RemoteSession.InvocationError.invalidTransport
-        }
-    }
-
-    /// Why `parse` rejected a wire pair, for the dispatcher and the CLI to print. The spelling is echoed
-    /// only when it is plain: `agtermctl` prints this to a terminal, where a control character would act.
-    public static func refusalMessage(transport: String?, moshServer: String?, mosh: String? = nil) -> String {
-        if let transport, transport != "ssh", transport != "mosh" {
-            return "invalid transport: \(RemoteSession.isPlain(transport) ? transport : "") (ssh|mosh)"
-        }
-        if moshServer != nil, transport != "mosh" {
-            return "--mosh-server needs --transport mosh"
-        }
-        if mosh != nil, transport != "mosh" {
-            return "--mosh needs --transport mosh"
-        }
-        if let moshServer, !RemoteSession.isPlainMoshServer(moshServer) {
-            return "invalid mosh-server path"
-        }
-        return "invalid mosh path"
-    }
-}
-
 /// The ssh command lines that reach another agterm's zmx daemons. Pure and host-free: callers run what
 /// these return, and the app target owns process execution.
 public enum RemoteSession {
@@ -58,7 +8,6 @@ public enum RemoteSession {
         case invalidHost
         case invalidSession
         case invalidEndpoint
-        case invalidTransport
     }
 
     /// One ssh invocation running the far side's own `zmx tree`, which returns its attachable sessions
@@ -219,30 +168,18 @@ public enum RemoteSession {
     /// `agtermctl` in `treeCommand` is deliberately PATH-resolved instead — that one IS the user's
     /// installed CLI.
     ///
-    /// Under mosh the remote argv travels VERBATIM after `--`: mosh quotes each element itself, the far
-    /// login shell unquotes them back into separate arguments and mosh-server `execvp`s them with no
-    /// shell in between. The ssh form's one pre-quoted line would reach that `execvp` as a single bogus
-    /// program name. `--server=` is interpolated into the far side's shell line raw, so the path is held
-    /// to `isPlainMoshServer` rather than escaped. The LOCAL `mosh` is resolved off `moshCandidates`
-    /// rather than left bare, because libghostty spawns the pane with the GUI launch PATH; `moshCandidates`
-    /// and `fileExists` are injectable so a test drives the probe without touching the real filesystem.
-    ///
     /// `lead` opts the far zmx client into explicit leadership; an origin whose zmx predates it ignores
     /// the two variables and the pane behaves as it did before.
     public static func attachCommand(host: String, endpoint: ControlZmxEndpoint, daemon: String,
                                      lead: ZmxLeadAttachment? = nil,
-                                     connectTimeout: Int = 5, controlPath: String? = nil,
-                                     transport: RemoteTransport = .ssh,
-                                     moshCandidates: [String] = RemoteSession.moshClientCandidates,
-                                     fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) })
-        throws -> [String] {
+                                     connectTimeout: Int = 5, controlPath: String? = nil) throws -> [String] {
         try validate(host: host)
         guard ZmxSupport.isDaemonName(daemon) || ZmxSupport.isScratchDaemonName(daemon) else { throw InvocationError.invalidSession }
         guard isPath(endpoint.executable), isPath(endpoint.socketDirectory) else {
             throw InvocationError.invalidEndpoint
         }
         let guardScript = "printf '%s\\n' 'agterm: remote session is gone'; exit 1"
-        let remoteArgv = [
+        let remote = CommandRestore.shellQuotedLine([
             // the four the LOCAL pane sets in `ZmxSupport`, empty being unset to zmx: an inherited
             // `ZMX_SESSION` makes attach SWITCH session instead, never reaching the create-only guard,
             // and an inherited prefix resolves a name agterm never created.
@@ -250,22 +187,13 @@ public enum RemoteSession {
             "ZMX_DIR=" + endpoint.socketDirectory,
         ] + (lead?.assignments ?? []) + [
             endpoint.executable, "attach", daemon, "/bin/sh", "-c", guardScript,
-        ]
-        // a control path is a pooled ssh master, which a mosh link cannot ride
-        let prefix = try controlPath.map { path in
-            guard case .ssh = transport else { throw InvocationError.invalidTransport }
-            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, controlPath: path)
-        } ?? transportArguments(host: host, transport: transport, connectTimeout: connectTimeout,
-                                moshCandidates: moshCandidates, fileExists: fileExists)
-        switch transport {
-        case .ssh:
-            // why ERROR: control-api.md, Remote sessions
-            var argv = prefix + [CommandRestore.shellQuotedLine(remoteArgv)]
-            argv.insert(contentsOf: ["-o", "LogLevel=ERROR"], at: argv.count - 2)
-            return argv
-        case .mosh:
-            return prefix + remoteArgv
-        }
+        ])
+        // an unpooled pane takes `ownConnection`, as every long-lived link does
+        var argv = sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, controlPath: controlPath,
+                                options: controlPath == nil ? ownConnection : []) + [remote]
+        // why ERROR: control-api.md, Remote sessions
+        argv.insert(contentsOf: ["-o", "LogLevel=ERROR"], at: argv.count - 2)
+        return argv
     }
 
     /// screenCommand reads `daemon`'s screen on `host` through the origin's own zmx, which every origin kind ships;
@@ -296,32 +224,16 @@ public enum RemoteSession {
     /// On ssh's own failure, 255, an attach with a lead or `linkNonce` reports that under `RemoteLinkNotice` and waits
     /// on `cat` for the app to attach the pane again; `cat` ends with the app's pty. Echo goes off with the cursor, as
     /// Ghostty draws its password lock in place of the cursor while echo is off.
-    ///
-    /// Under mosh `$status` is mosh-client's exit status, not the guard's `exit 1`, so a vanished daemon reads as exit 0.
     public static func attachPaneCommand(host: String, endpoint: ControlZmxEndpoint, daemon: String,
                                          session: String, pane: ZmxPaneRole,
                                          lead: ZmxLeadAttachment? = nil, linkNonce: String? = nil,
-                                         connectTimeout: Int = 5, controlPath: String? = nil,
-                                         transport: RemoteTransport = .ssh,
-                                         moshCandidates: [String] = RemoteSession.moshClientCandidates,
-                                         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) })
-        throws -> String {
+                                         connectTimeout: Int = 5, controlPath: String? = nil) throws -> String {
         let argv = try attachCommand(host: host, endpoint: endpoint, daemon: daemon, lead: lead,
-                                     connectTimeout: connectTimeout, controlPath: controlPath, transport: transport,
-                                     moshCandidates: moshCandidates, fileExists: fileExists)
-        let keepAlive: String
-        let attach: String
-        switch transport {
-        case .ssh:
-            // $ka is unquoted on purpose: four words or none. When and why the check: control-api.md, Remote sessions
-            keepAlive = keepAliveCheck(Array(argv.dropFirst())) + "; "
-            attach = CommandRestore.shellQuotedLine(Array(argv.dropLast(2))) + " $ka "
-                + CommandRestore.shellQuotedLine(Array(argv.suffix(2)))
-        case .mosh:
-            // the keepalive is ssh's: `ssh -G` cannot read a mosh argv, and mosh keeps its own link alive
-            keepAlive = ""
-            attach = CommandRestore.shellQuotedLine(argv)
-        }
+                                     connectTimeout: connectTimeout, controlPath: controlPath)
+        // $ka is unquoted on purpose: four words or none. When and why the check: control-api.md, Remote sessions
+        let keepAlive = keepAliveCheck(Array(argv.dropFirst()))
+        let attach = CommandRestore.shellQuotedLine(Array(argv.dropLast(2))) + " $ka "
+            + CommandRestore.shellQuotedLine(Array(argv.suffix(2)))
         // a pooled pane waits for its master; one that never came up is a lost connection, so 255
         let run = controlPath == nil ? "\(attach); status=$?"
             : "if agterm_connection_wait; then \(attach); status=$?; else status=255; fi"
@@ -333,36 +245,10 @@ public enum RemoteSession {
                 + "stty -echo 2>/dev/null; cat >/dev/null; fi; "
         }
         // the pane must exit with SSH's status, not printf's zero, or a failed connection reads as a clean one
-        let script = "\(prelude)\(keepAlive)\(run); printf '\(paneModeReset)'; \(wait)exit \"$status\""
+        let script = "\(prelude)\(keepAlive); \(run); printf '\(paneModeReset)'; \(wait)exit \"$status\""
         // libghostty runs this as `exec -l <command>`: bare, the exec replaces the shell with ssh and nothing
         // after it runs. `env` takes the exec instead, and a plain `sh` beneath it reads no login profile.
         return CommandRestore.shellQuotedLine(["/usr/bin/env", "/bin/sh", "-c", script])
-    }
-
-    /// Where a Homebrew or manual `mosh` installs, in probe order. The pane's command runs under
-    /// libghostty's GUI launch PATH, which has no `/opt/homebrew/bin`, so a bare `mosh` exits 127 on an
-    /// Apple-Silicon Homebrew install. `--mosh PATH` overrides the lookup for anywhere else.
-    public static let moshClientCandidates = ["/opt/homebrew/bin/mosh", "/usr/local/bin/mosh", "/usr/bin/mosh"]
-
-    /// The transport's own arguments, through the separator that ends them: ssh takes the remote line
-    /// as one last quoted element, mosh takes the argv verbatim after `--`.
-    private static func transportArguments(host: String, transport: RemoteTransport,
-                                           connectTimeout: Int, moshCandidates: [String],
-                                           fileExists: (String) -> Bool) throws -> [String] {
-        switch transport {
-        case .ssh:
-            return sshArguments(host: host, connectTimeout: connectTimeout, interactive: true, options: ownConnection)
-        case .mosh(let server, let client):
-            // mosh splits its `--ssh=` value with shellwords, so the two options reach ssh as separate
-            // options. Required on a Mac far side: mosh's bootstrap is a non-login shell, where a
-            // Homebrew mosh-server is otherwise off PATH.
-            let bootstrap = "--ssh=ssh -o BatchMode=yes -o ConnectTimeout=\(connectTimeout)"
-            if let server, !isPlainMoshServer(server) { throw InvocationError.invalidTransport }
-            if let client, !isPlainMoshServer(client) { throw InvocationError.invalidTransport }
-            let mosh = client ?? moshCandidates.first(where: fileExists) ?? "mosh"
-            guard let server else { return [mosh, bootstrap, host, "--"] }
-            return [mosh, "--server=" + server, bootstrap, host, "--"]
-        }
     }
 
     /// paneModeReset is what the wrapper prints once the attach ends: a remote program's mouse and focus reports would
@@ -433,15 +319,6 @@ public enum RemoteSession {
     static func isPlain(_ value: String) -> Bool {
         guard !value.isEmpty else { return false }
         return !value.unicodeScalars.contains { $0.properties.isWhitespace || $0.value < 0x20 || $0.value == 0x7f }
-    }
-
-    /// A `--mosh-server` path, which `isPlain` is too weak for: mosh interpolates `--server=<value>` raw
-    /// into the far side's login-shell line, where `;`, quotes, `$`, backticks and `~` would act. REFUSED
-    /// rather than escaped, so the set is closed and a legal path carrying an odd character fails loudly
-    /// instead of arriving mangled on the far side.
-    static func isPlainMoshServer(_ value: String) -> Bool {
-        let allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/@:+=%,-"
-        return !value.isEmpty && value.allSatisfy { allowed.contains($0) }
     }
 
     /// A filesystem path, which may legitimately contain spaces — `/Users/me/My Apps/agterm.app/…` is an

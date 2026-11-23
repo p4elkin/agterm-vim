@@ -306,14 +306,6 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach"))
     }
 
-    func attachRemoteSession(host: String, session: String, window: String?,
-                             transport: RemoteTransport) async -> ControlResponse {
-        guard transport == .ssh else {
-            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --transport"))
-        }
-        return await attachRemoteSession(host: host, session: session, window: window)
-    }
-
     func attachRemoteGroup(host _: String, session _: String, window _: String?) async -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach.group"))
     }

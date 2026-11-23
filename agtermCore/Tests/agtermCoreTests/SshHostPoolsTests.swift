@@ -29,20 +29,13 @@ struct SshHostPoolsTests {
         let one = SshHostPools(root: "/tmp/agterm-ssh-test", owner: "/state-a", runner: AnsweringRunner())
         let two = SshHostPools(root: "/tmp/agterm-ssh-test", owner: "/state-b", runner: AnsweringRunner())
 
-        #expect(one.lease(host: "box", transport: .ssh, user: "pane:a") != two.lease(host: "box", transport: .ssh, user: "pane:a"))
-    }
-
-    @Test func aMoshRowGetsNoPath() {
-        let pools = pools()
-
-        #expect(pools.lease(host: "box", transport: .mosh(server: nil, client: nil), user: "pane:a") == nil)
-        #expect(pools.pool(for: "box").load.isEmpty)
+        #expect(one.lease(host: "box", user: "pane:a") != two.lease(host: "box", user: "pane:a"))
     }
 
     @Test func nineLeasesOnOneHostFillOneConnectionAndOpenASecond() {
         let pools = pools()
 
-        let paths = (0..<9).compactMap { pools.lease(host: "box", transport: .ssh, user: "pane:\($0)") }
+        let paths = (0..<9).map { pools.lease(host: "box", user: "pane:\($0)") }
 
         #expect(paths.count == 9)
         #expect(Set(paths.prefix(8)).count == 1)
@@ -52,9 +45,9 @@ struct SshHostPoolsTests {
 
     @Test func retainReleasesOnlyTheNamedKindInEveryPool() {
         let pools = pools()
-        _ = pools.lease(host: "box", transport: .ssh, user: "pane:a")
-        _ = pools.lease(host: "box", transport: .ssh, user: "present:a")
-        _ = pools.lease(host: "other", transport: .ssh, user: "pane:b")
+        _ = pools.lease(host: "box", user: "pane:a")
+        _ = pools.lease(host: "box", user: "present:a")
+        _ = pools.lease(host: "other", user: "pane:b")
 
         pools.retain(["pane:a"], prefix: "pane:")
 

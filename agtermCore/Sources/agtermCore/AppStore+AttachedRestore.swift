@@ -4,7 +4,7 @@ import Foundation
 extension AppStore {
     /// attachedSnapshots is `workspace`'s rows attached from another host, each with its place among the workspace's
     /// rows; nil when it has none. A row `RemoteRowBook` records is the book's to restore, never saved here too, or
-    /// it would come back twice and lose its transport; `includingBookRows` is for tests of the restore path.
+    /// it would come back twice; `includingBookRows` is for tests of the restore path.
     func attachedSnapshots(of workspace: Workspace, includingBookRows: Bool = false) -> [AttachedSessionSnapshot]? {
         let rows = workspace.sessions.enumerated().compactMap { index, session -> AttachedSessionSnapshot? in
             guard includingBookRows || !RemoteRowBook.Record.covers(session) else { return nil }
@@ -115,7 +115,7 @@ extension AppStore {
     private func attachLine(_ origin: AttachedOriginSnapshot, pane: UUID, role: ZmxPaneRole) -> String? {
         guard let saved = origin.panes.first(where: { $0.pane == pane }) else { return nil }
         let lead = ZmxLeadAttachment(claim: false, reclaim: saved.lead)
-        let path = sshHostPools?.lease(host: origin.host, transport: origin.binding.origin?.transport ?? .ssh, user: "pane:\(pane)")
+        let path = sshHostPools?.lease(host: origin.host, user: "pane:\(pane)")
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: saved.daemon,
                                                               session: origin.sessionName, pane: role, lead: lead,
                                                               controlPath: path) else { return nil }

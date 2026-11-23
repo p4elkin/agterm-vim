@@ -55,17 +55,23 @@ final class RemoteRowRestoreTests: XCTestCase {
     }
 
     private func record(window: UUID, workspace: UUID, position: Int, remoteID: String = "R1", parent: String? = nil,
-                        transport: RemoteTransport = .ssh, left: String? = nil,
-                        right: String? = nil) throws -> RemoteRowBook.Record {
+                        left: String? = nil, right: String? = nil) throws -> RemoteRowBook.Record {
+        let json = recordJSON(window: window, workspace: workspace, position: position, remoteID: remoteID, parent: parent,
+                              left: left, right: right)
+        return try JSONDecoder().decode(RemoteRowBook.Record.self, from: Data(json.utf8))
+    }
+
+    /// recordJSON is a record as a file holds it; `transport` is the key an older build wrote.
+    private func recordJSON(window: UUID, workspace: UUID, position: Int, remoteID: String = "R1", parent: String? = nil,
+                            transport: String = #"{"ssh":{}}"#, left: String? = nil, right: String? = nil) -> String {
         let panes = ["\"left\",\"\(left ?? daemon)\""] + (right.map { ["\"right\",\"\($0)\""] } ?? [])
-        let json = """
+        return """
         {"windowID":"\(window.uuidString)","workspaceID":"\(workspace.uuidString)","position":\(position),
          "host":"p4linux","endpoint":{"executable":"\(endpoint.executable)","socketDirectory":"\(endpoint.socketDirectory)"},
          "sessionName":"build","remoteSessionID":"\(remoteID)","presentationVersion":1,\(parent.map { #""parentRemoteSessionID":"\#($0)","# } ?? "")
-         "transport":\(String(decoding: try JSONEncoder().encode(transport), as: UTF8.self)),
+         "transport":\(transport),
          "daemonsByPane":[\(panes.joined(separator: ","))],"splitAxis":"vertical"}
         """
-        return try JSONDecoder().decode(RemoteRowBook.Record.self, from: Data(json.utf8))
     }
 
     private func remoteRows(_ store: AppStore) -> [Session] {
@@ -305,21 +311,22 @@ final class RemoteRowRestoreTests: XCTestCase {
         ZmxLeadBook.shared.forget(pane: row.paneIdentity)
     }
 
-    func testAMoshRecordRestoresAMoshRow() throws {
+    func testABookHoldingAMoshRecordRestoresOnlyItsOtherRows() throws {
         let store = try XCTUnwrap(library.activeStore)
         let window = try XCTUnwrap(library.activeWindowID)
         let workspace = try XCTUnwrap(store.currentWorkspaceID)
-        let mosh = RemoteTransport.mosh(server: "/usr/bin/mosh-server", client: nil)
+        let book = RemoteRowBook(directory: directory)
+        let ssh = recordJSON(window: window, workspace: workspace, position: 0, remoteID: "R1")
+        let mosh = recordJSON(window: window, workspace: workspace, position: 1, remoteID: "R2",
+                              transport: #"{"mosh":{"server":"/usr/bin/mosh-server"}}"#,
+                              left: ZmxSupport.daemonName(for: UUID()))
+        try Data("[\(ssh),\(mosh)]".utf8).write(to: book.fileURL)
 
-        server.restoreRemoteRows([try record(window: window, workspace: workspace, position: 0, transport: mosh)],
-                                 windowID: window, store: store)
+        server.restoreRemoteRows(from: book)
 
-        let row = try XCTUnwrap(remoteRows(store).first)
-        assertAsleepWithNothingSpawned([row])
-        wake(row, in: store)
-        XCTAssertTrue(try XCTUnwrap(row.initialCommand).contains("--server=/usr/bin/mosh-server"))
-        XCTAssertEqual(row.remotePresentation?.binding.origin?.transport, mosh)
-        ZmxLeadBook.shared.forget(pane: row.paneIdentity)
+        let rows = remoteRows(store)
+        XCTAssertEqual(rows.compactMap { $0.remotePresentation?.binding.remoteSessionID }, ["R1"])
+        rows.forEach { ZmxLeadBook.shared.forget(pane: $0.paneIdentity) }
     }
 
     func testNothingIsCreatedTwice() throws {

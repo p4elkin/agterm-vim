@@ -117,7 +117,7 @@ whether or not `--cwd` was passed** — none of the nine keymap chords passes on
 the PAIRING's, `redirect.cwd`, which the mirror job read from the workstation's own tree.
 
 ⚠️ **A mirrored row's process directory is NOT the remote shell's**, though it looks like it should be.
-libghostty drops the mosh shell's OSC 7 as not local, so the row keeps the `--cwd "$HOME"` the mirror job
+libghostty drops the remote shell's OSC 7 as not local, so the row keeps the `--cwd "$HOME"` the mirror job
 pinned at creation, and the redirect's `cd` then lands in the workstation's `$HOME` — a path that exists
 there, so the overlay opens happily in the wrong repository and says nothing. This exact belief ("its shell
 IS the remote shell, so the process directory is already a workstation path") is what made two acceptance

@@ -28,7 +28,7 @@ enum PaneLead {
     /// Installed by the app.
     static var scratchStopped: ((_ view: GhosttySurfaceView) -> Bool)?
     /// catalogChannel leases a remote row's pane its ssh channel on the row's pool: its remote window's, else its host's;
-    /// nil for a mosh or local row. Installed by the app.
+    /// nil for a local row. Installed by the app.
     static var catalogChannel: ((_ session: UUID, _ user: String) -> String?)?
     /// heldExit hands a remote pane's clean exit to the respawn join. Installed by the app.
     static var heldExit: ((_ view: GhosttySurfaceView) -> Void)?

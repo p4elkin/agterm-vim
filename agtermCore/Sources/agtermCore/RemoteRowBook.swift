@@ -11,7 +11,6 @@ public struct RemoteRowBook {
         public var sessionName: String
         public var remoteSessionID: String
         public var presentationVersion: Int?
-        public var transport: RemoteTransport
         public var daemonsByPane: [ZmxPaneRole: String]
         public var splitAxis: SplitAxis
         /// The row's name as this Mac last showed it. Nil in a file an older build wrote, which kept only the
@@ -60,7 +59,6 @@ public struct RemoteRowBook {
             sessionName = origin.sessionName
             remoteSessionID = binding.remoteSessionID
             presentationVersion = binding.presentationVersion
-            transport = origin.transport
             daemonsByPane = [.left: primary]
             if session.hasSplit, let split = session.splitPaneIdentity, let daemon = binding.daemon(forLocalPane: split) {
                 daemonsByPane[.right] = daemon
@@ -109,7 +107,7 @@ public struct RemoteRowBook {
         public func binding(daemonsByLocalPane: [UUID: String]) -> RemoteBinding {
             RemoteBinding(remoteSessionID: remoteSessionID, daemonsByLocalPane: daemonsByLocalPane,
                 presentationVersion: presentationVersion,
-                origin: RemoteBinding.Origin(host: host, endpoint: endpoint, sessionName: sessionName, transport: transport))
+                origin: RemoteBinding.Origin(host: host, endpoint: endpoint, sessionName: sessionName))
         }
 
         fileprivate var isValid: Bool {
@@ -117,9 +115,6 @@ public struct RemoteRowBook {
                   RemoteSession.isPlain(remoteSessionID), Self.isPath(endpoint.executable), Self.isPath(endpoint.socketDirectory),
                   daemonsByPane[.left] != nil, daemonsByPane.values.allSatisfy(ZmxSupport.isDaemonName),
                   Set(daemonsByPane.values).count == daemonsByPane.count else { return false }
-            if case .mosh(let server, let client) = transport {
-                return [server, client].compactMap { $0 }.allSatisfy(RemoteSession.isPlainMoshServer)
-            }
             return true
         }
 
@@ -160,11 +155,35 @@ public struct RemoteRowBook {
         fileURL = directory.appendingPathComponent("remote-rows.json")
     }
 
+    public struct LoadReport: Equatable, Sendable {
+        public let records: [Record]
+        /// `host/remoteSessionID` of each record an older build saved with the removed mosh transport, which is not loaded.
+        public let droppedMosh: [String]
+    }
+
     /// Invalid records are discarded independently; a missing or corrupt file is empty.
-    public func load() -> [Record] {
+    public func load() -> [Record] { loadReport().records }
+
+    public func loadReport() -> LoadReport {
         guard let data = try? Data(contentsOf: fileURL),
-              let records = try? JSONDecoder().decode([Record].self, from: data) else { return [] }
-        return records.filter(\.isValid).map(\.sanitized)
+              let loaded = try? JSONDecoder().decode([Loaded].self, from: data) else { return LoadReport(records: [], droppedMosh: []) }
+        return LoadReport(records: loaded.filter { !$0.savedOverMosh }.map(\.record).filter(\.isValid).map(\.sanitized),
+                          droppedMosh: loaded.filter(\.savedOverMosh).map { "\($0.record.host)/\($0.record.remoteSessionID)" })
+    }
+
+    /// A record read together with the `transport` key older builds wrote, `{"ssh":{}}` or `{"mosh":{…}}`.
+    private struct Loaded: Decodable {
+        let record: Record
+        let savedOverMosh: Bool
+
+        private enum Key: String, CodingKey { case transport }
+        private enum Transport: String, CodingKey { case mosh }
+
+        init(from decoder: any Decoder) throws {
+            record = try Record(from: decoder)
+            let transport = try? decoder.container(keyedBy: Key.self).nestedContainer(keyedBy: Transport.self, forKey: .transport)
+            savedOverMosh = transport?.contains(.mosh) ?? false
+        }
     }
 
     public func save(_ records: [Record]) throws {

@@ -444,7 +444,7 @@ final class WindowLibraryTransferTests {
             daemonsByLocalPane: [row.paneIdentity: ZmxSupport.daemonName(for: UUID())], presentationVersion: 1,
             origin: RemoteBinding.Origin(host: "buildbox",
                 endpoint: ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/remote-zmx"),
-                sessionName: "remote-session", transport: .ssh)), forSession: row.id)
+                sessionName: "remote-session")), forSession: row.id)
         let destination = fixture.library.newWindow(name: "dest").id
 
         _ = try fixture.library.transferWorkspace(project.id, from: fixture.source, to: .window(destination)).get()

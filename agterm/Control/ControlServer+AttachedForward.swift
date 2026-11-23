@@ -391,8 +391,7 @@ extension ControlServer: RemoteAttachLines {
         let lead = ZmxLeadAttachment(claim: false)
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
                                                               session: origin.sessionName, pane: .right, lead: lead,
-                                                              controlPath: hostPoolPath(origin, local: local),
-                                                              transport: origin.transport) else {
+                                                              controlPath: hostPoolPath(origin, local: local)) else {
             return Self.unaddressable(origin.host, what: "pane")
         }
         ZmxLeadBook.shared.begin(lead, pane: local)
@@ -408,8 +407,7 @@ extension ControlServer: RemoteAttachLines {
         let lead = ZmxLeadAttachment(claim: false, reclaim: reclaim)
         guard let line = try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
                                                               session: "scratch", pane: .left, lead: lead,
-                                                              controlPath: hostPoolPath(origin, local: local),
-                                                              transport: origin.transport) else {
+                                                              controlPath: hostPoolPath(origin, local: local)) else {
             return Self.unaddressable(origin.host, what: "scratch")
         }
         ZmxLeadBook.shared.begin(lead, pane: local)
@@ -417,7 +415,7 @@ extension ControlServer: RemoteAttachLines {
     }
 
     private func hostPoolPath(_ origin: RemoteBinding.Origin, local: UUID) -> String? {
-        library.sshHostPools?.lease(host: origin.host, transport: origin.transport, user: "pane:\(local)")
+        library.sshHostPools?.lease(host: origin.host, user: "pane:\(local)")
     }
 
     private static func unaddressable(_ host: String, what: String) -> String {

@@ -233,7 +233,7 @@ extension ControlServer {
         case .success(let discovered): found = discovered
         }
         let attached: RemoteRowInsert
-        switch remoteRow(found.remote, from: found.tree, host: host, transport: .ssh) {
+        switch remoteRow(found.remote, from: found.tree, host: host) {
         case .failure(let refusal): attached = .refused(refusal)
         case .success(let row):
             attached = attachRemoteRow(row, window: destination.map { $0.windowID.uuidString } ?? window, destination: destination)
@@ -255,21 +255,16 @@ extension ControlServer {
     /// attach, handing back a fresh shell wearing the session's name. Everything that can fail is checked
     /// before the model is touched, so a refusal leaves no half-built row behind.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {
-        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh, workspace: nil)
-    }
-
-    func attachRemoteSession(host: String, session: String, window: String?,
-                             transport: RemoteTransport) async -> ControlResponse {
-        await attachRemoteSession(host: host, session: session, window: window, transport: transport, workspace: nil)
+        await attachRemoteSession(host: host, session: session, window: window, workspace: nil)
     }
 
     func attachRemoteSession(host: String, session: String, window: String?,
                              workspace target: ControlAttachWorkspace?) async -> ControlResponse {
-        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh, workspace: target)
+        await attachRemoteSession(host: host, session: session, window: window, target: target)
     }
 
-    private func attachRemoteSession(host: String, session: String, window: String?, transport: RemoteTransport,
-                                     workspace target: ControlAttachWorkspace?) async -> ControlResponse {
+    private func attachRemoteSession(host: String, session: String, window: String?,
+                                     target: ControlAttachWorkspace?) async -> ControlResponse {
         let found: (remote: ControlRemoteSession, tree: ControlRemoteTree)
         switch await discoverRemote(host: host, session: session) {
         case .failure(let response): return response
@@ -291,7 +286,7 @@ extension ControlServer {
             }
         }
         let row: RemoteRow
-        switch remoteRow(found.remote, from: found.tree, host: host, transport: transport) {
+        switch remoteRow(found.remote, from: found.tree, host: host) {
         case .failure(let response): return response
         case .success(let built): row = built
         }
@@ -384,7 +379,7 @@ extension ControlServer {
     }
 
     /// A headless origin's `zmx.attach --beside`: its session `session` becomes a row right after `rowID`, from the
-    /// host and transport that row already uses. Unselected, as the origin's own `zmx.new` creates it: nobody here
+    /// host that row already uses. Unselected, as the origin's own `zmx.new` creates it: nobody here
     /// asked to look at it. Answers with the origin's id, which is the only one the origin can use.
     func attachBeside(rowID: UUID, session: String) async -> ControlResponse {
         // an origin's session id is a UUID, and refusal text echoes it
@@ -396,7 +391,7 @@ extension ControlServer {
         switch await discoverRemote(host: origin.host, session: session) {
         case .failure(let response): return response
         case .success(let found):
-            switch remoteRow(found.remote, from: found.tree, host: origin.host, transport: origin.transport) {
+            switch remoteRow(found.remote, from: found.tree, host: origin.host) {
             case .failure(let response): return response
             case .success(let built): row = built
             }
@@ -429,8 +424,8 @@ extension ControlServer {
         return .success((remote, tree))
     }
 
-    private func remoteRow(_ remote: ControlRemoteSession, from tree: ControlRemoteTree, host: String,
-                           transport: RemoteTransport) -> ControlTargetResolver.Resolution<RemoteRow> {
+    private func remoteRow(_ remote: ControlRemoteSession, from tree: ControlRemoteTree,
+                           host: String) -> ControlTargetResolver.Resolution<RemoteRow> {
         // by role, never by position: a payload with two lefts or no left must fail rather than quietly
         // become one pane, or the wrong one
         let byRole = Dictionary(remote.panes.map { (ZmxPaneRole(controlName: $0.pane), $0.daemon) },
@@ -439,7 +434,7 @@ extension ControlServer {
             return .failure(ControlResponse(ok: false, error: "\(host) reported panes agterm cannot address"))
         }
         return .success(RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
-                                  presentationVersion: tree.presentation, transport: transport, left: left,
+                                  presentationVersion: tree.presentation, left: left,
                                   right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)),
                                   name: remote.name, namePending: false, originHeadless: tree.headless == true,
                                   companions: remote.companions?.map(\.id), originParent: remote.parent))
@@ -459,14 +454,11 @@ extension ControlServer {
     }
 
     /// attach creates the local row for `remote`, one session of `tree`, and binds its panes. Everything that can
-    /// fail is checked before the model is touched. A companion attaches over its parent's transport.
+    /// fail is checked before the model is touched.
     func attach(_ remote: ControlRemoteSession, from tree: ControlRemoteTree, host: String,
                 placement: RemotePlacement) -> ControlResponse {
-        let transport = placement.parent.flatMap {
-            placement.store.session(withID: $0)?.remotePresentation?.binding.origin?.transport
-        } ?? .ssh
         let row: RemoteRow
-        switch remoteRow(remote, from: tree, host: host, transport: transport) {
+        switch remoteRow(remote, from: tree, host: host) {
         case .failure(let response): return response
         case .success(let found): row = found
         }
@@ -489,12 +481,10 @@ extension ControlServer {
         let split: String?
         do {
             primary = try RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: row.left,
-                                                          session: row.sessionName, pane: .left, lead: leads.left,
-                                                          transport: row.transport)
+                                                          session: row.sessionName, pane: .left, lead: leads.left)
             split = try row.right.map {
                 try RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: $0,
-                                                    session: row.sessionName, pane: .right, lead: leads.right,
-                                                    transport: row.transport)
+                                                    session: row.sessionName, pane: .right, lead: leads.right)
             }
         } catch {
             return .refused(ControlResponse(ok: false, error: "\(row.host) reported a session agterm cannot address"))
@@ -524,7 +514,7 @@ extension ControlServer {
             store.markRestoredAsleep(created)
         } else if let pools = library.sshHostPools {
             func pooled(_ daemon: String, pane: UUID, role: ZmxPaneRole, lead: ZmxLeadAttachment) -> String? {
-                guard let path = pools.lease(host: row.host, transport: row.transport, user: "pane:\(pane)") else { return nil }
+                let path = pools.lease(host: row.host, user: "pane:\(pane)")
                 return try? RemoteSession.attachPaneCommand(host: row.host, endpoint: row.endpoint, daemon: daemon,
                                                             session: row.sessionName, pane: role, lead: lead, controlPath: path)
             }
@@ -540,8 +530,7 @@ extension ControlServer {
             daemons[local] = right
             if !asleep { ZmxLeadBook.shared.begin(leads.right, pane: local) }
         }
-        let origin = RemoteBinding.Origin(host: row.host, endpoint: row.endpoint, sessionName: row.sessionName,
-                                          transport: row.transport)
+        let origin = RemoteBinding.Origin(host: row.host, endpoint: row.endpoint, sessionName: row.sessionName)
         store.bindRemote(RemoteBinding(remoteSessionID: row.remoteSessionID, daemonsByLocalPane: daemons,
                                        presentationVersion: row.presentationVersion, origin: origin,
                                        originHeadless: row.originHeadless),
@@ -846,7 +835,6 @@ struct RemoteRow {
     let sessionName: String
     let remoteSessionID: String
     let presentationVersion: Int?
-    let transport: RemoteTransport
     let left: String
     let right: String?
     let splitAxis: SplitAxis?

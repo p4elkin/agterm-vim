@@ -10,13 +10,11 @@ public struct RemoteBinding: Equatable, Sendable {
         public let host: String
         public let endpoint: ControlZmxEndpoint
         public let sessionName: String
-        public let transport: RemoteTransport
 
-        public init(host: String, endpoint: ControlZmxEndpoint, sessionName: String, transport: RemoteTransport = .ssh) {
+        public init(host: String, endpoint: ControlZmxEndpoint, sessionName: String) {
             self.host = host
             self.endpoint = endpoint
             self.sessionName = sessionName
-            self.transport = transport
         }
     }
 
@@ -86,7 +84,7 @@ public struct RemoteBinding: Equatable, Sendable {
         guard let origin, let daemon = daemon(forLocalPane: identity) else { return nil }
         return try? RemoteSession.attachPaneCommand(host: origin.host, endpoint: origin.endpoint, daemon: daemon,
                                                     session: origin.sessionName, pane: pane, lead: lead,
-                                                    controlPath: controlPath, transport: origin.transport)
+                                                    controlPath: controlPath)
     }
 
     /// scratchDaemon is the name the origin's scratch `identity` runs under there.

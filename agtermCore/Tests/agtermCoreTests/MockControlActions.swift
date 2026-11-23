@@ -100,7 +100,7 @@ class MockControlActionsBase {
         case zmxNew(ControlZmxNewOptions)
         case zmxNewRemote(host: String, options: ControlZmxNewOptions, window: String?)
         case zmxTree(host: String?)
-        case zmxAttach(host: String, session: String, window: String?, transport: RemoteTransport)
+        case zmxAttach(host: String, session: String, window: String?)
         case zmxAttachUnder(host: String, session: String, parent: String)
         case zmxPresent(session: String)
         case rebasedMirrorList
@@ -751,10 +751,9 @@ class MockControlActionsBase {
         return ControlResponse(ok: true, result: ControlResult(id: job))
     }
 
-    /// Only reachable through the ssh defaults — the dispatcher calls the transport overload — so this
-    /// entry can record nothing else.
+    /// Reached through the defaults of a host without the window overload, which drop the window.
     func attachRemoteSession(host: String, session: String) async -> ControlResponse {
-        calls.append(.zmxAttach(host: host, session: session, window: nil, transport: .ssh))
+        calls.append(.zmxAttach(host: host, session: session, window: nil))
         return nextRemoteAttachResponse
     }
 
@@ -1202,9 +1201,8 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
         return ControlResponse(ok: true)
     }
 
-    func attachRemoteSession(host: String, session: String, window: String?,
-                             transport: RemoteTransport) async -> ControlResponse {
-        calls.append(.zmxAttach(host: host, session: session, window: window, transport: transport))
+    func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {
+        calls.append(.zmxAttach(host: host, session: session, window: window))
         return nextRemoteAttachResponse
     }
 
@@ -1237,6 +1235,6 @@ final class MockControlActions: MockControlActionsBase, ControlActions {
 
 /// A host that never adopted the fork's two overloads, so `ControlActionsDefaults` answers them for
 /// real. Nothing is restated here, so deleting a guard in the production default must fail the tests
-/// that drive this double — a requested mosh or split command is refused, never silently downgraded.
+/// that drive this double — a requested split command is refused, never silently downgraded.
 @MainActor
 final class DefaultsOnlyActions: MockControlActionsBase, ControlActions {}

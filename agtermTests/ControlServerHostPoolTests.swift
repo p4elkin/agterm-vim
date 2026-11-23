@@ -103,10 +103,10 @@ final class ControlServerHostPoolTests: XCTestCase {
         get throws { try XCTUnwrap(library.activeStore) }
     }
 
-    private func remoteRow(host: String = "p4linux", transport: RemoteTransport = .ssh, left: String? = nil, split: Bool = false,
+    private func remoteRow(host: String = "p4linux", left: String? = nil, split: Bool = false,
                            primary: UUID = UUID()) -> RemoteRow {
         RemoteRow(host: host, endpoint: Self.endpoint, sessionName: "build", remoteSessionID: "s-\(UUID().uuidString)",
-                  presentationVersion: 1, transport: transport, left: left ?? ZmxSupport.daemonName(for: primary),
+                  presentationVersion: 1, left: left ?? ZmxSupport.daemonName(for: primary),
                   right: split ? ZmxSupport.daemonName(for: UUID()) : nil, splitAxis: nil, name: "build", namePending: false)
     }
 
@@ -141,11 +141,9 @@ final class ControlServerHostPoolTests: XCTestCase {
         XCTAssertFalse(server.sshPool(forSession: other.id) === pool)
     }
 
-    func testAMoshRowAndALocalRowHaveNoPool() throws {
-        let mosh = try insert(remoteRow(transport: .mosh(server: nil, client: nil)))
+    func testALocalRowHasNoPool() throws {
         let local = try XCTUnwrap(try store.addSession(toWorkspace: try XCTUnwrap(try store.currentWorkspaceID), cwd: "/tmp"))
 
-        XCTAssertNil(server.sshPool(forSession: mosh.id))
         XCTAssertNil(server.sshPool(forSession: local.id))
     }
 
@@ -169,17 +167,6 @@ final class ControlServerHostPoolTests: XCTestCase {
         let pool = try XCTUnwrap(server.catalogPool(forSession: rowID))
         XCTAssertTrue(server.sshPool(forSession: rowID) === pool)
         XCTAssertNil(pools.pools["box"])
-    }
-
-    func testAMoshRowIsInsertedWithNoControlPath() throws {
-        let row = try insert(remoteRow(transport: .mosh(server: nil, client: nil), split: true))
-
-        let left = try XCTUnwrap(row.initialCommand)
-        let right = try XCTUnwrap(row.splitInitialCommand)
-        XCTAssertTrue(left.contains("mosh"), left)
-        XCTAssertFalse(left.contains("ControlPath"), left)
-        XCTAssertFalse(right.contains("ControlPath"), right)
-        XCTAssertNil(pools.pools["p4linux"])
     }
 
     func testAnUnaddressableRowIsRefusedAndNothingIsInsertedOrLeased() throws {

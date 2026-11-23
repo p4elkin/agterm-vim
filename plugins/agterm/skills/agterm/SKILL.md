@@ -877,7 +877,7 @@ Mac, they act on that window's entries only.
 
 **zmx** - `zmx list` - every daemon behind a live session joined against the pane that claims it, under the
 restore status as a header, which also names the socket directory the daemons live in, the path `ZMX_DIR`
-must carry for a plain shell or a mosh session to reach them; a CLOSED window's panes are claimed with zero clients, which is a resting
+must carry for a plain or ssh shell to reach them; a CLOSED window's panes are claimed with zero clients, which is a resting
 state rather than a leak · `zmx screen NAME [--all|--lines N]` - a daemon's screen as text by the name
 `zmx list` prints, reaching a pane in a closed window, which `session text` cannot since it resolves only
 open-window sessions; attaches nothing · `zmx prune` - kill the daemons no pane claims and nothing is attached to,

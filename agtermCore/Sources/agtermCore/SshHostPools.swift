@@ -24,10 +24,9 @@ public final class SshHostPools {
         return pool
     }
 
-    /// lease is `user`'s control path on `host`'s pool; nil for mosh, which has no ssh channel to pool.
-    public func lease(host: String, transport: RemoteTransport, user: String) -> String? {
-        guard case .ssh = transport else { return nil }
-        return pool(for: host).lease(user)
+    /// lease is `user`'s control path on `host`'s pool.
+    public func lease(host: String, user: String) -> String {
+        pool(for: host).lease(user)
     }
 
     /// retain keeps, in every pool, the users of kind `prefix` that are in `users` and releases the rest of that kind.

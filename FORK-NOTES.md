@@ -89,7 +89,7 @@ is the `.claude/rules` file that owns the design.
   (`.claude/rules/control-api.md`, Remote sessions).
   `session type` clears a status by the `statusReset` in the server's own `settings.json`, read on every call;
   typing on the Mac clears it by the Mac's own Status reset, which the typed `status.clear` carries.
-  Since 2026-10-03 every p4linux session is one of these: the old mosh rows were moved in, p4linux's
+  Since 2026-10-03 every p4linux session is one of these: the old pinned rows were moved in, p4linux's
   `agtermctl` is the server's own CLI, and agterm-agents' `agtermctl` shim is gone.
   Design in `docs/plans/20260929-headless-origin-spec.md`, rules in `.claude/rules/headless-origin.md`.
 - **Sleeping remote rows** — a remote row off screen for `remoteSleepAfterMinutes` (30, 0 = never) frees its
@@ -131,9 +131,7 @@ Read `patches/ghostty/README.md` before touching either; when the pin moves, `gi
 - `zmx list` reports `socketDirectory`, the private `ZMX_DIR` the app's own client is using, so an
   outside script exports it instead of recomputing the state-directory hash.
   `.claude/rules/control-api.md`.
-- `zmx attach` takes `--transport ssh|mosh` (with `--mosh-server` for a Homebrew far side and `--mosh` to
-  override the local binary probe, which finds Homebrew's mosh without a GUI-launched PATH) and
-  `session split on --command <cmd> [--wait]` seeds a fresh split's command in one step.
+- `session split on --command <cmd> [--wait]` seeds a fresh split's command in one step.
   `.claude/rules/control-api.md`.
 - `scripts/release.sh` builds on the fork, unsigned and without a Homebrew tap, and publishes a section of
   `CHANGELOG-fork.md` as the release body. `.claude/rules/release.md`.

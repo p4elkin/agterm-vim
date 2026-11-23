@@ -1017,14 +1017,12 @@ struct RemotePresentationStateTests {
 
         #expect(!session.overlayActive)
     }
-    @Test func anOriginDefaultsToSshAndKeepsAnExplicitTransportWhenTheBindingGrows() {
+    @Test func aBindingKeepsItsOriginWhenItGrows() {
         let endpoint = ControlZmxEndpoint(executable: "/zmx", socketDirectory: "/tmp/z")
-        #expect(RemoteBinding.Origin(host: "origin", endpoint: endpoint, sessionName: "work").transport == .ssh)
-        let transport = RemoteTransport.mosh(server: "/opt/mosh-server", client: "/opt/mosh")
-        let origin = RemoteBinding.Origin(host: "origin", endpoint: endpoint, sessionName: "work", transport: transport)
+        let origin = RemoteBinding.Origin(host: "origin", endpoint: endpoint, sessionName: "work")
         let binding = RemoteBinding(remoteSessionID: "s1", daemonsByLocalPane: [:], presentationVersion: 1, origin: origin)
         let grown = binding.adding(localPane: UUID(), daemon: ZmxSupport.daemonName(for: Self.remoteLeft))
-        #expect(grown.origin?.transport == transport)
+        #expect(grown.origin == origin)
     }
 
     @Test func rowStateKeepsOtherPresentationStateAndOverridesTheStreamNotice() throws {

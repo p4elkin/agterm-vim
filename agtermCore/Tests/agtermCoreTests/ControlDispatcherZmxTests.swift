@@ -268,10 +268,10 @@ struct ControlDispatcherZmxTests {
 
         _ = await ControlDispatcher(actions: actions).dispatch(request)
 
-        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil, transport: .ssh)])
+        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil)])
     }
 
-    @Test func zmxAttachWithAParentCarriesItAndNoTransportOrWindow() async {
+    @Test func zmxAttachWithAParentCarriesItAndNoWindow() async {
         let actions = MockControlActions()
         let request = ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox", parent: " row "))
 
@@ -283,17 +283,14 @@ struct ControlDispatcherZmxTests {
     @Test(arguments: [
         ControlArgs(host: "buildbox", attach: "s1", parent: "row"),
         ControlArgs(host: "buildbox", window: "w", parent: "row"),
-        ControlArgs(host: "buildbox", transport: "ssh", parent: "row"),
-        ControlArgs(host: "buildbox", moshServer: "/m", parent: "row"),
-        ControlArgs(host: "buildbox", mosh: "/m", parent: "row"),
     ])
-    func zmxAttachRefusesAPlacementOrTransportBesideAParent(_ args: ControlArgs) async throws {
+    func zmxAttachRefusesAPlacementBesideAParent(_ args: ControlArgs) async throws {
         let actions = MockControlActions()
 
         let response = try #require(await ControlDispatcher(actions: actions)
             .dispatch(ControlRequest(cmd: .zmxAttach, target: "s1", args: args)))
 
-        #expect(response.error == "zmx.attach --parent takes the parent row's window and transport")
+        #expect(response.error == "zmx.attach --parent takes the parent row's window")
         #expect(actions.calls.isEmpty)
     }
 
@@ -338,117 +335,13 @@ struct ControlDispatcherZmxTests {
         #expect(actions.calls.isEmpty)
     }
 
-    @Test func zmxAttachCarriesTheRequestedTransportAndWindow() async {
+    @Test func zmxAttachCarriesTheWindow() async {
         let actions = MockControlActions()
-        let request = ControlRequest(cmd: .zmxAttach, target: "s1",
-                                     args: ControlArgs(host: "buildbox", transport: "mosh",
-                                                       moshServer: "/opt/homebrew/bin/mosh-server", window: "w2"))
+        let request = ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox", window: "w2"))
 
         _ = await ControlDispatcher(actions: actions).dispatch(request)
 
-        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: "w2",
-                                             transport: .mosh(server: "/opt/homebrew/bin/mosh-server",
-                                                              client: nil))])
-    }
-
-    @Test func zmxAttachCarriesTheLocalMoshPathBesideTheTransport() async {
-        let actions = MockControlActions()
-        let request = ControlRequest(cmd: .zmxAttach, target: "s1",
-                                     args: ControlArgs(host: "buildbox", transport: "mosh",
-                                                       mosh: "/opt/custom/mosh"))
-
-        _ = await ControlDispatcher(actions: actions).dispatch(request)
-
-        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil,
-                                             transport: .mosh(server: nil, client: "/opt/custom/mosh"))])
-    }
-
-    @Test func zmxAttachRefusesAMoshClientWithoutMosh() async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "ssh", mosh: "/opt/custom/mosh")))
-
-        #expect(response?.ok == false)
-        #expect(response?.error == "--mosh needs --transport mosh")
-        #expect(actions.calls.isEmpty)
-    }
-
-    // the local binary is refused on the same terms as the far-side server path: one shell-safe token
-    @Test(arguments: ["", "/opt/custom/mosh client", "/opt/mosh;id"])
-    func zmxAttachRefusesAMalformedMoshClient(_ mosh: String) async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "mosh", mosh: mosh)))
-
-        #expect(response?.ok == false)
-        #expect(response?.error == "invalid mosh path")
-        #expect(actions.calls.isEmpty)
-    }
-
-    @Test func zmxAttachRefusesATransportItDoesNotKnow() async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "tcp")))
-
-        #expect(response?.ok == false)
-        #expect(response?.error == "invalid transport: tcp (ssh|mosh)")
-        #expect(actions.calls.isEmpty)
-    }
-
-    // the refusal names the offending spelling, so a control character must not reach it
-    @Test func zmxAttachDoesNotEchoANonPlainTransport() async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "tcp\u{1B}[31m")))
-
-        #expect(response?.error == "invalid transport:  (ssh|mosh)")
-        #expect(actions.calls.isEmpty)
-    }
-
-    @Test func zmxAttachRefusesAMoshServerWithoutMosh() async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "ssh",
-                                             moshServer: "/opt/homebrew/bin/mosh-server")))
-
-        #expect(response?.ok == false)
-        #expect(response?.error == "--mosh-server needs --transport mosh")
-        #expect(actions.calls.isEmpty)
-    }
-
-    // `--mosh-server ''` is a quoting bug, not a request for mosh's own lookup; only OMITTING it is
-    @Test func zmxAttachRefusesAnEmptyMoshServer() async {
-        let actions = MockControlActions()
-
-        let response = await ControlDispatcher(actions: actions).dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "mosh", moshServer: "")))
-
-        #expect(response?.ok == false)
-        #expect(response?.error == "invalid mosh-server path")
-        #expect(actions.calls.isEmpty)
-    }
-
-    @Test func anUnconvertedHostRefusesARequestedMosh() async throws {
-        let actions = DefaultsOnlyActions()
-
-        let response = try #require(await dispatch(
-            ControlRequest(cmd: .zmxAttach, target: "s1",
-                           args: ControlArgs(host: "buildbox", transport: "mosh")), actions))
-
-        #expect(!response.ok)
-        #expect(response.error == "zmx.attach --transport is not supported on this platform")
-        #expect(actions.calls.isEmpty, "a requested mosh must never be silently downgraded to ssh")
+        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: "w2")])
     }
 
     @Test func anUnconvertedHostStillAttachesOverSsh() async throws {
@@ -458,7 +351,7 @@ struct ControlDispatcherZmxTests {
             ControlRequest(cmd: .zmxAttach, target: "s1", args: ControlArgs(host: "buildbox")), actions))
 
         #expect(response.ok)
-        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil, transport: .ssh)])
+        #expect(actions.calls == [.zmxAttach(host: "buildbox", session: "s1", window: nil)])
     }
 
     @Test func zmxPresentCarriesTheSession() async {

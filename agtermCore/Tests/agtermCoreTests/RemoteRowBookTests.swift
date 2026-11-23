@@ -15,10 +15,10 @@ final class RemoteRowBookTests {
 
     deinit { try? FileManager.default.removeItem(at: directory) }
 
-    private func origin(_ transport: RemoteTransport = .ssh) -> RemoteBinding.Origin {
+    private func origin() -> RemoteBinding.Origin {
         RemoteBinding.Origin(host: "buildbox",
             endpoint: ControlZmxEndpoint(executable: "/opt/zmx", socketDirectory: "/tmp/remote-zmx"),
-            sessionName: "remote-session", transport: transport)
+            sessionName: "remote-session")
     }
 
     private func row(in store: AppStore, origin: RemoteBinding.Origin?, version: Int? = 1,
@@ -32,19 +32,17 @@ final class RemoteRowBookTests {
         return session
     }
 
-    private func record(_ transport: RemoteTransport = .ssh, version: Int? = 1) throws -> RemoteRowBook.Record {
+    private func record(version: Int? = 1) throws -> RemoteRowBook.Record {
         let library = WindowLibrary(directory: directory)
         let window = try #require(library.windows.first)
         let store = try #require(library.store(for: window.id))
-        let session = try row(in: store, origin: origin(transport), version: version)
+        let session = try row(in: store, origin: origin(), version: version)
         let workspace = try #require(store.workspaces.first?.id)
         return try #require(RemoteRowBook.Record(session: session, windowID: window.id, workspaceID: workspace, position: 1))
     }
 
-    @Test(arguments: [RemoteTransport.ssh, .mosh(server: "/opt/mosh-server", client: "/opt/mosh"),
-                      .mosh(server: nil, client: nil)])
-    func recordsRoundTripEndpointTransportAndPlacement(transport: RemoteTransport) throws {
-        let saved = try record(transport)
+    @Test func recordsRoundTripEndpointAndPlacement() throws {
+        let saved = try record()
         let data = try JSONEncoder().encode(saved)
         #expect(try JSONDecoder().decode(RemoteRowBook.Record.self, from: data) == saved)
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -182,8 +180,8 @@ final class RemoteRowBookTests {
     }
 
     @Test(arguments: [Int?.none, .some(1)])
-    func aRestoredBindingKeepsThePresentationVersionAndTransport(version: Int?) throws {
-        let saved = try record(.mosh(server: "/opt/mosh-server", client: "/opt/mosh"), version: version)
+    func aRestoredBindingKeepsThePresentationVersionAndOrigin(version: Int?) throws {
+        let saved = try record(version: version)
         let book = RemoteRowBook(directory: directory)
         try book.save([saved])
         let restored = try #require(book.load().first)
@@ -191,7 +189,7 @@ final class RemoteRowBookTests {
         let binding = restored.binding(daemonsByLocalPane: [local: try #require(restored.daemonsByPane[.left])])
         #expect(binding.presentationVersion == version)
         #expect(binding.remoteSessionID == saved.remoteSessionID)
-        #expect(binding.origin == origin(saved.transport))
+        #expect(binding.origin == origin())
         #expect(binding.localPane(forRemote: originLeft) == local)
     }
 
@@ -247,7 +245,7 @@ final class RemoteRowBookTests {
         let library = WindowLibrary(directory: directory)
         let window = library.newWindow(name: "remote")
         let store = try #require(library.store(for: window.id))
-        _ = try row(in: store, origin: origin(.mosh(server: nil, client: nil)))
+        _ = try row(in: store, origin: origin(), remoteSessionID: "second-id")
         let previous = RemoteRowBook.records(from: library, previous: [])
         library.closeWindow(window.id)
         #expect(library.store(for: window.id) == nil)
@@ -293,15 +291,21 @@ final class RemoteRowBookTests {
         #expect(book.load().isEmpty)
     }
 
-    @Test(arguments: ["", "/x y", "/bin/mosh;id", "$(id)", "~/.bin/mosh", "/bin/mosh\n"])
-    func loadValidatesBothMoshPathsAfterCodableDecode(path: String) throws {
-        let valid = try record(.mosh(server: nil, client: nil))
-        var server = valid, client = valid
-        server.transport = .mosh(server: path, client: nil)
-        client.transport = .mosh(server: nil, client: path)
+    @Test func aRecordSavedOverMoshIsDroppedAndTheOthersLoad() throws {
+        var base = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(try record())) as? [String: Any])
+        var ssh = base, mosh = base, bare = base
+        ssh["remoteSessionID"] = "ssh-id"
+        ssh["transport"] = ["ssh": [String: Any]()]
+        mosh["remoteSessionID"] = "mosh-id"
+        mosh["transport"] = ["mosh": ["server": "/opt/homebrew/bin/mosh-server"]]
+        bare["remoteSessionID"] = "bare-id"
         let book = RemoteRowBook(directory: directory)
-        try book.save([server, client, valid])
-        #expect(book.load() == [valid])
+        try JSONSerialization.data(withJSONObject: [ssh, mosh, bare]).write(to: book.fileURL)
+
+        #expect(book.load().map(\.remoteSessionID) == ["ssh-id", "bare-id"])
+        let report = book.loadReport()
+        #expect(report.records.map(\.remoteSessionID) == ["ssh-id", "bare-id"])
+        #expect(report.droppedMosh == ["buildbox/mosh-id"])
     }
 
     @Test func missingAndCorruptFilesReadAsEmptyAndWritesReplaceAtomically() throws {
@@ -313,7 +317,7 @@ final class RemoteRowBookTests {
         try book.save([first])
         #expect(book.load() == [first])
         var second = first
-        second.transport = .mosh(server: nil, client: nil)
+        second.remoteSessionID = "second-id"
         try book.save([second])
         #expect(try JSONDecoder().decode([RemoteRowBook.Record].self, from: Data(contentsOf: book.fileURL)) == [second])
         #expect(try FileManager.default.contentsOfDirectory(atPath: state.path) == ["remote-rows.json"])
@@ -384,7 +388,7 @@ final class RemoteRowBookTests {
         let store = try #require(library.activeStore)
         defer { store.finalizeAllPendingCloses() }
         let first = try row(in: store, origin: origin())
-        let second = try row(in: store, origin: origin(.mosh(server: nil, client: nil)))
+        let second = try row(in: store, origin: origin(), remoteSessionID: "second-id")
         let before = RemoteRowBook.records(from: library, previous: [])
         #expect(softClose(path, in: store, first: first, second: second))
         #expect(store.session(withID: first.id) == nil)
@@ -397,7 +401,7 @@ final class RemoteRowBookTests {
         let after = RemoteRowBook.records(from: library, previous: retained)
         #expect(after.count == (path == "session" ? 1 : 0))
         if path == "session" {
-            #expect(after.first?.transport == .mosh(server: nil, client: nil))
+            #expect(after.first?.remoteSessionID == "second-id")
             #expect(after.first?.position == 1)
         }
     }
@@ -408,7 +412,7 @@ final class RemoteRowBookTests {
         let store = try #require(library.activeStore)
         defer { store.finalizeAllPendingCloses() }
         let first = try row(in: store, origin: origin())
-        let second = try row(in: store, origin: origin(.mosh(server: nil, client: nil)))
+        let second = try row(in: store, origin: origin(), remoteSessionID: "second-id")
         let before = RemoteRowBook.records(from: library, previous: [])
         #expect(softClose(path, in: store, first: first, second: second))
         let during = RemoteRowBook.records(from: library, previous: before)
@@ -438,7 +442,7 @@ final class RemoteRowBookTests {
         let first = try row(in: store, origin: origin())
         let workspace = try #require(store.workspace(forSession: first.id))
         _ = store.addSession(toWorkspace: workspace.id, cwd: "/tmp")
-        _ = try row(in: store, origin: origin(.mosh(server: nil, client: nil)))
+        _ = try row(in: store, origin: origin(), remoteSessionID: "second-id")
         let before = RemoteRowBook.records(from: library, previous: [])
         #expect(before.map(\.position) == [1, 3])
         #expect(store.softCloseSession(first.id, grace: 60))
@@ -452,7 +456,7 @@ final class RemoteRowBookTests {
         let first = try row(in: store, origin: origin())
         let workspace = try #require(store.workspace(forSession: first.id))
         _ = store.addSession(toWorkspace: workspace.id, cwd: "/tmp")
-        let last = try row(in: store, origin: origin(.mosh(server: nil, client: nil)))
+        let last = try row(in: store, origin: origin(), remoteSessionID: "second-id")
         let before = RemoteRowBook.records(from: library, previous: [])
         #expect(store.softCloseSession(first.id, grace: 60))
         #expect(store.softCloseSession(last.id, grace: 60))

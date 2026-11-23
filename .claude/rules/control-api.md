@@ -2272,7 +2272,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   argv-quoted. The pane attach alone adds `LogLevel=ERROR`: ssh's disconnect chatter would land wherever the
   remote program left the cursor, while a takeover or an unowned reattach runs with no probe first, so a
   refused key or a changed host key must still print its reason.
-  The ssh pane wrapper, never the mosh one below, also adds `ServerAliveInterval=5`/`ServerAliveCountMax=2`
+  The pane wrapper also adds `ServerAliveInterval=5`/`ServerAliveCountMax=2`
   before the host when `ssh -G` reports `serveraliveinterval 0`, so a dead link ends within about 15 s, on
   the third missed check, unless the user's config sets a nonzero one. The check runs with the attach's own arguments, so a `Match command`
   or `Match sessiontype` block answers it the way it answers the attach, and a `Match exec` command runs
@@ -2298,7 +2298,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   - Leased: both pane attaches (`pane:<identity>`), the origin scratch's (`pane:<scratchClientIdentity>`), the
     presentation stream (`present:<row>`), an overlay job (`job:<job>`) and the reconnect probe (`leaseOnce`).
     Every builder of a pane line leases; a new one owes the same.
-  - Never leased: a `--transport mosh` row (`lease` answers nil), page serving, link forwards, and short calls.
+  - Never leased: page serving, link forwards, and short calls.
   - `retainHostPoolLeases` runs on the 1 s remote tick and once more when the tick stops. It keeps the `pane:`
     users of every row open or pending close that has not ended and is not asleep, a scratch user while
     `originScratch` is set, and one `present:` user per stream, and releases the rest. The set comes from rows,
@@ -2309,31 +2309,6 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
     (`releaseLeavingSession` → `closeReplicaOverlay`), which fires it.
   - After an outage each master costs one handshake rather than each channel, so sshd's `MaxStartups`
     (`10:30:100`) drops far less of the burst; a link on its own connection still costs one each.
-- `zmx.attach --transport ssh|mosh` picks the transport, ssh by default. Mosh replaces the ssh pane
-  command with `mosh --server=… --ssh=… HOST -- <remote argv>`, where everything after `--` travels
-  VERBATIM: mosh quotes each element and the far login shell unquotes them back into separate arguments
-  for mosh-server's own `execvp`, with no shell in between, so the ssh form's one pre-quoted line would
-  arrive there as a single bogus program name. `--transport`, `--mosh-server PATH` and `--mosh PATH`
-  parse through one
-  host-free `RemoteTransport.parse` shared by the CLI and the dispatcher, so no path accepts a spelling
-  another refuses, an unknown transport is refused BY NAME rather than silently degrading to ssh, and
-  either path flag without `--transport mosh` is refused outright. The path names the server on the FAR
-  side, needed where a Mac far side's non-login bootstrap shell has no Homebrew on PATH, and it is held
-  to `RemoteSession.isPlainMoshServer` — `[A-Za-z0-9._/@:+=%,-]` and nothing else — because mosh
-  interpolates `--server=` RAW into the far side's shell line, where whitespace, `;`, quotes, `$`,
-  backticks and `~` act; it is refused rather than escaped, so a legal-but-odd path fails loudly here
-  instead of arriving mangled there. An empty `--mosh-server` is a quoting bug and refused; only
-  OMITTING it asks mosh for its own lookup. `--mosh PATH` names the LOCAL binary the pane runs. Omitted,
-  `RemoteSession.attachCommand` takes the first of `/opt/homebrew/bin/mosh`, `/usr/local/bin/mosh` and
-  `/usr/bin/mosh` that exists and falls back to a bare `mosh`, because a GUI-launched pane's PATH lacks
-  `/opt/homebrew/bin` the same way the far side's bootstrap shell does. An explicit `--mosh` overrides
-  the probe and is held to the same `isPlainMoshServer` allowlist.
-  A host that implemented only the older attach overloads
-  refuses a requested mosh with `zmx.attach --transport is not supported on this platform` through
-  `ControlActionsDefaults`, never a silent ssh.
-  `zmx.attach.group` attaches every member over ssh, so the dispatcher refuses a requested mosh there
-  (`zmx.attach.group --transport is not supported on this platform`). A companion `zmx.attach` places under
-  its parent's row goes through `attach(_:placement:)` and takes the PARENT's transport, not the requested one.
 - Neither the host nor the session target is echoed into an error unless it PASSED validation. `invalid
   host` is a constant, and `zmx.attach` refuses a session carrying EMBEDDED whitespace or a control
   character through the same `RemoteSession.isPlain` the argv builders use — outer whitespace is trimmed
@@ -2470,9 +2445,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   closed workspace's record, whose `sessionCount` and `selectedSessionID` are recomputed after filtering. The
   in-memory pending-close record keeps remote sessions, so the three-second undo still restores the row.
 - A remote row is saved OUTSIDE the snapshot, in `<stateDir>/remote-rows.json` (`RemoteRowBook`): window,
-  workspace, position, origin, transport, daemons by pane role, the parent's origin session id for a
+  workspace, position, origin, daemons by pane role, the parent's origin session id for a
   companion, each pane's saved lead and the followed-companion state, never a command, so every restore mode
-  brings it back and none replays an ssh line. `RemoteRowBookWriter` rewrites it after each tree change,
+  brings it back and none replays an ssh line. A record an older build saved with `"transport":{"mosh":…}` is
+  dropped at load; the launch restore logs each one (`RemoteRowBook.loadReport`). `RemoteRowBookWriter` rewrites it after each tree change,
   debounced, and once from `applicationWillTerminate` before `isTerminating` stops every later write. At
   launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected and asleep (see Sleeping
   remote rows), at their places, without a lead claim; a reopened window restores its own through
@@ -2483,7 +2459,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   and origin id, else top-level; a bad saved parent id reads as none, so the row is never dropped for it.
 - `zmx attach --parent ROW` (fork only) is the one way to put a row from a headless origin, which reports no
   companions, under a parent here. `ControlArgs.parent` is refused by the dispatcher beside any placement,
-  transport, `--beside` or group attach, by the `--beside` forward branch, by `ControlActionsDefaults` and by
+  `--beside` or group attach, by the `--beside` forward branch, by `ControlActionsDefaults` and by
   `HeadlessActions`; `HtmlBridge` leaves `window` unset for it. The CLI treats an ok reply without
   `result.parent` as an app too old for the key, which attached top-level.
 - `RemoteRowSupervisor` takes a remote pane whose attach ended: one tree call per host classifies it,
@@ -2799,7 +2775,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   ids. A reply over the frame limit becomes `reply larger than the frame limit`. The origin's side is in
   [[headless-origin]].
 - `zmx.attach` is forwarded only in its `--beside` form: target is the presenting row's origin session and
-  `args.attach` the session to attach. `attachBeside` takes the host and transport from the row's binding, never
+  `args.attach` the session to attach. `attachBeside` takes the host from the row's binding, never
   from the request, places the new row after it unselected, and refuses a session that already has a row.
   A Mac dispatcher refuses the form outright, since its target names a row rather than a remote session.
 - Open work follows the lead (#1017). `AppStore.reconcileOpenWork` (`AppStore+OpenWork`) places each open ask,

@@ -3,11 +3,11 @@ import agtermCore
 
 /// The ssh pools of attached rows: a remote window's row rides its window's pool, any other ssh row its host's.
 extension ControlServer {
-    /// sshPool is row `sessionID`'s pool, live or pending close; nil for a mosh row, a local row, or without a registry.
+    /// sshPool is row `sessionID`'s pool, live or pending close; nil for a local row or without a registry.
     func sshPool(forSession sessionID: UUID) -> SshConnectionPool? {
         if let pool = catalogPool(forSession: sessionID) { return pool }
         guard let pools = library.sshHostPools, let binding = heldSession(sessionID)?.remotePresentation?.binding,
-              !binding.catalogOwned, let origin = binding.origin, case .ssh = origin.transport else { return nil }
+              !binding.catalogOwned, let origin = binding.origin else { return nil }
         return pools.pool(for: origin.host)
     }
 

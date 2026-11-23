@@ -93,10 +93,10 @@ struct Zmx: ParsableCommand {
             nothing this command does can kill them. An open attached session is saved and attached again at the next launch.
 
             On a headless origin, `--beside ROW` asks the Mac presenting ROW to attach the session right \
-            after that row, from the host and transport the row already uses.
+            after that row, from the host the row already uses.
 
             `--parent ROW` attaches it as a companion of ROW, a remote row here of the same host, in ROW's \
-            window over ROW's transport.
+            window.
             """)
         @Argument(help: "The host, as ssh would take it.")
         var host: String
@@ -104,12 +104,6 @@ struct Zmx: ParsableCommand {
         var session: String
         @Option(help: "Local open window id, unique prefix, or active (default: frontmost after discovery).")
         var window: String?
-        @Option(help: "How to reach the far side: ssh (default) or mosh.")
-        var transport: String?
-        @Option(help: "Absolute path of mosh-server on the far side. mosh starts its ssh bootstrap as a non-login shell, so a Homebrew mosh-server is otherwise off its PATH.")
-        var moshServer: String?
-        @Option(help: "Absolute path of the LOCAL mosh binary, when it is not at the first of /opt/homebrew/bin, /usr/local/bin, /usr/bin that exists.")
-        var mosh: String?
         @Option(help: "On a headless origin: the row whose presenting Mac attaches the session right after it.")
         var beside: String?
         @Flag(help: "Also attach every companion of the session, under it; the session must not itself be a companion.")
@@ -127,8 +121,6 @@ struct Zmx: ParsableCommand {
         /// It creates a local session, so it echoes that session's id like every other create command.
         var echoesResultID: Bool { true }
 
-        /// The server trims the transport the same way, so a padded spelling is not an unknown one there.
-        /// `RemoteTransport.parse` refuses the same pairs the dispatcher refuses, with one error text.
         func validate() throws {
             if workspace != nil, workspaceName != nil {
                 throw ValidationError("use either --workspace or --workspace-name, not both")
@@ -139,25 +131,17 @@ struct Zmx: ParsableCommand {
             if beside != nil || parent != nil, workspace != nil || workspaceName != nil {
                 throw ValidationError("\(beside != nil ? "--beside" : "--parent") takes the row's own workspace")
             }
-            if beside != nil, window != nil || transport != nil || moshServer != nil || mosh != nil {
-                throw ValidationError("--beside takes the row's own window and transport")
+            if beside != nil, window != nil {
+                throw ValidationError("--beside takes the row's own window")
             }
             if beside != nil, companions {
                 throw ValidationError("--beside attaches one session, not its companions")
             }
-            if parent != nil, window != nil || transport != nil || moshServer != nil || mosh != nil || beside != nil {
-                throw ValidationError("--parent takes the parent row's window and transport")
+            if parent != nil, window != nil || beside != nil {
+                throw ValidationError("--parent takes the parent row's window")
             }
             if parent != nil, companions {
                 throw ValidationError("--parent attaches one session, not its companions")
-            }
-            let trimmed = transport?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let wireTransport = trimmed?.isEmpty == true ? nil : trimmed
-            do {
-                _ = try RemoteTransport.parse(transport: wireTransport, moshServer: moshServer, mosh: mosh)
-            } catch {
-                throw ValidationError(RemoteTransport.refusalMessage(transport: wireTransport,
-                                                                      moshServer: moshServer, mosh: mosh))
             }
         }
 
@@ -171,7 +155,7 @@ struct Zmx: ParsableCommand {
             return ControlRequest(cmd: companions ? .zmxAttachGroup : .zmxAttach, target: session,
                                   args: ControlArgs(workspace: workspace, workspaceName: workspaceName,
                                                     createWorkspace: createWorkspace ? true : nil, host: host,
-                                                    transport: transport, moshServer: moshServer, mosh: mosh, window: window))
+                                                    window: window))
         }
 
         func run() throws {

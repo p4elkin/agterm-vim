@@ -1,11 +1,18 @@
 import agtermCore
 import Foundation
+import os
+
+private let bookLogger = Logger(subsystem: "com.umputun.agterm", category: "RemoteRowBook")
 
 extension ControlServer {
     /// Puts back every open window's saved remote rows. Called once at launch, never from a scene task,
     /// which runs per window.
     func restoreRemoteRows(from book: RemoteRowBook) {
-        let records = book.load()
+        let report = book.loadReport()
+        for row in report.droppedMosh {
+            bookLogger.notice("dropped remote row \(row, privacy: .public): saved with the removed mosh transport")
+        }
+        let records = report.records
         for id in library.openIDs() {
             guard let store = library.store(for: id) else { continue }
             restoreRemoteRows(records, windowID: id, store: store)
@@ -46,7 +53,7 @@ extension ControlServer {
         let name = record.restoredName
         let row = RemoteRow(host: record.host, endpoint: record.endpoint, sessionName: record.sessionName,
                             remoteSessionID: record.remoteSessionID, presentationVersion: record.presentationVersion,
-                            transport: record.transport, left: left, right: record.daemonsByPane[.right],
+                            left: left, right: record.daemonsByPane[.right],
                             splitAxis: record.splitAxis, name: name.value, namePending: name.pending)
         let placement = RemotePlacement(store: store, workspace: entry.workspaceID, parent: parent,
                                         position: position.map { min(max($0, 0), count) }, select: false)

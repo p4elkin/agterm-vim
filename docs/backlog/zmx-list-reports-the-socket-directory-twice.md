@@ -8,7 +8,7 @@ added: 2026-09-03
 Upstream's remote-sessions work added `endpoint` to the `zmx list` header, an optional
 `ControlZmxEndpoint` carrying `executable` and `socketDirectory`. The fork had already added a top-level
 `socketDirectory` string to the same header for the same reason: so an outside `zmx attach`, a plain
-shell or a mosh session can set `ZMX_DIR` instead of recomputing the hash of the state directory.
+or ssh shell can set `ZMX_DIR` instead of recomputing the hash of the state directory.
 
 The merge of 2026-09-03 kept both, because dropping the fork's field mid-merge would have changed the
 wire shape the fork's own readers and `agterm-zmx-mirror` rely on. So `ControlZmxInventory` now has two

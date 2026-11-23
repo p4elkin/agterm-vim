@@ -85,7 +85,7 @@ struct OverlayRedirectSshTests {
     }
 
     // ⚠️ The regression this pins: none of the nine keymap chords passes --cwd, and a mirrored row's PWD is
-    // already a path on the workstation (its shell IS the remote shell, over mosh). Dropping it started
+    // already a path on the workstation (its shell IS the remote shell). Dropping it started
     // lazygit in the far side's $HOME instead of the repository the row is sitting in.
     @Test func mirrorOfCdsOnTheFarSideWithTheProcessDirectoryWhenNoCwdWasPassed() throws {
         let effects = Effects()

@@ -12,8 +12,8 @@ Upstream (#999, #1030) saves a row attached from another host in the window snap
 ## What happened
 
 Derived from reading the 2026-11-20 upstream merge, not reproduced.
-Left alone, both saved a terminal row; the snapshot rebuilt it first, without the fork's transport, so a mosh
-row would come back as ssh, and the book then skipped it as present. The merge split ownership (Sasha,
+Left alone, both saved a terminal row; the snapshot rebuilt it first, without the book's saved state, and the
+book then skipped it as present. The merge split ownership (Sasha,
 2026-11-20): `AppStore.attachedSnapshots` leaves out every row `RemoteRowBook.Record.covers`, so the book owns
 terminal rows and the snapshot keeps only the rows the book cannot record (page rows).
 

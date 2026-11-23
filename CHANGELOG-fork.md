@@ -22,6 +22,9 @@ publishes an empty body with only a warning on stderr.
 
 ### Removed
 
+- Remote attach over mosh is gone: every remote session attaches over ssh. `zmx attach` no longer takes
+  `--transport`, `--mosh-server` or `--mosh`, and passing one is an unknown option. A remote session saved
+  over mosh by an earlier build does not come back at launch; attach it again over ssh.
 - The fork's own hidden-surface GPU release (`patches/ghostty/0001-surface-realize-api.patch`,
   `AGTERM_SURFACE_UNREALIZE`) is gone. At ghostty v1.4.0 upstream frees a hidden pane's swap chain on
   occlusion, and the patch no longer applied.

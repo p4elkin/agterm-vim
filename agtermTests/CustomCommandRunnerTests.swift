@@ -1201,7 +1201,7 @@ final class CustomCommandRunnerTests: XCTestCase {
                        "with the scratch hidden the pane overlay names its own pane again")
     }
 
-    // a REMOTE row's cwd is a path on the OTHER machine: a pane running mosh into p4linux reports
+    // a REMOTE row's cwd is a path on the OTHER machine: a pane attached to p4linux reports
     // `/home/sasha/dev`, which no Mac has. `Process.run()` validates `currentDirectoryURL` in the spawn and
     // throws before `/bin/sh` is exec'd, so every custom command on such a row — the park chord that found
     // this among them — did nothing at all. The marker coming back IS the regression: with the cwd applied
