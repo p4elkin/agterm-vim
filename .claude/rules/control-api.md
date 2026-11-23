@@ -2470,13 +2470,15 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   closed workspace's record, whose `sessionCount` and `selectedSessionID` are recomputed after filtering. The
   in-memory pending-close record keeps remote sessions, so the three-second undo still restores the row.
 - A remote row is saved OUTSIDE the snapshot, in `<stateDir>/remote-rows.json` (`RemoteRowBook`): window,
-  workspace, position, origin, transport, daemons by pane role and the parent's origin session id for a
-  companion, never a command, so every restore mode
+  workspace, position, origin, transport, daemons by pane role, the parent's origin session id for a
+  companion, each pane's saved lead and the followed-companion state, never a command, so every restore mode
   brings it back and none replays an ssh line. `RemoteRowBookWriter` rewrites it after each tree change,
   debounced, and once from `applicationWillTerminate` before `isTerminating` stops every later write. At
   launch `ControlServer.restoreRemoteRows` inserts each open window's rows unselected and asleep (see Sleeping
   remote rows), at their places, without a lead claim; a reopened window restores its own through
-  `WindowLibrary.onStoreLoaded`.
+  `WindowLibrary.onStoreLoaded`. The saved leads are armed in `ZmxLeadBook` and taken back by the wake's
+  `renewAttachLines`; a companion marked handled reaches a closed window's records through
+  `WindowLibrary.onOriginCompanionsHandled`.
   A companion record goes under the one top-level row restored in its workspace with the same host, endpoint
   and origin id, else top-level; a bad saved parent id reads as none, so the row is never dropped for it.
 - `zmx attach --parent ROW` (fork only) is the one way to put a row from a headless origin, which reports no

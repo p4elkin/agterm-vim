@@ -9,10 +9,11 @@ final class WindowLibraryFollowCompanionsTests {
 
     deinit { try? FileManager.default.removeItem(at: directory) }
 
+    // a page row: the window snapshot saves it, while a terminal row with daemons is `RemoteRowBook`'s (RemoteRowBookTests)
     private func copy(of origin: UUID, in store: AppStore, host: String = "buildbox", endpoint: ControlZmxEndpoint? = nil) throws -> Session {
         let row = try #require(store.addSession(toWorkspace: store.workspaces[0].id, cwd: "/tmp", remoteHost: host,
-                                                remoteSessionID: origin.uuidString))
-        store.bindRemote(RemoteBinding(remoteSessionID: origin.uuidString, daemonsByLocalPane: [row.paneIdentity: ZmxSupport.daemonName(for: UUID())],
+                                                remoteSessionID: origin.uuidString, content: .page))
+        store.bindRemote(RemoteBinding(remoteSessionID: origin.uuidString, daemonsByLocalPane: [:],
                                        presentationVersion: 1,
                                        origin: .init(host: host, endpoint: endpoint ?? self.endpoint, sessionName: "parent")),
                          forSession: row.id)

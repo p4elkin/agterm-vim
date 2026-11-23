@@ -104,6 +104,8 @@ public final class WindowLibrary {
     @ObservationIgnored public var onRowWake: (@MainActor (Session) -> Void)?
     /// A session's real teardown, which a soft close reaches only when its undo grace ends with no tree change.
     @ObservationIgnored public var onSessionFinalized: (@MainActor (UUID) -> Void)?
+    /// Told after `markOriginCompanionsHandled`, so the remote row book marks the rows of closed windows it keeps.
+    @ObservationIgnored public var onOriginCompanionsHandled: (@MainActor ([String], String, String, ControlZmxEndpoint) -> Void)?
     /// A window is closing and its store is still loaded: the last moment anything can read it.
     @ObservationIgnored public var onWindowClosing: (@MainActor (UUID) -> Void)?
     /// onRemoteStoreOpened and onRemoteStoreClosed bracket a remote window's loaded store, so the app can run

@@ -206,7 +206,7 @@ public final class ZmxLeadBook {
     public func takeClaim(pane: UUID) -> Bool { claims.remove(pane) != nil }
 
     /// arm stages saved leads, by pane identity, for each pane's first attach after a restore.
-    func arm(_ leads: [UUID: String]) { pendingReclaims.merge(leads) { _, new in new } }
+    public func arm(_ leads: [UUID: String]) { pendingReclaims.merge(leads) { _, new in new } }
 
     /// disarm drops the armed leads of `panes` that no attach took.
     func disarm(_ panes: some Sequence<UUID>) { panes.forEach { pendingReclaims[$0] = nil } }

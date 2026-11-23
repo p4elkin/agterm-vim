@@ -43,5 +43,6 @@ extension WindowLibrary {
                 log("could not record handled companions in closed window \(info.id): \(error)")
             }
         }
+        onOriginCompanionsHandled?(ids, parent, host, endpoint)
     }
 }

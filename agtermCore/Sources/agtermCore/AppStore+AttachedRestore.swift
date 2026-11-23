@@ -71,6 +71,11 @@ extension AppStore {
         session.commandWait = true
         session.splitCommandWait = session.splitPaneIdentity != nil
         if asleep {
+            // a row woken later renews its lines app-side, which takes these back through `pendingReclaim`
+            let panes = Set([session.paneIdentity] + [session.splitPaneIdentity].compactMap { $0 })
+            ZmxLeadBook.shared.arm(origin.panes.reduce(into: [:]) { leads, saved in
+                if panes.contains(saved.pane), let lead = saved.lead { leads[saved.pane] = lead }
+            })
             markRestoredAsleep(session)
         } else {
             applyAttachLines(origin, to: session)

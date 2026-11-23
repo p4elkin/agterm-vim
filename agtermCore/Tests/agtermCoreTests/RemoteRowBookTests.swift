@@ -52,6 +52,38 @@ final class RemoteRowBookTests {
         #expect(object["initialCommand"] == nil)
     }
 
+    @Test func aRecordKeepsThePanesSavedLeadAndTheFollowedCompanions() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.windows.first)
+        let store = try #require(library.store(for: window.id))
+        let session = try row(in: store, origin: origin())
+        let workspace = try #require(store.workspaces.first?.id)
+        let led = ZmxLeadAttachment(claim: false)
+        ZmxLeadBook.shared.begin(led, pane: session.paneIdentity)
+        _ = ZmxLeadBook.shared.apply(try #require(ZmxLeadNotice(title: "zmx-role;\(led.nonce):leader:1")), pane: session.paneIdentity)
+        let child = UUID().uuidString
+        store.baselineCompanions([child], forSession: session.id)
+
+        let saved = try #require(RemoteRowBook.Record(session: session, windowID: window.id, workspaceID: workspace, position: 0))
+
+        #expect(saved.leads == [.left: led.nonce])
+        #expect(saved.followedCompanions == [child])
+        #expect(saved.companionsBaselined == true)
+        #expect(try JSONDecoder().decode(RemoteRowBook.Record.self, from: JSONEncoder().encode(saved)) == saved)
+    }
+
+    @Test func aHandledCompanionMarksOnlyTheRecordShowingItsOrigin() throws {
+        let saved = try record()
+        let child = UUID().uuidString
+
+        let marked = saved.markingHandled([child], parent: saved.remoteSessionID, host: saved.host, endpoint: saved.endpoint)
+
+        #expect(marked.followedCompanions == [child])
+        #expect(saved.markingHandled([child], parent: saved.remoteSessionID, host: "elsewhere", endpoint: saved.endpoint) == saved)
+        #expect(saved.markingHandled([child], parent: "other-id", host: saved.host, endpoint: saved.endpoint) == saved)
+        #expect(marked.markingHandled([child], parent: saved.remoteSessionID, host: saved.host, endpoint: saved.endpoint) == marked)
+    }
+
     @Test func aRecordKeepsTheRowsNameAndAPendingRename() throws {
         let library = WindowLibrary(directory: directory)
         let window = try #require(library.windows.first)

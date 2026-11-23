@@ -20,6 +20,13 @@ public struct RemoteRowBook {
         /// The remote id of the row this one is a companion of, on the same host. Nil for a top-level row and
         /// in a file an older build wrote.
         public var parentRemoteSessionID: String?
+        /// The attach nonce each pane's next attach takes the lead back from (`ZmxLeadBook.savedLead`); nil when
+        /// no pane led, and in a file an older build wrote.
+        public var leads: [ZmxPaneRole: String]?
+        /// The origin companions this row has handled and whether it took its baseline, as the window snapshot keeps
+        /// them for the rows it owns (`AttachedSessionSnapshot`).
+        public var followedCompanions: [String]?
+        public var companionsBaselined: Bool?
 
         public struct Name: Codable, Equatable, Sendable {
             /// The custom name, nil when the row shows its automatic one.
@@ -61,6 +68,28 @@ public struct RemoteRowBook {
             splitAxis = session.splitAxis
             name = Name(value: session.customName, pending: session.remotePresentation?.namePending ?? false)
             self.parentRemoteSessionID = parentRemoteSessionID
+            var leads: [ZmxPaneRole: String] = [:]
+            leads[.left] = ZmxLeadBook.shared.savedLead(pane: session.paneIdentity)
+            if daemonsByPane[.right] != nil, let split = session.splitPaneIdentity {
+                leads[.right] = ZmxLeadBook.shared.savedLead(pane: split)
+            }
+            self.leads = leads.isEmpty ? nil : leads
+            followedCompanions = session.followedCompanions.isEmpty ? nil : session.followedCompanions.sorted()
+            companionsBaselined = session.companionsBaselined ? true : nil
+        }
+
+        /// markingHandled is this record with origin companions `ids` of origin session `parent` on `host`'s zmx at
+        /// `endpoint` recorded as handled, the book's half of `WindowLibrary.markOriginCompanionsHandled`.
+        @MainActor
+        public func markingHandled(_ ids: [String], parent: String, host: String, endpoint: ControlZmxEndpoint) -> Record {
+            guard self.host == host, self.endpoint == endpoint,
+                  WindowLibrary.originID(remoteSessionID) == WindowLibrary.originID(parent) else { return self }
+            let followed = Set(followedCompanions ?? [])
+            let marks = ids.map(WindowLibrary.originID)
+            guard !followed.isSuperset(of: marks) else { return self }
+            var copy = self
+            copy.followedCompanions = followed.union(marks).sorted()
+            return copy
         }
 
         /// A parent id that could not reach an argv or an error message drops the link, never the row.

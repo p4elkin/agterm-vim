@@ -31,6 +31,12 @@ final class RemoteRowBookWriter {
             finalized?(id)
             self?.schedule()
         }
+        // a closed window's rows exist only here, so a companion marked handled is written into them now
+        let handled = library.onOriginCompanionsHandled
+        library.onOriginCompanionsHandled = { [weak self] ids, parent, host, endpoint in
+            handled?(ids, parent, host, endpoint)
+            self?.markHandled(ids, parent: parent, host: host, endpoint: endpoint)
+        }
         // a closed window's rows are kept as last written, so a rename still inside the debounce is written now
         let closing = library.onWindowClosing
         library.onWindowClosing = { [weak self] id in
@@ -44,10 +50,17 @@ final class RemoteRowBookWriter {
         debouncer.schedule(after: delay) { [weak self] in self?.write() }
     }
 
-    func write() {
+    private func markHandled(_ ids: [String], parent: String, host: String, endpoint: ControlZmxEndpoint) {
+        let marked = previous.map { library.store(for: $0.windowID) == nil ? $0.markingHandled(ids, parent: parent, host: host, endpoint: endpoint) : $0 }
+        let changed = marked != previous
+        previous = marked
+        write(force: changed)
+    }
+
+    func write(force: Bool = false) {
         guard !library.isTerminating else { return }
         let records = RemoteRowBook.records(from: library, previous: previous)
-        guard records != previous else { return }
+        guard force || records != previous else { return }
         do {
             try book.save(records)
             previous = records

@@ -204,7 +204,7 @@ struct AppStoreAttachedRestoreTests {
         ZmxLeadBook.shared.begin(followed, pane: split)
         _ = ZmxLeadBook.shared.apply(try #require(ZmxLeadNotice(title: "zmx-role;\(followed.nonce):follower:1")), pane: split)
 
-        let restored = relaunched(store)
+        let restored = relaunched(store, selecting: row.id)
 
         let back = try #require(restored.session(withID: row.id))
         let primary = try #require(ZmxLeadBook.shared.states[back.paneIdentity]?.attachment)
@@ -215,6 +215,25 @@ struct AppStoreAttachedRestoreTests {
         #expect(!right.claim)
         #expect(right.reclaim == nil)
         #expect(back.splitInitialCommand?.contains(ZmxLeadAttachment.reclaimVariable) == false)
+    }
+
+    @Test func aRowRestoredAsleepArmsItsSavedLeadForItsWake() throws {
+        let store = makeStore()
+        let work = store.addWorkspace(name: "work")
+        let row = try addAttachedRow(to: store, workspace: work.id, split: true)
+        let split = try #require(row.splitPaneIdentity)
+        let led = ZmxLeadAttachment(claim: false)
+        ZmxLeadBook.shared.begin(led, pane: row.paneIdentity)
+        _ = ZmxLeadBook.shared.apply(try #require(ZmxLeadNotice(title: "zmx-role;\(led.nonce):leader:1")), pane: row.paneIdentity)
+        ZmxLeadBook.shared.forget(pane: split)
+
+        let restored = relaunched(store)
+
+        let back = try #require(restored.session(withID: row.id))
+        #expect(back.asleep)
+        #expect(back.initialCommand == nil)
+        #expect(ZmxLeadBook.shared.pendingReclaim(pane: back.paneIdentity) == led.nonce)
+        #expect(ZmxLeadBook.shared.pendingReclaim(pane: split) == nil)
     }
 
     @Test func closingARowEndsItsPanesWaitToReconnectSoNoOldLeadIsSaved() throws {
@@ -383,7 +402,7 @@ struct AppStoreAttachedRestoreTests {
         let work = store.addWorkspace(name: "work")
         let row = try addAttachedRow(to: store, workspace: work.id)
         store.baselineCompanions([UUID().uuidString], forSession: row.id)
-        var snapshot = store.snapshot()
+        var snapshot = snapshotWithBookRows(store)
         var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot.workspaces[0])) as? [String: Any])
         var attached = try #require(object["attached"] as? [[String: Any]])
         #expect(attached[0]["followedCompanions"] != nil)

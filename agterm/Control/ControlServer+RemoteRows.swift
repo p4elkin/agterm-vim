@@ -50,7 +50,14 @@ extension ControlServer {
                             splitAxis: record.splitAxis, name: name.value, namePending: name.pending)
         let placement = RemotePlacement(store: store, workspace: entry.workspaceID, parent: parent,
                                         position: position.map { min(max($0, 0), count) }, select: false)
-        _ = insertRemoteRow(row, at: placement, claim: false, asleep: true)
+        guard case .inserted(let created) = insertRemoteRow(row, at: placement, claim: false, asleep: true) else { return }
+        // the row's wake builds its lines and takes these leads back (`renewAttachLines`)
+        var leads: [UUID: String] = [:]
+        leads[created.paneIdentity] = record.leads?[.left]
+        if let split = created.splitPaneIdentity { leads[split] = record.leads?[.right] }
+        ZmxLeadBook.shared.arm(leads)
+        store.restoreFollowedCompanions(record.followedCompanions ?? [], baselined: record.companionsBaselined == true,
+                                        forSession: created.id)
     }
 
     /// The one top-level row in the record's own workspace showing its saved parent; with none or several the row

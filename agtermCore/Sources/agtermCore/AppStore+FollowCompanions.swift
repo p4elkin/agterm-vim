@@ -47,6 +47,13 @@ extension AppStore {
         if visible != nil { save() }
     }
 
+    /// restoreFollowedCompanions puts back the companion state a restored row was saved with, without saving.
+    public func restoreFollowedCompanions(_ ids: [String], baselined: Bool, forSession id: UUID) {
+        guard let session = session(withID: id) else { return }
+        session.followedCompanions = Set(ids.map(Self.originID))
+        session.companionsBaselined = baselined
+    }
+
     /// setFollowsCompanions records whether row `id` holds its origin's companion list, for the `tree` read-back.
     public func setFollowsCompanions(_ follows: Bool, forSession id: UUID) {
         session(withID: id)?.remotePresentation?.followsCompanions = follows

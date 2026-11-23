@@ -85,7 +85,7 @@ extension ControlServer {
             return
         }
         let pool = sshPool(forSession: session.id)
-        let left = ZmxLeadAttachment(claim: false)
+        let left = ZmxLeadAttachment(claim: false, reclaim: ZmxLeadBook.shared.pendingReclaim(pane: session.paneIdentity))
         if let command = binding?.attachPaneCommand(forLocalPane: session.paneIdentity, pane: .left, lead: left,
                                                     controlPath: pool?.lease("pane:\(session.paneIdentity)")) {
             session.initialCommand = command
@@ -94,7 +94,7 @@ extension ControlServer {
             session.initialCommand = ended
         }
         guard session.hasSplit, let split = session.splitPaneIdentity else { return }
-        let right = ZmxLeadAttachment(claim: false)
+        let right = ZmxLeadAttachment(claim: false, reclaim: ZmxLeadBook.shared.pendingReclaim(pane: split))
         if let command = binding?.attachPaneCommand(forLocalPane: split, pane: .right, lead: right,
                                                     controlPath: pool?.lease("pane:\(split)")) {
             session.splitInitialCommand = command
