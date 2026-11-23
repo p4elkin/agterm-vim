@@ -620,11 +620,13 @@ final class ControlServer {
         // runs from a worker and never reaches the remote route below
         if request.args?.opID != nil {
             handedOff = true
-            let worker = Thread {
+            // typed before `Thread` sees it, like the network worker below
+            let work: @Sendable () -> Void = {
                 defer { close(conn) }
                 let response = runBlocking { await server.originOperation(request) }
                 _ = server.responseWriter(conn, response ?? ControlResponse(ok: false, error: "no operation id"))
             }
+            let worker = Thread(block: work)
             worker.name = "com.umputun.agterm.control.catalog"
             worker.start()
             return
@@ -638,10 +640,11 @@ final class ControlServer {
                 return
             }
             handedOff = true
-            let worker = Thread {
+            let work: @Sendable () -> Void = {
                 defer { close(conn) }
                 _ = server.responseWriter(conn, runBlocking { await server.runRemoteRoute(route) })
             }
+            let worker = Thread(block: work)
             worker.name = "com.umputun.agterm.control.remote"
             worker.start()
             return
