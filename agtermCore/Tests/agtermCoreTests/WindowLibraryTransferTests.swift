@@ -28,7 +28,8 @@ final class WindowLibraryTransferTests {
         let result = try fixture.library.transferWorkspace(project.id, from: fixture.source, to: .new).get()
 
         let store = try #require(fixture.library.store(for: result.windowID))
-        #expect(store.workspaces.map(\.id) == [project.id])
+        #expect(store.namedWorkspaces.map(\.id) == [project.id])
+        #expect(store.rootWorkspace?.sessions.isEmpty == true)
         #expect(store.workspaces[0].sessions.map(\.id) == sessions.map(\.id))
         #expect(zip(store.workspaces[0].sessions, sessions).allSatisfy { $0 === $1 })
         #expect(store.workspaces.flatMap(\.sessions).count == 2)
@@ -38,7 +39,7 @@ final class WindowLibraryTransferTests {
         let index = try readIndex()
         #expect(index.frontmost == result.windowID)
         #expect(index.windows.last == WindowEntry(id: result.windowID, name: "project", isOpen: true))
-        #expect(try windowFile(result.windowID).workspaces.map(\.id) == [project.id])
+        #expect(try windowFile(result.windowID).workspaces.filter { $0.root != true }.map(\.id) == [project.id])
         #expect(fixture.store.workspaces.allSatisfy { $0.id != project.id })
         #expect(try windowFile(fixture.source).workspaces.allSatisfy { $0.id != project.id })
     }
@@ -273,7 +274,7 @@ final class WindowLibraryTransferTests {
         let result = try fixture.library.transferSessions([moving.id], from: fixture.source, to: .new, workspace: .none).get()
 
         let store = try #require(fixture.library.store(for: result.windowID))
-        #expect(store.workspaces.map(\.name) == ["project"])
+        #expect(store.namedWorkspaces.map(\.name) == ["project"])
         #expect(store.workspaces[0].sessions.map(\.id) == [moving.id])
         #expect(fixture.library.windowName(for: result.windowID) == "project")
         #expect(fixture.store.workspaces.contains { $0.name == "project" })
@@ -303,7 +304,7 @@ final class WindowLibraryTransferTests {
         let result = try fixture.library.transferSessions([moving.id], from: fixture.source, to: .new, workspace: .name("solo")).get()
 
         let store = try #require(fixture.library.store(for: result.windowID))
-        #expect(store.workspaces.map(\.name) == ["solo"])
+        #expect(store.namedWorkspaces.map(\.name) == ["solo"])
         #expect(store.workspaces[0].sessions.map(\.id) == [moving.id])
         #expect(fixture.library.windowName(for: result.windowID) == "solo")
         #expect(result.controlResult.affected == 1)

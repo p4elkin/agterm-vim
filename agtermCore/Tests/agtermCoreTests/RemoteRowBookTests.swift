@@ -72,6 +72,24 @@ final class RemoteRowBookTests {
         #expect(try JSONDecoder().decode(RemoteRowBook.Record.self, from: JSONEncoder().encode(saved)) == saved)
     }
 
+    @Test func aHandledCompanionReachesTheBookForOpenAndSoftClosedTerminalRows() throws {
+        let library = WindowLibrary(directory: directory)
+        let window = try #require(library.windows.first)
+        let store = try #require(library.store(for: window.id))
+        let open = try row(in: store, origin: origin(), remoteSessionID: "parent-id")
+        let parked = try row(in: store, origin: origin(), remoteSessionID: "parent-id")
+        #expect(store.softCloseSession(parked.id))
+        let child = UUID().uuidString
+
+        library.markOriginCompanionsHandled([child], parent: "parent-id", host: "buildbox", endpoint: origin().endpoint)
+
+        let records = RemoteRowBook.records(from: library, previous: [])
+        #expect(records.count == 2)
+        #expect(records.allSatisfy { $0.followedCompanions == [child] })
+        #expect(records.map(\.remoteSessionID) == ["parent-id", "parent-id"])
+        #expect(open.followedCompanions == [child])
+    }
+
     @Test func aHandledCompanionMarksOnlyTheRecordShowingItsOrigin() throws {
         let saved = try record()
         let child = UUID().uuidString

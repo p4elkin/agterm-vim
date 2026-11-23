@@ -965,6 +965,7 @@ extension WindowLibrary {
     func newWindow(name: String?, seed: Workspace, selecting sessionID: UUID?) -> (id: UUID, store: AppStore) {
         let info = WindowInfo(name: name.map(TerminalText.sanitized)?.trimmedOrNil ?? defaultWindowName)
         let store = makeStore(for: info.id, persistence: persistenceStore(for: info.id))
+        store.ensureRoot()
         store.attachWorkspace(seed, selecting: sessionID)
         windows.append(info)
         stores[info.id] = store

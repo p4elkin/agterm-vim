@@ -457,8 +457,8 @@ buys nothing. A caller with no tree uses `version`.
 ## workspace
 
 Each window also holds its top-level sessions, the sessions outside any workspace, in one container shown at the top
-of the sidebar. `root` names it wherever a workspace is expected: `session new --workspace`, `session move <workspace>`,
-`zmx attach --workspace`, `msg send --all --workspace`, and `--target` on `workspace focus` and `workspace flag`;
+of the sidebar. `root` names it wherever a workspace is expected: `session new --workspace`, `session move <workspace>` (with
+`--to-window` too), `zmx attach --workspace`, `zmx new --workspace`, `msg send --all --workspace`, and `--target` on `workspace focus` and `workspace flag`;
 `active` resolves to it when it is the current container (Addressing above). The commands that act on one named
 workspace (rename, delete, select, move, collapse, expand, tint and detach) refuse it, by `root`, id, prefix or `active`, with `top-level sessions are not a workspace`.
 
@@ -494,7 +494,7 @@ workspace (rename, delete, select, move, collapse, expand, tint and detach) refu
 - `workspace move --to-window <new|name|id> [--window-name N] [--target] [--window W]` — move the workspace
   to another window, or to a new one (`new`; `--window-name` names it, else it takes the workspace's name).
   Both panes of every row keep running; scratch, overlays, HUD and search close. The window's last workspace
-  moves too: the emptied window is deleted and the destination comes to the front. Refuses a workspace a
+  moves too: a window left with no workspace and no top-level session is deleted and the destination comes to the front. Refuses a workspace a
   pending close names as its undo target and any realized pane that is not zmx-backed. Exactly one of `--to`,
   `--to-window`. Returns the destination window id as `result.id` and the moved session count as
   `result.affected`.
