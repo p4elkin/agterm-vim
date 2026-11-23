@@ -743,12 +743,12 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         pane.session = session
 
         let started = recordLinks(mode: .overlay75, overlayOpens: true, helperStarts: true)
-        pane.openLink("/tmp/main.go", intent: .normal)
+        pane.openLink("/tmp/main.go", intent: .normal, source: .detected)
         XCTAssertEqual(started.helpers.map(\.0), [OpenPathLaunch.helperName])
         XCTAssertTrue(started.texts.isEmpty && started.revealed.isEmpty)
 
         let missing = recordLinks(mode: .overlay75, overlayOpens: true, helperStarts: false)
-        pane.openLink("/tmp/main.go", intent: .normal)
+        pane.openLink("/tmp/main.go", intent: .normal, source: .detected)
         XCTAssertEqual(missing.helpers.map(\.0), [OpenPathLaunch.helperName])
         XCTAssertEqual(missing.texts.map(\.url.path), ["/tmp/main.go"])
     }
@@ -760,7 +760,7 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         let web = try XCTUnwrap(URL(string: "https://example.com/"))
 
         let followed = recordLinks(mode: .browser, overlayOpens: true, helperStarts: true)
-        pane.openLink(web.absoluteString, intent: .normal)
+        pane.openLink(web.absoluteString, intent: .normal, source: .detected)
 
         XCTAssertEqual(followed.helpers.map(\.0), [OpenLinkLaunch.helperName])
         XCTAssertTrue(followed.opened.isEmpty)
@@ -773,7 +773,7 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         let web = try XCTUnwrap(URL(string: "https://example.com/"))
 
         let followed = recordLinks(mode: .overlay, overlayOpens: true, helperStarts: true)
-        pane.openLink(web.absoluteString, intent: .browser)
+        pane.openLink(web.absoluteString, intent: .browser, source: .detected)
 
         XCTAssertEqual(followed.helpers.map(\.0), [OpenLinkLaunch.helperName])
         XCTAssertTrue(followed.opened.isEmpty && followed.overlaid.isEmpty)
@@ -1103,6 +1103,8 @@ final class GhosttySurfaceViewInputTests: XCTestCase {
         await MainActor.run {
             surface = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory())
             savedOpener = LinkOpener.shared
+            // the fork's helpers are real processes on the live socket; a test that wants one records it
+            LinkOpener.shared.helper = { _, _, _ in false }
         }
     }
 

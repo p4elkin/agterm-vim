@@ -514,7 +514,7 @@ final class ControlServerRemoteCompanionsTests: XCTestCase {
             XCTAssertEqual(binding?.originHeadless, headless)
             XCTAssertEqual(binding?.presentationVersion, headless ? 1 : nil)
             XCTAssertEqual(transport.lines.count, 1, "headless \(headless)")
-            XCTAssertEqual(transport.hellos.map(\.kinds), [headless ? PresentationHub.supportedKinds : RemotePresentationClient.observerKinds],
+            XCTAssertEqual(transport.hellos.map(\.kinds), [headless ? PresentationHub.supportedKinds + ["forward"] : RemotePresentationClient.observerKinds],
                            "headless \(headless)")
             server.stopRemotePresentations()
         }

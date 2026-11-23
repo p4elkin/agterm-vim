@@ -220,7 +220,7 @@ extension WorkspaceSidebar.Coordinator {
             guard let parent = store.sessionLocation(ofSession: rowID),
                   sessionIDs.allSatisfy({ store.session(withID: $0)?.parentID == rowID }) else { return nil }
             target = .workspaceRow(id: parent.workspace, sessionCount: parent.count)
-            childIndex = companionChildIndex(parent: node.id, at: parent.index, in: parent.workspace, slot: index)
+            childIndex = companionChildIndex(parent: rowID, at: parent.index, in: parent.workspace, slot: index)
             highlight = index
             dropParent = item as? SidebarNode
         case .session:

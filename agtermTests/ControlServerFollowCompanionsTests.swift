@@ -856,7 +856,7 @@ final class ControlServerFollowCompanionsTests: XCTestCase {
 
         server.startRemotePresentation(for: row)
 
-        XCTAssertEqual(transport.hellos.last, PresentationHello(version: PresentationCodec.version, kinds: PresentationHub.supportedKinds,
+        XCTAssertEqual(transport.hellos.last, PresentationHello(version: PresentationCodec.version, kinds: PresentationHub.supportedKinds + ["forward"],
                                                                 mode: .presenter))
     }
 

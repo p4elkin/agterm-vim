@@ -448,7 +448,7 @@ final class ControlServerSurfaceIOTests: XCTestCase {
         let response = await fixture.server.dispatch(ControlRequest(cmd: .sessionType, target: fixture.row.id.uuidString,
                                                                     args: ControlArgs(text: "ls", pane: "right")))
 
-        XCTAssertEqual(response.error, "session has no split pane")
+        XCTAssertEqual(response.error, "session not realized")
         XCTAssertEqual(sleeps, 0)
         XCTAssertTrue(fixture.row.asleep)
     }

@@ -91,7 +91,9 @@ enum PaneLead {
             case .attachAgain:
                 leadLogger.notice("pane \(pane, privacy: .public): no role report after the attach, attaching again")
                 // an attach that could not start keeps this surface, so its deadline is armed again
-                if reconnect?(view, true) != true { awaitReport(from: view, pane: pane, nonce: nonce) }
+                // a silent attach has no role, so this carries on whatever lead it was taking back
+                let reclaim = ZmxLeadBook.shared.states[pane]?.reclaimAfterDrop
+                if reconnect?(view, true, reclaim) != true { awaitReport(from: view, pane: pane, nonce: nonce) }
             case .stalled:
                 leadLogger.notice("pane \(pane, privacy: .public): still no role report, left to a key press")
                 roleChanged?(view)

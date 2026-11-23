@@ -274,11 +274,11 @@ final class ControlServerRemoteReconnectTests: XCTestCase {
     func testASleepCancelsADueReconnectEntrySoTheTickNeverReconnectsThePane() throws {
         let (session, view) = try replica()
         let server = server(probe: 0)
-        PaneLead.reconnect = { _, _ in
+        PaneLead.reconnect = { _, _, _ in
             XCTFail("a sleeping row is attached by its wake, never by the reconnect book")
             return true
         }
-        server.waitToReconnect(view, cover: false)
+        server.waitToReconnect(view, cover: false, reclaim: nil)
         XCTAssertTrue(RemoteReconnectBook.shared.waiting(pane: session.paneIdentity))
 
         XCTAssertTrue(store.sleepRemoteRow(session.id, reason: .timer))
@@ -290,7 +290,7 @@ final class ControlServerRemoteReconnectTests: XCTestCase {
     func testASleepCancelsAReconnectEntryThatIsBackingOff() throws {
         let (session, view) = try replica()
         let server = server(probe: 0)
-        server.waitToReconnect(view, cover: false)
+        server.waitToReconnect(view, cover: false, reclaim: nil)
         let book = RemoteReconnectBook.shared
         _ = book.due(now: Date())
         _ = book.finished(pane: session.paneIdentity, ok: false, now: Date().addingTimeInterval(3600))

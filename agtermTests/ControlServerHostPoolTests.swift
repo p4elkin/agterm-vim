@@ -219,7 +219,7 @@ final class ControlServerHostPoolTests: XCTestCase {
         let pool = pools.pool(for: "p4linux")
         let before = pool.load
         let slot = path("p4linux", "pane:\(row.paneIdentity)")
-        server.waitToReconnect(view, cover: false)
+        server.waitToReconnect(view, cover: false, reclaim: nil)
 
         server.tickReconnects()
         try await until { RemoteReconnectBook.shared.entries[row.paneIdentity]?.probing == false }
@@ -236,7 +236,7 @@ final class ControlServerHostPoolTests: XCTestCase {
         runner.connections = false
         let pool = pools.pool(for: "p4linux")
         let before = pool.load
-        server.waitToReconnect(view, cover: false)
+        server.waitToReconnect(view, cover: false, reclaim: nil)
 
         server.tickReconnects()
         try await until { RemoteReconnectBook.shared.entries[row.paneIdentity]?.probing == false }

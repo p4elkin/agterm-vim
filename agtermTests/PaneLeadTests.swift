@@ -202,7 +202,7 @@ final class PaneLeadTests: XCTestCase {
         let (view, identity) = pane()
         var again: [Bool] = []
         var changed = 0
-        PaneLead.reconnect = { _, cover in
+        PaneLead.reconnect = { _, cover, _ in
             again.append(cover)
             return true
         }
@@ -228,7 +228,7 @@ final class PaneLeadTests: XCTestCase {
 
     func testAReportDeadlineAfterTheReportOrAfterAReplacementDoesNothing() throws {
         let (view, identity) = pane()
-        PaneLead.reconnect = { _, _ in
+        PaneLead.reconnect = { _, _, _ in
             XCTFail("nothing is overdue")
             return true
         }
@@ -248,7 +248,7 @@ final class PaneLeadTests: XCTestCase {
     func testAnAttachThatCouldNotStartOrHasNotSpawnedKeepsItsDeadlineArmed() throws {
         let (view, identity) = pane()
         var attempts = 0
-        PaneLead.reconnect = { _, _ in
+        PaneLead.reconnect = { _, _, _ in
             attempts += 1
             return false
         }

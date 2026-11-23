@@ -267,16 +267,17 @@ final class AppActionsPaletteTests: XCTestCase {
 
     // MARK: - the new-session workspace picker
 
-    func testTheWorkspacePickerListsEveryWorkspaceInStoreOrder() throws {
+    func testTheWorkspacePickerListsTheTopLevelSessionsThenEveryWorkspaceInSidebarOrder() throws {
         let store = try XCTUnwrap(library.activeStore)
+        let root = try XCTUnwrap(store.rootWorkspace)
         let first = try XCTUnwrap(store.currentWorkspaceID)
         let second = store.addWorkspace(name: "second")
         let third = store.addWorkspace(name: "third")
 
         let rows = actions.paletteNewSessionWorkspaces()
 
-        XCTAssertEqual(rows.map(\.id), [first, second.id, third.id].map(\.uuidString))
-        XCTAssertEqual(rows.map(\.title), store.workspaces.map(\.name))
+        XCTAssertEqual(rows.map(\.id), [root.id, first, second.id, third.id].map(\.uuidString))
+        XCTAssertEqual(rows.map(\.title), [ControlWorkspaceNode.rootLabel, "workspace 1", "second", "third"])
     }
 
     func testTheWorkspaceRowSubtitleCountsThatWorkspacesSessions() throws {
