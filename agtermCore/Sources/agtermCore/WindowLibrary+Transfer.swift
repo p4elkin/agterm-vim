@@ -154,7 +154,9 @@ extension WindowLibrary {
         if landing.store.selectedSessionID.map(sessionIDs.contains) == true { landing.store.recordRecency() }
         sourceStore.releaseForTransfer(sessionIDs)
         detach(sourceStore)
-        let removed = sourceStore.workspaces.isEmpty ? source : nil
+        // the root stays in every window, so only an empty one counts as nothing left
+        let emptied = sourceStore.namedWorkspaces.isEmpty && sourceStore.rootWorkspace?.sessions.isEmpty != false
+        let removed = emptied ? source : nil
         if let removed { removeWindow(removed) } else { sourceStore.save() }
         return .success(TransferResult(windowID: landing.windowID, sessionIDs: sessionIDs, needsOpen: landing.kind == .loaded,
                                        removedSourceWindow: removed))
@@ -182,17 +184,18 @@ extension WindowLibrary {
 
     /// Resolves against a closed window's file, so a refusal never loads the window.
     private func resolveWorkspace(_ raw: String, in windowID: UUID) -> Result<UUID, TransferRefusal> {
-        let candidates: [UUID]
-        let active: UUID?
+        let resolution: TargetResolution
         if let store = stores[windowID] {
-            candidates = store.workspaces.map(\.id)
-            active = store.currentWorkspaceID
+            resolution = store.resolveWorkspaceTarget(raw)
         } else {
             let snapshot = closedSnapshot(for: windowID)
-            candidates = snapshot.workspaces.map(\.id)
-            active = snapshot.workspaces.first { $0.sessions.contains { $0.id == snapshot.selectedSessionID } }?.id
+            if raw == ControlWorkspaceNode.rootTarget {
+                resolution = snapshot.workspaces.first { $0.root == true }.map { .resolved($0.id) } ?? .notFound
+            } else {
+                let active = snapshot.workspaces.first { $0.sessions.contains { $0.id == snapshot.selectedSessionID } }?.id
+                resolution = ControlResolve.resolve(raw, candidates: snapshot.workspaces.map(\.id), active: active)
+            }
         }
-        let resolution = ControlResolve.resolve(raw, candidates: candidates, active: active)
         guard case .resolved(let id) = resolution else {
             return .failure(TransferRefusal(ControlResolve.errorMessage(noun: "workspace", target: raw, resolution: resolution)))
         }

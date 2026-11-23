@@ -179,8 +179,7 @@ extension ControlServer {
             switch resolveOpenWindow(window) {
             case .failure(let response): return response
             case .success(let (windowID, store)):
-                let resolution = ControlResolve.resolve(workspace, candidates: store.workspaces.map(\.id),
-                                                        active: store.currentWorkspaceID)
+                let resolution = store.resolveWorkspaceTarget(workspace)
                 guard case .resolved(let id) = resolution else {
                     return ControlResponse(ok: false, error: ControlResolve.errorMessage(noun: "workspace", target: workspace,
                                                                                         resolution: resolution))

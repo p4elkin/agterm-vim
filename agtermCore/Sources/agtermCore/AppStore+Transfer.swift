@@ -7,6 +7,7 @@ extension AppStore {
 
     /// Why `workspaceID` cannot leave this window, nil when it can.
     func workspaceTransferRefusal(_ workspaceID: UUID) -> String? {
+        if let error = rootRefusal(workspaceID)?.error { return error }
         let undoTarget = pendingCloseRecords.values.contains { record in
             guard case let .sessions(close) = record else { return false }
             return close.sessions.contains { $0.workspaceID == workspaceID }
@@ -96,7 +97,7 @@ extension AppStore {
     /// No `sessionCreated`: the sessions already exist in another window. The new workspace joins an applied
     /// focus filter like `addWorkspace`'s; selecting it from outside the marked set would switch the filter off.
     func attachWorkspace(_ workspace: Workspace, selecting sessionID: UUID?) {
-        workspaces.append(workspace)
+        workspaces.insert(workspace, at: namedEndIndex)
         revealNewFocusMember(workspace.id)
         if let sessionID, workspace.sessions.contains(where: { $0.id == sessionID }) { selectAttached(sessionID) }
         scheduleTreeChanged()

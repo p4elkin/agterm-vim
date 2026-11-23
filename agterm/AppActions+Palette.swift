@@ -328,10 +328,10 @@ extension AppActions {
     /// label alone, so the name is what a query matches.
     func paletteNewSessionWorkspaces() -> [PaletteItem] {
         guard let store else { return [] }
-        return store.workspaces.map { workspace in
+        return store.displayWorkspaces.map { workspace in
             let id = workspace.id
             let count = workspace.sessions.count
-            return PaletteItem(id: id.uuidString, title: workspace.name,
+            return PaletteItem(id: id.uuidString, title: workspace.label,
                                subtitle: count == 1 ? "1 session" : "\(count) sessions") { [weak self] in
                 self?.newSession(inWorkspace: id)
             }

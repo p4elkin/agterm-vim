@@ -60,15 +60,15 @@ final class WindowLibraryTransferTests {
         fixture.store.selectSession(active.id)
         let destination = fixture.library.newWindow(name: "dest").id
         let destinationStore = try #require(fixture.library.store(for: destination))
-        let before = destinationStore.workspaces.map(\.id)
+        let before = destinationStore.namedWorkspaces.map(\.id)
 
         let result = try fixture.library.transferWorkspace(project.id, from: fixture.source, to: .window(destination)).get()
 
         #expect(result.windowID == destination)
         #expect(!result.needsOpen)
-        #expect(destinationStore.workspaces.map(\.id) == before + [project.id])
+        #expect(destinationStore.namedWorkspaces.map(\.id) == before + [project.id])
         #expect(destinationStore.selectedSessionID == active.id)
-        #expect(try windowFile(destination).workspaces.map(\.id) == before + [project.id])
+        #expect(try windowFile(destination).workspaces.filter { $0.root != true }.map(\.id) == before + [project.id])
         #expect(fixture.store.session(withID: active.id) == nil)
     }
 
@@ -82,8 +82,8 @@ final class WindowLibraryTransferTests {
 
         #expect(result.needsOpen)
         #expect(fixture.library.isOpen(destination))
-        #expect(fixture.library.store(for: destination)?.workspaces.last?.id == project.id)
-        #expect(try windowFile(destination).workspaces.last?.id == project.id)
+        #expect(fixture.library.store(for: destination)?.namedWorkspaces.last?.id == project.id)
+        #expect(try windowFile(destination).workspaces.last { $0.root != true }?.id == project.id)
     }
 
     @Test func movedSessionsKeepTheirIdsAndPaneIdentities() throws {
@@ -142,6 +142,29 @@ final class WindowLibraryTransferTests {
 
     // MARK: - session moves
 
+    @Test func theRootIsRefusedAsAWorkspaceToMove() throws {
+        let fixture = try makeFixture()
+        let root = try #require(fixture.store.rootWorkspace)
+
+        let result = fixture.library.transferWorkspace(root.id, from: fixture.source, to: .new)
+
+        #expect(result == .failure(TransferRefusal("top-level sessions are not a workspace")))
+        #expect(fixture.store.rootWorkspace?.id == root.id)
+    }
+
+    @Test func aRootTargetLandsAmongTheDestinationsTopLevelSessions() throws {
+        let fixture = try makeFixture()
+        let moving = try fixture.workspace("project").sessions[0]
+        let destination = fixture.library.newWindow(name: "dest").id
+        let destinationStore = try #require(fixture.library.store(for: destination))
+        destinationStore.ensureRoot()
+
+        _ = try fixture.library.transferSessions([moving.id], from: fixture.source, to: .window(destination),
+                                                 workspace: .id(ControlWorkspaceNode.rootTarget)).get()
+
+        #expect(destinationStore.rootWorkspace?.sessions.map(\.id) == [moving.id])
+    }
+
     @Test func anIdTargetLandsInThatWorkspaceOfAnOpenWindow() throws {
         let fixture = try makeFixture()
         let moving = try fixture.workspace("project").sessions[0]
@@ -155,7 +178,7 @@ final class WindowLibraryTransferTests {
 
         #expect(result.sessionIDs == [moving.id])
         #expect(destinationStore.workspaces.map(\.id) == before)
-        #expect(destinationStore.workspaces.last?.sessions.map(\.id) == [moving.id])
+        #expect(destinationStore.namedWorkspaces.last?.sessions.map(\.id) == [moving.id])
         #expect(destinationStore.selectedSessionID == moving.id)
         #expect(fixture.store.session(withID: moving.id) == nil)
     }
@@ -205,8 +228,8 @@ final class WindowLibraryTransferTests {
                                                  workspace: .name("fresh")).get()
 
         #expect(destinationStore.workspaces.count == before.count + 1)
-        #expect(destinationStore.workspaces.last?.name == "fresh")
-        #expect(destinationStore.workspaces.last?.sessions.map(\.id) == [moving.id])
+        #expect(destinationStore.namedWorkspaces.last?.name == "fresh")
+        #expect(destinationStore.namedWorkspaces.last?.sessions.map(\.id) == [moving.id])
     }
 
     @Test func aNameTargetIsTrimmedBeforeTheLookup() throws {
@@ -268,8 +291,8 @@ final class WindowLibraryTransferTests {
                                                           workspace: .none).get()
 
         #expect(result.sessionIDs == [api.id, db.id])
-        #expect(destinationStore.workspaces.last?.name == "project")
-        #expect(destinationStore.workspaces.last?.sessions.map(\.id) == [api.id, db.id])
+        #expect(destinationStore.namedWorkspaces.last?.name == "project")
+        #expect(destinationStore.namedWorkspaces.last?.sessions.map(\.id) == [api.id, db.id])
         #expect(try fixture.workspace("other").sessions.isEmpty)
     }
 
@@ -443,7 +466,7 @@ final class WindowLibraryTransferTests {
         let result = try fixture.library.transferWorkspace(only.id, from: fixture.source, to: destination).get()
 
         #expect(result.removedSourceWindow == fixture.source)
-        #expect(fixture.library.store(for: result.windowID)?.workspaces.last?.id == only.id)
+        #expect(fixture.library.store(for: result.windowID)?.namedWorkspaces.last?.id == only.id)
         #expect(!fixture.library.windows.contains { $0.id == fixture.source })
         #expect(fixture.library.stores[fixture.source] == nil)
         #expect(!FileManager.default.fileExists(atPath: windowFileURL(fixture.source).path))
@@ -462,7 +485,7 @@ final class WindowLibraryTransferTests {
 
         _ = try fixture.library.transferWorkspace(only.id, from: fixture.source, to: .new).get()
 
-        #expect(fixture.store.workspaces.isEmpty)
+        #expect(fixture.store.namedWorkspaces.isEmpty)
         #expect(moved.isDisjoint(with: finalized))
         #expect(!events.contains { $0.kind == .sessionClosed && movedIDs.contains($0.session ?? "") })
     }
@@ -495,7 +518,7 @@ final class WindowLibraryTransferTests {
         #expect(result == .failure(TransferRefusal("destination save failed")))
         #expect(fixture.library.windows == windows)
         #expect(fixture.library.stores[fixture.source] === fixture.store)
-        #expect(fixture.store.workspaces.map(\.id) == [only.id])
+        #expect(fixture.store.namedWorkspaces.map(\.id) == [only.id])
         #expect(fileState() == files)
     }
 
@@ -531,7 +554,7 @@ final class WindowLibraryTransferTests {
         #expect(result.removedSourceWindow == nil)
         #expect(fixture.library.stores[fixture.source] === fixture.store)
         #expect(fixture.library.windows.contains { $0.id == fixture.source })
-        #expect(fixture.store.workspaces.map(\.id) == [only.id])
+        #expect(fixture.store.namedWorkspaces.map(\.id) == [only.id])
         #expect(fixture.store.workspaces[0].sessions.isEmpty)
     }
 
@@ -615,7 +638,7 @@ final class WindowLibraryTransferTests {
                                                           workspace: .id(target.id.uuidString)).get()
 
         #expect(result.needsOpen)
-        #expect(fixture.library.store(for: destination)?.workspaces.last?.sessions.map(\.id) == [moving.id])
+        #expect(fixture.library.store(for: destination)?.namedWorkspaces.last?.sessions.map(\.id) == [moving.id])
     }
 
     // MARK: - fixtures
