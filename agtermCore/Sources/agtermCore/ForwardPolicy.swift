@@ -28,7 +28,7 @@ public enum ForwardPolicy {
         case .sessionOverlayReload, .sessionOverlayNavigate, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
              .pickOpen, .pickResult, .pickCancel,
              .sessionFlag, .sessionTint, .sessionInfo, .sessionSelect, .sessionReveal, .sessionFocus, .sessionBackground,
-             .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch,
+             .sessionCopy, .sessionPaste, .sessionPasteText, .sessionSelectAll, .sessionSearch,
              .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,
              .sessionRebasedShow, .sessionRebasedToggle,
              .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow, .sessionOverlaySearch,
@@ -54,8 +54,7 @@ public enum ForwardPolicy {
         case .catalogSubscribe, .catalogOp:
             return .refused("an agterm-server feature")
         // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces
-        // a stdin paste brackets by the terminal's paste mode, which only the presenting Mac's surface knows
-        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck, .sessionPasteText:
+        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
              .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
