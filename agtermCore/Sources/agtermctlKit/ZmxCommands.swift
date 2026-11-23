@@ -90,7 +90,7 @@ struct Zmx: ParsableCommand {
             list was taken fails rather than handing back a fresh shell wearing its name.
 
             Closing it here ends only this side's connection: the far-side processes keep running, and \
-            nothing this command does can kill them. The row is restored after a relaunch.
+            nothing this command does can kill them. An open attached session is saved and attached again at the next launch.
 
             On a headless origin, `--beside ROW` asks the Mac presenting ROW to attach the session right \
             after that row, from the host and transport the row already uses.
@@ -116,6 +116,12 @@ struct Zmx: ParsableCommand {
         var companions = false
         @Option(help: "A remote row here of the same host to attach the session under, as its companion.")
         var parent: String?
+        @Option(help: "Workspace id, unique prefix, active, or root for the top-level sessions (default: the window's current workspace).")
+        var workspace: String?
+        @Option(help: "Workspace by name; errors if not found unless --create-workspace. Mutually exclusive with --workspace.")
+        var workspaceName: String?
+        @Flag(help: "With --workspace-name, create the workspace when it does not exist (reuse it otherwise).")
+        var createWorkspace = false
         @OptionGroup var options: BasicOptions
 
         /// It creates a local session, so it echoes that session's id like every other create command.
@@ -124,6 +130,15 @@ struct Zmx: ParsableCommand {
         /// The server trims the transport the same way, so a padded spelling is not an unknown one there.
         /// `RemoteTransport.parse` refuses the same pairs the dispatcher refuses, with one error text.
         func validate() throws {
+            if workspace != nil, workspaceName != nil {
+                throw ValidationError("use either --workspace or --workspace-name, not both")
+            }
+            if createWorkspace, workspaceName == nil {
+                throw ValidationError("--create-workspace requires --workspace-name")
+            }
+            if beside != nil || parent != nil, workspace != nil || workspaceName != nil {
+                throw ValidationError("\(beside != nil ? "--beside" : "--parent") takes the row's own workspace")
+            }
             if beside != nil, window != nil || transport != nil || moshServer != nil || mosh != nil {
                 throw ValidationError("--beside takes the row's own window and transport")
             }
@@ -154,8 +169,9 @@ struct Zmx: ParsableCommand {
                 return ControlRequest(cmd: .zmxAttach, target: session, args: ControlArgs(host: host, parent: parent))
             }
             return ControlRequest(cmd: companions ? .zmxAttachGroup : .zmxAttach, target: session,
-                                  args: ControlArgs(host: host, transport: transport, moshServer: moshServer,
-                                                    mosh: mosh, window: window))
+                                  args: ControlArgs(workspace: workspace, workspaceName: workspaceName,
+                                                    createWorkspace: createWorkspace ? true : nil, host: host,
+                                                    transport: transport, moshServer: moshServer, mosh: mosh, window: window))
         }
 
         func run() throws {

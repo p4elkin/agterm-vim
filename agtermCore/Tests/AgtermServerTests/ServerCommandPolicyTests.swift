@@ -7,7 +7,7 @@ struct ServerCommandPolicyTests {
                       .sessionOverlayFollow, .sessionOverlaySearch, .sessionOverlayWrap, .sessionOverlayExpand, .sessionOverlayChanges, .sessionOverlayFiles, .sessionPage,
                       .sessionCompanionPage, .sessionCompanionPageAttach, .surfaceCursor, .zmxList, .zmxScreen, .sessionFlag, .sessionTint,
                       .workspaceFlag, .workspaceTint, .sessionDuplicate, .sessionRestart,
-                      .sessionCompanionDuplicate, .sessionCompanionConvert, .sessionCompanionMove, .zmxKill, .zmxPrune, .sessionTerminate, .zmxKillPane])
+                      .sessionCompanionDuplicate, .sessionCompanionConvert, .sessionCompanionMove, .sessionCompanionPromote, .zmxKill, .zmxPrune, .sessionTerminate, .zmxKillPane])
     func aServedCommandPasses(_ command: Command) {
         #expect(ServerCommandPolicy.refusal(command) == nil)
     }
@@ -23,11 +23,12 @@ struct ServerCommandPolicyTests {
             .windowRemoteDismiss,
         ],
         "Mac selection and clipboard": [.sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayCopy, .sessionOverlayText],
+        "needs the daemon to report bracketed paste mode": [.sessionPasteText],
         "moves what a Mac shows": [.sessionFocus, .sessionSelect, .sessionGo, .sessionLead, .sessionResize, .workspaceSelect, .workspaceGo],
         "Finder on the Mac": [.sessionReveal],
         "Mac app relaunch": [.restoreMode, .restoreCapture, .restoreClear, .zmxReset, .sessionRestore],
         "the Mac app's own updater": [.updateCheck],
-        "makes a Mac viewer": [.zmxAttach, .zmxAttachGroup],
+        "makes a Mac viewer": [.zmxAttach, .zmxAttachGroup, .sessionRemoteNew],
         "UI-test seam": [.debugAppearance],
         "a fork feature agterm-server does not carry": [
             .sessionPark, .sessionMark, .sessionBookmarkAdd, .sessionBookmarkList, .sessionBookmarkGo, .sessionBookmarkRemove,

@@ -143,6 +143,7 @@ public enum ZmxSupport {
         // nonce no pane expects
         environment[ZmxLeadAttachment.nonceVariable] = nil
         environment[ZmxLeadAttachment.claimVariable] = nil
+        environment[ZmxLeadAttachment.reclaimVariable] = nil
         environment.merge(inputs.lead?.environment ?? [:]) { _, new in new }
 
         let host = inputs.sessionHostExecutablePath.flatMap { path -> String? in
@@ -371,4 +372,12 @@ public enum ZmxSupport {
         }
         return String(format: "%016llx", hash)
     }
+}
+
+/// DaemonProbe is what the kernel shows of a pane's Live daemon: `absent` is no socket at the pane's name, the
+/// one answer acted on as an end; `unknown`, a socket with no leader found or a failed lookup, proves nothing.
+public enum DaemonProbe: Equatable, Sendable {
+    case running(leader: Int32)
+    case absent
+    case unknown
 }

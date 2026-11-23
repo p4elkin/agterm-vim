@@ -11,17 +11,19 @@ private let leadLogger = Logger(subsystem: "com.umputun.agterm", category: "Pane
 /// `.claude/rules/control-api.md` owns the contract.
 @MainActor
 enum PaneLead {
+    static let coveredRefusal = "pane is covered while another Mac leads it; take the lead first (session lead)"
     /// Replaces a pane's surface with a fresh attach. Installed once by the app, which owns the factories.
     static var reattach: ((_ old: GhosttySurfaceView, _ claim: Bool) -> Void)?
     /// replace swaps a pane's surface for one built from `launch`, uncovered. Installed once by the app.
     static var replace: ((_ old: GhosttySurfaceView, _ launch: PaneReattach, _ lead: ZmxLeadAttachment) -> GhosttySurfaceView?)?
     /// Tells the pane's store that read-back changed.
     static var roleChanged: ((_ view: GhosttySurfaceView) -> Void)?
-    /// Parks a pane whose ssh lost the connection until the host answers again. Installed by the app.
-    static var waitToReconnect: ((_ view: GhosttySurfaceView, _ cover: Bool) -> Void)?
-    /// Attaches a parked pane again without the claim, covered until its first report when `cover`. False
-    /// when nothing was attached.
-    static var reconnect: ((_ old: GhosttySurfaceView, _ cover: Bool) -> Bool)?
+    /// Parks a pane whose ssh lost the connection until the host answers again, with the nonce of the attach
+    /// that led when it dropped. Installed by the app.
+    static var waitToReconnect: ((_ view: GhosttySurfaceView, _ cover: Bool, _ reclaim: String?) -> Void)?
+    /// Attaches a parked pane again without the claim, covered until its first report when `cover`, taking back
+    /// the lead `reclaim` names while nobody used it since. False when nothing was attached.
+    static var reconnect: ((_ old: GhosttySurfaceView, _ cover: Bool, _ reclaim: String?) -> Bool)?
     /// scratchStopped parks a remote window's scratch whose attach lost its link or ended; false for any other view.
     /// Installed by the app.
     static var scratchStopped: ((_ view: GhosttySurfaceView) -> Bool)?
@@ -72,9 +74,9 @@ enum PaneLead {
     static func linkLost(_ notice: RemoteLinkNotice, from view: GhosttySurfaceView) {
         if !view.isDestroyed, scratchStopped?(view) == true { return }
         guard !view.isDestroyed, let pane = UUID(uuidString: view.paneToken) else { return }
-        let book = ZmxLeadBook.shared
-        guard book.states[pane].map({ $0.attachment.nonce == notice.nonce }) ?? true else { return }
-        waitToReconnect?(view, book.role(pane: pane) != nil || book.reattaching(pane: pane) || book.stalled(pane: pane))
+        let state = ZmxLeadBook.shared.states[pane]
+        guard state.map({ $0.attachment.nonce == notice.nonce }) ?? true else { return }
+        waitToReconnect?(view, state.map { $0.role != nil || $0.reattaching || $0.stalled } ?? false, state?.reclaimAfterDrop)
     }
 
     /// Arms the report deadline of a covered fresh attach. A daemon that takes the attach and never
@@ -124,11 +126,17 @@ enum PaneLead {
         guard view.leadCovered else { return false }
         // a modifier alone is not the press the cover asks for, and app shortcuts stay the app's
         guard event.type == .keyDown, !event.modifierFlags.contains(.command) else { return true }
-        // already on its way: the fresh surface is covered too until its first report. A stalled one is
-        // not reattaching any more, so its key falls through and takes the lead
-        guard !ZmxLeadBook.shared.reattaching(pane: UUID(uuidString: view.paneToken)) else { return true }
         // a key held since before a drop sends only repeats while the pane waits, so it was never latched
         guard !event.isARepeat else { return true }
+        if let pane, let state = ZmxLeadBook.shared.states[pane], state.reattaching {
+            // a reconnect or the unowned retry claims nothing, so the press makes its first report take the lead;
+            // a takeover is already on its way, its fresh surface covered until that report
+            if !state.attachment.claim {
+                takeoverKeyCode = event.keyCode
+                ZmxLeadBook.shared.claimOnReport(pane: pane)
+            }
+            return true
+        }
         takeoverKeyCode = event.keyCode
         reattach?(view, true)
         return true

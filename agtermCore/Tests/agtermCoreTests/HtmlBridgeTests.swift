@@ -98,6 +98,13 @@ struct HtmlBridgeTests {
         #expect(try request(#"{"cmd":"zmx.attach","target":"s1","args":{"host":"h"}}"#).args?.window == "W1")
     }
 
+    @Test func aRemoteSessionNewLandsInThePagesWindowAndNamesNoSession() throws {
+        let built = try request(#"{"cmd":"session.remote.new","args":{"host":"mac"}}"#)
+
+        #expect(built.target == nil)
+        #expect(built.args?.window == "W1")
+    }
+
     @Test func aRemoteOpenKeepsTheOriginWindowItWasGiven() throws {
         let named = try request(#"{"cmd":"window.remote.open","args":{"host":"mac","originWindow":"6f1c"}}"#)
         let bare = try request(#"{"cmd":"window.remote.open","args":{"host":"mac"}}"#)

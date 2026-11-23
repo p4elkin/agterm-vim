@@ -54,7 +54,9 @@ extension AppActions {
             remoteWindow: activeStore?.catalogState != nil,
             remoteConnected: activeStore?.catalogState == .connected,
             remoteHasDetached: activeStore?.remoteActions?.mirror.detachedItems.isEmpty == false,
-            marksBlocked: activeStore?.marksBlocked == true
+            marksBlocked: activeStore?.marksBlocked == true,
+            activeWorkspaceIsRoot: activeStore?.isCurrentWorkspaceRoot == true,
+            hasRootWorkspace: activeStore?.rootWorkspace != nil
         )
     }
 
@@ -81,6 +83,7 @@ extension AppActions {
     private func dispatch(_ command: PaletteCommand) {
         switch command {
         case .newSession: newSession()
+        case .newRootSession: newRootSession()
         case .newWorkspace: newWorkspace()
         case .openDirectory: openDirectory()
         case .renameSession: renameActiveSession()
@@ -124,6 +127,7 @@ extension AppActions {
         case .resetFontSize: resetFontSize()
         case .selectTheme: openThemePalette()
         case .attachRemote: attachRemote()
+        case .newRemoteSession: newRemoteSession()
         case .openRemoteWindow: openRemoteWindow()
         case .detachedSessions: openDetachedSessions()
         case .editKeymap: editKeymap()
@@ -251,7 +255,7 @@ extension AppActions {
         // current while the selection still sits elsewhere, and it is a valid destination.
         guard let store, let sessionID = store.selectedSessionID,
               let owner = store.workspace(forSession: sessionID)?.id else { return [] }
-        return store.workspaces.filter { $0.id != owner }.map { workspace in
+        return store.displayWorkspaces.filter { $0.id != owner }.map { workspace in
             let target = workspace.id
             let movable: (AppStore) -> UUID? = { store in
                 guard let id = store.selectedSessionID,
@@ -259,7 +263,7 @@ extension AppActions {
                       store.canMoveSessions([id], toWorkspace: target) else { return nil }
                 return id
             }
-            return PaletteItem(id: "move-\(target)", title: "Move Session to \(workspace.name)",
+            return PaletteItem(id: "move-\(target)", title: "Move Session to \(workspace.label)",
                                isEnabled: { [weak self, weak store] in
                                    (self?.uiActionsEnabled ?? false) && store.flatMap(movable) != nil
                                },
@@ -375,13 +379,11 @@ extension AppActions {
         }
     }
 
-    /// Maps one session to a palette row — title `listLabel`, subtitle "`workspace` · `subtitleDetail`", run
-    /// selects it.
+    /// Maps one session to a palette row that selects it.
     private func paletteItem(for session: Session, in store: AppStore) -> PaletteItem {
         let id = session.id
-        let workspaceName = store.workspace(forSession: id)?.name ?? ""
-        let subtitle = "\(workspaceName) · \(session.subtitleDetail)"
-        return PaletteItem(id: id.uuidString, title: store.listLabel(for: session), subtitle: subtitle,
+        return PaletteItem(id: id.uuidString, title: store.listLabel(for: session),
+                           subtitle: store.listSubtitle(forSession: id, detail: session.subtitleDetail),
                            indicator: { [weak session] in session?.agentIndicator ?? AgentIndicator() },
                            run: { [weak self] in
             guard self?.uiActionsEnabled == true else { return }
@@ -455,10 +457,10 @@ extension AppActions {
     // capture the row target because unflagging can change the active session.
     func paletteFlaggedEditor() -> [PaletteItem] {
         guard let store else { return [] }
-        return store.workspaces.flatMap { workspace in
+        return store.displayWorkspaces.flatMap { workspace in
             workspace.sessions.map { session in
                 let id = session.id
-                return PaletteItem(id: id.uuidString, title: store.listLabel(for: session), subtitle: workspace.name,
+                return PaletteItem(id: id.uuidString, title: store.listLabel(for: session), subtitle: workspace.isRoot ? nil : workspace.name,
                                    indicator: { [weak session] in session?.agentIndicator ?? AgentIndicator() },
                                    isEnabled: { [weak self, weak store] in
                                        self?.uiActionsEnabled == true && store?.session(withID: id) != nil && store?.marksBlocked != true
@@ -475,10 +477,10 @@ extension AppActions {
 
     func paletteFocusEditor() -> [PaletteItem] {
         guard let store else { return [] }
-        return store.workspaces.map { workspace in
+        let rows = store.displayWorkspaces.map { workspace in
             let id = workspace.id
             let count = workspace.sessions.count
-            return PaletteItem(id: id.uuidString, title: workspace.name,
+            return PaletteItem(id: id.uuidString, title: workspace.label,
                                subtitle: count == 1 ? "1 session" : "\(count) sessions",
                                isEnabled: { [weak self, weak store] in
                                    self?.uiActionsEnabled == true && store?.workspaces.contains { $0.id == id } == true
@@ -489,6 +491,9 @@ extension AppActions {
                                    store.setFocusMembership(id, member: !store.focusedWorkspaceIDs.contains(id))
                                })
         }
+        // an owner predating top-level sessions has no root to focus
+        guard store.isRemoteWindow, store.rootWorkspace == nil else { return rows }
+        return [PaletteItem(id: "root-unavailable", title: ControlWorkspaceNode.rootLabel, isEnabled: { false }, run: {})] + rows
     }
 
     // MARK: - Theme picker

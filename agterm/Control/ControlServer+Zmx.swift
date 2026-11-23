@@ -256,11 +256,21 @@ extension ControlServer {
     /// attach, handing back a fresh shell wearing the session's name. Everything that can fail is checked
     /// before the model is touched, so a refusal leaves no half-built row behind.
     func attachRemoteSession(host: String, session: String, window: String?) async -> ControlResponse {
-        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh)
+        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh, workspace: nil)
     }
 
     func attachRemoteSession(host: String, session: String, window: String?,
                              transport: RemoteTransport) async -> ControlResponse {
+        await attachRemoteSession(host: host, session: session, window: window, transport: transport, workspace: nil)
+    }
+
+    func attachRemoteSession(host: String, session: String, window: String?,
+                             workspace target: ControlAttachWorkspace?) async -> ControlResponse {
+        await attachRemoteSession(host: host, session: session, window: window, transport: .ssh, workspace: target)
+    }
+
+    private func attachRemoteSession(host: String, session: String, window: String?, transport: RemoteTransport,
+                                     workspace target: ControlAttachWorkspace?) async -> ControlResponse {
         let found: (remote: ControlRemoteSession, tree: ControlRemoteTree)
         switch await discoverRemote(host: host, session: session) {
         case .failure(let response): return response
@@ -269,7 +279,8 @@ extension ControlServer {
         if found.remote.content == "page" {
             switch resolveOpenWindow(window) {
             case .failure(let response): return response
-            case .success(let (_, store)): return await attachRemotePageRow(found.remote, tree: found.tree, host: host, in: store)
+            case .success(let (_, store)):
+                return await attachRemotePageRow(found.remote, tree: found.tree, host: host, in: store, workspace: target)
             }
         }
         // a companion joins its parent's group when exactly one row here shows that parent, else it stands alone
@@ -285,16 +296,58 @@ extension ControlServer {
         case .failure(let response): return response
         case .success(let built): row = built
         }
-        switch attachRemoteRow(row, window: window, destination: nil) {
+        switch attachRemoteRow(row, window: window, destination: nil, workspace: target) {
         case .refused(let response): return response
         case .inserted(let created): return ControlResponse(ok: true, result: ControlResult(id: created.id.uuidString))
         }
     }
 
+    static let workspaceNotCreated = ControlResponse(ok: false, error: "the workspace to attach into could not be created")
+
+    /// AttachDestination is the workspace an attach resolved: one that exists, or a name `--create-workspace` adds
+    /// when the row is placed, so a refusal before that adds none.
+    enum AttachDestination {
+        case existing(UUID)
+        case create(String)
+
+        /// workspace is the destination's id in `store`, creating a named one now; nil when the name sanitizes to blank.
+        @MainActor func workspace(in store: AppStore) -> UUID? {
+            switch self {
+            case .existing(let id): return id
+            case .create(let name): return store.ensureWorkspace(named: name)?.id
+            }
+        }
+    }
+
+    /// attachWorkspace is where a row that stands alone lands in `store`: `target`, else the current workspace.
+    func attachWorkspace(_ target: ControlAttachWorkspace?, in store: AppStore) -> ControlTargetResolver.Resolution<AttachDestination> {
+        switch target {
+        case nil:
+            guard let id = store.currentWorkspaceID else {
+                return .failure(ControlResponse(ok: false, error: "no window to attach into"))
+            }
+            return .success(.existing(id))
+        case .id(let raw):
+            let resolution = store.resolveWorkspaceTarget(raw)
+            guard case .resolved(let id) = resolution else {
+                let message = ControlResolve.errorMessage(noun: "workspace", target: raw, resolution: resolution)
+                return .failure(ControlResponse(ok: false, error: message))
+            }
+            return .success(.existing(id))
+        case .name(let name, let create):
+            if let found = store.workspace(named: name) { return .success(.existing(found.id)) }
+            guard create else {
+                return .failure(ControlResponse(ok: false, error: "no workspace named \"\(name)\" (pass --create-workspace to add it)"))
+            }
+            return .success(.create(name))
+        }
+    }
+
     /// Insert a just-discovered row. Without a `destination` the window resolves after discovery and the row is
-    /// appended, selected, to its current workspace; a destination's workspace is re-checked here because the
-    /// round trip can outlive it.
-    private func attachRemoteRow(_ row: RemoteRow, window: String?, destination: RemoteDestination?) -> RemoteRowInsert {
+    /// appended, selected, to `target` or the current workspace; a destination's workspace is re-checked here because
+    /// the round trip can outlive it.
+    private func attachRemoteRow(_ row: RemoteRow, window: String?, destination: RemoteDestination?,
+                                 workspace target: ControlAttachWorkspace? = nil) -> RemoteRowInsert {
         let store: AppStore
         switch resolveOpenWindow(window) {
         case .failure(let response): return .refused(response)
@@ -312,10 +365,13 @@ extension ControlServer {
                 placement.select = store.selectedSessionID == rule.selectionAtRequest && !store.isAutoFollowSuppressed
             }
         } else {
-            guard let workspace = store.currentWorkspaceID else {
-                return .refused(ControlResponse(ok: false, error: "no window to attach into"))
+            switch attachWorkspace(target, in: store) {
+            case .failure(let response): return .refused(response)
+            case .success(let resolved):
+                // created only now: discovery and lookup can no longer refuse, only a payload agterm cannot address
+                guard let workspace = resolved.workspace(in: store) else { return .refused(Self.workspaceNotCreated) }
+                placement = RemotePlacement(store: store, workspace: workspace)
             }
-            placement = RemotePlacement(store: store, workspace: workspace)
         }
         // attaching is the user asking for the session HERE, so every pane claims the lead at once
         let inserted = insertRemoteRow(row, at: placement, claim: true)
@@ -386,7 +442,8 @@ extension ControlServer {
         return .success(RemoteRow(host: host, endpoint: tree.endpoint, sessionName: remote.name, remoteSessionID: remote.id,
                                   presentationVersion: tree.presentation, transport: transport, left: left,
                                   right: byRole[.right], splitAxis: remote.splitAxis.flatMap(SplitAxis.init(rawValue:)),
-                                  name: remote.name, namePending: false, originHeadless: tree.headless == true))
+                                  name: remote.name, namePending: false, originHeadless: tree.headless == true,
+                                  companions: remote.companions?.map(\.id), originParent: remote.parent))
     }
 
     /// RemotePlacement is where an attached row goes: a workspace, or under `parent`, a remote row of the same host.
@@ -398,6 +455,8 @@ extension ControlServer {
         /// position is the row's place in the workspace; nil appends it.
         var position: Int?
         var select = true
+        /// claimLead is the user asking for the session here; a row the origin's membership brought in takes no lead.
+        var claimLead = true
     }
 
     /// attach creates the local row for `remote`, one session of `tree`, and binds its panes. Everything that can
@@ -412,7 +471,7 @@ extension ControlServer {
         case .failure(let response): return response
         case .success(let found): row = found
         }
-        switch insertRemoteRow(row, at: placement, claim: true) {
+        switch insertRemoteRow(row, at: placement, claim: placement.claimLead) {
         case .refused(let response): return response
         case .inserted(let created):
             // a FIXED target, never `focusActiveSession`: it follows `splitFocused`, which the new split's deck
@@ -488,7 +547,11 @@ extension ControlServer {
                                        presentationVersion: row.presentationVersion, origin: origin,
                                        originHeadless: row.originHeadless),
                          forSession: created.id, namePending: row.namePending)
-        // the row's created event fired inside `addSession`, before the binding existed
+        if let members = row.companions { store.baselineCompanions(members, forSession: created.id) }
+        if let parent = row.originParent {
+            library.markOriginCompanionsHandled([row.remoteSessionID], parent: parent, host: row.host, endpoint: row.endpoint)
+        }
+        // the row's created event fired inside `addSession`, before the binding existed; seeded first, so no list beats it
         startRemotePresentation(for: created)
         return .inserted(created)
     }
@@ -634,6 +697,7 @@ extension ControlServer {
         guard let store = library.store(for: claim.windowID),
               let session = store.session(withID: claim.sessionID) else { return }
         let surface = claim.pane == .left ? session.surface : session.splitSurface
+        if surface == nil { store.daemonKilled(claim.paneIdentity) }
         // `backedByZmx` is what makes this surface a CLIENT of the daemon just killed. On a requested-live
         // fallback the launch reap preserves claimed daemons while the pane gets a fresh plain shell, so
         // without this the kill would close a live pane that never attached to the thing it destroyed.
@@ -794,6 +858,11 @@ struct RemoteRow {
     let namePending: Bool
     /// The origin reported `headless` in its tree; a restored row does not know and says false.
     var originHeadless = false
+    /// The origin's companions of the session when discovered, the baseline its membership is followed from; a
+    /// restored row has none.
+    var companions: [String]?
+    /// The origin session this one is a companion of, nil for a top-level one or a restored row.
+    var originParent: String?
 }
 
 /// A row's window and workspace, pinned before a remote round trip. `newSessionRule` marks the "+" path.

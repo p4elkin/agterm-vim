@@ -29,67 +29,6 @@ struct Session: ParsableCommand {
                       Overlay.self, Hud.self, RebasedCommand.self, Wait.self, Collapse.self, Expand.self, Convert.self]
     )
 
-    struct New: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Create a session.")
-        @Option(name: .long, help: "Working directory (defaults to $HOME).") var cwd: String?
-        @Option(name: .long, help: "Target workspace by id/prefix/active (defaults to the current one). Mutually exclusive with --workspace-name.") var workspace: String?
-        @Option(name: .long, help: "Target workspace by name; errors if not found unless --create-workspace. Mutually exclusive with --workspace.") var workspaceName: String?
-        @Flag(name: .long, help: "With --workspace-name, create the workspace when it does not exist (reuse it otherwise).") var createWorkspace = false
-        @Option(name: .long, help: "Run this command as the session's process instead of the login shell (no echoed command line; the session closes when it exits).") var command: String?
-        @Flag(name: .long, help: "With --command, hold the session open after the command exits (press any key to close) instead of closing immediately.") var wait = false
-        @Option(name: .long, help: "Initial session name (defaults to the auto basename).") var name: String?
-        @Option(name: .long, help: "Place the new session right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace, replacing --workspace.") var after: String?
-        @Option(name: .long, help: "Place the new session right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
-        @Flag(name: .long, help: "Create the session in the background without selecting or focusing it (leaves the current selection untouched).") var noSelect = false
-        @Option(name: .long, help: "Create a companion of this session (id/prefix/active), placed under it in the sidebar; a companion target means its parent.") var parent: String?
-        @OptionGroup var tint: TintCreateOptions
-        @OptionGroup var options: ClientOptions
-        @OptionGroup var operation: OperationOptions
-        var echoesResultID: Bool { true }
-
-        func validate() throws {
-            if parent != nil, workspace != nil || workspaceName != nil || createWorkspace || after != nil || before != nil {
-                throw ValidationError("--parent takes no --workspace, --workspace-name, --create-workspace, --after or --before")
-            }
-            if after != nil, before != nil {
-                throw ValidationError("use either --after or --before, not both")
-            }
-            // the anchor sid already names the workspace, so placement can't also address one.
-            if after != nil || before != nil, workspace != nil || workspaceName != nil {
-                throw ValidationError("session.new takes --after/--before or a workspace, not both")
-            }
-            if workspace != nil, workspaceName != nil {
-                throw ValidationError("use either --workspace or --workspace-name, not both")
-            }
-            if createWorkspace, workspaceName == nil {
-                throw ValidationError("--create-workspace requires --workspace-name")
-            }
-            if wait, command == nil {
-                throw ValidationError("--wait requires --command")
-            }
-            // both answer "the command exited" — one with a prompt that closes, one with a live shell.
-        }
-
-        func run() throws {
-            guard parent != nil else { return try defaultRun() }
-            try runCompanionRequest(makeRequest(), options: options, echoID: true)
-        }
-
-        func makeRequest() throws -> ControlRequest {
-            if let parent {
-                return operation.stamp(ControlRequest(cmd: .sessionCompanionNew, target: parent,
-                                                      args: options.withWindow(tint.apply(to:
-                    ControlArgs(name: name, cwd: cwd, noSelect: noSelect ? true : nil, command: command,
-                                wait: wait ? true : nil)))))
-            }
-            return operation.stamp(ControlRequest(cmd: .sessionNew, args: options.withWindow(tint.apply(to:
-                ControlArgs(name: name, cwd: cwd, workspace: workspace, workspaceName: workspaceName,
-                            createWorkspace: createWorkspace ? true : nil, noSelect: noSelect ? true : nil,
-                            command: command, wait: wait ? true : nil,
-                            after: after, before: before)))))
-        }
-    }
-
     /// The target session names the destination workspace and the cwd, so a plain duplicate is fully described by
     /// `--target` (the GUI half is the sidebar row's "Duplicate"); `--companion` is "Duplicate as Companion".
     struct Duplicate: RequestCommand {
@@ -102,6 +41,7 @@ struct Session: ParsableCommand {
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
         @OptionGroup var operation: OperationOptions
+        @OptionGroup var attach: AttachOptions
         var echoesResultID: Bool { true }
 
         func validate() throws {
@@ -115,8 +55,9 @@ struct Session: ParsableCommand {
         }
 
         func makeRequest() throws -> ControlRequest {
-            operation.stamp(ControlRequest(cmd: companion ? .sessionCompanionDuplicate : .sessionDuplicate, target: target.target,
-                                           args: options.withWindow(noSelect ? ControlArgs(noSelect: true) : nil)))
+            attach.stamp(operation.stamp(ControlRequest(cmd: companion ? .sessionCompanionDuplicate : .sessionDuplicate,
+                                                        target: target.target,
+                                                        args: options.withWindow(noSelect ? ControlArgs(noSelect: true) : nil))))
         }
     }
 
@@ -197,8 +138,9 @@ struct Session: ParsableCommand {
     struct Move: RequestCommand {
         static let configuration = CommandConfiguration(
             abstract: "Move a session: to another workspace or window, reorder with --to, place relative to an anchor with --after/--before, "
-                + "or put a companion under another session with --parent.")
-        @Argument(help: "Destination workspace id/prefix (relocate; with --to-window, one in that window). Omit with --to, --after/--before, --to-window.") var workspace: String?
+                + "put a companion under another session with --parent, or make one a top-level session with --top-level.")
+        @Argument(help: "Destination workspace id/prefix, or root for the top-level sessions (relocate; with --to-window, one in that window). Omit with --to, --after/--before, --to-window.")
+        var workspace: String?
         @Option(name: .customLong("to-window"),
                 help: "Move to another window: new, a window name, an id or a prefix. Lands in the workspace argument, --workspace-name, or one named like the session's own.")
         var toWindow: String?
@@ -207,9 +149,11 @@ struct Session: ParsableCommand {
         @Option(name: .long, help: "Reorder within the workspace: up, down, top, or bottom.") var to: String?
         @Option(name: .long, help: "Place right AFTER this anchor session (id/prefix/active); the anchor carries its own workspace (relocates + positions in one shot).") var after: String?
         @Option(name: .long, help: "Place right BEFORE this anchor session (id/prefix/active); mirror of --after.") var before: String?
-        @Option(name: .long, help: "Move the target companion under this top-level session (id/prefix) instead.") var parent: String?
-        @Option(name: .long, help: "With --parent: the companion's slot among the new parent's companions, 0 first; omitted appends.")
+        @Option(name: .long, help: "Move the target under this top-level session (id/prefix) instead; a top-level target brings its companions.") var parent: String?
+        @Option(name: .long, help: "With --parent: the slot among the new parent's companions, 0 first; omitted appends.")
         var index: Int?
+        @Flag(name: .customLong("top-level"), help: "Make the target companion a top-level session: after its group, or in the workspace or beside the --after/--before anchor given.")
+        var topLevel = false
         @OptionGroup var target: BatchTargetOptions
         @OptionGroup var options: ClientOptions
         @OptionGroup var operation: OperationOptions
@@ -219,10 +163,10 @@ struct Session: ParsableCommand {
         // --after/--before (anchor-relative)}; reject empty/conflicting cases at parse time as a clean usage error,
         // unit-testable without a socket. the anchor carries its own workspace, so placement excludes --to and a workspace.
         func validate() throws {
-            if parent != nil || index != nil {
-                try validateCompanionMove()
+            if topLevel || parent != nil || index != nil {
+                if topLevel { try validateCompanionPromotion() } else { try validateCompanionMove() }
                 if toWindow != nil || workspaceName != nil || windowName != nil {
-                    throw ValidationError("--parent takes no --to-window, --workspace-name or --window-name")
+                    throw ValidationError("\(topLevel ? "--top-level" : "--parent") takes no --to-window, --workspace-name or --window-name")
                 }
                 return
             }
@@ -262,6 +206,7 @@ struct Session: ParsableCommand {
         }
 
         func makeRequest() throws -> ControlRequest {
+            if topLevel { return companionPromotionRequest() }
             if parent != nil { return companionMoveRequest() }
             let args: ControlArgs
             if let toWindow {
@@ -377,6 +322,7 @@ struct Session: ParsableCommand {
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
         @OptionGroup var operation: OperationOptions
+        @OptionGroup var attach: AttachOptions
 
         func validate() throws {
             guard let expectScratch else { return }
@@ -389,7 +335,8 @@ struct Session: ParsableCommand {
         func makeRequest() throws -> ControlRequest {
             var args = ControlArgs(mode: mode, command: command, follow: follow ? true : nil)
             args.scratch = expectScratch
-            return operation.stamp(ControlRequest(cmd: .sessionScratch, target: target.target, args: options.withWindow(args)))
+            return attach.stamp(operation.stamp(ControlRequest(cmd: .sessionScratch, target: target.target,
+                                                               args: options.withWindow(args))))
         }
     }
 
@@ -456,16 +403,37 @@ struct Session: ParsableCommand {
     }
 
     struct Paste: RequestCommand {
-        static let configuration = CommandConfiguration(abstract: "Paste the system clipboard into a session (like ⌘V).")
+        static let configuration = CommandConfiguration(
+            abstract: "Paste the system clipboard into a session (like ⌘V), or with --stdin paste text read from stdin.")
         @Option(name: .long, help: "Which pane to paste into: primary/left/top, split/right/bottom, or scratch (even when hidden). Defaults to primary.") var pane: String?
+        @Flag(name: .long, help: "Paste the text read from stdin instead of the clipboard; the clipboard is left alone.") var stdin = false
+        @Option(name: .customLong("pane-id"), help: "Stable pane token ($AGTERM_PANE_ID), with --stdin only; overrides --pane, and unknown without --pane is an error.") var paneID: String?
         @OptionGroup var target: TargetOptions
         @OptionGroup var options: ClientOptions
 
-        func validate() throws { try validatePaneArgument(pane) }
+        func validate() throws {
+            try validatePaneArgument(pane)
+            if paneID != nil, !stdin { throw ValidationError("--pane-id requires --stdin") }
+        }
 
         func makeRequest() throws -> ControlRequest {
-            ControlRequest(cmd: .sessionPaste, target: target.target,
-                           args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+            if stdin { return try makeRequest(input: FileHandle.standardInput.readDataToEndOfFile()) }
+            return ControlRequest(cmd: .sessionPaste, target: target.target,
+                                  args: options.withWindow(pane.map { ControlArgs(pane: $0) }))
+        }
+
+        func makeRequest(input: Data) throws -> ControlRequest {
+            let text = try decodeTypedStdin(input)
+            guard !text.isEmpty else { throw ValidationError("stdin is empty: nothing to paste") }
+            return ControlRequest(cmd: .sessionPasteText, target: target.target,
+                                  args: options.withWindow(ControlArgs(text: text, pane: pane, paneID: paneID)))
+        }
+
+        // the text form is its own wire command, so an app predating it refuses it instead of pasting the clipboard
+        func run() throws {
+            guard stdin else { return try defaultRun() }
+            try runCompanionRequest(try makeRequest(), options: options, echoID: false,
+                                    tooOld: "the running app is too old for text paste")
         }
     }
 
@@ -852,6 +820,17 @@ extension Session {
                 if let line, line < 1 { throw ValidationError("--line must be 1 or more") }
             }
 
+            // the app opens a page path in its own process, where a `<(...)` path names its own descriptor;
+            // matched as typed, so parsing never touches the caller's filesystem
+            private func validateNoDescriptorPath() throws {
+                let pages = [("--html", html), ("--image", image), ("--markdown", markdown), ("--text", text)]
+                for (flag, path) in pages {
+                    guard let path, path.wholeMatch(of: /\/dev\/fd\/[0-9]+/) != nil else { continue }
+                    let hint = flag == "--html" ? ", or use zsh =(...) with --block for self-contained HTML" : ""
+                    throw ValidationError("\(flag) \(path) names a process-local file descriptor. Pass a named file\(hint).")
+                }
+            }
+
             // reject the mutually-exclusive combos + a malformed color at parse time (before any connection),
             // so it's a clean usage error and is unit-testable without a socket.
             func validate() throws {
@@ -866,6 +845,7 @@ extension Session {
                 if [command, html, url, image, markdown, text].compactMap({ $0 }).count != 1 {
                     throw ValidationError("provide exactly one of COMMAND, --html, --url, --image, --markdown or --text")
                 }
+                try validateNoDescriptorPath()
                 try validateLine()
                 try validateLog()
                 let pageOnly = [rowFlag != nil, block, wait, navigation, javascript, chromeless, persistent, browse, cwd != nil].contains(true)

@@ -31,9 +31,11 @@ extension AppStore {
         endPresentations(of: sessions.map(\.id))
         // every pane, an attached one included: its daemon is not ours to kill, its lead state is
         for session in sessions {
-            ([session.paneIdentity] + [session.splitPaneIdentity].compactMap { $0 }).forEach {
+            ([session.paneIdentity] + [session.splitPaneIdentity, session.localScratchIdentity].compactMap { $0 }).forEach {
                 ZmxLeadBook.shared.forget(pane: $0)
                 RemoteEndBook.shared.clear(pane: $0)
+                // a reattach reusing the pane id would otherwise inherit the old wait and save its reclaim
+                RemoteReconnectBook.shared.cancel(pane: $0)
             }
         }
         let identities = PaneIdentityInventory.identities(in: sessions).filter { $0 != alreadyFinalized }
@@ -251,7 +253,7 @@ extension AppStore {
             launchPaneDrop?([split])
             ZmxLeadBook.shared.forget(pane: split)
             RemoteEndBook.shared.clear(pane: split)
-            MessageBus.shared.dispose(pane: split)
+            disposeMailboxes([split])
             session.daemonBackedPanes.remove(split)
         }
         let wasShown = session.isSplit
@@ -292,11 +294,12 @@ extension AppStore {
     /// The primary pane's shell exited: a live split is PROMOTED into the primary slot and the session
     /// survives as a single pane, otherwise the session closes. The survivor MOVES from `splitSurface` into
     /// `surface` (cwd, title and foreground command migrate too, and `promoteToPrimaryPane` turns off its
-    /// split-role reporting so future pwd/title reports write to the main fields), leaving `surface != nil`,
+    /// split-role reporting so future pwd/title reports write to the main fields), leaving
     /// `splitSurface == nil`, `hasSplit == false`, `splitFocused == false` — so the promoted pane is
     /// addressable as the MAIN/left pane everywhere: `session.type`/`session.text --pane left` (and omitted)
     /// reach it, `{AGT_PANE}` reports `left`, and a later `session.split` opens a fresh RIGHT pane instead of
-    /// displacing it. Called by the primary surface's `onExit`.
+    /// displacing it. Called by the primary surface's `onExit`. A Live split with no surface moves the same way,
+    /// and the primary factory may create the survivor's view.
     /// A local parent with companions respawns when its last pane exits.
     @discardableResult
     public func closePrimaryPane(_ sessionID: UUID, alreadyFinalized: UUID? = nil, now: Date = Date()) -> PrimaryPaneExit {
@@ -330,7 +333,7 @@ extension AppStore {
         session.daemonBackedPanes.remove(session.paneIdentity)
         ZmxLeadBook.shared.forget(pane: session.paneIdentity)
         RemoteEndBook.shared.clear(pane: session.paneIdentity)
-        MessageBus.shared.dispose(pane: session.paneIdentity)
+        disposeMailboxes([session.paneIdentity])
         // the survivor's override moves left with it; its text file is keyed by the identity promoted below
         dropPaneBackground(.left, of: session)
         (session.paneBackgrounds.left, session.paneBackgrounds.right) = (session.paneBackgrounds.right, nil)
@@ -357,6 +360,10 @@ extension AppStore {
         // for this launch (so a surface built after promotion still runs it).
         session.restoreCommand = session.splitRestoreCommand
         session.pendingRestoreCommand = session.pendingSplitRestoreCommand
+        session.pendingForegroundCommand = session.pendingSplitForegroundCommand
+        session.pendingSplitForegroundCommand = nil
+        // with no survivor surface the primary factory attaches the pane, and starts it here if its daemon is gone
+        if survivor == nil, session.remoteHost == nil, let cwd = session.currentCwd { session.initialCwd = cwd }
         session.splitCwd = nil
         session.splitTitle = nil
         session.initialSplitCwd = nil
@@ -400,14 +407,18 @@ extension AppStore {
         if wasShown { emitPaneVisibility(.paneSplit, session: session, shown: false) }
     }
 
-    /// hasLiveSplit is whether a split pane is still running to take the primary slot: its surface on the Mac, its
-    /// daemon on a headless store, where a split identity is minted before any daemon is provisioned for it.
+    /// hasLiveSplit is whether a split pane is still running to take the primary slot: its surface on the Mac, or with
+    /// none a Live split whose socket is not known gone; its daemon on a headless store, where a split identity is
+    /// minted before any daemon is provisioned for it.
     private func hasLiveSplit(_ session: Session, survivor: (any TerminalSurface)?) -> Bool {
         // a hidden split the origin added has no surface until shown, and still runs there
         guard headless else {
-            guard survivor == nil, let split = session.splitPaneIdentity, let state = session.remotePresentation,
-                  !state.binding.catalogOwned else { return survivor != nil }
-            return state.binding.remotePane(forLocal: split) != nil
+            guard survivor == nil, let split = session.splitPaneIdentity else { return survivor != nil }
+            // a split hidden since a Live launch has no surface either; only its socket gone proves it ended
+            guard let state = session.remotePresentation else {
+                return session.locallyManagedPaneIdentities.contains(split) && daemonProbe.map { $0(split) != .absent } == true
+            }
+            return !state.binding.catalogOwned && state.binding.remotePane(forLocal: split) != nil
         }
         return session.splitPaneIdentity.map(session.daemonBackedPanes.contains) ?? false
     }

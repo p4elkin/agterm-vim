@@ -63,12 +63,25 @@ extension ControlDispatcher {
                 return await actions.attachRemoteSession(host: host, session: session, parent: parent)
             }
             let window = request.args?.window?.trimmedOrNil
+            let workspace: ControlAttachWorkspace?
+            switch Self.attachWorkspace(request.args) {
+            case .success(let value): workspace = value
+            case .failure(let rejection): return ControlResponse(ok: false, error: rejection.message)
+            }
             if request.cmd == .zmxAttachGroup {
                 // every member attaches over ssh, so a requested mosh is refused rather than quietly not used
                 guard transport == .ssh else {
                     return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach.group --transport"))
                 }
-                return await actions.attachRemoteGroup(host: host, session: session, window: window)
+                return await actions.attachRemoteGroup(host: host, session: session, window: window, workspace: workspace)
+            }
+            // the workspace form has no transport overload, so a mosh attach into a chosen workspace is refused
+            // rather than quietly made over ssh
+            if workspace != nil {
+                guard transport == .ssh else {
+                    return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --transport with --workspace"))
+                }
+                return await actions.attachRemoteSession(host: host, session: session, window: window, workspace: workspace)
             }
             return await actions.attachRemoteSession(host: host, session: session, window: window, transport: transport)
         case .zmxPresent:
@@ -173,5 +186,24 @@ extension ControlDispatcher {
             return .failure(ArgumentRejection(message: "zmx.kill.pane requires --pane-id"))
         }
         return .success(ZmxKillArguments(target: target, pane: pane, paneID: paneID))
+    }
+
+    /// attachWorkspace reads an attach's destination workspace with `session.new`'s rules and wording; nil leaves the
+    /// window's current workspace.
+    static func attachWorkspace(_ args: ControlArgs?) -> Result<ControlAttachWorkspace?, ArgumentRejection> {
+        if args?.workspace != nil, args?.workspaceName != nil {
+            return .failure(ArgumentRejection(message: "use either --workspace or --workspace-name, not both"))
+        }
+        if let raw = args?.workspaceName {
+            guard let name = raw.trimmedOrNil else {
+                return .failure(ArgumentRejection(message: "workspace name must not be blank"))
+            }
+            return .success(.name(name, create: args?.createWorkspace == true))
+        }
+        if args?.createWorkspace == true {
+            return .failure(ArgumentRejection(message: "--create-workspace requires --workspace-name"))
+        }
+        // passed as given, so a blank id fails to resolve as on `session.new` instead of reading as omitted
+        return .success(args?.workspace.map(ControlAttachWorkspace.id))
     }
 }

@@ -4,46 +4,48 @@ import agtermCore
 /// `ControlServer` arms that reach into a live `GhosttySurfaceView` — font size, selection copy, background
 /// watermark, buffer read, in-terminal search, text injection. Split out for the swiftlint size limit.
 extension ControlServer {
-    /// Runs a libghostty binding action on a pane of the target session — a SPECIFIC one, unlike the menu
-    /// path's focused pane. Shared by `session.paste`/`session.selectall`. `pane` arrives parsed by the
-    /// dispatcher, so no spelling reaches here: nil (`session.selectall` always, `session.paste` without
-    /// `--pane`) and `.left` are the main pane via `addressableSurface`, which keeps the pre-pane behavior and
-    /// still reaches a promoted split survivor; `.scratch` resolves while hidden, its surface kept alive. An
-    /// empty slot and a parked view whose surface never came up are one state to a caller: "session not
-    /// realized".
-    private func surfaceBindingAction(_ target: String?, window: String?, pane: StatusPane?,
-                                      action: String) -> ControlResponse {
-        return resolver.resolveSession(target, window: window) { store, id in
-            // resolveSession already resolved `id` from this store, so `session(withID:)` is non-nil.
-            guard let session = store.session(withID: id) else {
-                return ControlResponse(ok: false, error: "session not realized")
-            }
-            let chosen: (any TerminalSurface)?
-            switch pane {
-            case nil, .left:
-                chosen = session.addressableSurface
-            case .right:
-                guard let split = session.splitSurface else {
-                    return ControlResponse(ok: false, error: "session has no split pane")
-                }
-                chosen = split
-            case .scratch:
-                guard let scratch = session.scratchSurface else {
-                    return ControlResponse(ok: false, error: "session has no scratch terminal")
-                }
-                chosen = scratch
-            }
-            guard let surface = chosen as? GhosttySurfaceView else {
-                return ControlResponse(ok: false, error: "session not realized")
-            }
-            if let refusal = self.coveredRefusal(surface) { return refusal }
-            surface.expediteSpawn()
-            // the cast alone only proves the SLOT is filled; a false return is the view without a surface.
-            guard surface.performBindingAction(action) else {
-                return ControlResponse(ok: false, error: "session not realized")
-            }
-            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+    /// bindingSurface is the addressed pane of `session.paste`/`session.selectall`, never the focused one, with its
+    /// spawn expedited: nil and `.left` are `addressableSurface`, so a promoted split survivor is still reached, unless
+    /// `paneID` matched the primary, which then answers for itself; `.scratch` resolves while hidden.
+    /// `paneID` resolves before `pane` through `Session.paneAddress`.
+    private func bindingSurface(_ target: String?, window: String?, pane requested: StatusPane?,
+                                paneID: String? = nil) -> ControlTargetResolver.Resolution<(GhosttySurfaceView, UUID)> {
+        let (store, id): (AppStore, UUID)
+        switch resolver.resolveSessionTarget(target, window: window) {
+        case .failure(let response): return .failure(response)
+        case .success(let resolved): (store, id) = resolved
         }
+        // resolveSessionTarget already resolved `id` from this store, so `session(withID:)` is non-nil.
+        guard let session = store.session(withID: id) else {
+            return .failure(ControlResponse(ok: false, error: "session not realized"))
+        }
+        let pane: StatusPane?
+        switch session.paneAddress(token: paneID, pane: requested) {
+        case .unknownToken(let token): return .failure(Self.unknownPaneID(token))
+        case .pane(let resolved): pane = resolved
+        }
+        let matchedToken = paneID.map { session.paneRole(forToken: $0) != nil } ?? false
+        let chosen: (any TerminalSurface)?
+        switch pane {
+        case nil, .left:
+            chosen = matchedToken ? session.surface : session.addressableSurface
+        case .right:
+            guard let split = session.splitSurface else {
+                return .failure(ControlResponse(ok: false, error: Self.missingSplit(session)))
+            }
+            chosen = split
+        case .scratch:
+            guard let scratch = session.scratchSurface else {
+                return .failure(ControlResponse(ok: false, error: "session has no scratch terminal"))
+            }
+            chosen = scratch
+        }
+        guard let surface = chosen as? GhosttySurfaceView else {
+            return .failure(ControlResponse(ok: false, error: "session not realized"))
+        }
+        if let refusal = coveredRefusal(surface) { return .failure(refusal) }
+        surface.expediteSpawn()
+        return .success((surface, id))
     }
 
     /// Runs a font binding action (`font.inc`/`font.dec`/`font.reset`) on a pane of the target session; a
@@ -66,7 +68,7 @@ extension ControlServer {
                 chosen = session.addressableSurface
             case .right:
                 guard let split = session.splitSurface else {
-                    return ControlResponse(ok: false, error: "session has no split pane")
+                    return ControlResponse(ok: false, error: Self.missingSplit(session))
                 }
                 chosen = split
             case .scratch:
@@ -96,18 +98,50 @@ extension ControlServer {
         }
     }
 
-    /// The ⌘V / Edit ▸ Paste analogue (`session.paste`): the same libghostty `paste_from_clipboard` the
-    /// keyboard takes, so bracketed paste applies and no OSC-52 prompt appears. `pane` addresses the same
-    /// three panes `session.text` reads, so the documented paste-then-read-back pair resolves one pane on both
-    /// halves instead of writing main and reading the split.
-    func pasteSession(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse {
-        surfaceBindingAction(target, window: window, pane: pane, action: "paste_from_clipboard")
+    /// The ⌘V / Edit ▸ Paste analogue (`session.paste`): the same paste seam the keyboard takes, so bracketed
+    /// paste applies, no OSC-52 prompt appears, and files or an image are copied where the pane's program runs
+    /// before the reply. `pane` addresses the same three panes `session.text` reads, so the documented
+    /// paste-then-read-back pair resolves one pane on both halves instead of writing main and reading the split.
+    func pasteSession(_ target: String?, window: String?, pane: StatusPane?) async -> ControlResponse {
+        switch bindingSurface(target, window: window, pane: pane) {
+        case .failure(let response):
+            return response
+        case .success(let (surface, id)):
+            if let reason = await surface.pasteClipboard().reason { return ControlResponse(ok: false, error: reason) }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
+    }
+
+    /// `session.paste.text`: `text` goes in as a paste, not keystrokes, so a program with bracketed paste on gets it
+    /// framed and unsubmitted. `ghostty_surface_text` skips paste protection's prompt and replaces ESC with a
+    /// space, so the text cannot end the bracket early.
+    func pasteSessionText(_ target: String?, window: String?, pane: StatusPane?, paneID: String?,
+                          text: String) async -> ControlResponse {
+        switch bindingSurface(target, window: window, pane: pane, paneID: paneID) {
+        case .failure(let response):
+            return response
+        case .success(let (surface, id)):
+            // bindingSurface only expedites the spawn; insertPasted drops text on a view with no surface yet
+            guard surface.isRealized else { return ControlResponse(ok: false, error: "session not realized") }
+            if let refusal = surface.pasteRefusal { return ControlResponse(ok: false, error: refusal) }
+            surface.insertPasted(text: text)
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
     }
 
     /// Selects the target session's entire terminal buffer (`session.selectall`, the ⌘A / Edit ▸ Select All
     /// analogue); read the resulting selection back with `session.copy`.
     func selectAllSession(_ target: String?, window: String?) -> ControlResponse {
-        surfaceBindingAction(target, window: window, pane: nil, action: "select_all")
+        switch bindingSurface(target, window: window, pane: nil) {
+        case .failure(let response):
+            return response
+        case .success(let (surface, id)):
+            // the cast alone only proves the SLOT is filled; a false return is the view without a surface.
+            guard surface.performBindingAction("select_all") else {
+                return ControlResponse(ok: false, error: "session not realized")
+            }
+            return ControlResponse(ok: true, result: ControlResult(id: id.uuidString))
+        }
     }
 
     /// Returns the surface's current selection text in the response, NOT to the system clipboard (automation
@@ -293,7 +327,7 @@ extension ControlServer {
             case .left: chosen = session.surface
             case .right:
                 guard let split = session.splitSurface else {
-                    return ControlResponse(ok: false, error: "session has no split pane")
+                    return ControlResponse(ok: false, error: Self.missingSplit(session))
                 }
                 chosen = split
             case .scratch:
@@ -327,6 +361,11 @@ extension ControlServer {
 
     static func unknownPaneID(_ token: String) -> ControlResponse {
         ControlResponse(ok: false, error: "unknown pane id: \(token)")
+    }
+
+    /// The refusal for a right pane with no surface; a split hidden since a Live relaunch has `hasSplit` but no surface.
+    static func missingSplit(_ session: Session?) -> String {
+        session?.hasSplit == true ? "session not realized" : "session has no split pane"
     }
 
     /// Returns the addressed surface's zero-based cursor column. Takes `surface.zoom`'s target vocabulary —
@@ -585,8 +624,8 @@ extension ControlServer {
         case nil, .left:
             break
         case .right:
-            guard let split = store.session(withID: id)?.splitSurface else {
-                return ControlResponse(ok: false, error: "session has no split pane")
+            guard let split = session?.splitSurface else {
+                return ControlResponse(ok: false, error: Self.missingSplit(session))
             }
             // inject returns false when the view exists but its libghostty surface isn't realized yet (there
             // is no realize/select path for the split pane) — report that instead of a false ok.

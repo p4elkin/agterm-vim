@@ -37,6 +37,23 @@ struct ServerActionsSessionsTests {
         #expect(harness.store.selectedSessionID != session.id)
     }
 
+    @Test(arguments: [(true as Bool?, "htop" as String?, "30" as String?), (false, "htop", nil), (nil, "htop", nil), (true, nil, nil)])
+    func aNewPaneHoldsItsProgramOnlyWhenTheRequestAttachesIt(pending: Bool?, command: String?, hold: String?) async throws {
+        var args = ControlArgs()
+        args.attachPending = pending
+        args.command = command
+
+        try harness.session(await harness.actions.serve(ControlRequest(cmd: .sessionNew, args: args)))
+
+        #expect(harness.runner.launches.last?.environment["ZMX_HOLD_UNTIL_ATTACH"] == hold)
+    }
+
+    @Test func aStartOutsideARequestHoldsNothing() throws {
+        try harness.session(newSession())
+
+        #expect(harness.runner.launches.last?.environment["ZMX_HOLD_UNTIL_ATTACH"] == nil)
+    }
+
     @Test func aSessionCommandRunsThroughTheLoginShellAndEndsThePane() throws {
         _ = newSession(command: "htop")
 
@@ -52,6 +69,16 @@ struct ServerActionsSessionsTests {
 
         #expect(reply == ControlResponse(ok: false, error: "could not start the pane: zmx: boom"))
         #expect(harness.store.workspaces.flatMap(\.sessions).count == before)
+    }
+
+    @Test func aNewSessionGoesToTheRootByTheRootTarget() throws {
+        let reply = harness.actions.createSession(ControlSessionCreateOptions(window: nil, cwd: nil, workspace: "root",
+                                                                              workspaceName: nil, createWorkspace: nil, command: nil,
+                                                                              wait: nil, name: nil, after: nil, before: nil,
+                                                                              noSelect: false))
+
+        let session = try harness.session(reply)
+        #expect(harness.store.workspace(forSession: session.id)?.isRoot == true)
     }
 
     @Test func anUnsupportedLoginShellIsRefused() throws {
@@ -304,11 +331,25 @@ struct ServerActionsSessionsTests {
 
     @Test func textOfAPaneWithNoDaemonIsNotRealized() throws {
         let session = try harness.session(newSession())
+        session.hasSplit = true
+        session.splitPaneIdentity = UUID()
 
         let reply = harness.actions.readSessionText(session.id.uuidString, window: nil,
                                                     options: ControlSessionTextOptions(pane: .right, paneID: nil, all: false, lines: nil))
 
         #expect(reply == ControlResponse(ok: false, error: "session not realized"))
+    }
+
+    @Test func textAndTypeOfAMissingSplitSayThereIsNone() async throws {
+        let session = try harness.session(newSession())
+
+        let text = harness.actions.readSessionText(session.id.uuidString, window: nil,
+                                                   options: ControlSessionTextOptions(pane: .right, paneID: nil, all: false, lines: nil))
+        let typed = await harness.actions.typeSession(session.id.uuidString, window: nil,
+                                                      options: ControlSessionTypeOptions(text: "x", select: false, pane: .right, paneID: nil))
+
+        #expect(text.error == "session has no split pane")
+        #expect(typed.error == "session has no split pane")
     }
 
     @Test func typeSendsTheTextThenItsFinalReturnApart() async throws {

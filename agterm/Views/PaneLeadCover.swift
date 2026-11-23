@@ -23,10 +23,10 @@ struct PaneLeadCover: View {
                 VStack(spacing: 8) {
                     Image(systemName: "rectangle.on.rectangle.slash")
                         .font(.system(size: 28, weight: .light))
-                    Text(Self.title(role: book.role(pane: identity), reattaching: book.reattaching(pane: identity),
-                                    stalled: book.stalled(pane: identity), remote: session.remoteHost != nil))
+                    let state = identity.flatMap { book.states[$0] }
+                    Text(Self.title(state: state, remote: session.remoteHost != nil))
                         .font(.system(size: 14, weight: .medium))
-                    if !book.reattaching(pane: identity) {
+                    if state?.reattaching != true || state?.attachment.claim == false {
                         Text("Press any key to use it here")
                             .font(.system(size: 12))
                             .opacity(0.7)
@@ -48,11 +48,11 @@ struct PaneLeadCover: View {
         .allowsHitTesting(covered)
     }
 
-    static func title(role: ZmxLeadRole?, reattaching: Bool, stalled: Bool = false, remote: Bool) -> String {
-        if reattaching { return "Taking over…" }
+    static func title(state: ZmxLeadState?, remote: Bool) -> String {
+        if let state, state.reattaching, state.attachment.claim { return "Taking over…" }
         // the attach stayed silent past its deadline and retries: a key press attaches again with the claim
-        if stalled { return "No answer from the session" }
-        if role == .unowned { return "Reconnecting…" }
+        if state?.stalled == true { return "No answer from the session" }
+        if state?.reattaching == true || state?.role == .unowned { return "Reconnecting…" }
         return remote ? "In use on the Mac it runs on" : "In use from another Mac"
     }
 

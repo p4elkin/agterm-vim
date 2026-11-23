@@ -13,6 +13,8 @@ public protocol ControlActions {
     func duplicateSession(_ target: String?, window: String?) -> ControlResponse
     /// Creates a companion of the target session, or a sibling when the target is itself a companion.
     func createCompanion(_ target: String?, options: CompanionOptions, window: String?) async -> ControlResponse
+    /// newRemoteSession creates `request`'s session on its host and attaches it into a local window's current workspace.
+    func newRemoteSession(_ request: RemoteSessionCreate) async -> ControlResponse
     /// Creates a page companion of the target session showing `options.page` full size.
     func createPageCompanion(_ target: String?, window: String?, options: ControlSessionOverlayOpenOptions) async -> ControlResponse
     /// createPageSession opens `options.page` as a top-level page session after the target's group.
@@ -21,8 +23,11 @@ public protocol ControlActions {
     func duplicateAsCompanion(_ target: String?, window: String?, select: Bool) async -> ControlResponse
     /// convertToCompanion nests the target and its companions under a fresh session in its slot.
     func convertToCompanion(_ target: String?, window: String?) -> ControlResponse
-    /// moveCompanion puts the target companion under `parent`, at `index` among its companions or last.
+    /// moveCompanion puts the target session under `parent`, a top-level one with its companions, at `index` among
+    /// the parent's companions or last.
     func moveCompanion(_ target: String?, parent: String, index: Int?, window: String?) async -> ControlResponse
+    /// promoteCompanion makes the target companion a top-level session at `placement`.
+    func promoteCompanion(_ target: String?, placement: ControlCompanionPromotion, window: String?) async -> ControlResponse
     /// Hands out one attachment of the target page companion to another Mac.
     func attachCompanionPage(_ target: String?, window: String?) -> ControlResponse
     /// Folds or unfolds a parent's companions in the sidebar tree.
@@ -204,7 +209,11 @@ public protocol ControlActions {
     func readQuickText(all: Bool, lines: Int?) async -> ControlResponse
     func typeSession(_ target: String?, window: String?, options: ControlSessionTypeOptions) async -> ControlResponse
     func copySessionSelection(_ target: String?, window: String?) -> ControlResponse
-    func pasteSession(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse
+    func pasteSession(_ target: String?, window: String?, pane: StatusPane?) async -> ControlResponse
+    /// pasteSessionText pastes `text` into the addressed pane as a paste, bracketed when its program asked for it;
+    /// `paneID` resolves before `pane` as `session.type`'s does.
+    func pasteSessionText(_ target: String?, window: String?, pane: StatusPane?, paneID: String?,
+                          text: String) async -> ControlResponse
     func selectAllSession(_ target: String?, window: String?) -> ControlResponse
     func searchSession(_ target: String?, window: String?,
                        text: String?, to: String?) async -> ControlResponse
@@ -381,6 +390,10 @@ public protocol ControlActions {
     func attachRemoteGroup(host: String, session: String, window: String?) async -> ControlResponse
     /// The attach as a companion of `parent`, a remote row here of the same host, in its window over its transport.
     func attachRemoteSession(host: String, session: String, parent: String) async -> ControlResponse
+    /// attachRemoteSession into `workspace` of the window rather than its current one; nil is the window form.
+    func attachRemoteSession(host: String, session: String, window: String?, workspace: ControlAttachWorkspace?) async -> ControlResponse
+    /// attachRemoteGroup with its parent row in `workspace`; nil is the window form.
+    func attachRemoteGroup(host: String, session: String, window: String?, workspace: ControlAttachWorkspace?) async -> ControlResponse
     /// resolveMessagePane resolves a bus address to a live pane: a role picks the slot's pane now, a pane id
     /// must be a live pane of the named session. Never falls back to the active pane or another role.
     func resolveMessagePane(_ address: MessageAddress) -> Result<MessageRecipient, MessagePaneError>

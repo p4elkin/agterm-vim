@@ -35,3 +35,10 @@ In the fork `openLink` asks `LinkPolicy.helperLink` first, so on such a pane a p
 `openPathExtensions` extension still goes to the local `agterm-open-path`, and upstream's forward runs only
 when the helper cannot start. Derived from reading, not reproduced. The question is the same one: let
 Mac-attached panes skip the helper and take upstream's forward, or keep the helper there too.
+
+## 2026-11-23 merge: `open` rules
+
+Upstream #1051 adds keymap `open` rules (run your own renderer on a ⌘-clicked file) and #1090 opens more source
+files as text pages. In the merged `GhosttySurfaceView+Input.openLink`, the fork's helper links (`openPath` and the
+others) still win first; upstream's `open` rules run only when no helper takes the click. Decide whether a user
+`open` rule should outrank the fork's `openPath` helper, or whether `openPath` can become an `open` rule.

@@ -35,6 +35,11 @@ public extension ControlActions {
 
     func messageQueued(_: UUID, from _: String?, to _: [MessageRecipient]) {}
 
+    func pasteSessionText(_: String?, window _: String?, pane _: StatusPane?, paneID _: String?,
+                          text _: String) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.paste.text"))
+    }
+
     func attachCompanionPage(_: String?, window _: String?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.page.attach"))
     }
@@ -51,6 +56,10 @@ public extension ControlActions {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.move"))
     }
 
+    func promoteCompanion(_: String?, placement _: ControlCompanionPromotion, window _: String?) -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.promote"))
+    }
+
     func createPageCompanion(_: String?, window _: String?, options _: ControlSessionOverlayOpenOptions) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.page"))
     }
@@ -61,6 +70,10 @@ public extension ControlActions {
 
     func createCompanion(_: String?, options _: CompanionOptions, window _: String?) -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.companion.new"))
+    }
+
+    func newRemoteSession(_: RemoteSessionCreate) async -> ControlResponse {
+        ControlResponse(ok: false, error: ControlActionsUnsupported.message("session.remote.new"))
     }
 
     func setSessionExpansion(_: String?, window _: String?, expanded: Bool) -> ControlResponse {
@@ -307,6 +320,20 @@ public extension ControlActions {
 
     func attachRemoteSession(host _: String, session _: String, parent _: String) async -> ControlResponse {
         ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --parent"))
+    }
+
+    func attachRemoteSession(host: String, session: String, window: String?, workspace: ControlAttachWorkspace?) async -> ControlResponse {
+        guard workspace == nil else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach --workspace"))
+        }
+        return await attachRemoteSession(host: host, session: session, window: window)
+    }
+
+    func attachRemoteGroup(host: String, session: String, window: String?, workspace: ControlAttachWorkspace?) async -> ControlResponse {
+        guard workspace == nil else {
+            return ControlResponse(ok: false, error: ControlActionsUnsupported.message("zmx.attach.group --workspace"))
+        }
+        return await attachRemoteGroup(host: host, session: session, window: window)
     }
 
     func splitSession(_ target: String?, window: String?, mode: String?, axis _: SplitAxis?) -> ControlResponse {

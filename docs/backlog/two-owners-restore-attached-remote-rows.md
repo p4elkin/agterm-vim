@@ -26,3 +26,14 @@ terminal rows and the snapshot keeps only the rows the book cannot record (page 
 - Retiring one side would end that: either carry `transport`, deferred companions and pending names in
   `AttachedOriginSnapshot` and drop the book, or keep the book and file the rest of upstream's restore
   path as unused. See [[attached-remote-page-row-not-restored]] for the page-row gap the book had.
+
+## 2026-11-23 merge: upstream's relaunch state rides the path the fork skips
+
+Upstream #1072/#1082 (saved pane leads, `reclaim`) and #1073 (`followedCompanions`, `companionsBaselined`) are
+saved in `WorkspaceSnapshot.attached`. Two fork behaviours meet them, seen in `swift test` on the merge tree:
+- `attachedSnapshots` skips every row `RemoteRowBook.Record.covers`. So for a book row, followed companions are
+  never saved: `aRowSavedWithoutTheFollowKeysRestoresEmptyAndNotBaselined` and two
+  `WindowLibraryFollowCompanionsTests` find no `attached` entry. Derived from reading the guard.
+- Every attached row is restored asleep, with no line and no lead. `aRelaunchReclaimsTheLeadOnlyWhereThePaneLedWhenSaved`
+  saves the book rows too, and still reads `reclaim == nil` and a nil `initialCommand` at restore time. Not checked:
+  whether the wake path carries the saved lead.

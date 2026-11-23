@@ -187,12 +187,18 @@ extension agtermApp {
                 Button("New Session") { actions.newSession() }
                     .keyboardShortcut(shortcut(for: .newSession))
                     .disabled(!PaletteCommand.newSession.isEnabled(in: context))
+                Button("New Top-Level Session") { actions.newRootSession() }
+                    .keyboardShortcut(shortcut(for: .newRootSession))
+                    .disabled(!PaletteCommand.newRootSession.isEnabled(in: context))
                 Button("Open Directory…") { actions.openDirectory() }
                     .keyboardShortcut(shortcut(for: .openDirectory))
                     .disabled(!PaletteCommand.openDirectory.isEnabled(in: context))
                 Button("Attach Remote…") { actions.attachRemote() }
                     .keyboardShortcut(shortcut(for: .attachRemote))
                     .disabled(!PaletteCommand.attachRemote.isEnabled(in: context))
+                Button("New Remote Session…") { actions.newRemoteSession() }
+                    .keyboardShortcut(shortcut(for: .newRemoteSession))
+                    .disabled(!PaletteCommand.newRemoteSession.isEnabled(in: context))
                 Button("Open Remote Window…") { actions.openRemoteWindow() }
                     .keyboardShortcut(shortcut(for: .openRemoteWindow))
                     .disabled(!PaletteCommand.openRemoteWindow.isEnabled(in: context))
@@ -346,7 +352,7 @@ extension agtermApp {
                 // keyless, rebindable via focus_workspace; control workspace.focus. the label tracks the toggle.
                 let focusStore = library.activeStore
                 Button { actions.focusActiveWorkspace() } label: {
-                    Label(focusStore?.isCurrentWorkspaceSoleFocus == true ? "Unfocus Workspace" : "Focus Workspace",
+                    Label("\(focusStore?.isCurrentWorkspaceSoleFocus == true ? "Unfocus" : "Focus") \(context.focusNoun)",
                           systemImage: "scope")
                 }
                 .keyboardShortcut(shortcut(for: .focusWorkspace))
@@ -357,7 +363,7 @@ extension agtermApp {
                 // no-op (the row menu flips to "Remove from Focus", having a clicked row). membership is
                 // NOT gated on sidebar mode here or in the palette, matching its focus siblings.
                 Button { actions.addActiveWorkspaceToFocus() } label: {
-                    Label("Add Workspace to Focus", systemImage: "square.grid.2x2")
+                    Label(PaletteCommand.addWorkspaceToFocus.title(in: context), systemImage: "square.grid.2x2")
                 }
                 .disabled(!PaletteCommand.addWorkspaceToFocus.isEnabled(in: context))
                 // apply or suspend the filter without losing the marked set — the menu twin of the bottom-bar

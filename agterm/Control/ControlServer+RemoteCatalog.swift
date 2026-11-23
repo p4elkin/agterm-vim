@@ -118,13 +118,18 @@ extension ControlServer {
         }
         guard let mac = answer.result?.macCatalog else { return .server }
         if mac.live == false { return .failed(OriginCatalogRefusal.notLive.message(host: host)) }
-        guard let listing = try? RemoteSession.controlCommand(host: host, arguments: ["window", "list"]) else { return unanswered }
-        let listed = await remoteRunner.run(listing, deadline: 15)
-        guard listed.status == 0, let response = try? JSONDecoder().decode(ControlResponse.self, from: Data(listed.stdout.utf8)),
-              let windows = response.result?.windows else {
-            return .failed("\(host) did not list its windows")
-        }
+        guard let windows = await originWindows(host: host) else { return .failed("\(host) did not list its windows") }
         return .mac(windows)
+    }
+
+    /// originWindows is the Mac `host`'s `window list`, nil when it does not answer with one.
+    func originWindows(host: String) async -> [ControlWindowNode]? {
+        guard let listing = try? RemoteSession.controlCommand(host: host, arguments: ["window", "list"]) else { return nil }
+        let listed = await remoteRunner.run(listing, deadline: 15)
+        guard listed.status == 0, let response = try? JSONDecoder().decode(ControlResponse.self, from: Data(listed.stdout.utf8)) else {
+            return nil
+        }
+        return response.result?.windows
     }
 
     /// openRemote opens `info` and replies once it knows which window shows that catalog: a host that is another
@@ -201,9 +206,9 @@ final class RemoteCatalogWindow: RemoteCatalogEffects {
 
     /// attachCommand claims the lead only when the mirror says so, on a user's open or a row this Mac created: a remote
     /// window attaches again on every reconnect, and a claim each time would take the pane from another Mac at every
-    /// network blip. A covered pane takes over on a key.
+    /// network blip. A covered pane takes over on a key; one the window's first snapshot restored can take back its saved lead.
     func attachCommand(host: String, pane: CatalogPane, claim: Bool) -> String {
-        let lead = ZmxLeadAttachment(claim: claim)
+        let lead = ZmxLeadAttachment(claim: claim, reclaim: claim ? nil : ZmxLeadBook.shared.pendingReclaim(pane: pane.identity))
         guard let command = try? RemoteSession.attachPaneCommand(host: host, endpoint: pane.endpoint, daemon: pane.daemon,
                                                                  session: pane.daemon, pane: .left, lead: lead,
                                                                  controlPath: pool.lease("pane:\(pane.identity)")) else {

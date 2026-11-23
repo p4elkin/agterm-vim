@@ -38,7 +38,7 @@ public struct ControlDispatcher {
             return await dispatchSessionRestart(request)
         case .sessionSplit, .sessionSplitClose, .sessionSwap, .sessionLead, .sessionScratch, .sessionFocus,
                 .sessionResize, .surfaceZoom, .surfaceCursor, .sessionType,
-                .sessionCopy, .sessionPaste, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
+                .sessionCopy, .sessionPaste, .sessionPasteText, .sessionSelectAll, .sessionSearch, .sessionOverlayOpen,
                 .sessionOverlayClose, .sessionOverlayResize, .sessionOverlayReload, .sessionOverlayNavigate,
                 .sessionOverlayResult, .sessionOverlaySubmit, .sessionOverlayCopy, .sessionOverlayText,
                 .sessionOverlayHide, .sessionOverlayShow, .sessionOverlayToggle, .sessionOverlayFollow,
@@ -49,8 +49,13 @@ public struct ControlDispatcher {
         case .sessionOverlayJobRun, .sessionOverlayPageServe:
             return dispatchSessionOverlayCommand(request)
         case .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate, .sessionCompanionConvert,
-                .sessionCompanionMove, .sessionCompanionPageAttach, .sessionCollapse, .sessionExpand:
+                .sessionCompanionMove, .sessionCompanionPromote, .sessionCompanionPageAttach, .sessionCollapse, .sessionExpand:
             return await dispatchCompanionCommand(request)
+        case .sessionRemoteNew:
+            switch RemoteSessionCreate.parse(request) {
+            case .failure(let rejection): return ControlResponse(ok: false, error: rejection.message)
+            case .success(let create): return await actions.newRemoteSession(create)
+            }
         case .workspaceNew, .workspaceSelect, .workspaceGo, .workspaceRename, .workspaceDelete,
                 .workspaceMove, .workspaceFocus, .workspaceFilter, .workspaceCollapse, .workspaceExpand,
                 .workspaceFlag:
@@ -482,7 +487,18 @@ public struct ControlDispatcher {
         case .sessionPaste:
             switch parsePane(request.args?.pane) {
             case .pane(let parsed):
-                return actions.pasteSession(request.target, window: request.args?.window, pane: parsed)
+                return await actions.pasteSession(request.target, window: request.args?.window, pane: parsed)
+            case .rejected(let rejection): return rejection
+            }
+        case .sessionPasteText:
+            guard let text = request.args?.text, !text.isEmpty else {
+                return ControlResponse(ok: false, error: "session.paste.text requires text")
+            }
+            if let rejection = nulRejection(text) { return rejection }
+            switch parsePane(request.args?.pane) {
+            case .pane(let parsed):
+                return await actions.pasteSessionText(request.target, window: request.args?.window,
+                                                      pane: parsed, paneID: request.args?.paneID, text: text)
             case .rejected(let rejection): return rejection
             }
         case .sessionSelectAll:

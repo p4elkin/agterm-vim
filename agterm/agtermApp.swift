@@ -90,6 +90,9 @@ struct agtermApp: App {
     }
 
     init() {
+        LaunchTrace.shared.mark(.initEntry)
+        // before NSApplicationMain restores: windows opt out, so state left by an unclean exit restores none and no launch window opens
+        UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
         #if DEBUG
         // in the environment, ahead of every reader of the variable and of every child that inherits it
         if let adopted = DebugStateDirectory.adopted(environment: ProcessInfo.processInfo.environment,
@@ -134,12 +137,13 @@ struct agtermApp: App {
         // assignment invalidates nothing, leaving File ▸ Attach Remote disabled until an unrelated rebuild.
         actions.settingsModel = settingsModel
         captureOnExit = AppDelegate.makeExitCapture(
-            settingsModel: settingsModel, zmxResolver: restored.foregroundResolver)
+            settingsModel: settingsModel, zmxForeground: restored.daemonForeground)
         welcomeDue = FirstRunWelcome.isDue(welcomeShown: settingsModel.settings.welcomeShown,
                                            hasPriorState: hadPriorState)
         let controlServer = ControlServer(library: library, actions: actions, settingsModel: settingsModel,
                                           identity: Self.appIdentity,
                                           zmxForegroundResolver: restored.foregroundResolver,
+                                          zmxDaemonForeground: restored.daemonForeground,
                                           zmxClient: restored.zmxClient,
                                           zmxOutdatedBefore: restored.zmxOutdatedBefore,
                                           remoteRunner: remoteRunner)
@@ -174,6 +178,13 @@ struct agtermApp: App {
             guard let controlServer else { return done(false) }
             controlServer.openDocumentLink(url, session: session, sizePercent: percent, completion: done)
         }
+        PasteTransfer.shared.text = { [weak controlServer] offer, surface in
+            guard let controlServer else { return .failure(PasteFailure("control server is gone")) }
+            return await controlServer.pasteText(offer, for: surface)
+        }
+        PasteTransfer.shared.refuse = { [weak controlServer] surface, reason in
+            controlServer?.reportPasteRefusal(reason, for: surface)
+        }
         let liveReset = LiveResetCoordinator(settingsModel: settingsModel,
                                              selection: { [weak controlServer] in controlServer?.liveResetSelection() })
         controlServer.liveReset = liveReset
@@ -201,6 +212,17 @@ struct agtermApp: App {
         RebasedHost.shared.configure(library: library, settings: { settingsModel.settings },
                                      stateDirectory: stateDirectory, keymap: { settingsModel.keymap },
                                      toggle: { actions.performRebasedToggle(session: $0) })
+        LinkOpener.shared.opener = { settingsModel.keymap.opener(forFile: $0) }
+        LinkOpener.shared.runOpener = { [weak customCommandRunner] rule, file, surface in
+            customCommandRunner?.runOpener(rule, path: file.path, surface: surface)
+        }
+        controlServer.remoteOpeners.rules = { settingsModel.keymap.openers }
+        controlServer.remoteOpeners.launch = { [weak customCommandRunner] rule, file, surface, host in
+            guard let customCommandRunner else { return "no command runner" }
+            return customCommandRunner.runOpener(rule, path: file.path, surface: surface, host: host)
+        }
+        let openerStaging = controlServer.remoteOpeners.staging
+        Task.detached(priority: .utility) { openerStaging.sweep() }
         // hooks.conf scripts: fed by the library's post-append observer, applied from the settings model.
         let hookController = HookController(library: library, settings: settingsModel,
                                             socketProvider: { controlServer.resolvedSocketPath })
@@ -253,6 +275,7 @@ struct agtermApp: App {
             controlServer.remoteRowSupervisor = supervisor
             Self.remotePaneExitHeld = { local, session in supervisor.paneExited(local, inSession: session) }
         }
+        LaunchTrace.shared.mark(.initExit)
     }
 
     var body: some Scene {
@@ -293,6 +316,7 @@ struct agtermApp: App {
                 )
                     .frame(minWidth: 640, minHeight: 400)
                     .task {
+                        LaunchTrace.shared.mark(.sceneTask)
                         appDelegate.library = library
                         appDelegate.captureOnExit = captureOnExit
                         // `openWindow` lives only in the scene: hand it to the action hub for cross-window
@@ -307,6 +331,7 @@ struct agtermApp: App {
                         // socket on terminate.
                         appDelegate.controlServer = controlServer
                         controlServer.start()
+                        LaunchTrace.shared.mark(.socket, "bound=\(controlServer.boundSocketPath != nil)")
                         // bind the app-level quick terminal (idempotent); its env needs the bound socket, so
                         // this follows `start()` like the surface environment does.
                         wireQuickTerminal(library: library)
@@ -367,8 +392,8 @@ struct agtermApp: App {
                                 controlServer.paneLeadChanged(pane: pane, inSession: session.id)
                             }
                         }
-                        PaneLead.reconnect = { old, cover in
-                            Self.reattachPane(old, claim: false, cover: cover, services: paneServices)
+                        PaneLead.reconnect = { old, cover, reclaim in
+                            Self.reattachPane(old, claim: false, cover: cover, reclaim: reclaim, services: paneServices)
                         }
                         PaneLead.heldExit = { [weak server = controlServer] view in server?.remotePaneHeld(view) }
                         PaneLead.catalogChannel = { [weak server = controlServer] session, user in
@@ -378,10 +403,10 @@ struct agtermApp: App {
                             let prior = server?.priorLeader(daemon: daemon)
                             return { server?.ownerRespawned(session: session, daemon: daemon, prior: prior) }
                         }
-                        PaneLead.waitToReconnect = { [weak server = controlServer, library] view, cover in
+                        PaneLead.waitToReconnect = { [weak server = controlServer, library] view, cover, reclaim in
                             guard let session = view.session, let store = library.store(holdingSession: session.id) else { return }
                             Self.remotePaneStopped(view, store: store, sessionID: session.id, library: library, attach: server)
-                            server?.waitToReconnect(view, cover: cover)
+                            server?.waitToReconnect(view, cover: cover, reclaim: reclaim)
                         }
                         // drive the Dock badge (via UNUserNotifications) from the app-wide unseen total — the
                         // sidebar pills' Session.unseenCount summed across windows.
@@ -439,6 +464,7 @@ struct agtermApp: App {
     private struct RestoredRuntime {
         let library: WindowLibrary
         let foregroundResolver: ZmxForegroundResolver?
+        let daemonForeground: ZmxDaemonForeground?
         /// Handed to `ControlServer` so the zmx commands can list and kill. It used to live only inside the
         /// finalizer/reap closures, where nothing else could reach it.
         let zmxClient: ZmxClient?
@@ -466,7 +492,8 @@ struct agtermApp: App {
         guard !isHostedUnitTest else {
             return RestoredRuntime(library: WindowLibrary(directory: stateDirectory, paneFinalizer: nil,
                                                           flaggedLayout: flaggedLayout),
-                                   foregroundResolver: nil, zmxClient: nil, spawnContext: LaunchSpawnContext())
+                                   foregroundResolver: nil, daemonForeground: nil, zmxClient: nil,
+                                   spawnContext: LaunchSpawnContext())
         }
         let ghostty = GhosttyApp.shared
         let environment = ProcessInfo.processInfo.environment
@@ -475,7 +502,7 @@ struct agtermApp: App {
         let client = ZmxClient(executablePath: executable,
                               socketDirectory: ZmxSupport.socketDirectory(forStateDirectory: stateDirectory.path),
                               sweeper: ProcessSweeper())
-        let foregroundResolver = ZmxForegroundResolver(leaderProvider: { client.sessionLeaderPIDs(timeout: $0) })
+        let foregroundResolver = ZmxForegroundResolver(leaderProvider: { client.sessionLeaderPIDs() })
         let context = LaunchSpawnContext()
         let library = WindowLibrary(
             directory: stateDirectory,
@@ -487,6 +514,7 @@ struct agtermApp: App {
             launchPaneDrop: { identities in
                 for identity in identities { pacer.discard(identity) }
             },
+            daemonProbe: ghostty.launchRestoreMode == .live ? { ZmxDaemonForeground.probe(directory: client.endpoint.socketDirectory, pane: $0) } : nil,
             flaggedLayout: flaggedLayout,
             sshHostPools: sshHostPools)
         // the reap waits for the library so a confirmed Live sessions reset can narrow its marker against the
@@ -500,7 +528,8 @@ struct agtermApp: App {
         if let outcome = LaunchOrchestration.run(launch, consumer: consumer) {
             ghostty.recordLiveResetOutcome(outcome)
         }
-        return RestoredRuntime(library: library, foregroundResolver: foregroundResolver, zmxClient: client,
+        return RestoredRuntime(library: library, foregroundResolver: foregroundResolver,
+                               daemonForeground: .socket(directory: client.endpoint.socketDirectory), zmxClient: client,
                                spawnContext: context, zmxOutdatedBefore: outdatedBefore)
     }
 
@@ -562,8 +591,9 @@ struct agtermApp: App {
         // foreground pid, so it is never captured and restores via the exec `command` path, keeping close-on-exit.
         // `LaunchSeedProvider` owns the precedence between them and resolves it at spawn time, not here, so
         // the pending slots stay on the session until the pane really spawns.
-        // without the claim: a pane relaunched while another Mac leads its daemon comes back covered
-        let lead = ZmxLeadAttachment(claim: false)
+        // without the claim, so a lead another Mac took and used stays theirs; a restored pane names the attach it
+        // led with, which zmx patch 0008 lets it take back from a leader that only filled the vacancy
+        let lead = ZmxLeadAttachment(claim: false, reclaim: ZmxLeadBook.shared.pendingReclaim(pane: session.paneIdentity))
         let zmx = ZmxLaunch.wrapsLocally(mode: ghostty.launchRestoreMode, session: session)
             ? ZmxLaunch.configuration(paneIdentity: session.paneIdentity, pane: "primary", environment: env, lead: lead)
             : nil
@@ -710,9 +740,9 @@ struct agtermApp: App {
             // its own cmd +/-. a respawned parent gets a fresh primary surface, which wires its own.
             let outcome = store.closePrimaryPane(sessionID, alreadyFinalized: alreadyFinalized)
             if outcome == .respawned { publishRespawn?() }
-            if outcome == .promoted,
-               let promoted = store.session(withID: sessionID)?.surface as? GhosttySurfaceView {
-                promoted.onFontSizeChange = { store.setFontSize(sessionID, $0) }
+            if outcome == .promoted {
+                // a split promoted with no surface gets a primary view from the factory, which wires its own
+                (store.session(withID: sessionID)?.surface as? GhosttySurfaceView)?.onFontSizeChange = { store.setFontSize(sessionID, $0) }
                 // the same "session survived ⇒ its split was promoted" test, for a dashboard holding this
                 // session by `<id>:right`. synchronous, so it lands before the reconcile onChange prunes the
                 // cell; this is the only place that can tell promotion from the split's own shell exiting.
@@ -831,7 +861,7 @@ struct agtermApp: App {
         // the parent's window/workspace/session ids.
         // Creation, capture and override precedence matches the primary.
         let ghostty = GhosttyApp.shared
-        let lead = ZmxLeadAttachment(claim: false)
+        let lead = ZmxLeadAttachment(claim: false, reclaim: session.splitPaneIdentity.flatMap { ZmxLeadBook.shared.pendingReclaim(pane: $0) })
         let zmx = ZmxLaunch.wrapsLocally(mode: ghostty.launchRestoreMode, session: session)
             ? ZmxLaunch.configuration(paneIdentity: session.splitPaneIdentity, pane: "split", environment: env, lead: lead)
             : nil

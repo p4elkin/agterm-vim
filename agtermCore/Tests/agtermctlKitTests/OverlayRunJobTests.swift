@@ -157,8 +157,9 @@ struct OverlayRunJobTests {
 
         let status = runner.run(claimed, baseEnvironment: Self.base)
 
+        let frames = await origin.frames()
         #expect(status == 128 + SIGTERM)
-        #expect(await origin.frames() == [.started, .canceled])
+        #expect(frames == [.started, .canceled])
     }
 
     @Test func aCancelKillsAProgramThatIgnoresTheFirstSignal() async throws {
@@ -173,7 +174,8 @@ struct OverlayRunJobTests {
 
         #expect(status == 128 + SIGKILL)
         #expect(Date().timeIntervalSince(started) < 10)
-        #expect(await origin.frames() == [.started, .canceled])
+        let frames = await origin.frames()
+        #expect(frames == [.started, .canceled])
     }
 
     @Test func aReportTheAppNeverGetsLeavesTheHelpersStatusAlone() throws {

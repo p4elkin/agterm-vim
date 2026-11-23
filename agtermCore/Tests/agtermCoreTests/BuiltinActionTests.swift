@@ -46,9 +46,11 @@ struct BuiltinActionTests {
         #expect(BuiltinAction.previousWindow.rawValue == "previous_window")
         #expect(BuiltinAction.nextWindow.rawValue == "next_window")
         #expect(BuiltinAction.attachRemote.rawValue == "attach_remote")
+        #expect(BuiltinAction.newRemoteSession.rawValue == "new_remote_session")
         #expect(BuiltinAction.editFlaggedSessions.rawValue == "edit_flagged_sessions")
         #expect(BuiltinAction.editFocusedWorkspaces.rawValue == "edit_focused_workspaces")
-        #expect(BuiltinAction.allCases.count == 61)
+        #expect(BuiltinAction.newRootSession.rawValue == "new_root_session")
+        #expect(BuiltinAction.allCases.count == 63)
     }
 
     @Test func rejectsUnknownName() {
@@ -151,6 +153,8 @@ struct BuiltinActionTests {
             .attachRemote: Chord(mods: [.command, .shift], key: "r"),
             .openRemoteWindow: nil,
             .detachedSessions: nil,
+            .newRemoteSession: nil,
+            .newRootSession: nil,
             .editFlaggedSessions: nil,
             .editFocusedWorkspaces: nil,
         ]
@@ -214,6 +218,7 @@ struct BuiltinActionTests {
             .toggleWorkspaceFilter, .previousWorkspace, .nextWorkspace, .toggleWorkspaceCollapse,
             .normalMode, .overlayRedirectToggle, .newSessionInWorkspace, .rebasedToggle,
             .previousWindow, .nextWindow, .editFlaggedSessions, .editFocusedWorkspaces, .openRemoteWindow, .detachedSessions,
+            .newRemoteSession, .newRootSession,
         ]
         for action in keyless {
             #expect(action.defaultChord == nil, "expected nil default for \(action.rawValue)")

@@ -48,18 +48,19 @@ public enum ForwardPolicy {
              .sessionCollapse, .sessionExpand, .sessionCompanionNew, .sessionCompanionPage, .sessionPage, .sessionCompanionDuplicate,
              .sessionCompanionConvert, .recentList, .recentOpen, .recentClear,
              .windowRemoteOpen, .windowRemoteDismiss, .sessionDetach, .sessionReattach, .workspaceDetach, .workspaceReattach,
-             .sessionUndo, .sessionCompanionMove, .updateCheck:
+             .sessionUndo, .sessionCompanionMove, .sessionCompanionPromote, .updateCheck:
             return .refused("no windows or UI")
         // agterm-server's catalog stream; this origin has no catalog
         case .catalogSubscribe, .catalogOp:
             return .refused("an agterm-server feature")
         // a forwarded scratch would open a login shell on the Mac; the message bus addresses realized surfaces
-        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck:
+        // a stdin paste brackets by the terminal's paste mode, which only the presenting Mac's surface knows
+        case .surfaceZoom, .surfaceCursor, .sessionScratch, .sessionLead, .msgSend, .msgRead, .msgAck, .sessionPasteText:
             return .refused("no terminal surface")
         case .sessionPairing, .overlayRedirectToggle, .hooksReload, .hooksList, .sessionRestore, .sessionRestart,
              .restoreClear, .restoreCapture, .restoreMode, .zmxPrune, .zmxReset, .zmxScreen, .browserClear, .browserLinks,
              .rebasedMirrorList, .rebasedMirrorPrune, .sessionOverlayPageServe, .sessionCompanionPageAttach,
-             .zmxAttachGroup, .zmxKillPane:
+             .zmxAttachGroup, .zmxKillPane, .sessionRemoteNew:
             return .refused("a Mac feature")
         }
     }

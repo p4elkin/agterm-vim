@@ -67,6 +67,7 @@ extension ControlServer: PresentationStreamHost {
             store.onRemoteSessionSeen = { [weak self] id in
                 MainActor.assumeIsolated { self?.remoteClients[id]?.markSeen() }
             }
+            store.onRemoteRowPromoted = { [weak self] session in MainActor.assumeIsolated { self?.remoteRowPromoted(session) } }
             store.onReplicaPageChanged = { [weak self] page in MainActor.assumeIsolated { self?.replicaPageChanged(page) } }
             store.onRemoteSessionRenamed = { [weak self] id, name in
                 MainActor.assumeIsolated { _ = self?.remoteClients[id]?.rename(name) }

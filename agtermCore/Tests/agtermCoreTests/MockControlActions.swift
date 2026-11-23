@@ -43,6 +43,7 @@ class MockControlActionsBase {
         case companionDuplicate(target: String?, window: String?, select: Bool)
         case companionConvert(target: String?, window: String?)
         case companionMove(target: String?, parent: String, index: Int?, window: String?)
+        case companionPromote(target: String?, placement: ControlCompanionPromotion, window: String?)
         case companionPageAttach(target: String?, window: String?)
         case workspaceFlag(target: String?, window: String?, ControlToggleMode)
         case sessionFlag(target: String?, window: String?, String?)
@@ -122,6 +123,7 @@ class MockControlActionsBase {
         case sessionType(target: String?, window: String?, ControlSessionTypeOptions)
         case sessionCopy(target: String?, window: String?)
         case sessionPaste(target: String?, window: String?, pane: StatusPane?)
+        case sessionPasteText(target: String?, window: String?, pane: StatusPane?, paneID: String?, text: String)
         case sessionSelectAll(target: String?, window: String?)
         case sessionSearch(target: String?, window: String?, text: String?, to: String?)
         case overlayOpen(target: String?, window: String?, ControlSessionOverlayOpenOptions)
@@ -413,6 +415,11 @@ class MockControlActionsBase {
 
     func moveCompanion(_ target: String?, parent: String, index: Int?, window: String?) -> ControlResponse {
         calls.append(.companionMove(target: target, parent: parent, index: index, window: window))
+        return ControlResponse(ok: true)
+    }
+
+    func promoteCompanion(_ target: String?, placement: ControlCompanionPromotion, window: String?) -> ControlResponse {
+        calls.append(.companionPromote(target: target, placement: placement, window: window))
         return ControlResponse(ok: true)
     }
 
@@ -849,6 +856,12 @@ class MockControlActionsBase {
 
     func pasteSession(_ target: String?, window: String?, pane: StatusPane?) -> ControlResponse {
         calls.append(.sessionPaste(target: target, window: window, pane: pane))
+        return nextSessionPasteResponse
+    }
+
+    func pasteSessionText(_ target: String?, window: String?, pane: StatusPane?, paneID: String?,
+                          text: String) -> ControlResponse {
+        calls.append(.sessionPasteText(target: target, window: window, pane: pane, paneID: paneID, text: text))
         return nextSessionPasteResponse
     }
 

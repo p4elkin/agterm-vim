@@ -133,8 +133,10 @@ public enum RemoteOperation: Equatable, Sendable {
     case restart(UUID, pane: ZmxPaneRole, command: String?)
     case duplicateCompanion(UUID)
     case convertCompanion(UUID)
-    /// moveCompanion puts companion `UUID` under `parent`; `index` counts the server's group, detached rows included.
+    /// moveCompanion puts session `UUID` under `parent`; `index` counts the server's group, detached rows included.
     case moveCompanion(UUID, parent: UUID, index: Int?)
+    /// promoteCompanion makes companion `UUID` a top-level session at `placement`, after its own group when nil.
+    case promoteCompanion(UUID, to: RemoteSessionPlacement?)
     /// killDaemon ends one pane's daemon on the server; `paneID` pins it to that pane, as `zmx.kill.pane` does.
     case killDaemon(UUID, pane: ZmxPaneRole, paneID: String? = nil)
     /// undoClose undoes the server's pending close `undoID` while its grace lasts.
@@ -171,6 +173,7 @@ public enum RemoteOperation: Equatable, Sendable {
         case .duplicateCompanion: "Duplicate as Companion"
         case .convertCompanion: "Convert to Companion"
         case .moveCompanion: "Move Companion"
+        case .promoteCompanion: "Make Top-Level Session"
         case .killDaemon: "Kill Daemon"
         case .undoClose: "Reopen Closed Item"
         case .reopenRecent: "Reopen Last Closed Item"
@@ -183,7 +186,8 @@ public enum RemoteOperation: Equatable, Sendable {
         case .newSession(let workspace, _, _): .workspace(workspace)
         case .newCompanion(let id, _), .newPage(let id, _, _), .setSplit(let id, _, _), .setScratch(let id, _, _), .closeSplit(let id), .swap(let id),
              .renameSession(let id, _), .moveSession(let id, _), .closeSession(let id, _), .setFlag(let id, _), .setTint(let id, _), .restart(let id, _, _),
-             .duplicateCompanion(let id), .convertCompanion(let id), .moveCompanion(let id, _, _), .killDaemon(let id, _, _): .session(id)
+             .duplicateCompanion(let id), .convertCompanion(let id), .moveCompanion(let id, _, _), .promoteCompanion(let id, _),
+             .killDaemon(let id, _, _): .session(id)
         // a batch is marked on its first row
         case .closeSessions(let ids, _), .moveSessions(let ids, _): ids.first.map { .session($0) }
         case .newWorkspace, .newSessionInNamedWorkspace, .clearFlags, .undoClose, .reopenRecent, .clearRecent: nil
@@ -213,6 +217,18 @@ public enum RemoteOperation: Equatable, Sendable {
         case nil: ""
         }
         return label + ":" + row
+    }
+
+    /// attachesPane is whether the operation can start a program in a pane this Mac attaches, so the server holds it
+    /// for the attach; an operation that starts only a plain shell needs no hold.
+    var attachesPane: Bool {
+        switch self {
+        case .newSession(_, _, let shell), .newSessionInNamedWorkspace(_, _, let shell), .newCompanion(_, let shell):
+            shell.command != nil
+        case .restart, .duplicateCompanion: true
+        case .setScratch(_, let shown, let command): shown && command != nil
+        default: false
+        }
     }
 
     /// words are the far side's `agtermctl` arguments; operands follow a `--` so a name starting with `-` stays a name.
@@ -261,6 +277,8 @@ public enum RemoteOperation: Equatable, Sendable {
         case .convertCompanion(let id): ["session", "convert", "--companion", "--target", id.uuidString]
         case .moveCompanion(let id, let parent, let index):
             ["session", "move", "--target", id.uuidString, "--parent", parent.uuidString] + (index.map { ["--index", String($0)] } ?? [])
+        case .promoteCompanion(let id, let placement):
+            ["session", "move", "--target", id.uuidString, "--top-level"] + (placement?.words ?? [])
         case .killDaemon(let id, let pane, let paneID):
             ["zmx", "kill", "--target", id.uuidString, "--pane", pane.rawValue] + (paneID.map { ["--pane-id", $0] } ?? []) + ["--force"]
         }
@@ -270,7 +288,8 @@ public enum RemoteOperation: Equatable, Sendable {
         switch self {
         case .renameSession(_, let name), .renameWorkspace(_, let name): [name]
         case .newWorkspace(let name, _, _): name.map { [$0] } ?? []
-        case .moveSession(_, .workspace(let workspace)), .moveSessions(_, .workspace(let workspace)): [workspace.uuidString]
+        case .moveSession(_, .workspace(let workspace)), .moveSessions(_, .workspace(let workspace)),
+             .promoteCompanion(_, .workspace(let workspace)): [workspace.uuidString]
         case .reopenRecent(let id?): [id]
         default: []
         }
@@ -312,6 +331,9 @@ public struct PreparedRemoteOperation: Equatable, Sendable {
     let scratch: String?
     /// selection is the window's selected row when the operation was asked for.
     let selection: UUID?
+    /// attachesPane is the operation's own, false for a restart of a pane this window does not lay out, which no
+    /// terminal would attach to release.
+    let attachesPane: Bool
 }
 
 /// RemotePreparation is `RemoteCatalogActions.prepare`'s answer: an operation ready to send, or the refusal to report.
@@ -443,8 +465,14 @@ public final class RemoteCatalogActions {
             guard let session = catalog.session(id) else { return .refused(ControlResponse(ok: false, error: "no such session on \(host)")) }
             scratch = session.fields.scratch?.pane.identity.uuidString ?? "none"
         }
+        var attaches = operation.attachesPane
+        if attaches, case .restart(let id, let pane, _) = operation {
+            let row = mirror.store?.session(withID: id)
+            attaches = OverlayPane(rawValue: pane.rawValue).map { row?.rendersPane($0) == true } ?? false
+        }
         return .ready(PreparedRemoteOperation(operation: operation, sent: CatalogPosition(epoch: catalog.epoch, rev: catalog.rev),
-                                              panes: panes, scratch: scratch, selection: mirror.selectedSessionID))
+                                              panes: panes, scratch: scratch, selection: mirror.selectedSessionID,
+                                              attachesPane: attaches))
     }
 
     /// send runs a prepared operation on the server and answers with the server's reply, the created ids and errors
@@ -466,11 +494,16 @@ public final class RemoteCatalogActions {
         let newSplit = operation.newSplit(in: mirror.store)
         // read before the request: the offer can expire while an undo it allowed is in flight
         let undone = if case .undoClose(let undoID) = operation { undoRows[undoID] ?? [] } else { [UUID]() }
-        let outcome = await run(words + ["--op-id", opID, "--epoch", prepared.sent.epoch], operands: operation.operands)
-        if case .moveCompanion = operation, Self.tooOldForCompanionMoves(outcome) {
+        words += ["--op-id", opID, "--epoch", prepared.sent.epoch]
+        var outcome = await run(words + (prepared.attachesPane ? ["--attach-pending"] : []), operands: operation.operands)
+        // a far CLI too old for the intent refused it before sending anything, so the same operation id is still unused
+        if prepared.attachesPane, case .refusedArguments = outcome {
+            outcome = await run(words, operands: operation.operands)
+        }
+        if let (command, what) = operation.ownCommand, Self.tooOld(outcome, for: command) {
             entries[opID] = nil
             let app = mirror.originIsMac ? "agterm" : "agterm-server"
-            return ControlResponse(ok: false, error: "the \(app) on \(host) is too old for companion moves")
+            return ControlResponse(ok: false, error: "the \(app) on \(host) is too old for \(what)")
         }
         switch outcome {
         case .notSent:
@@ -648,12 +681,12 @@ public final class RemoteCatalogActions {
         return asked
     }
 
-    // an older CLI refuses `--parent`, a newer CLI's request is refused by an older running server: either way
-    // nothing ran there, unlike any other lost reply
-    private static func tooOldForCompanionMoves(_ outcome: Outcome) -> Bool {
+    // an older CLI refuses `--parent` or `--top-level`, a newer CLI's request is refused by an older running server:
+    // either way nothing ran there, unlike any other lost reply
+    private static func tooOld(_ outcome: Outcome, for command: Command) -> Bool {
         switch outcome {
         case .refusedArguments: true
-        case .reply(let reply): reply.refusesUnknown(.sessionCompanionMove)
+        case .reply(let reply): reply.refusesUnknown(command)
         case .notSent, .lost: false
         }
     }
@@ -680,6 +713,17 @@ private extension CatalogSnapshot {
         switch target {
         case .session(let id): session(id) != nil
         case .workspace(let id): workspaces.contains { $0.id == id }
+        }
+    }
+}
+
+extension RemoteOperation {
+    /// ownCommand is the wire command an operation travels as when an older server refuses it whole, with what it does.
+    var ownCommand: (Command, String)? {
+        switch self {
+        case .moveCompanion: (.sessionCompanionMove, "companion moves")
+        case .promoteCompanion: (.sessionCompanionPromote, "companion promotion")
+        default: nil
         }
     }
 }
