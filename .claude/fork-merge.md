@@ -41,6 +41,11 @@ flagged:
   - "agterm/agtermApp.swift"
   # sleeping remote rows: an asleep row's pane hosted by the deck mounts on a stale line or a local shell
   - "agterm/Views/WindowContentView+Zoom.swift"
+  # added 2026-11-23 by Sasha from the candidate question: the 2026-11-23 merge broke the fork's sleep and lead
+  # code in these through widened upstream signatures (`reconnect`'s reclaim, new `ControlActions` requirements)
+  - "agterm/Ghostty/GhosttySurfaceView.swift"
+  - "agterm/Ghostty/PaneLead.swift"
+  - "agtermCore/Sources/agtermCore/ControlActions.swift"
 # constructs: resolving a hunk whose enclosing declaration is one of these needs a person, whatever
 # the hunk looks like. A file listed with no member means the whole file, because it is small enough
 # that subdividing it buys nothing.
