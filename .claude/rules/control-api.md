@@ -50,6 +50,8 @@ paths:
   an event carrying `agent_id` adds `--if-idle` to `active`, and a Stop whose `background_tasks` lists a
   running subagent, workflow or shell posts `active --blink` in place of `completed`, dropping the caller's flags
   so `--auto-reset` cannot idle the row. Anything else, an unreadable payload included, posts argv.
+  `AGTERM_CLAUDE_IGNORE_SHELLS=1` (exactly `1`) in Claude's environment drops shells from that running set; it is a
+  hook-local knob because the hook decides before the status reaches the app, and agterm-server has no settings to read.
 - Codex maps SessionStart idle; prompt/pre/post tool active; Stop ending `?` blocked, otherwise completed.
   Those first four report nothing for a null `transcript_path`: Codex's ephemeral memory consolidation
   thread fires them but never a user Stop, so they would leave the pane active.
@@ -360,9 +362,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   the free can land on that address and take the old child's exit, which closed the pane (measured: the
   event carried the old shell's run time). The same call spawns a pane the deck does not lay out, since
   libghostty creates a surface for a view outside any window. The reply waits up to 10 s for a new
-  leader pid read per daemon from the kernel (`ZmxDaemonForeground.leaderPID` on the Mac, `ProcDaemon` by argv and
-  `ZMX_DIR` on agterm-server, where a socket's peer pid names the process that called `listen`), never `zmx list`,
-  which waits on every daemon (#1055). Past that it answers unverified, and a follow keeps the pane's restart hold and
+  leader pid read per daemon from the kernel (the leader-scan bullet below, #1055). Past that it answers unverified, and a follow keeps the pane's restart hold and
   publishes the respawn once the shell shows up, within 60 s of the launch. Holds are counted, one per restart, so a
   refused retry releases only its own. A later restart's confirmed kill, the pane closing, a parent respawn
   (`primaryRespawns`) or, on the server, a recorded exit ends the follow without publishing; a confirmed pane is
@@ -371,7 +371,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   hold. agterm-server announces the respawn as soon as the new daemon is attachable, before `exec`, since a viewer's
   attach is what releases it; the Mac publishes after confirmation. A confirmed reply carries `result.restart` (`paneID`, `oldPid`, `newPid`); they are shell pids, the program
   reads back as `foreground`. With no `command` the host replays the pane's foreground program: the
-  argv `tree` reports, read through `ForegroundProcess.observed` from a fresh leader listing, filtered by
+  argv `tree` reports, read through `ForegroundProcess.observed` from a fresh leader scan, filtered by
   host-free `RestartReplay.resolve` and launched through `attachCommand(replaying:)`. It starts in that
   process's own working directory, never `session.cwd`: the shell-reported cwd can be stale before the
   first prompt. A process that IS the daemon leader and a shell is refused, to prevent replaying the
@@ -393,7 +393,15 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   also lands during app termination and before panes mount. A stale-socket or failed kill sends nothing.
   This is what a closed terminal does: `nohup`, `disown`ed and other background jobs are never signalled,
   and a foreground program that ignores hangups survives a close. Do not widen it to the shell's process
-  tree. `ProcessSweeper` is nil by default because a test's fake listing names real pids.
+  tree. `ProcessSweeper` is nil by default because a test's fake leaders name real pids.
+- Runtime leader reads never run `zmx list`, which probes daemons one at a time, so a few stalled ones time out
+  every pane's answer. The tree, companion duplicate, restart's old and new shell, and the foreground job of a pane
+  or session kill read `ZmxClient.sessionLeaderPIDs` on the Mac (each daemon socket's peer pid,
+  `ZmxDaemonForeground.leaders`) and `ServerPanes.daemonShells` on agterm-server (one `/proc` pass,
+  `ProcDaemon.leaders`, since a Linux socket's peer pid names the process that called `listen`), where `zmx.kill`'s
+  leader comes from it too. `zmx.list`, `zmx.tree`, prune, the reset and launch reap, the Mac's `zmx.kill` inventory
+  and the server's observer keep the listing, since they need client counts, unclaimed daemons and unreadable rows;
+  the reap, reset and server prune also hang up the foreground jobs of the leader pids that listing read.
 - `session.scratch` is a third login shell with on/off/toggle; in Live sessions mode it is the daemon
   `Session.ScratchDaemon` names, saved and restored hidden, claimed, reaped and reset like a pane's, and
   ended by its shell's exit or `--command`; a requested-Live fallback keeps it for the next Live launch. It spawns lazily, survives
@@ -516,7 +524,7 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   sessions): that Mac shows the page's asks in its own window.
 - `session.companion.duplicate` is its own wire command for the same older-app reason.
   `ControlServer.duplicateCompanion` plans every pane through `ForegroundProcess.replayObservation` and host-free
-  `DuplicateReplay` from one fresh leader listing before creating anything; `AppStore.duplicateAsCompanion` then
+  `DuplicateReplay` from one fresh leader scan before creating anything; `AppStore.duplicateAsCompanion` then
   stores each program as `initialCommand`/`splitInitialCommand`, so it runs as a `--command` pane does, ungated by
   restore mode. It stores them only after the copy and its split exist, rewriting the source's session id, pane ids
   and their zmx daemon names to the copy's: an argv carrying its own pane identity, as a codex started with
@@ -2401,7 +2409,8 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   origin had reported a role or the attach it replaced dropped before its first report, and
   `remotePaneResumed`. Re-running the attach in the shell was rejected: it
   would claim the lead on every retry and skip that cleanup. A key on a waiting pane retries now; Command
-  chords pass. `RemoteLinkObserver` calls `ControlServer.retryRemoteLinksNow` on the display wake
+  chords pass. A click on the reconnecting panel, or on a lead cover still up over a waiting pane, retries too
+  (`PaneLead.coverClicked`, `noticeClicked`) and never claims; a dashboard cell's panel takes no clicks. `RemoteLinkObserver` calls `ControlServer.retryRemoteLinksNow` on the display wake
   `SystemWakeObserver` bridges, which a dark wake or a headless Mac never posts, and on every
   `NWPathMonitor` path change that leaves the path usable, a hand-off that stayed usable included;
   the first path report is the state at start. That makes
@@ -2927,9 +2936,10 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   before and is never covered. A role change emits `tree.changed`.
 - A pane that does not lead is covered (`PaneLeadCover`), by every host of its terminal: the deck, where
   it sits BELOW the pane's own pane overlay and hides while one is up, terminal zoom, and the dashboard.
+  A dashboard cell's cover takes no click and offers no takeover, since the cell owns its clicks and keys.
   The daemon ignores a session switch while its leader is managed: the client's nonce, its generation and
   what it reads and types through the daemon are all bound to that one session. Taking the lead is always a FRESH attach into a
-  new surface, by the first key on the cover, by `session.lead`, or by itself when the role turns
+  new surface, by the first key or a click on the cover, by `session.lead`, or by itself when the role turns
   `unowned`. The automatic one omits the claim, so it leads only if the daemon is still unowned when it
   arrives and cannot take a lead someone claimed meanwhile.
   A reconnect after a dropped link, an attached row's origin scratch included, also sets `ZMX_MANAGED_RECLAIM` to
@@ -3004,9 +3014,9 @@ side, and reads `lastAppliedIsDark` when bare. Refuse it outside XCUITest; provi
   bracketed paste.
 - A covered pane ATTACHED from another Mac refuses all three with `pane is in use on the Mac it runs
   on; take the lead to drive it from here`: its daemon is an ssh away and these reads are synchronous.
-- `session.lead [--pane]` is the control twin of the cover's key. A pane that already leads answers ok;
+- `session.lead [--pane]` is the control twin of the cover's key and click. A pane that already leads answers ok;
   one still attaching without the claim (a reconnect, the unowned retry) answers ok and takes the lead on
-  its first report, as a key on its cover does; one with no reported role answers `pane has no lead to take`; a scratch outside Live
+  its first report, as a key or click on its cover does; one with no reported role answers `pane has no lead to take`; a scratch outside Live
   sessions is refused.
   Read back `lead`.
   It has no menu item or chord: the cover is its GUI surface.

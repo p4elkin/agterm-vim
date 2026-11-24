@@ -89,6 +89,43 @@ class SidebarOutlineView: NSOutlineView {
         return (top as? SidebarNode)?.kind == .session ? 1 : 0
     }
 
+    /// One detached template, so AppKit's per-button observer leak (seen on macOS 27.0.1 and 27.2) hits it alone.
+    private static var disclosureTemplate: NSButton?
+
+    override func makeView(withIdentifier identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
+        guard #available(macOS 27.0, *), identifier == NSOutlineView.disclosureButtonIdentifier else {
+            return super.makeView(withIdentifier: identifier, owner: owner)
+        }
+        // NSTableView's lookup only dequeues a button AppKit set aside; NSOutlineView's makes a new one when none is
+        if let queued = dequeueFromTableView(identifier, owner: owner) { return queued }
+        if Self.disclosureTemplate == nil {
+            Self.disclosureTemplate = super.makeView(withIdentifier: identifier, owner: owner) as? NSButton
+        }
+        guard let template = Self.disclosureTemplate, let copy = Self.copy(of: template) else {
+            return super.makeView(withIdentifier: identifier, owner: owner)
+        }
+        copy.target = self
+        return copy
+    }
+
+    private func dequeueFromTableView(_ identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
+        typealias Make = @convention(c) (AnyObject, Selector, NSUserInterfaceItemIdentifier, Any?) -> NSView?
+        let selector = #selector(NSTableView.makeView(withIdentifier:owner:))
+        guard let imp = class_getMethodImplementation(NSTableView.self, selector) else { return nil }
+        return unsafeBitCast(imp, to: Make.self)(self, selector, identifier, owner)
+    }
+
+    private static func copy(of button: NSButton) -> NSButton? {
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: button, requiringSecureCoding: false),
+              let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+        unarchiver.requiresSecureCoding = false
+        let copy = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? NSButton
+        copy?.imagePosition = button.imagePosition
+        // the template's tint is whatever the last key change left; nothing would ever update a copy's
+        copy?.contentTintColor = nil
+        return copy
+    }
+
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)
         (delegate as? WorkspaceSidebar.Coordinator)?.finishDraggingSequence()

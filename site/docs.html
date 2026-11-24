@@ -490,7 +490,7 @@ command &quot;Session here&quot; ctrl+a&gt;n agtermctl session new --cwd &quot;$
 <h3 id="workspaces-sidebar">The sidebar</h3>
 <ul>
 <li>The sidebar is a two-level tree: the top-level sessions first, with no row above them, then the workspaces, each holding sessions. A workspace row has a filled folder icon, a session row an outlined terminal.</li>
-<li>A session is named after its working directory's last folder. Renaming pins a name of your own; clearing it restores automatic naming. Rename inline by double-clicking a row's name.</li>
+<li>An unnamed terminal session uses the focused pane's terminal title when it has one, or else the last folder of its working directory. In a local window, a split reopens with focus on its left or top pane. Renaming pins a name of your own; clearing it restores automatic naming. Rename inline by double-clicking a row's name.</li>
 <li>The four icons at the bottom of the sidebar add a workspace, add a session, and toggle the workspace filter and the flagged view.</li>
 <li>A click on a workspace's icon folds it at once.</li>
 <li><strong>Copy Name</strong> on a session or workspace row copies its name.</li>
@@ -880,7 +880,7 @@ agtermctl session new --remote srv --window &quot;$win&quot;                   #
 <p>The program in a pane sees the window size of the one Mac that leads it.</p>
 <ul>
 <li>Attaching takes the lead in every pane, so the session arrives at your size with nothing to press.</li>
-<li>On the other Mac, those panes are covered with a note that they are in use elsewhere. A key press on the cover, or <code>agtermctl session lead</code>, takes the lead back and covers the pane here.</li>
+<li>On the other Mac, those panes are covered with a note that they are in use elsewhere. A key press or click on the cover, or <code>agtermctl session lead</code>, takes the lead back and covers the pane here.</li>
 <li>Scripts typing into a covered pane on the other Mac still work, and so do their screen reads: both go through the session, not the covered view.</li>
 <li>Closing the session here uncovers the panes over there.</li>
 <li>When the connection drops and a pane or the scratch terminal reconnects, it takes the lead back if this Mac led it when the link dropped and nobody has used it since: the lead is still held by this Mac's lost connection, or another Mac took it only because the pane was free and nothing has been typed, pasted or clicked there since. Otherwise the pane comes back covered. After a relaunch or a reopened window, each pane this Mac led when it left takes the lead back the same way: in a session attached from another Mac, in a remote window, and in this Mac's own sessions while another Mac shows them. Opening a window of another Mac takes the lead outright, as the next item says. A session started on the host by an agterm without this behavior keeps leaving the lead where it is until it ends.</li>
@@ -970,7 +970,7 @@ agtermctl session new --remote srv --window &quot;$win&quot;                   #
 <p>Close and reattach the session to retry by hand.</p>
 <p><strong>A pane's ssh connection.</strong> The pane keeps its last screen, and what happened shows in a small panel at the bottom of the pane rather than as terminal text.</p>
 <ul>
-<li>If ssh itself failed (exit 255, which a refused login also gives), the panel reads <strong>Connection to HOST lost</strong> and says it is reconnecting. agterm attaches again once the host answers, on the stream's schedule; any key, waking the Mac or a network change retries at once and restarts the schedule. ⌘W still closes the session.</li>
+<li>If ssh itself failed (exit 255, which a refused login also gives), the panel reads <strong>Connection to HOST lost</strong> and says it is reconnecting. agterm attaches again once the host answers, on the stream's schedule; any key, a click on the panel, waking the Mac or a network change retries at once and restarts the schedule. ⌘W still closes the session.</li>
 <li>While the host keeps refusing, the panel adds what ssh said last, such as a changed host key or a rejected login.</li>
 <li>When the host answers, the last screen is replaced before the new connection is up, so a link that drops again right away leaves an empty pane with only the panel.</li>
 <li>The pane takes the lead back only as <a href="#remote-sessions-lead">Who leads a pane</a> describes; otherwise it arrives covered.</li>
@@ -2473,7 +2473,7 @@ agtermctl session tint clear --target &quot;$AGTERM_SESSION_ID&quot;</code></pre
 <h4 id="status-claude">Claude Code</h4>
 <ul>
 <li>When Claude Code runs as a worker under another agent with a shell between them, as in a tool call, its hooks stay silent, so the status of the pane that started it is not overwritten.</li>
-<li>A background subagent or workflow keeps the row working. Its activity lights an idle row but never replaces the main agent's status. While Claude Code (2.1.145 or later) reports one, or a background shell, still running, Stop posts active instead of completed; completed comes from the Stop after the last one finishes, so a background server that never exits keeps the row active.</li>
+<li>A background subagent or workflow keeps the row working. Its activity lights an idle row but never replaces the main agent's status. While Claude Code (2.1.145 or later) reports one, or a background shell, still running, Stop posts active instead of completed; completed comes from the Stop after the last one finishes, so a background server that never exits keeps the row active. To leave background shells out, for example long-running pollers, export <code>AGTERM_CLAUDE_IGNORE_SHELLS=1</code> in the shell that starts Claude Code; subagents and workflows still keep the session active.</li>
 <li>Two gaps remain: the main agent's activity can replace a subagent's permission prompt, and when the key that answers that prompt leaves the block in place, the row stays blocked until the main agent's next event.</li>
 <li>After upgrading, restart agterm and run the install again: a running older app ignores the subagent's <code>--if-idle</code> and applies the write.</li>
 </ul>

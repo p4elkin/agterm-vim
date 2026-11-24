@@ -147,6 +147,117 @@ final class PaneLeadTests: XCTestCase {
         XCTAssertTrue(reattached.isEmpty)
     }
 
+    func testAClickOnAnUnfocusedCoveredPaneFocusesItBeforeTheTakeover() throws {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        let identity = UUID()
+        panes.append(identity)
+        let focused = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), command: "/bin/cat")
+        let covered = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(), command: "/bin/cat",
+                                         env: ["AGTERM_PANE_ID": identity.uuidString])
+        defer {
+            focused.teardown()
+            covered.teardown()
+        }
+        focused.frame = CGRect(x: 0, y: 0, width: 300, height: 300)
+        covered.frame = CGRect(x: 300, y: 0, width: 300, height: 300)
+        window.contentView?.addSubview(focused)
+        window.contentView?.addSubview(covered)
+        focused.createSurface()
+        covered.createSurface()
+        XCTAssertNotNil(covered.surface)
+        window.makeFirstResponder(focused)
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: "n", claim: true), pane: identity)
+        PaneLead.report(try notice("n:follower:1"), from: covered)
+        var heldFocus: [Bool] = []
+        PaneLead.reattach = { view, _ in heldFocus.append(view.window?.firstResponder === view) }
+
+        PaneLead.coverClicked(covered)
+
+        XCTAssertEqual(heldFocus, [true], "the replacement takes focus only from a surface that holds it")
+    }
+
+    func testAClickOnACoveredPaneTakesTheLeadOnceWhileTheTakeoverIsOnItsWay() throws {
+        let (view, identity) = pane()
+        PaneLead.report(try notice("n:follower:1"), from: view)
+
+        PaneLead.coverClicked(view)
+        XCTAssertEqual(reattached.map(\.claim), [true])
+
+        let fresh = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(),
+                                       env: ["AGTERM_PANE_ID": identity.uuidString], backedByZmx: true)
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: "fresh", claim: true), pane: identity, reattaching: true)
+        PaneLead.coverClicked(fresh)
+        XCTAssertEqual(reattached.count, 1)
+        XCTAssertTrue(PaneLead.consumes(try key(.keyDown, code: 1), in: fresh))
+        XCTAssertEqual(reattached.count, 1)
+
+        PaneLead.report(try notice("fresh:leader:2"), from: fresh)
+        XCTAssertFalse(PaneLead.consumes(try key(.keyDown, code: 1), in: fresh), "the next press is the program's")
+    }
+
+    func testAClickOnALeadingPaneTakesNothing() throws {
+        let (view, _) = pane()
+        PaneLead.report(try notice("n:leader:1"), from: view)
+
+        PaneLead.coverClicked(view)
+
+        XCTAssertTrue(reattached.isEmpty)
+    }
+
+    func testAClickOnAReconnectThatClaimsNothingTakesTheLeadOnItsFirstReport() throws {
+        let identity = UUID()
+        panes.append(identity)
+        let view = GhosttySurfaceView(workingDirectory: NSTemporaryDirectory(),
+                                      env: ["AGTERM_PANE_ID": identity.uuidString], backedByZmx: true)
+        ZmxLeadBook.shared.begin(ZmxLeadAttachment(nonce: "n", claim: false), pane: identity, reattaching: true)
+
+        PaneLead.coverClicked(view)
+        XCTAssertTrue(reattached.isEmpty)
+
+        PaneLead.report(try notice("n:follower:1"), from: view)
+        XCTAssertEqual(reattached.map(\.claim), [true])
+    }
+
+    func testAClickOnACoveredPaneWaitingToReconnectRetriesNowWithoutTakingTheLead() throws {
+        let (view, identity) = pane()
+        PaneLead.report(try notice("n:follower:1"), from: view)
+        let book = RemoteReconnectBook.shared
+        book.wait(pane: identity, session: UUID(), host: "mini", cover: true, now: Date())
+        _ = book.due(now: Date())
+        _ = book.finished(pane: identity, ok: false, now: Date().addingTimeInterval(3600))
+        XCTAssertTrue(view.leadCovered)
+
+        PaneLead.coverClicked(view)
+
+        XCTAssertEqual(book.due(now: Date()), [identity])
+        XCTAssertTrue(reattached.isEmpty, "a retry is a probe, never a claim")
+    }
+
+    func testAClickOnTheReconnectNoticeRetriesNow() {
+        let (view, identity) = pane()
+        let book = RemoteReconnectBook.shared
+        book.wait(pane: identity, session: UUID(), host: "mini", cover: false, now: Date())
+        _ = book.due(now: Date())
+        _ = book.finished(pane: identity, ok: false, now: Date().addingTimeInterval(3600))
+
+        PaneLead.noticeClicked(view)
+
+        XCTAssertEqual(book.due(now: Date()), [identity])
+        XCTAssertTrue(reattached.isEmpty)
+    }
+
+    func testAClickOnTheReconnectNoticeOfAPaneNoLongerWaitingTakesNothing() throws {
+        let (view, _) = pane()
+        PaneLead.report(try notice("n:follower:1"), from: view)
+
+        PaneLead.noticeClicked(view)
+
+        XCTAssertTrue(reattached.isEmpty)
+    }
+
     func testAnUncoveredPanesKeysAreItsOwn() throws {
         let (view, _) = pane()
         PaneLead.report(try notice("n:leader:1"), from: view)
